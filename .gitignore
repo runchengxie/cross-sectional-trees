@@ -208,3 +208,6 @@ __marimo__/
 
 # Debugging 
 full_project_source.txt
+
+# Cache
+/cache/

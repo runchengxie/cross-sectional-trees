@@ -46,13 +46,14 @@ direnv allow
 
 ## 运行
 ```bash
-python main.py
+python main.py --config config/config.yml
 ```
 
 输出包含：
 - CV IC 与 Daily IC
 - 分位数收益与长短组合收益
 - Top-K 换手率估计与成本拖累
+- 简易 long-only 回测（按再平衡周期持有到下一次）
 - 特征重要性排序
 
 ## 工具脚本
@@ -60,9 +61,14 @@ python main.py
 - `project_tools/combine_code.py`：打包项目源码为单文件文本（用于归档/审查）
 
 ## 自定义参数
-可在 `main.py` 中调整：
-- `SYMBOLS`：股票池
-- `LABEL_HORIZON_DAYS`：收益预测窗口
-- `FEATURES`：特征列表
-- `XGB_PARAMS`：模型参数
-- `REBALANCE_FREQUENCY` / `TRANSACTION_COST_BPS`：评估参数
+请在 `config/config.yml` 中调整：
+- `universe`：股票池、过滤条件、最小截面规模
+- `label`：预测窗口、shift、winsorize
+- `features`：特征清单与窗口
+- `model`：XGBoost 参数
+- `eval`：切分、分位数、换手成本与 embargo
+- `backtest`：再平衡频率、Top-K、成本与基准
+
+说明：
+- `drop_suspended` 通过成交量/成交额为 0 的数据近似过滤停牌。
+- `drop_st` 基于 `stock_basic` 的名称匹配，属于粗过滤。

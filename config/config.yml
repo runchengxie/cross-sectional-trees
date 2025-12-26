@@ -1,0 +1,77 @@
+data:
+  start_years: 5
+  end_date: "today"
+  cache_dir: "cache"
+  price_col: "close"
+
+universe:
+  symbols:
+    - "600519.SH"
+    - "601318.SH"
+    - "600036.SH"
+    - "000858.SZ"
+    - "000333.SZ"
+    - "600887.SH"
+    - "600276.SH"
+    - "601888.SH"
+    - "000001.SZ"
+    - "002415.SZ"
+  symbols_file: null
+  min_symbols_per_date: 5
+  min_listed_days: 0
+  min_turnover: 0
+  drop_st: false
+  drop_suspended: true
+
+label:
+  horizon_days: 5
+  shift_days: 0
+  target_col: "future_return"
+  winsorize_pct: null
+
+features:
+  list:
+    - sma_20
+    - sma_5_diff
+    - sma_10_diff
+    - sma_20_diff
+    - rsi_14
+    - macd_hist
+    - volume_sma5_ratio
+    - vol
+  params:
+    sma_windows: [5, 10, 20]
+    rsi: 14
+    macd: [12, 26, 9]
+    volume_sma_windows: [5]
+
+model:
+  type: xgb_regressor
+  params:
+    n_estimators: 300
+    learning_rate: 0.05
+    max_depth: 3
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.0
+    reg_lambda: 1.0
+    objective: "reg:squarederror"
+    random_state: 42
+
+eval:
+  test_size: 0.2
+  n_splits: 5
+  n_quantiles: 5
+  rebalance_frequency: "W"
+  top_k: 20
+  transaction_cost_bps: 10
+  embargo_days: null
+
+backtest:
+  enabled: true
+  top_k: 20
+  rebalance_frequency: "W"
+  transaction_cost_bps: 10
+  trading_days_per_year: 252
+  long_only: true
+  benchmark_symbol: null

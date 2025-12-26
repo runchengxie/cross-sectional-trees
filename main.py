@@ -1,7 +1,9 @@
 """main.py - Cross-sectional factor mining with XGBoost regression (A-shares).
 Usage:
-    $ python main.py  # requires the TUSHARE_API_KEY or TUSHARE_TOKEN env var
+    $ python main.py --config config/config.yml
+    # requires the TUSHARE_API_KEY or TUSHARE_TOKEN env var
 """
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -16,6 +18,7 @@ import pandas_ta as ta
 import tushare as ts
 import pyarrow  # ensures parquet support
 from dotenv import load_dotenv
+import yaml
 from xgboost import XGBRegressor
 from sklearn.model_selection import TimeSeriesSplit
 import warnings
@@ -25,12 +28,71 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------------------
 # 1. Config
 # -----------------------------------------------------------------------------
+def load_config(path: Path) -> dict:
+    if not path.exists():
+        sys.exit(f"Config file not found: {path}")
+    with path.open("r", encoding="utf-8") as handle:
+        cfg = yaml.safe_load(handle) or {}
+    if not isinstance(cfg, dict):
+        sys.exit("Config root must be a mapping.")
+    return cfg
+
+
+def normalize_symbol_list(value) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value.strip()]
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def load_symbols_file(path: Path) -> list[str]:
+    if not path.exists():
+        sys.exit(f"Symbols file not found: {path}")
+    symbols = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            text = line.strip()
+            if not text or text.startswith("#"):
+                continue
+            symbols.append(text)
+    return symbols
+
+
+def parse_feature_windows(features: list[str], prefix: str, suffix: str = "") -> list[int]:
+    windows = set()
+    for feat in features:
+        if not feat.startswith(prefix):
+            continue
+        if suffix and not feat.endswith(suffix):
+            continue
+        end = len(feat) - len(suffix) if suffix else len(feat)
+        value = feat[len(prefix):end]
+        if value.isdigit():
+            windows.add(int(value))
+    return sorted(windows)
+
+
+parser = argparse.ArgumentParser(description="Cross-sectional XGBoost pipeline")
+parser.add_argument("--config", default="config/config.yml", help="Path to YAML config")
+args = parser.parse_args()
+
+config = load_config(Path(args.config))
+
+data_cfg = config.get("data", {})
+universe_cfg = config.get("universe", {})
+label_cfg = config.get("label", {})
+features_cfg = config.get("features", {})
+model_cfg = config.get("model", {})
+eval_cfg = config.get("eval", {})
+backtest_cfg = config.get("backtest", {})
+
 load_dotenv()
 TOKEN = os.getenv("TUSHARE_API_KEY") or os.getenv("TUSHARE_TOKEN")
 if not TOKEN:
     sys.exit("Please set the TUSHARE_API_KEY or TUSHARE_TOKEN environment variable first.")
 
-SYMBOLS = [
+DEFAULT_SYMBOLS = [
     "600519.SH",
     "601318.SH",
     "600036.SH",
@@ -43,32 +105,61 @@ SYMBOLS = [
     "002415.SZ",
 ]
 
-end_date = datetime.now()
-start_date = end_date - timedelta(days=5 * 365)
+symbols = normalize_symbol_list(universe_cfg.get("symbols", DEFAULT_SYMBOLS))
+symbols_file = universe_cfg.get("symbols_file")
+if not symbols and symbols_file:
+    symbols = load_symbols_file(Path(symbols_file))
+if not symbols:
+    sys.exit("No symbols configured.")
+
+end_date_cfg = data_cfg.get("end_date", "today")
+if not end_date_cfg or str(end_date_cfg).lower() in {"today", "now"}:
+    end_date = datetime.now()
+else:
+    end_date = datetime.strptime(str(end_date_cfg), "%Y%m%d")
+
+start_date_cfg = data_cfg.get("start_date")
+if start_date_cfg:
+    start_date = datetime.strptime(str(start_date_cfg), "%Y%m%d")
+else:
+    start_years = float(data_cfg.get("start_years", 5))
+    start_date = end_date - timedelta(days=int(start_years * 365))
+
 START_DATE = start_date.strftime("%Y%m%d")
 END_DATE = end_date.strftime("%Y%m%d")
 
-LABEL_HORIZON_DAYS = 5   # forward return horizon (e.g., 5 trading days ~ weekly)
-TEST_SIZE = 0.2          # fraction of dates for hold-out test
-N_SPLITS = 5             # time-series CV splits on dates
-N_QUANTILES = 5          # quantile buckets for evaluation
-TOP_K = 20               # top-K holdings for turnover estimate
-REBALANCE_FREQUENCY = "W"  # "D", "W", "M" or None
-TRANSACTION_COST_BPS = 10  # per side, rough estimate for cost drag
+PRICE_COL = data_cfg.get("price_col", "close")
 
-XGB_PARAMS = dict(
-    n_estimators=300,
-    learning_rate=0.05,
-    max_depth=3,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    reg_alpha=0.0,
-    reg_lambda=1.0,
-    objective="reg:squarederror",
-    random_state=42,
-)
+LABEL_HORIZON_DAYS = int(label_cfg.get("horizon_days", 5))
+LABEL_SHIFT_DAYS = int(label_cfg.get("shift_days", 0))
+TARGET = label_cfg.get("target_col", "future_return")
+WINSORIZE_PCT = label_cfg.get("winsorize_pct")
+if WINSORIZE_PCT is not None:
+    WINSORIZE_PCT = float(WINSORIZE_PCT)
+    if not 0 < WINSORIZE_PCT < 0.5:
+        sys.exit("winsorize_pct must be between 0 and 0.5.")
 
-FEATURES = [
+TEST_SIZE = float(eval_cfg.get("test_size", 0.2))
+N_SPLITS = int(eval_cfg.get("n_splits", 5))
+N_QUANTILES = int(eval_cfg.get("n_quantiles", 5))
+TOP_K = int(eval_cfg.get("top_k", 20))
+REBALANCE_FREQUENCY = eval_cfg.get("rebalance_frequency", "W")
+TRANSACTION_COST_BPS = float(eval_cfg.get("transaction_cost_bps", 10))
+EMBARGO_DAYS = eval_cfg.get("embargo_days")
+if EMBARGO_DAYS is None:
+    EMBARGO_DAYS = LABEL_HORIZON_DAYS + LABEL_SHIFT_DAYS
+EMBARGO_DAYS = int(EMBARGO_DAYS)
+
+MIN_SYMBOLS_PER_DATE = int(universe_cfg.get("min_symbols_per_date", N_QUANTILES))
+MIN_LISTED_DAYS = int(universe_cfg.get("min_listed_days", 0))
+MIN_TURNOVER = float(universe_cfg.get("min_turnover", 0))
+DROP_ST = bool(universe_cfg.get("drop_st", False))
+DROP_SUSPENDED = bool(universe_cfg.get("drop_suspended", True))
+if MIN_SYMBOLS_PER_DATE < N_QUANTILES:
+    MIN_SYMBOLS_PER_DATE = N_QUANTILES
+
+feature_list = features_cfg.get("list") or []
+FEATURES = normalize_symbol_list(feature_list) if feature_list else [
     "sma_20",
     "sma_5_diff",
     "sma_10_diff",
@@ -78,16 +169,48 @@ FEATURES = [
     "volume_sma5_ratio",
     "vol",
 ]
-TARGET = "future_return"
+feature_params = features_cfg.get("params", {})
 
+XGB_PARAMS = model_cfg.get("params") or {}
+if not XGB_PARAMS:
+    XGB_PARAMS = dict(
+        n_estimators=300,
+        learning_rate=0.05,
+        max_depth=3,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        reg_alpha=0.0,
+        reg_lambda=1.0,
+        objective="reg:squarederror",
+        random_state=42,
+    )
+
+BACKTEST_ENABLED = bool(backtest_cfg.get("enabled", True))
+BACKTEST_TOP_K = int(backtest_cfg.get("top_k", TOP_K))
+BACKTEST_REBALANCE_FREQUENCY = backtest_cfg.get("rebalance_frequency", REBALANCE_FREQUENCY)
+BACKTEST_COST_BPS = float(backtest_cfg.get("transaction_cost_bps", TRANSACTION_COST_BPS))
+BACKTEST_TRADING_DAYS_PER_YEAR = int(backtest_cfg.get("trading_days_per_year", 252))
+BACKTEST_BENCHMARK = backtest_cfg.get("benchmark_symbol")
+BACKTEST_LONG_ONLY = bool(backtest_cfg.get("long_only", True))
 # -----------------------------------------------------------------------------
 # 2. Data download
 # -----------------------------------------------------------------------------
-CACHE_DIR = Path("cache")
+CACHE_DIR = Path(data_cfg.get("cache_dir", "cache"))
 CACHE_DIR.mkdir(exist_ok=True)
 
 ts.set_token(TOKEN)
 pro = ts.pro_api()
+
+
+def load_stock_basic(cache_dir: Path) -> pd.DataFrame:
+    cache_file = cache_dir / "stock_basic.parquet"
+    if cache_file.exists():
+        return pd.read_parquet(cache_file)
+    df_basic = pro.stock_basic(
+        list_status="L", fields="ts_code,name,list_date"
+    )
+    df_basic.to_parquet(cache_file)
+    return df_basic
 
 
 def load_symbol_data(symbol: str) -> pd.DataFrame:
@@ -104,8 +227,13 @@ def load_symbol_data(symbol: str) -> pd.DataFrame:
     return df_symbol
 
 
+benchmark_symbol = str(BACKTEST_BENCHMARK).strip() if BACKTEST_BENCHMARK else None
+symbols_for_data = symbols[:]
+if benchmark_symbol and benchmark_symbol not in symbols_for_data:
+    symbols_for_data.append(benchmark_symbol)
+
 frames = []
-for symbol in SYMBOLS:
+for symbol in symbols_for_data:
     print(f"Fetching daily data for {symbol} ...")
     data = load_symbol_data(symbol)
     if not data.empty:
@@ -118,47 +246,133 @@ df = pd.concat(frames, ignore_index=True)
 df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
 df.sort_values(["ts_code", "trade_date"], inplace=True)
 
+benchmark_df = None
+if benchmark_symbol:
+    if benchmark_symbol in symbols:
+        print(f"Benchmark symbol {benchmark_symbol} removed from modeling universe.")
+    benchmark_df = df[df["ts_code"] == benchmark_symbol].copy()
+    df = df[df["ts_code"] != benchmark_symbol].copy()
+
+basic_df = None
+if DROP_ST or MIN_LISTED_DAYS > 0:
+    try:
+        basic_df = load_stock_basic(CACHE_DIR)
+    except Exception as exc:
+        print(f"Warning: stock_basic load failed ({exc}); skipping ST/listed filters.")
+        basic_df = None
+
+if DROP_ST and basic_df is not None and "name" in basic_df.columns:
+    st_codes = basic_df[
+        basic_df["name"].str.contains("ST", case=False, na=False)
+    ]["ts_code"]
+    df = df[~df["ts_code"].isin(st_codes)].copy()
+
+if MIN_LISTED_DAYS > 0 and basic_df is not None and "list_date" in basic_df.columns:
+    list_dates = basic_df.copy()
+    list_dates["list_date"] = pd.to_datetime(list_dates["list_date"], format="%Y%m%d", errors="coerce")
+    list_date_map = list_dates.set_index("ts_code")["list_date"].to_dict()
+    df["list_date"] = df["ts_code"].map(list_date_map)
+    df = df[df["list_date"].notna()].copy()
+    df = df[df["trade_date"] >= df["list_date"] + pd.Timedelta(days=MIN_LISTED_DAYS)].copy()
+
+if DROP_SUSPENDED:
+    if "amount" in df.columns:
+        df = df[(df["vol"] > 0) & (df["amount"] > 0)].copy()
+    else:
+        df = df[df["vol"] > 0].copy()
+
+if MIN_TURNOVER > 0 and "amount" in df.columns:
+    df = df[df["amount"] >= MIN_TURNOVER].copy()
+
 # -----------------------------------------------------------------------------
 # 3. Feature engineering (per symbol) + label
 # -----------------------------------------------------------------------------
 print("Engineering features ...")
 
+if PRICE_COL not in df.columns:
+    sys.exit(f"Price column '{PRICE_COL}' not found in data.")
+if not FEATURES:
+    sys.exit("Feature list is empty.")
+
 
 def add_features(group: pd.DataFrame) -> pd.DataFrame:
     group = group.sort_values("trade_date").copy()
+    needed = set(FEATURES)
 
-    for win in (5, 10, 20):
+    sma_windows = set(parse_feature_windows(FEATURES, "sma_"))
+    sma_windows.update(parse_feature_windows(FEATURES, "sma_", "_diff"))
+    if not sma_windows:
+        sma_windows = set(feature_params.get("sma_windows", []))
+    for win in sorted(sma_windows):
         group[f"sma_{win}"] = ta.sma(group["close"], length=win)
-        group[f"sma_{win}_diff"] = group[f"sma_{win}"].pct_change()
+        if f"sma_{win}_diff" in needed:
+            group[f"sma_{win}_diff"] = group[f"sma_{win}"].pct_change()
 
-    group["rsi_14"] = ta.rsi(group["close"], length=14)
+    rsi_lengths = set(parse_feature_windows(FEATURES, "rsi_"))
+    if not rsi_lengths:
+        rsi_cfg = feature_params.get("rsi")
+        if isinstance(rsi_cfg, list):
+            rsi_lengths.update(int(x) for x in rsi_cfg)
+        elif rsi_cfg:
+            rsi_lengths.add(int(rsi_cfg))
+    for length in sorted(rsi_lengths):
+        group[f"rsi_{length}"] = ta.rsi(group["close"], length=length)
 
-    macd = ta.macd(group["close"], fast=12, slow=26, signal=9)
-    if macd is not None and "MACDh_12_26_9" in macd.columns:
-        group["macd_hist"] = macd["MACDh_12_26_9"]
-    else:
-        group["macd_hist"] = np.nan
+    if "macd_hist" in needed:
+        macd_cfg = feature_params.get("macd", [12, 26, 9])
+        macd_fast, macd_slow, macd_signal = macd_cfg
+        macd = ta.macd(group["close"], fast=macd_fast, slow=macd_slow, signal=macd_signal)
+        col_name = f"MACDh_{macd_fast}_{macd_slow}_{macd_signal}"
+        if macd is not None and col_name in macd.columns:
+            group["macd_hist"] = macd[col_name]
+        else:
+            group["macd_hist"] = np.nan
 
-    volume_sma5 = ta.sma(group["vol"], length=5)
-    if volume_sma5 is None:
-        volume_sma5 = group["vol"].rolling(window=5).mean()
-    group["volume_sma5"] = volume_sma5
-    group["volume_sma5_ratio"] = group["vol"] / group["volume_sma5"]
+    volume_windows = set(parse_feature_windows(FEATURES, "volume_sma", "_ratio"))
+    if not volume_windows:
+        vol_cfg = feature_params.get("volume_sma_windows", [])
+        if isinstance(vol_cfg, list):
+            volume_windows.update(int(x) for x in vol_cfg)
+        elif vol_cfg:
+            volume_windows.add(int(vol_cfg))
+    for win in sorted(volume_windows):
+        volume_sma = ta.sma(group["vol"], length=win)
+        if volume_sma is None:
+            volume_sma = group["vol"].rolling(window=win).mean()
+        group[f"volume_sma{win}"] = volume_sma
+        if f"volume_sma{win}_ratio" in needed:
+            group[f"volume_sma{win}_ratio"] = group["vol"] / group[f"volume_sma{win}"]
 
-    group[TARGET] = group["close"].shift(-LABEL_HORIZON_DAYS) / group["close"] - 1.0
+    entry_price = group[PRICE_COL].shift(-LABEL_SHIFT_DAYS)
+    exit_price = group[PRICE_COL].shift(-(LABEL_HORIZON_DAYS + LABEL_SHIFT_DAYS))
+    group[TARGET] = exit_price / entry_price - 1.0
 
     return group
 
 
 df = df.groupby("ts_code", group_keys=False).apply(add_features)
 
+missing_features = [feat for feat in FEATURES if feat not in df.columns]
+if missing_features:
+    sys.exit(f"Missing features after engineering: {missing_features}")
+
 # Keep only the necessary columns & drop NaNs from rolling calcs / future label
-cols = ["trade_date", "ts_code"] + FEATURES + [TARGET]
+cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + [TARGET]
+cols = list(dict.fromkeys(cols))
 df = df[cols].dropna().reset_index(drop=True)
 
-# Drop dates with too few symbols for quantiles
+if WINSORIZE_PCT:
+    def _winsorize(group: pd.DataFrame) -> pd.DataFrame:
+        lower = group[TARGET].quantile(WINSORIZE_PCT)
+        upper = group[TARGET].quantile(1 - WINSORIZE_PCT)
+        group[TARGET] = group[TARGET].clip(lower, upper)
+        return group
+
+    df = df.groupby("trade_date", group_keys=False).apply(_winsorize)
+
+# Drop dates with too few symbols for evaluation
 date_counts = df.groupby("trade_date")["ts_code"].nunique()
-valid_dates = date_counts[date_counts >= N_QUANTILES].index
+valid_dates = date_counts[date_counts >= MIN_SYMBOLS_PER_DATE].index
 if len(valid_dates) != len(date_counts):
     df = df[df["trade_date"].isin(valid_dates)].copy()
 
@@ -171,11 +385,17 @@ if len(all_dates) < 10:
     sys.exit("Not enough dates for a meaningful split.")
 
 split_idx = int(len(all_dates) * (1 - TEST_SIZE))
-train_dates = all_dates[:split_idx]
+train_end = split_idx
+if EMBARGO_DAYS > 0:
+    train_end = max(0, split_idx - EMBARGO_DAYS)
+train_dates = all_dates[:train_end]
 test_dates = all_dates[split_idx:]
 
 train_df = df[df["trade_date"].isin(train_dates)].copy()
 test_df = df[df["trade_date"].isin(test_dates)].copy()
+
+if train_df.empty or test_df.empty:
+    sys.exit("Not enough dates for train/test after embargo.")
 
 X_train, y_train = train_df[FEATURES], train_df[TARGET]
 X_test, y_test = test_df[FEATURES], test_df[TARGET]
@@ -205,11 +425,16 @@ def daily_ic_series(data: pd.DataFrame, target_col: str, pred_col: str) -> np.nd
     return np.array(daily)
 
 
-def time_series_cv_ic(data: pd.DataFrame, n_splits: int) -> list:
+def time_series_cv_ic(data: pd.DataFrame, n_splits: int, embargo_days: int) -> list:
     dates = np.array(sorted(data["trade_date"].unique()))
     tscv = TimeSeriesSplit(n_splits=n_splits)
     scores = []
     for train_idx, val_idx in tscv.split(dates):
+        if embargo_days > 0:
+            cutoff = val_idx[0] - embargo_days
+            train_idx = train_idx[train_idx < cutoff]
+            if len(train_idx) == 0:
+                continue
         tr_dates = dates[train_idx]
         va_dates = dates[val_idx]
         tr_df = data[data["trade_date"].isin(tr_dates)]
@@ -224,9 +449,12 @@ def time_series_cv_ic(data: pd.DataFrame, n_splits: int) -> list:
     return scores
 
 
-cv_scores = time_series_cv_ic(train_df, N_SPLITS)
-print(f"CV IC: mean={np.nanmean(cv_scores):.4f}, std={np.nanstd(cv_scores):.4f}")
-print(f"CV fold ICs: {[f'{s:.4f}' for s in cv_scores]}")
+cv_scores = time_series_cv_ic(train_df, N_SPLITS, EMBARGO_DAYS)
+if cv_scores:
+    print(f"CV IC: mean={np.nanmean(cv_scores):.4f}, std={np.nanstd(cv_scores):.4f}")
+    print(f"CV fold ICs: {[f'{s:.4f}' for s in cv_scores]}")
+else:
+    print("CV IC not available - insufficient data after embargo.")
 
 # -----------------------------------------------------------------------------
 # 6. Fit final model
@@ -315,6 +543,168 @@ if not np.isnan(turnover):
     cost_drag = 2 * (TRANSACTION_COST_BPS / 10000.0) * turnover
     print(f"Top-{k} turnover per rebalance: {turnover:.2%} (n={n_turn})")
     print(f"Approx cost drag per rebalance: {cost_drag:.2%} at {TRANSACTION_COST_BPS} bps per side")
+
+
+def backtest_topk(
+    data: pd.DataFrame,
+    pred_col: str,
+    price_col: str,
+    rebalance_dates: list[pd.Timestamp],
+    top_k: int,
+    shift_days: int,
+    cost_bps: float,
+    trading_days_per_year: int,
+):
+    trade_dates = sorted(data["trade_date"].unique())
+    if len(trade_dates) < 2:
+        return None
+    date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
+    price_table = data.pivot(index="trade_date", columns="ts_code", values=price_col)
+
+    net_returns = []
+    gross_returns = []
+    turnovers = []
+    period_info = []
+    prev_holdings = None
+
+    for i in range(len(rebalance_dates) - 1):
+        reb_date = rebalance_dates[i]
+        next_reb = rebalance_dates[i + 1]
+        if reb_date not in date_to_idx or next_reb not in date_to_idx:
+            continue
+
+        entry_idx = date_to_idx[reb_date] + shift_days
+        exit_idx = date_to_idx[next_reb] + shift_days
+        if entry_idx >= len(trade_dates) or exit_idx >= len(trade_dates) or entry_idx >= exit_idx:
+            continue
+
+        entry_date = trade_dates[entry_idx]
+        exit_date = trade_dates[exit_idx]
+        day = data[data["trade_date"] == reb_date]
+        if day.empty:
+            continue
+
+        k = min(top_k, len(day))
+        if k <= 0:
+            continue
+
+        holdings = list(day.nlargest(k, pred_col)["ts_code"])
+        entry_prices = price_table.loc[entry_date, holdings]
+        exit_prices = price_table.loc[exit_date, holdings]
+        valid = entry_prices.notna() & exit_prices.notna()
+        if valid.sum() == 0:
+            continue
+
+        period_returns = (exit_prices[valid] / entry_prices[valid]) - 1.0
+        gross = period_returns.mean()
+        turnover = np.nan
+        if prev_holdings is not None:
+            overlap = len(set(holdings) & prev_holdings)
+            turnover = 1 - overlap / k
+        cost = 0.0 if prev_holdings is None else 2 * (cost_bps / 10000.0) * turnover
+        net = gross - cost
+
+        gross_returns.append(gross)
+        net_returns.append(net)
+        turnovers.append(turnover)
+        period_info.append((entry_idx, exit_idx, entry_date, exit_date))
+        prev_holdings = set(holdings)
+
+    if not net_returns:
+        return None
+
+    index = [info[3] for info in period_info]
+    net_series = pd.Series(net_returns, index=index, name="net_return")
+    gross_series = pd.Series(gross_returns, index=index, name="gross_return")
+    turnover_series = pd.Series(turnovers, index=index, name="turnover")
+
+    nav = (1 + net_series).cumprod()
+    total_return = nav.iloc[-1] - 1.0
+    max_drawdown = (nav / nav.cummax() - 1.0).min()
+
+    entry_first, exit_last = period_info[0][0], period_info[-1][1]
+    total_days = exit_last - entry_first
+    if total_days > 0:
+        ann_return = (1 + total_return) ** (trading_days_per_year / total_days) - 1.0
+    else:
+        ann_return = np.nan
+
+    holding_lengths = [info[1] - info[0] for info in period_info]
+    avg_holding = np.mean(holding_lengths) if holding_lengths else np.nan
+    periods_per_year = (
+        trading_days_per_year / avg_holding
+        if np.isfinite(avg_holding) and avg_holding > 0
+        else np.nan
+    )
+    period_vol = net_series.std(ddof=1)
+    if np.isfinite(period_vol) and period_vol > 0 and np.isfinite(periods_per_year):
+        ann_vol = period_vol * np.sqrt(periods_per_year)
+        sharpe = net_series.mean() / period_vol * np.sqrt(periods_per_year)
+    else:
+        ann_vol = np.nan
+        sharpe = np.nan
+
+    avg_turnover = turnover_series.dropna().mean() if turnover_series.notna().any() else np.nan
+    avg_cost = 2 * (cost_bps / 10000.0) * avg_turnover if not np.isnan(avg_turnover) else np.nan
+
+    stats = {
+        "periods": len(net_series),
+        "total_return": total_return,
+        "ann_return": ann_return,
+        "ann_vol": ann_vol,
+        "sharpe": sharpe,
+        "max_drawdown": max_drawdown,
+        "avg_turnover": avg_turnover,
+        "avg_cost_drag": avg_cost,
+    }
+    return stats, net_series, gross_series, period_info
+
+
+if BACKTEST_ENABLED:
+    if not BACKTEST_LONG_ONLY:
+        print("Backtest only supports long-only at the moment; set backtest.long_only: true.")
+    else:
+        bt_rebalance = get_rebalance_dates(sorted(test_df["trade_date"].unique()), BACKTEST_REBALANCE_FREQUENCY)
+        bt_result = backtest_topk(
+            test_df,
+            pred_col="pred",
+            price_col=PRICE_COL,
+            rebalance_dates=bt_rebalance,
+            top_k=BACKTEST_TOP_K,
+            shift_days=LABEL_SHIFT_DAYS,
+            cost_bps=BACKTEST_COST_BPS,
+            trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
+        )
+
+        if bt_result is None:
+            print("Backtest not available - insufficient data.")
+        else:
+            stats, net_series, gross_series, period_info = bt_result
+            print("Backtest (long-only, top-K):")
+            print(f"  periods: {stats['periods']}")
+            print(f"  total return: {stats['total_return']:.2%}")
+            print(f"  ann return: {stats['ann_return']:.2%}")
+            print(f"  ann vol: {stats['ann_vol']:.2%}")
+            print(f"  sharpe: {stats['sharpe']:.2f}")
+            print(f"  max drawdown: {stats['max_drawdown']:.2%}")
+            if not np.isnan(stats["avg_turnover"]):
+                print(f"  avg turnover: {stats['avg_turnover']:.2%}")
+                print(f"  avg cost drag: {stats['avg_cost_drag']:.2%}")
+
+            if benchmark_df is not None and not benchmark_df.empty:
+                bench_prices = benchmark_df.set_index("trade_date")[PRICE_COL]
+                bench_returns = []
+                bench_index = []
+                for _, _, entry_date, exit_date in period_info:
+                    if entry_date not in bench_prices.index or exit_date not in bench_prices.index:
+                        continue
+                    bench_returns.append(bench_prices.loc[exit_date] / bench_prices.loc[entry_date] - 1.0)
+                    bench_index.append(exit_date)
+                if bench_returns:
+                    bench_series = pd.Series(bench_returns, index=bench_index, name="benchmark_return")
+                    bench_nav = (1 + bench_series).cumprod()
+                    bench_total = bench_nav.iloc[-1] - 1.0
+                    print(f"  benchmark total return: {bench_total:.2%}")
 
 # Feature importance
 print("Feature importance:")
