@@ -1,9 +1,9 @@
 # cross-sectional-xgboost
 
-使用 TuShare 美股日线数据与 XGBoost 回归进行截面因子挖掘和评估。流程包含特征工程、时间序列切分、IC 评估、分位数组合收益、换手率估计与特征重要性输出。
+使用 TuShare A股日线数据与 XGBoost 回归进行截面因子挖掘和评估。流程包含特征工程、时间序列切分、IC 评估、分位数组合收益、换手率估计与特征重要性输出。
 
 ## 功能概览
-- 拉取 TuShare `us_daily` 数据并缓存到 `cache/`（Parquet）
+- 拉取 TuShare A股 `daily` 数据并缓存到 `cache/`（Parquet）
 - 计算 SMA、RSI、MACD、成交量等技术指标
 - 训练 XGBoost 回归模型并评估截面 IC
 - 输出分位数组合收益、长短组合收益、换手率估计
@@ -28,8 +28,8 @@ pip install -e .
 ```
 
 ## 配置 TuShare Token
-主程序读取 `TUSHARE_API_KEY`，工具脚本会读取 `TUSHARE_TOKEN` / `TUSHARE_TOKEN_2`。
-如果你已从 `.env.example` 复制到 `.env`，请确保补充 `TUSHARE_API_KEY`。
+主程序读取 `TUSHARE_API_KEY` 或 `TUSHARE_TOKEN`，工具脚本会读取 `TUSHARE_TOKEN` / `TUSHARE_TOKEN_2`。
+如果你已从 `.env.example` 复制到 `.env`，请确保补充 `TUSHARE_API_KEY` 或 `TUSHARE_TOKEN`。
 
 示例 `.env`：
 ```bash

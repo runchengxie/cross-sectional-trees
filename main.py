@@ -1,6 +1,6 @@
-"""main.py - Cross-sectional factor mining with XGBoost regression.
+"""main.py - Cross-sectional factor mining with XGBoost regression (A-shares).
 Usage:
-    $ python main.py  # requires the TUSHARE_API_KEY (or TUSHARE_TOKEN) env var
+    $ python main.py  # requires the TUSHARE_API_KEY or TUSHARE_TOKEN env var
 """
 import os
 import sys
@@ -31,16 +31,16 @@ if not TOKEN:
     sys.exit("Please set the TUSHARE_API_KEY or TUSHARE_TOKEN environment variable first.")
 
 SYMBOLS = [
-    "AAPL",
-    "MSFT",
-    "AMZN",
-    "GOOGL",
-    "META",
-    "NVDA",
-    "TSLA",
-    "JPM",
-    "UNH",
-    "XOM",
+    "600519.SH",
+    "601318.SH",
+    "600036.SH",
+    "000858.SZ",
+    "000333.SZ",
+    "600887.SH",
+    "600276.SH",
+    "601888.SH",
+    "000001.SZ",
+    "002415.SZ",
 ]
 
 end_date = datetime.now()
@@ -91,10 +91,10 @@ pro = ts.pro_api()
 
 
 def load_symbol_data(symbol: str) -> pd.DataFrame:
-    cache_file = CACHE_DIR / f"us_daily_{symbol}_{START_DATE}_{END_DATE}.parquet"
+    cache_file = CACHE_DIR / f"cn_daily_{symbol}_{START_DATE}_{END_DATE}.parquet"
     if cache_file.exists():
         return pd.read_parquet(cache_file)
-    df_symbol = pro.us_daily(ts_code=symbol, start_date=START_DATE, end_date=END_DATE)
+    df_symbol = pro.daily(ts_code=symbol, start_date=START_DATE, end_date=END_DATE)
     if df_symbol.empty:
         print(f"No data for {symbol} - skipping.")
         return df_symbol
