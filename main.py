@@ -15,6 +15,7 @@ import pandas as pd
 import pandas_ta as ta
 import tushare as ts
 import pyarrow  # ensures parquet support
+from dotenv import load_dotenv
 from xgboost import XGBRegressor
 from sklearn.model_selection import TimeSeriesSplit
 import warnings
@@ -24,6 +25,7 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------------------
 # 1. Config
 # -----------------------------------------------------------------------------
+load_dotenv()
 TOKEN = os.getenv("TUSHARE_API_KEY")
 if not TOKEN:
     sys.exit("Please set the TUSHARE_API_KEY environment variable first.")

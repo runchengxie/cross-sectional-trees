@@ -13,6 +13,7 @@ dependencies = [
   "pandas>=2.0",
   "pandas-ta>=0.3.14b0",
   "pyarrow>=12.0",
+  "python-dotenv>=1.0",
   "scikit-learn>=1.2",
   "tushare>=1.2.89",
   "xgboost>=1.7",
