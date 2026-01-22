@@ -1,7 +1,7 @@
 """main.py - Cross-sectional factor mining with XGBoost regression (multi-market).
 Usage:
     $ python main.py --config config/config.yml
-    # requires the TUSHARE_API_KEY or TUSHARE_TOKEN env var
+    # provider-specific auth may be required (e.g. TUSHARE_API_KEY/TUSHARE_TOKEN)
 """
 import argparse
 import os
@@ -24,7 +24,7 @@ from xgboost import XGBRegressor
 from sklearn.model_selection import TimeSeriesSplit
 import warnings
 
-from data_providers import fetch_daily, load_basic, normalize_market
+from data_providers import fetch_daily, load_basic, normalize_market, resolve_provider
 
 warnings.filterwarnings("ignore")
 
@@ -92,9 +92,30 @@ eval_cfg = config.get("eval", {})
 backtest_cfg = config.get("backtest", {})
 
 load_dotenv()
-TOKEN = os.getenv("TUSHARE_API_KEY") or os.getenv("TUSHARE_TOKEN")
-if not TOKEN:
-    sys.exit("Please set the TUSHARE_API_KEY or TUSHARE_TOKEN environment variable first.")
+provider = resolve_provider(data_cfg)
+data_client = None
+if provider == "tushare":
+    TOKEN = os.getenv("TUSHARE_API_KEY") or os.getenv("TUSHARE_TOKEN")
+    if not TOKEN:
+        sys.exit("Please set the TUSHARE_API_KEY or TUSHARE_TOKEN environment variable first.")
+    ts.set_token(TOKEN)
+    data_client = ts.pro_api()
+elif provider == "rqdata":
+    try:
+        import rqdatac
+    except ImportError as exc:
+        sys.exit(f"rqdatac is required for provider='rqdata' ({exc}).")
+    rq_cfg = data_cfg.get("rqdata") or {}
+    init_kwargs = {}
+    if isinstance(rq_cfg, dict) and isinstance(rq_cfg.get("init"), dict):
+        init_kwargs.update(rq_cfg.get("init"))
+    try:
+        rqdatac.init(**init_kwargs)
+    except Exception as exc:
+        sys.exit(f"rqdatac.init failed: {exc}")
+    data_client = rqdatac
+else:
+    sys.exit(f"Unsupported data.provider '{provider}'.")
 
 DEFAULT_SYMBOLS_BY_MARKET = {
     "cn": [
@@ -249,10 +270,6 @@ if BACKTEST_SIGNAL_DIRECTION == 0:
 CACHE_DIR = Path(data_cfg.get("cache_dir", "cache"))
 CACHE_DIR.mkdir(exist_ok=True)
 
-ts.set_token(TOKEN)
-pro = ts.pro_api()
-
-
 benchmark_symbol = str(BACKTEST_BENCHMARK).strip() if BACKTEST_BENCHMARK else None
 symbols_for_data = symbols[:]
 if benchmark_symbol and benchmark_symbol not in symbols_for_data:
@@ -268,7 +285,7 @@ for symbol in symbols_for_data:
             START_DATE,
             END_DATE,
             CACHE_DIR,
-            pro,
+            data_client,
             data_cfg,
         )
     except Exception as exc:
@@ -296,7 +313,7 @@ if DROP_ST or MIN_LISTED_DAYS > 0:
     try:
         if MARKET != "cn" and DROP_ST:
             print(f"Note: drop_st is CN-specific; attempting basic data for market '{MARKET}'.")
-        basic_df = load_basic(MARKET, CACHE_DIR, pro, data_cfg)
+        basic_df = load_basic(MARKET, CACHE_DIR, data_client, data_cfg, symbols_for_data)
     except Exception as exc:
         print(f"Warning: basic data load failed ({exc}); skipping ST/listed filters.")
         basic_df = None

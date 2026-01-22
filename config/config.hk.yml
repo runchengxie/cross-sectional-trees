@@ -1,18 +1,22 @@
 market: hk
 
 data:
+  provider: "rqdata"
   start_years: 5
   end_date: "today"
   cache_dir: "cache"
   price_col: "close"
-  daily_endpoint: "hk_daily"
-  basic_endpoint: "hk_basic"
+  rqdata:
+    market: "hk"
+    frequency: "1d"
+    skip_suspended: true
+    fields: ["close", "volume", "total_turnover"]
   column_map:
     trade_date: trade_date
     ts_code: ts_code
     close: close
-    vol: vol
-    amount: amount
+    vol: volume
+    amount: total_turnover
 
 universe:
   symbols:

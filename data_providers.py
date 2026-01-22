@@ -1,8 +1,9 @@
 """Market-aware data providers for daily OHLCV data and basic metadata."""
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Iterable, Mapping, Optional
 
 import pandas as pd
 
@@ -60,7 +61,7 @@ COLUMN_CANDIDATES = {
     "ts_code": ["ts_code", "symbol", "ticker", "code", "sec_code", "tscode"],
     "close": ["close", "close_price", "adj_close", "close_adj", "cls"],
     "vol": ["vol", "volume", "trade_vol", "volume_traded"],
-    "amount": ["amount", "turnover", "trade_value", "value"],
+    "amount": ["amount", "turnover", "total_turnover", "trade_value", "value"],
 }
 
 REQUIRED_DAILY_COLUMNS = ("trade_date", "close", "vol")
@@ -69,6 +70,169 @@ REQUIRED_DAILY_COLUMNS = ("trade_date", "close", "vol")
 def normalize_market(market: Optional[str]) -> str:
     value = str(market or "cn").strip().lower()
     return value if value else "cn"
+
+
+def resolve_provider(data_cfg: Optional[Mapping]) -> str:
+    if not isinstance(data_cfg, Mapping):
+        return "tushare"
+    value = str(data_cfg.get("provider", "tushare")).strip().lower()
+    if value in {"rqdatac", "rqdata"}:
+        return "rqdata"
+    if value in {"tushare", "ts"}:
+        return "tushare"
+    return value or "tushare"
+
+
+def _hk_to_rqdata_symbol(symbol: str) -> str:
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return text
+    if text.endswith(".XHKG"):
+        return text
+    if text.endswith(".HK"):
+        text = text[:-3]
+    if text.isdigit():
+        text = text.zfill(5)
+    return f"{text}.XHKG"
+
+
+def _to_rqdata_symbol(market: str, symbol: str) -> str:
+    market = normalize_market(market)
+    if market == "hk":
+        return _hk_to_rqdata_symbol(symbol)
+    return str(symbol or "").strip()
+
+
+def _prepare_rqdata_daily_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    df = df.copy()
+    if isinstance(df.index, pd.MultiIndex):
+        date_index = df.index.get_level_values(-1)
+    else:
+        date_index = df.index
+    df = df.reset_index(drop=True)
+    df["trade_date"] = pd.to_datetime(date_index).strftime("%Y%m%d")
+    df["ts_code"] = symbol
+    return df
+
+
+def _rqdata_default_fields(rq_cfg: Optional[Mapping]) -> Optional[list[str]]:
+    if isinstance(rq_cfg, Mapping) and "fields" in rq_cfg:
+        fields = rq_cfg.get("fields")
+        if fields is None or fields == "all" or fields == "*":
+            return None
+        return list(fields) if isinstance(fields, (list, tuple)) else [str(fields)]
+    return ["close", "volume", "total_turnover"]
+
+
+def _rqdata_skip_suspended(market: str, rq_cfg: Optional[Mapping]) -> Optional[bool]:
+    if isinstance(rq_cfg, Mapping) and "skip_suspended" in rq_cfg:
+        return bool(rq_cfg.get("skip_suspended"))
+    return True if normalize_market(market) == "hk" else None
+
+
+def _fetch_daily_rqdata(
+    market: str,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    client,
+    data_cfg: Mapping,
+) -> pd.DataFrame:
+    if client is None:
+        import rqdatac as client
+    rq_cfg = data_cfg.get("rqdata") if isinstance(data_cfg, Mapping) else None
+    if isinstance(rq_cfg, Mapping) and rq_cfg.get("market"):
+        rq_market = normalize_market(rq_cfg.get("market"))
+    else:
+        rq_market = normalize_market(market)
+    frequency = "1d"
+    if isinstance(rq_cfg, Mapping) and rq_cfg.get("frequency"):
+        frequency = str(rq_cfg.get("frequency"))
+    fields = _rqdata_default_fields(rq_cfg)
+    skip_suspended = _rqdata_skip_suspended(rq_market, rq_cfg)
+
+    kwargs = {}
+    if fields is not None:
+        kwargs["fields"] = fields
+    if isinstance(rq_cfg, Mapping) and "adjust_type" in rq_cfg:
+        kwargs["adjust_type"] = rq_cfg.get("adjust_type")
+    if skip_suspended is not None:
+        kwargs["skip_suspended"] = skip_suspended
+    kwargs["market"] = rq_market
+
+    rq_symbol = _to_rqdata_symbol(rq_market, symbol)
+    df = client.get_price(rq_symbol, start_date, end_date, frequency, **kwargs)
+    if df is None or df.empty:
+        return df
+    return _prepare_rqdata_daily_frame(df, symbol)
+
+
+def _basic_cache_file(cache_dir: Path, market: str, provider: str, symbols: Optional[Iterable[str]]) -> Path:
+    if symbols:
+        normalized = "|".join(sorted(str(sym) for sym in symbols))
+        digest = hashlib.md5(normalized.encode("utf-8")).hexdigest()[:12]
+        return cache_dir / f"{market}_{provider}_basic_{digest}.parquet"
+    return cache_dir / f"{market}_{provider}_basic.parquet"
+
+
+def _load_basic_rqdata(
+    market: str,
+    symbols: Optional[Iterable[str]],
+    client,
+    data_cfg: Mapping,
+) -> pd.DataFrame:
+    if client is None:
+        import rqdatac as client
+    rq_cfg = data_cfg.get("rqdata") if isinstance(data_cfg, Mapping) else None
+    if isinstance(rq_cfg, Mapping) and rq_cfg.get("market"):
+        rq_market = normalize_market(rq_cfg.get("market"))
+    else:
+        rq_market = normalize_market(market)
+
+    symbol_map = {}
+    order_book_ids = None
+    if symbols:
+        order_book_ids = []
+        for sym in symbols:
+            rq_sym = _to_rqdata_symbol(rq_market, sym)
+            order_book_ids.append(rq_sym)
+            symbol_map[rq_sym] = sym
+
+    if order_book_ids:
+        instruments = client.instruments(order_book_ids, market=rq_market)
+        if not isinstance(instruments, list):
+            instruments = [instruments]
+        rows = []
+        for ins in instruments:
+            if ins is None:
+                continue
+            order_book_id = getattr(ins, "order_book_id", None)
+            rows.append(
+                {
+                    "ts_code": symbol_map.get(order_book_id, order_book_id),
+                    "name": getattr(ins, "symbol", None),
+                    "list_date": getattr(ins, "listed_date", None),
+                }
+            )
+        df_basic = pd.DataFrame(rows)
+        if "list_date" in df_basic.columns:
+            df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
+        return df_basic
+
+    df_basic = client.all_instruments("CS", market=rq_market)
+    if df_basic is None or df_basic.empty:
+        return df_basic
+    df_basic = df_basic.copy()
+    if "order_book_id" in df_basic.columns:
+        df_basic["ts_code"] = df_basic["order_book_id"]
+    if "listed_date" in df_basic.columns:
+        df_basic["list_date"] = df_basic["listed_date"]
+    if "symbol" in df_basic.columns and "name" not in df_basic.columns:
+        df_basic["name"] = df_basic["symbol"]
+    df_basic = df_basic[["ts_code", "name", "list_date"]].copy()
+    if "list_date" in df_basic.columns:
+        df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
+    return df_basic
 
 
 def _merge_column_map(market: str, data_cfg: Mapping) -> dict[str, str]:
@@ -148,40 +312,48 @@ def fetch_daily(
     start_date: str,
     end_date: str,
     cache_dir: Path,
-    pro,
+    client,
     data_cfg: Optional[Mapping] = None,
 ) -> pd.DataFrame:
     market = normalize_market(market)
     data_cfg = data_cfg or {}
-    cache_file = cache_dir / f"{market}_daily_{symbol}_{start_date}_{end_date}.parquet"
+    provider = resolve_provider(data_cfg)
+    cache_file = cache_dir / f"{market}_{provider}_daily_{symbol}_{start_date}_{end_date}.parquet"
     if cache_file.exists():
         return pd.read_parquet(cache_file)
 
-    endpoint_name = _resolve_endpoint_name(market, data_cfg, "daily_endpoint", DEFAULT_DAILY_ENDPOINTS)
-    if not endpoint_name:
-        raise ValueError(f"No daily endpoint configured for market '{market}'.")
-    endpoint = getattr(pro, endpoint_name, None)
-    if endpoint is None:
-        raise ValueError(f"Tushare endpoint '{endpoint_name}' not found for market '{market}'.")
+    if provider == "rqdata":
+        df = _fetch_daily_rqdata(market, symbol, start_date, end_date, client, data_cfg)
+    elif provider == "tushare":
+        endpoint_name = _resolve_endpoint_name(market, data_cfg, "daily_endpoint", DEFAULT_DAILY_ENDPOINTS)
+        if not endpoint_name:
+            raise ValueError(f"No daily endpoint configured for market '{market}'.")
+        if client is None:
+            raise ValueError("Tushare client is required for provider='tushare'.")
+        endpoint = getattr(client, endpoint_name, None)
+        if endpoint is None:
+            raise ValueError(f"Tushare endpoint '{endpoint_name}' not found for market '{market}'.")
 
-    params = {}
-    symbol_param = data_cfg.get("daily_symbol_param", "ts_code")
-    start_param = data_cfg.get("daily_start_param", "start_date")
-    end_param = data_cfg.get("daily_end_param", "end_date")
-    if symbol_param:
-        params[str(symbol_param)] = symbol
-    if start_param:
-        params[str(start_param)] = start_date
-    if end_param:
-        params[str(end_param)] = end_date
+        params = {}
+        symbol_param = data_cfg.get("daily_symbol_param", "ts_code")
+        start_param = data_cfg.get("daily_start_param", "start_date")
+        end_param = data_cfg.get("daily_end_param", "end_date")
+        if symbol_param:
+            params[str(symbol_param)] = symbol
+        if start_param:
+            params[str(start_param)] = start_date
+        if end_param:
+            params[str(end_param)] = end_date
 
-    params.update(_resolve_endpoint_params(data_cfg, "daily_params"))
+        params.update(_resolve_endpoint_params(data_cfg, "daily_params"))
 
-    fields = data_cfg.get("daily_fields") if isinstance(data_cfg, Mapping) else None
-    if fields:
-        params["fields"] = fields
+        fields = data_cfg.get("daily_fields") if isinstance(data_cfg, Mapping) else None
+        if fields:
+            params["fields"] = fields
 
-    df = endpoint(**params)
+        df = endpoint(**params)
+    else:
+        raise ValueError(f"Unsupported data provider '{provider}'.")
     if df is None or df.empty:
         return df
 
@@ -193,30 +365,43 @@ def fetch_daily(
 def load_basic(
     market: str,
     cache_dir: Path,
-    pro,
+    client,
     data_cfg: Optional[Mapping] = None,
+    symbols: Optional[Iterable[str]] = None,
 ) -> pd.DataFrame:
     market = normalize_market(market)
     data_cfg = data_cfg or {}
-    cache_file = cache_dir / f"{market}_basic.parquet"
+    provider = resolve_provider(data_cfg)
+    cache_file = _basic_cache_file(cache_dir, market, provider, symbols)
     if cache_file.exists():
         return pd.read_parquet(cache_file)
 
-    endpoint_name = _resolve_endpoint_name(market, data_cfg, "basic_endpoint", DEFAULT_BASIC_ENDPOINTS)
-    if not endpoint_name:
-        raise ValueError(f"No basic endpoint configured for market '{market}'.")
-    endpoint = getattr(pro, endpoint_name, None)
-    if endpoint is None:
-        raise ValueError(f"Tushare endpoint '{endpoint_name}' not found for market '{market}'.")
+    if provider == "rqdata":
+        df_basic = _load_basic_rqdata(market, symbols, client, data_cfg)
+    elif provider == "tushare":
+        endpoint_name = _resolve_endpoint_name(market, data_cfg, "basic_endpoint", DEFAULT_BASIC_ENDPOINTS)
+        if not endpoint_name:
+            raise ValueError(f"No basic endpoint configured for market '{market}'.")
+        if client is None:
+            raise ValueError("Tushare client is required for provider='tushare'.")
+        endpoint = getattr(client, endpoint_name, None)
+        if endpoint is None:
+            raise ValueError(f"Tushare endpoint '{endpoint_name}' not found for market '{market}'.")
 
-    params = _resolve_endpoint_params(data_cfg, "basic_params", DEFAULT_BASIC_PARAMS.get(market))
-    fields = data_cfg.get("basic_fields") or DEFAULT_BASIC_FIELDS.get(market)
-    if fields:
-        params["fields"] = fields
+        params = _resolve_endpoint_params(data_cfg, "basic_params", DEFAULT_BASIC_PARAMS.get(market))
+        fields = data_cfg.get("basic_fields") or DEFAULT_BASIC_FIELDS.get(market)
+        if fields:
+            params["fields"] = fields
 
-    df_basic = endpoint(**params)
+        df_basic = endpoint(**params)
+    else:
+        raise ValueError(f"Unsupported data provider '{provider}'.")
+
     if df_basic is None or df_basic.empty:
         return df_basic
+
+    if symbols and "ts_code" in df_basic.columns:
+        df_basic = df_basic[df_basic["ts_code"].isin(list(symbols))].copy()
 
     df_basic.to_parquet(cache_file)
     return df_basic
