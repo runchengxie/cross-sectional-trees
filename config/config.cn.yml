@@ -19,6 +19,7 @@ universe:
     - "000001.SZ"
     - "002415.SZ"
   symbols_file: null
+  by_date_file: null
   min_symbols_per_date: 5
   min_listed_days: 0
   min_turnover: 0
@@ -67,7 +68,7 @@ eval:
   test_size: 0.2
   n_splits: 5
   n_quantiles: 5
-  rebalance_frequency: "W"
+  rebalance_frequency: "M"
   top_k: 5
   signal_direction: -1
   transaction_cost_bps: 10
@@ -81,7 +82,7 @@ eval:
 backtest:
   enabled: true
   top_k: 5
-  rebalance_frequency: "W"
+  rebalance_frequency: "M"
   transaction_cost_bps: 10
   trading_days_per_year: 252
   long_only: true

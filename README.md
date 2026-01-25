@@ -101,12 +101,13 @@ python main.py --config config/config.us.yml
 * `project_tools/verify_tushare_tokens.py`：验证 TuShare Token 是否可用
 * `project_tools/combine_code.py`：打包项目源码为单文件文本（用于归档/审查）
 * `project_tools/fetch_index_components.py`：拉取指数成分并导出为 `symbols_file` 列表
+* `project_tools/build_hk_connect_universe.py`：基于港股通 PIT + 成交额筛选生成 `universe_by_date.csv`
 
 ## 自定义参数
 
 在 `config/config.yml` 或各市场配置中调整：
 
-* `universe`：股票池、过滤条件、最小截面规模
+* `universe`：股票池、过滤条件、最小截面规模（支持 `by_date_file` 动态池）
 * `market`：`cn` / `hk` / `us`
 * `data`：`provider`、`rqdata` 或 `daily_endpoint` / `basic_endpoint` / `column_map`（字段映射为 `trade_date/ts_code/close/vol/amount`）
 * `label`：预测窗口、shift、winsorize
@@ -122,6 +123,26 @@ python project_tools/fetch_index_components.py \
   --index-code 000300.SH \
   --month 202501 \
   --out hs300_symbols.txt
+```
+
+示例（港股通 PIT + 流动性池）：
+
+```bash
+python project_tools/build_hk_connect_universe.py \
+  --start-date 20200101 \
+  --end-date 20251231 \
+  --rebalance-frequency M \
+  --lookback-days 60 \
+  --top-quantile 0.8 \
+  --out universe_by_date.csv \
+  --latest-out hk_connect_symbols.txt
+```
+
+然后在配置中设置：
+
+```yaml
+universe:
+  by_date_file: "universe_by_date.csv"
 ```
 
 说明：

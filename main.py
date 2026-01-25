@@ -62,6 +62,95 @@ def load_symbols_file(path: Path) -> list[str]:
     return symbols
 
 
+def coerce_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "t"}
+    return False
+
+
+def normalize_universe_symbol(symbol: str, market: str) -> str:
+    text = str(symbol or "").strip()
+    if not text:
+        return text
+    if normalize_market(market) == "hk":
+        upper = text.upper()
+        if upper.endswith(".XHKG"):
+            upper = upper[:-5]
+        if upper.endswith(".HK"):
+            upper = upper[:-3]
+        if upper.isdigit():
+            upper = upper.zfill(5)
+        return f"{upper}.HK"
+    return text
+
+
+def load_universe_by_date(path: Path, market: str) -> pd.DataFrame:
+    if not path.exists():
+        sys.exit(f"Universe-by-date file not found: {path}")
+    df = pd.read_csv(path)
+    if df.empty:
+        sys.exit(f"Universe-by-date file is empty: {path}")
+    columns = {col.lower(): col for col in df.columns}
+    date_col = columns.get("trade_date") or columns.get("date") or columns.get("rebalance_date")
+    symbol_col = columns.get("ts_code") or columns.get("symbol") or columns.get("order_book_id")
+    if not date_col or not symbol_col:
+        sys.exit("Universe-by-date file must include date + symbol columns.")
+
+    df = df.rename(columns={date_col: "trade_date", symbol_col: "ts_code"})
+    selected_col = (
+        columns.get("selected")
+        or columns.get("selected_bool")
+        or columns.get("selected_flag")
+        or columns.get("is_selected")
+    )
+    if selected_col and selected_col in df.columns:
+        df = df[df[selected_col].map(coerce_bool)].copy()
+
+    df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
+    df = df[df["trade_date"].notna()].copy()
+    df["trade_date"] = df["trade_date"].dt.normalize()
+    df["ts_code"] = df["ts_code"].astype(str).str.strip()
+    df["ts_code"] = df["ts_code"].apply(lambda s: normalize_universe_symbol(s, market))
+    df = df[df["ts_code"] != ""].copy()
+    df = df.drop_duplicates(subset=["trade_date", "ts_code"])
+    return df[["trade_date", "ts_code"]].copy()
+
+
+def apply_universe_by_date(data: pd.DataFrame, universe: pd.DataFrame) -> pd.DataFrame:
+    if universe.empty:
+        return data
+    rebalance_dates = np.array(sorted(universe["trade_date"].unique()))
+    if rebalance_dates.size == 0:
+        return data
+    trade_dates = np.array(sorted(data["trade_date"].unique()))
+    if trade_dates.size == 0:
+        return data
+    idx = np.searchsorted(rebalance_dates, trade_dates, side="right") - 1
+    valid_mask = idx >= 0
+    if not np.any(valid_mask):
+        return data.iloc[0:0].copy()
+    date_map = pd.DataFrame(
+        {
+            "trade_date": trade_dates[valid_mask],
+            "rebalance_date": rebalance_dates[idx[valid_mask]],
+        }
+    )
+    universe_map = universe.rename(columns={"trade_date": "rebalance_date"})
+    data = data.merge(date_map, on="trade_date", how="inner")
+    data = data.merge(
+        universe_map[["rebalance_date", "ts_code"]],
+        on=["rebalance_date", "ts_code"],
+        how="inner",
+    )
+    return data.drop(columns=["rebalance_date"])
+
+
 def parse_feature_windows(features: list[str], prefix: str, suffix: str = "") -> list[int]:
     windows = set()
     for feat in features:
@@ -161,10 +250,25 @@ DEFAULT_SYMBOLS_BY_MARKET = {
 
 DEFAULT_SYMBOLS = DEFAULT_SYMBOLS_BY_MARKET.get(MARKET, DEFAULT_SYMBOLS_BY_MARKET["cn"])
 
-symbols = normalize_symbol_list(universe_cfg.get("symbols", DEFAULT_SYMBOLS))
+symbols = normalize_symbol_list(universe_cfg.get("symbols"))
 symbols_file = universe_cfg.get("symbols_file")
+by_date_file = universe_cfg.get("by_date_file")
+universe_by_date = None
+
 if not symbols and symbols_file:
     symbols = load_symbols_file(Path(symbols_file))
+
+if by_date_file:
+    universe_by_date = load_universe_by_date(Path(by_date_file), MARKET)
+    symbols_from_universe = sorted(universe_by_date["ts_code"].unique().tolist())
+    if symbols:
+        symbols = sorted(set(symbols) | set(symbols_from_universe))
+    else:
+        symbols = symbols_from_universe
+
+if not symbols:
+    symbols = DEFAULT_SYMBOLS
+
 if not symbols:
     sys.exit("No symbols configured.")
 
@@ -430,6 +534,14 @@ if missing_features:
 cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + [TARGET]
 cols = list(dict.fromkeys(cols))
 df = df[cols].dropna().reset_index(drop=True)
+
+if universe_by_date is not None:
+    before_rows = len(df)
+    df = apply_universe_by_date(df, universe_by_date)
+    after_rows = len(df)
+    print(f"Applied universe-by-date filter: {before_rows} -> {after_rows} rows")
+    if df.empty:
+        sys.exit("Universe-by-date filter removed all rows.")
 
 if WINSORIZE_PCT:
     def _winsorize(group: pd.DataFrame) -> pd.DataFrame:
