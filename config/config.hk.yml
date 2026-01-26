@@ -1,11 +1,17 @@
 market: hk
 
 data:
-  provider: "rqdata"
+  provider: "eodhd"
   start_years: 5
   end_date: "today"
   cache_dir: "cache"
   price_col: "close"
+  eodhd:
+    exchange: "HK"
+    period: "d"
+    order: "a"
+    fmt: "json"
+    hk_symbol_mode: "strip_one"
   rqdata:
     market: "hk"
     frequency: "1d"

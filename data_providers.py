@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import json
+import os
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
@@ -80,6 +85,8 @@ def resolve_provider(data_cfg: Optional[Mapping]) -> str:
         return "rqdata"
     if value in {"tushare", "ts"}:
         return "tushare"
+    if value in {"eodhd", "eod"}:
+        return "eodhd"
     return value or "tushare"
 
 
@@ -101,6 +108,47 @@ def _to_rqdata_symbol(market: str, symbol: str) -> str:
     if market == "hk":
         return _hk_to_rqdata_symbol(symbol)
     return str(symbol or "").strip()
+
+
+def _hk_to_eodhd_symbol(symbol: str, eod_cfg: Optional[Mapping]) -> str:
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return text
+    if text.endswith(".XHKG"):
+        text = text[:-5]
+    if text.endswith(".HK"):
+        text = text[:-3]
+    if text.isdigit():
+        mode = None
+        if isinstance(eod_cfg, Mapping):
+            mode = str(eod_cfg.get("hk_symbol_mode") or "").strip().lower() or None
+        if mode == "strip_one":
+            if len(text) == 5 and text.startswith("0"):
+                text = text[1:]
+        elif mode == "strip_all":
+            text = text.lstrip("0") or "0"
+        elif mode == "pad4":
+            text = text.zfill(4)
+        elif mode == "pad5":
+            text = text.zfill(5)
+    return f"{text}.HK"
+
+
+def _to_eodhd_symbol(market: str, symbol: str, eod_cfg: Optional[Mapping]) -> str:
+    market = normalize_market(market)
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return text
+    if market == "hk":
+        return _hk_to_eodhd_symbol(text, eod_cfg)
+    if "." in text:
+        return text
+    exchange = None
+    if isinstance(eod_cfg, Mapping):
+        exchange = str(eod_cfg.get("exchange") or "").strip().upper() or None
+    if exchange:
+        return f"{text}.{exchange}"
+    return text
 
 
 def _prepare_rqdata_daily_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
@@ -173,6 +221,163 @@ def _basic_cache_file(cache_dir: Path, market: str, provider: str, symbols: Opti
         digest = hashlib.md5(normalized.encode("utf-8")).hexdigest()[:12]
         return cache_dir / f"{market}_{provider}_basic_{digest}.parquet"
     return cache_dir / f"{market}_{provider}_basic.parquet"
+
+
+def _resolve_eodhd_config(data_cfg: Mapping, client) -> dict:
+    eod_cfg = data_cfg.get("eodhd") if isinstance(data_cfg, Mapping) else None
+    resolved = dict(eod_cfg) if isinstance(eod_cfg, Mapping) else {}
+    if isinstance(client, Mapping):
+        for key in ("api_token", "base_url", "timeout", "exchange"):
+            if key in client and client[key] is not None and key not in resolved:
+                resolved[key] = client[key]
+    if "api_token" not in resolved or not resolved.get("api_token"):
+        resolved["api_token"] = os.getenv("EODHD_API_TOKEN") or os.getenv("EODHD_API_KEY")
+    resolved.setdefault("base_url", "https://eodhd.com/api")
+    resolved.setdefault("timeout", 30)
+    return resolved
+
+
+def _eodhd_request_text(url: str, timeout: float) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "cross-sectional-xgboost/0.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = resp.read().decode("utf-8")
+    except Exception as exc:
+        raise ValueError(f"EODHD request failed: {exc}") from exc
+    return payload
+
+
+def _eodhd_build_url(base_url: str, path: str, params: Mapping[str, object]) -> str:
+    clean_params = {k: v for k, v in params.items() if v is not None and v != ""}
+    query = urllib.parse.urlencode(clean_params)
+    base = base_url.rstrip("/")
+    endpoint = path.lstrip("/")
+    return f"{base}/{endpoint}?{query}"
+
+
+def _eodhd_format_date(value: str) -> str:
+    dt = pd.to_datetime(str(value), errors="coerce")
+    if pd.isna(dt):
+        return ""
+    return dt.strftime("%Y-%m-%d")
+
+
+def _eodhd_payload_to_frame(payload: object) -> pd.DataFrame:
+    if payload is None:
+        return pd.DataFrame()
+    if isinstance(payload, dict):
+        error = payload.get("message") or payload.get("error")
+        if error:
+            raise ValueError(f"EODHD error: {error}")
+        if isinstance(payload.get("data"), list):
+            payload = payload["data"]
+    if isinstance(payload, list):
+        return pd.DataFrame(payload)
+    return pd.DataFrame()
+
+
+def _fetch_daily_eodhd(
+    market: str,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    client,
+    data_cfg: Mapping,
+) -> pd.DataFrame:
+    eod_cfg = _resolve_eodhd_config(data_cfg, client)
+    api_token = eod_cfg.get("api_token")
+    if not api_token:
+        raise ValueError("EODHD api_token is required (set data.eodhd.api_token or EODHD_API_TOKEN).")
+    eod_symbol = _to_eodhd_symbol(market, symbol, eod_cfg)
+    fmt = str(eod_cfg.get("fmt", "json")).strip().lower()
+    params = {
+        "api_token": api_token,
+        "fmt": fmt,
+        "period": eod_cfg.get("period", "d"),
+        "order": eod_cfg.get("order", "a"),
+        "from": _eodhd_format_date(start_date) if start_date else None,
+        "to": _eodhd_format_date(end_date) if end_date else None,
+    }
+    url = _eodhd_build_url(eod_cfg["base_url"], f"eod/{eod_symbol}", params)
+    payload_text = _eodhd_request_text(url, float(eod_cfg.get("timeout", 30)))
+    if fmt == "json":
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"EODHD response is not valid JSON: {exc}") from exc
+        df = _eodhd_payload_to_frame(payload)
+    else:
+        df = pd.read_csv(io.StringIO(payload_text))
+    if df.empty:
+        return df
+    date_col = None
+    if "date" in df.columns:
+        date_col = "date"
+    else:
+        columns = {col.lower(): col for col in df.columns}
+        date_col = columns.get("date")
+    if date_col:
+        df = df.copy()
+        df["trade_date"] = pd.to_datetime(df[date_col], errors="coerce").dt.strftime("%Y%m%d")
+        df = df[df["trade_date"].notna()].copy()
+    return df
+
+
+def _eodhd_code_to_internal_symbol(market: str, code: str) -> str:
+    text = str(code or "").strip().upper()
+    if not text:
+        return text
+    if normalize_market(market) == "hk":
+        if text.endswith(".HK"):
+            text = text[:-3]
+        if text.isdigit():
+            text = text.zfill(5)
+        return f"{text}.HK"
+    return text
+
+
+def _load_basic_eodhd(
+    market: str,
+    symbols: Optional[Iterable[str]],
+    client,
+    data_cfg: Mapping,
+) -> pd.DataFrame:
+    eod_cfg = _resolve_eodhd_config(data_cfg, client)
+    api_token = eod_cfg.get("api_token")
+    if not api_token:
+        raise ValueError("EODHD api_token is required (set data.eodhd.api_token or EODHD_API_TOKEN).")
+    exchange = eod_cfg.get("exchange") or ("HK" if normalize_market(market) == "hk" else None)
+    if not exchange:
+        raise ValueError("EODHD exchange code is required for basic data.")
+    fmt = str(eod_cfg.get("fmt", "json")).strip().lower()
+    params = {
+        "api_token": api_token,
+        "fmt": fmt,
+    }
+    url = _eodhd_build_url(eod_cfg["base_url"], f"exchange-symbol-list/{exchange}", params)
+    payload_text = _eodhd_request_text(url, float(eod_cfg.get("timeout", 30)))
+    if fmt == "json":
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"EODHD response is not valid JSON: {exc}") from exc
+        df = _eodhd_payload_to_frame(payload)
+    else:
+        df = pd.read_csv(io.StringIO(payload_text))
+    if df.empty:
+        return df
+    columns = {col.lower(): col for col in df.columns}
+    code_col = columns.get("code")
+    name_col = columns.get("name")
+    if not code_col:
+        return pd.DataFrame()
+    df_basic = pd.DataFrame()
+    df_basic["ts_code"] = df[code_col].map(lambda c: _eodhd_code_to_internal_symbol(market, c))
+    if name_col:
+        df_basic["name"] = df[name_col]
+    if symbols:
+        df_basic = df_basic[df_basic["ts_code"].isin(list(symbols))].copy()
+    return df_basic
 
 
 def _load_basic_rqdata(
@@ -352,6 +557,8 @@ def fetch_daily(
             params["fields"] = fields
 
         df = endpoint(**params)
+    elif provider == "eodhd":
+        df = _fetch_daily_eodhd(market, symbol, start_date, end_date, client, data_cfg)
     else:
         raise ValueError(f"Unsupported data provider '{provider}'.")
     if df is None or df.empty:
@@ -394,6 +601,8 @@ def load_basic(
             params["fields"] = fields
 
         df_basic = endpoint(**params)
+    elif provider == "eodhd":
+        df_basic = _load_basic_eodhd(market, symbols, client, data_cfg)
     else:
         raise ValueError(f"Unsupported data provider '{provider}'.")
 

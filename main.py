@@ -216,6 +216,23 @@ elif provider == "rqdata":
     except Exception as exc:
         sys.exit(f"rqdatac.init failed: {exc}")
     data_client = rqdatac
+elif provider == "eodhd":
+    eod_cfg = data_cfg.get("eodhd") or {}
+    api_token = (
+        (eod_cfg.get("api_token") if isinstance(eod_cfg, dict) else None)
+        or os.getenv("EODHD_API_TOKEN")
+        or os.getenv("EODHD_API_KEY")
+    )
+    if not api_token:
+        sys.exit("Please set EODHD_API_TOKEN (or data.eodhd.api_token) first.")
+    data_client = {"api_token": api_token}
+    if isinstance(eod_cfg, dict):
+        if eod_cfg.get("base_url"):
+            data_client["base_url"] = eod_cfg.get("base_url")
+        if eod_cfg.get("exchange"):
+            data_client["exchange"] = eod_cfg.get("exchange")
+        if eod_cfg.get("timeout"):
+            data_client["timeout"] = eod_cfg.get("timeout")
 else:
     sys.exit(f"Unsupported data.provider '{provider}'.")
 

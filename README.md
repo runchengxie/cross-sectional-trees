@@ -1,6 +1,6 @@
 # cross-sectional-xgboost
 
-使用 TuShare / RQData 日线数据与 XGBoost 回归进行截面因子挖掘和评估（支持 A/HK/US 多市场配置切换）。流程包含特征工程、时间序列切分、IC 评估、分位数组合收益、换手率估计与特征重要性输出。
+使用 TuShare / RQData / EODHD 日线数据与 XGBoost 回归进行截面因子挖掘和评估（支持 A/HK/US 多市场配置切换）。流程包含特征工程、时间序列切分、IC 评估、分位数组合收益、换手率估计与特征重要性输出。
 
 项目是基于一个散户的视角，因此：
 
@@ -10,7 +10,7 @@
 
 ## 功能概览
 
-* 拉取 TuShare 或 RQData 日线数据（按 `data.provider` 选择数据源）并缓存到 `cache/`（Parquet）
+* 拉取 TuShare / RQData / EODHD 日线数据（按 `data.provider` 选择数据源）并缓存到 `cache/`（Parquet）
 * 计算 SMA、RSI、MACD、成交量等技术指标
 * 训练 XGBoost 回归模型并评估截面 IC
 * 输出分位数组合收益、长短组合收益、换手率估计
@@ -51,6 +51,7 @@ TUSHARE_TOKEN="replace-with-your-tushare-pro-token"
 TUSHARE_TOKEN_2="replace-with-your-second-tushare-pro-token"
 # Legacy alias (avoid using unless required by old setups)
 # TUSHARE_API_KEY="replace-with-your-tushare-pro-token"
+EODHD_API_TOKEN="replace-with-your-eodhd-token"
 RQDATA_USERNAME="your-user"
 RQDATA_PASSWORD="your-pass"
 ```
@@ -78,6 +79,14 @@ data:
 ```
 
 也可使用环境变量 `RQDATA_USERNAME`（或 `RQDATA_USER`）/ `RQDATA_PASSWORD`（配置文件优先级更高）。
+
+## 配置 EODHD（仅当 data.provider=eodhd）
+
+使用环境变量 `EODHD_API_TOKEN`（或配置 `data.eodhd.api_token`）。可选字段：
+
+* `data.eodhd.exchange`：交易所代码（如 `HK`）。
+* `data.eodhd.hk_symbol_mode`：港股代码转换模式（`keep` / `strip_one` / `strip_all` / `pad4` / `pad5`）。
+* `data.eodhd.period` / `data.eodhd.order` / `data.eodhd.fmt`：用于日线接口的参数透传。
 
 ## 运行
 
@@ -109,7 +118,7 @@ python main.py --config config/config.us.yml
 
 * `universe`：股票池、过滤条件、最小截面规模（支持 `by_date_file` 动态池）
 * `market`：`cn` / `hk` / `us`
-* `data`：`provider`、`rqdata` 或 `daily_endpoint` / `basic_endpoint` / `column_map`（字段映射为 `trade_date/ts_code/close/vol/amount`）
+* `data`：`provider`、`rqdata` / `eodhd` 或 `daily_endpoint` / `basic_endpoint` / `column_map`（字段映射为 `trade_date/ts_code/close/vol/amount`）
 * `label`：预测窗口、shift、winsorize
 * `features`：特征清单与窗口
 * `model`：XGBoost 参数
