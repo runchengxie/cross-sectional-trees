@@ -127,15 +127,30 @@ python project_tools/fetch_index_components.py \
 
 示例（港股通 PIT + 流动性池）：
 
+默认配置（建议先用默认跑一遍）：
+
+```bash
+python project_tools/build_hk_connect_universe.py
+```
+
+覆盖单个参数：
+
+```bash
+python project_tools/build_hk_connect_universe.py --top-quantile 0.9
+```
+
+明确日期区间（回测）： 
+
 ```bash
 python project_tools/build_hk_connect_universe.py \
   --start-date 20200101 \
-  --end-date 20251231 \
-  --rebalance-frequency M \
-  --lookback-days 60 \
-  --top-quantile 0.8 \
-  --out universe_by_date.csv \
-  --latest-out hk_connect_symbols.txt
+  --end-date 20251231
+```
+
+日常更新（默认 T-1）： 
+
+```bash
+python project_tools/build_hk_connect_universe.py --mode daily
 ```
 
 然后在配置中设置：
@@ -150,3 +165,7 @@ universe:
 * `drop_suspended` 通过成交量/成交额为 0 的数据近似过滤停牌。
 * `drop_st` 基于 `stock_basic` 的名称匹配，仅适用于 A 股，属于粗过滤。
 * 日线缓存文件名统一为 `{market}_{provider}_daily_{symbol}_{START}_{END}.parquet`。
+* 港股通股票池默认配置在 `config/universe.hk_connect.yml`，CLI 参数可覆盖。
+* `mode=backtest` 要求固定 `end_date`；`mode=daily` 默认使用最近一个已完成交易日 (T-1)，并在输出文件名后追加日期。
+* `top_quantile` 的语义是“保留分位数以上的标的”，例如 `0.8` 会保留流动性最高的 20%。
+* 默认会在 CSV 旁输出 `*.meta.yml`，记录最终生效参数与每期股票池数量。
