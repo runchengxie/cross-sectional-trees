@@ -211,3 +211,6 @@ full_project_source.txt
 
 # Cache
 /cache/
+
+# Derived outputs
+/out/

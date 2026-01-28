@@ -110,7 +110,7 @@ python main.py --config config/config.us.yml
 * `project_tools/verify_tushare_tokens.py`：验证 TuShare Token 是否可用
 * `project_tools/combine_code.py`：打包项目源码为单文件文本（用于归档/审查）
 * `project_tools/fetch_index_components.py`：拉取指数成分并导出为 `symbols_file` 列表
-* `project_tools/build_hk_connect_universe.py`：基于港股通 PIT + 成交额筛选生成 `universe_by_date.csv`
+* `project_tools/build_hk_connect_universe.py`：基于港股通 PIT + 成交额筛选生成 `out/universe/universe_by_date.csv`
 
 ## 自定义参数
 
@@ -166,7 +166,7 @@ python project_tools/build_hk_connect_universe.py --mode daily
 
 ```yaml
 universe:
-  by_date_file: "universe_by_date.csv"
+  by_date_file: "out/universe/universe_by_date.csv"
 ```
 
 说明：
@@ -177,4 +177,4 @@ universe:
 * 港股通股票池默认配置在 `config/universe.hk_connect.yml`，CLI 参数可覆盖。
 * `mode=backtest` 要求固定 `end_date`；`mode=daily` 默认使用最近一个已完成交易日 (T-1)，并在输出文件名后追加日期。
 * `top_quantile` 的语义是“保留分位数以上的标的”，例如 `0.8` 会保留流动性最高的 20%。
-* 默认会在 CSV 旁输出 `*.meta.yml`，记录最终生效参数与每期股票池数量。
+* 默认会在 CSV 旁输出 `*.meta.yml`，记录最终生效参数与每期股票池数量（默认路径在 `out/universe/`）。

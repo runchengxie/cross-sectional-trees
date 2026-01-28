@@ -9,11 +9,11 @@ hk_connect_universe:
   min_window_days: 30
   top_quantile: 0.8
   min_turnover: 0
-  out: "universe_by_date.csv"
-  latest_out: "hk_connect_symbols.txt"
+  out: "out/universe/universe_by_date.csv"
+  latest_out: "out/universe/hk_connect_symbols.txt"
   append_date: true
   write_meta: true
-  meta_out: null
+  meta_out: "out/universe/universe_by_date.meta.yml"
   # Optional RQData credentials (env vars still supported)
   rqdata:
     username: null
