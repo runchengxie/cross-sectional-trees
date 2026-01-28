@@ -38,6 +38,12 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+若使用 RQData（含 rqdatac/rqsdk），请安装可选依赖：
+
+```bash
+pip install -e .[rqdata]
+```
+
 ## 配置 TuShare Token（仅当 data.provider=tushare）
 
 主程序与工具脚本优先读取 `TUSHARE_TOKEN`，其次 `TUSHARE_TOKEN_2`，仅在兼容旧配置时才读取 `TUSHARE_API_KEY`。
@@ -65,7 +71,7 @@ direnv allow
 
 ## 配置 RQData（仅当 data.provider=rqdata）
 
-需要安装 `rqdatac`。项目仅用到日线行情接口，不要求 `rqdatac_hk`（除非你要用港股通成分股等扩展功能）。
+需要安装 `rqdatac`（建议 `pip install -e .[rqdata]`）。项目仅用到日线行情接口，不要求 `rqdatac_hk`（除非你要用港股通成分股等扩展功能）。
 
 如需传入初始化参数，可在配置中设置 `data.rqdata.init`，例如：
 
@@ -91,10 +97,39 @@ data:
 ## 运行
 
 ```bash
+csxgb run --config config/config.yml
+csxgb run --config config/config.cn.yml
+csxgb run --config config/config.hk.yml
+csxgb run --config config/config.us.yml
+```
+
+兼容旧用法（不推荐）：
+
+```bash
 python main.py --config config/config.yml
-python main.py --config config/config.cn.yml
-python main.py --config config/config.hk.yml
-python main.py --config config/config.us.yml
+```
+
+## CLI 命令速览
+
+```bash
+# 主流程
+csxgb run --config config/config.yml
+
+# RQData 信息 / 配额
+csxgb rqdata info
+csxgb rqdata quota
+```
+
+注：`rqdata` 命令需要安装可选依赖 `.[rqdata]`。
+
+```bash
+
+# 指数成分与港股通股票池（参数透传给原脚本）
+csxgb universe index-components --index-code 000300.SH --month 202501
+csxgb universe hk-connect --mode daily
+
+# TuShare token 验证
+csxgb tushare verify-token
 ```
 
 输出包含：
@@ -107,7 +142,23 @@ python main.py --config config/config.us.yml
 * 评估与回测产物默认落盘到 `out/runs/<run_name>_<timestamp>_<hash>/`
   * 典型产物：`summary.json`、`config.used.yml`、`ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`、`feature_importance.csv`
 
+## 回测假设与限制
+
+* 回测为 long-only Top-K 等权组合，按再平衡周期持有。
+* 成交价使用 `price_col`（默认 close）并在 `rebalance_date + shift_days` 入场、下一次再平衡/持有期结束出场；近似 EOD 策略。
+* 成本模型：`transaction_cost_bps` 为单边成本；首期建仓只计单边成本，后续按换手率计算双边成本。
+* 换手率已考虑权重漂移后的再平衡需求，但仍忽略滑点、成交冲击、停牌/涨跌停限制等。
+* `exit_mode=label_horizon` 不支持与再平衡频率重叠（若持有期 > 再平衡间隔会直接跳过/报错）；需保持间隔≈持有期，或改用 `exit_mode=rebalance`。
+
+## 数据偏差声明
+
+* 静态 `symbols`/`symbols_file` 会在历史回测中产生前视偏差；严谨回测应使用 `by_date_file`（PIT）。
+* `fetch_index_components.py` 默认导出静态成分列表，适合研究/当期池；历史回测请使用 `--by-date-out` 生成 PIT 成分并接入 `by_date_file`。
+* `drop_st` 基于名称匹配，`drop_suspended` 基于成交量/成交额近似过滤，均非严格 PIT。
+
 ## 工具脚本
+
+CLI 已封装常用脚本（见上方命令速览），也可直接运行：
 
 * `project_tools/verify_tushare_tokens.py`：验证 TuShare Token 是否可用
 * `project_tools/combine_code.py`：打包项目源码为单文件文本（用于归档/审查）
@@ -130,10 +181,20 @@ python main.py --config config/config.us.yml
 示例（生成指数成分列表）：
 
 ```bash
-python project_tools/fetch_index_components.py \
+csxgb universe index-components \
   --index-code 000300.SH \
   --month 202501 \
   --out hs300_symbols.txt
+```
+
+生成 PIT 股票池（用于 `by_date_file`）：
+
+```bash
+csxgb universe index-components \
+  --index-code 000300.SH \
+  --start-date 20200101 \
+  --end-date 20251231 \
+  --by-date-out out/universe/index_universe_by_date.csv
 ```
 
 示例（港股通 PIT + 流动性池）：
@@ -141,19 +202,19 @@ python project_tools/fetch_index_components.py \
 默认配置（建议先用默认跑一遍）：
 
 ```bash
-python project_tools/build_hk_connect_universe.py
+csxgb universe hk-connect
 ```
 
 覆盖单个参数：
 
 ```bash
-python project_tools/build_hk_connect_universe.py --top-quantile 0.9
+csxgb universe hk-connect --top-quantile 0.9
 ```
 
 明确日期区间（回测）：
 
 ```bash
-python project_tools/build_hk_connect_universe.py \
+csxgb universe hk-connect \
   --start-date 20200101 \
   --end-date 20251231
 ```
@@ -161,7 +222,7 @@ python project_tools/build_hk_connect_universe.py \
 日常更新（默认 T-1）：
 
 ```bash
-python project_tools/build_hk_connect_universe.py --mode daily
+csxgb universe hk-connect --mode daily
 ```
 
 然后在配置中设置：

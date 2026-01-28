@@ -16,9 +16,6 @@ dependencies = [
   "pyyaml>=6.0",
   "python-dotenv>=1.0",
   "scikit-learn>=1.2",
-  "rqdatac>=3.4.3",
-  "rqdatac-hk",
-  "rqsdk",
   "tushare>=1.2.89",
   "xgboost>=1.7",
 ]
@@ -27,10 +24,18 @@ dependencies = [
 dev = [
   "pytest>=7.4",
 ]
+rqdata = [
+  "rqdatac>=3.4.3",
+  "rqdatac-hk",
+  "rqsdk",
+]
 stats = [
   "scipy>=1.10",
 ]
 
+[project.scripts]
+csxgb = "csxgb.cli:main"
+
 [tool.setuptools]
 py-modules = ["main"]
-packages = ["csxgb"]
+packages = ["csxgb", "project_tools"]

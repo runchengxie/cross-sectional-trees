@@ -43,3 +43,16 @@ def test_quantile_returns_shape_and_turnover():
     turnover = estimate_turnover(df, "pred", k=2, rebalance_dates=rebalance_dates)
     assert turnover.shape[0] == 1
     assert np.isclose(turnover.iloc[0], 0.0)
+
+
+def test_quantile_returns_insufficient_symbols():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(["2020-01-01"] * 2),
+            "ts_code": ["A", "B"],
+            "pred": [1, 2],
+            "target": [0.01, 0.02],
+        }
+    )
+    q_ret = quantile_returns(df, "pred", "target", n_quantiles=5)
+    assert q_ret.empty

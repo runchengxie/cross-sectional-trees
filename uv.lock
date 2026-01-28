@@ -224,9 +224,6 @@ dependencies = [
     { name = "pyarrow" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "rqdatac" },
-    { name = "rqdatac-hk" },
-    { name = "rqsdk" },
     { name = "scikit-learn" },
     { name = "tushare" },
     { name = "xgboost" },
@@ -235,6 +232,11 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "pytest" },
+]
+rqdata = [
+    { name = "rqdatac" },
+    { name = "rqdatac-hk" },
+    { name = "rqsdk" },
 ]
 stats = [
     { name = "scipy" },
@@ -249,15 +251,15 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rqdatac", specifier = ">=3.4.3" },
-    { name = "rqdatac-hk" },
-    { name = "rqsdk" },
+    { name = "rqdatac", marker = "extra == 'rqdata'", specifier = ">=3.4.3" },
+    { name = "rqdatac-hk", marker = "extra == 'rqdata'" },
+    { name = "rqsdk", marker = "extra == 'rqdata'" },
     { name = "scikit-learn", specifier = ">=1.2" },
     { name = "scipy", marker = "extra == 'stats'", specifier = ">=1.10" },
     { name = "tushare", specifier = ">=1.2.89" },
     { name = "xgboost", specifier = ">=1.7" },
 ]
-provides-extras = ["dev", "stats"]
+provides-extras = ["dev", "rqdata", "stats"]
 
 [[package]]
 name = "cryptography"

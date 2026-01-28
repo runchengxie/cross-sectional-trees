@@ -102,7 +102,7 @@ def check_token(env_key: str) -> TokenCheckResult:
     }
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     load_local_env()
 
     env_keys = resolve_env_keys()

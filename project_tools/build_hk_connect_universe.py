@@ -265,7 +265,7 @@ def prepare_turnover_table(
     return turnover.sort_index()
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build HK Connect universe (PIT + liquidity).")
     parser.add_argument(
         "--config",
@@ -320,7 +320,7 @@ def main() -> None:
     )
     parser.add_argument("--rqdata-user", help="RQData username (optional)")
     parser.add_argument("--rqdata-pass", help="RQData password (optional)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     cfg = extract_universe_config(load_yaml_config(Path(args.config)))
     settings = merge_settings(DEFAULTS, cfg, vars(args))

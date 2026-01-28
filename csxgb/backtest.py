@@ -27,8 +27,12 @@ def backtest_topk(
     net_returns = []
     gross_returns = []
     turnovers = []
+    costs = []
     period_info = []
     prev_holdings = None
+    prev_entry_date = None
+    prev_entry_prices = None
+    prev_exit_idx = None
 
     for i, reb_date in enumerate(rebalance_dates):
         if reb_date not in date_to_idx:
@@ -46,6 +50,11 @@ def backtest_topk(
                 raise ValueError("exit_horizon_days is required for exit_mode='label_horizon'.")
             entry_idx = date_to_idx[reb_date] + shift_days
             exit_idx = entry_idx + exit_horizon_days
+            if prev_exit_idx is not None and entry_idx < prev_exit_idx:
+                raise ValueError(
+                    "exit_mode='label_horizon' overlaps with rebalance_dates. "
+                    "Increase rebalance_frequency or use exit_mode='rebalance'."
+                )
 
         if entry_idx >= len(trade_dates) or exit_idx >= len(trade_dates) or entry_idx >= exit_idx:
             continue
@@ -67,18 +76,55 @@ def backtest_topk(
         if valid.sum() == 0:
             continue
 
-        period_returns = (exit_prices[valid] / entry_prices[valid]) - 1.0
+        entry_prices = entry_prices[valid]
+        exit_prices = exit_prices[valid]
+        holdings = list(entry_prices.index)
+        k = len(holdings)
+        if k == 0:
+            continue
+
+        period_returns = (exit_prices / entry_prices) - 1.0
         gross = period_returns.mean()
         turnover = np.nan
-        if prev_holdings is not None:
-            overlap = len(set(holdings) & prev_holdings)
-            turnover = 1 - overlap / k
-        cost = 0.0 if prev_holdings is None else 2 * (cost_bps / 10000.0) * turnover
+        cost_per_side = cost_bps / 10000.0
+        if prev_holdings is None:
+            turnover = 1.0
+            cost = cost_per_side
+        else:
+            prev_prices = prev_entry_prices
+            drift_turnover = np.nan
+            if prev_prices is not None and prev_entry_date is not None:
+                prev_holdings_list = list(prev_holdings)
+                prev_prices = prev_prices.reindex(prev_holdings_list)
+                prev_prices = prev_prices[prev_prices.notna()]
+                if not prev_prices.empty and prev_entry_date in price_table.index:
+                    current_prices = price_table.loc[entry_date, prev_prices.index]
+                    valid_prev = current_prices.notna()
+                    prev_prices = prev_prices[valid_prev]
+                    current_prices = current_prices[valid_prev]
+                    if not prev_prices.empty:
+                        prev_weights = np.repeat(1.0 / len(prev_prices), len(prev_prices))
+                        drift = prev_weights * (current_prices / prev_prices).to_numpy()
+                        drift_sum = drift.sum()
+                        if drift_sum > 0:
+                            drift_weights = pd.Series(drift / drift_sum, index=prev_prices.index)
+                            target_weights = pd.Series(1.0 / k, index=holdings)
+                            all_ids = drift_weights.index.union(target_weights.index)
+                            drift_aligned = drift_weights.reindex(all_ids).fillna(0.0)
+                            target_aligned = target_weights.reindex(all_ids).fillna(0.0)
+                            drift_turnover = 0.5 * float(np.abs(target_aligned - drift_aligned).sum())
+            if np.isfinite(drift_turnover):
+                turnover = drift_turnover
+            else:
+                overlap = len(set(holdings) & prev_holdings)
+                turnover = 1 - overlap / k
+            cost = 2 * cost_per_side * turnover
         net = gross - cost
 
         gross_returns.append(gross)
         net_returns.append(net)
         turnovers.append(turnover)
+        costs.append(cost)
         period_info.append(
             {
                 "rebalance_date": reb_date,
@@ -89,6 +135,9 @@ def backtest_topk(
             }
         )
         prev_holdings = set(holdings)
+        prev_entry_date = entry_date
+        prev_entry_prices = entry_prices
+        prev_exit_idx = exit_idx
 
     if not net_returns:
         return None
@@ -126,7 +175,7 @@ def backtest_topk(
         sharpe = np.nan
 
     avg_turnover = turnover_series.dropna().mean() if turnover_series.notna().any() else np.nan
-    avg_cost = 2 * (cost_bps / 10000.0) * avg_turnover if not np.isnan(avg_turnover) else np.nan
+    avg_cost = float(np.mean(costs)) if costs else np.nan
 
     stats = {
         "periods": len(net_series),

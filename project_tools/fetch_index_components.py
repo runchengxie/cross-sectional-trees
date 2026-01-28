@@ -71,7 +71,7 @@ def resolve_index_code(
     return str(matches.iloc[0]["ts_code"])
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Fetch TuShare index constituents.")
     parser.add_argument("--index-code", help="Index code, e.g. 000300.SH")
     parser.add_argument("--index-name", help="Index name from TuShare index_basic")
@@ -80,7 +80,11 @@ def main() -> None:
     parser.add_argument("--start-date", help="Start date in YYYYMMDD")
     parser.add_argument("--end-date", help="End date in YYYYMMDD")
     parser.add_argument("--out", help="Output file for symbols (one per line)")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--by-date-out",
+        help="Output CSV with trade_date,ts_code for PIT universe (by_date_file)",
+    )
+    args = parser.parse_args(argv)
 
     token = require_token()
     pro = ts.pro_api(token=token)
@@ -108,9 +112,19 @@ def main() -> None:
     out_path = Path(args.out) if args.out else Path(f"{index_code}_symbols.txt")
     out_path.write_text("\n".join(symbols), encoding="utf-8")
 
+    if args.by_date_out:
+        by_date_path = Path(args.by_date_out)
+        by_date_path.parent.mkdir(parents=True, exist_ok=True)
+        universe = df[["trade_date", "con_code"]].dropna().copy()
+        universe.rename(columns={"con_code": "ts_code"}, inplace=True)
+        universe = universe.drop_duplicates()
+        universe.to_csv(by_date_path, index=False)
+
     print(f"Index: {index_code}")
     print(f"Date range: {start_date} - {end_date}")
     print(f"Wrote {len(symbols)} symbols to {out_path}")
+    if args.by_date_out:
+        print(f"Wrote PIT universe to {Path(args.by_date_out)}")
 
 
 if __name__ == "__main__":
