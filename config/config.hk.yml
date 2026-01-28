@@ -5,7 +5,13 @@ data:
   start_date: "20200101"
   end_date: "20251231"
   cache_dir: "cache"
+  cache_tag: null
   price_col: "close"
+  retry:
+    max_attempts: 1
+    backoff_seconds: 0.5
+    max_backoff_seconds: 5.0
+    rotate_tokens: true
   eodhd:
     exchange: "HK"
     period: "d"
@@ -86,7 +92,11 @@ eval:
   signal_direction: -1
   transaction_cost_bps: 10
   embargo_days: null
+  purge_days: null
   report_train_ic: true
+  save_artifacts: true
+  output_dir: "out/runs"
+  run_name: null
   permutation_test:
     enabled: false
     n_runs: 3
@@ -100,3 +110,5 @@ backtest:
   trading_days_per_year: 252
   long_only: true
   benchmark_symbol: null
+  exit_mode: "rebalance"
+  exit_horizon_days: null

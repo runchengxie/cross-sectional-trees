@@ -42,7 +42,7 @@ pip install -e .
 
 主程序与工具脚本优先读取 `TUSHARE_TOKEN`，其次 `TUSHARE_TOKEN_2`，仅在兼容旧配置时才读取 `TUSHARE_API_KEY`。
 如果你已从 `.env.example` 复制到 `.env`，请确保补充 `TUSHARE_TOKEN`（可选 `TUSHARE_TOKEN_2` 作为备用）。
-注意：当前实现不会自动轮换 Token，`TUSHARE_TOKEN_2` 仅作为备用读取。
+默认会在重试时按顺序轮换 Token（可通过 `data.retry.rotate_tokens` 关闭）。
 
 示例 `.env`：
 
@@ -104,6 +104,8 @@ python main.py --config config/config.us.yml
 * Top-K 换手率估计与成本拖累
 * 简易 long-only 回测（按再平衡周期持有到下一次）
 * 特征重要性排序
+* 评估与回测产物默认落盘到 `out/runs/<run_name>_<timestamp>_<hash>/`
+  * 典型产物：`summary.json`、`config.used.yml`、`ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`、`feature_importance.csv`
 
 ## 工具脚本
 
@@ -118,12 +120,12 @@ python main.py --config config/config.us.yml
 
 * `universe`：股票池、过滤条件、最小截面规模（支持 `by_date_file` 动态池）
 * `market`：`cn` / `hk` / `us`
-* `data`：`provider`、`rqdata` / `eodhd` 或 `daily_endpoint` / `basic_endpoint` / `column_map`（字段映射为 `trade_date/ts_code/close/vol/amount`）
+* `data`：`provider`、`rqdata` / `eodhd` 或 `daily_endpoint` / `basic_endpoint` / `column_map`（字段映射为 `trade_date/ts_code/close/vol/amount`）、`cache_tag`、`retry`
 * `label`：预测窗口、shift、winsorize
 * `features`：特征清单与窗口
 * `model`：XGBoost 参数
-* `eval`：切分、分位数、换手成本、embargo，以及可选的 `report_train_ic` 与 `permutation_test`
-* `backtest`：再平衡频率、Top-K、成本与基准
+* `eval`：切分、分位数、换手成本、embargo/purge，以及可选的 `report_train_ic`、`save_artifacts` 与 `permutation_test`
+* `backtest`：再平衡频率、Top-K、成本、基准与 `exit_mode`
 
 示例（生成指数成分列表）：
 
@@ -173,7 +175,9 @@ universe:
 
 * `drop_suspended` 通过成交量/成交额为 0 的数据近似过滤停牌。
 * `drop_st` 基于 `stock_basic` 的名称匹配，仅适用于 A 股，属于粗过滤。
+* `eval.embargo_days` / `eval.purge_days` 按交易日索引计数（基于已排序的 `trade_date`）。
 * 日线缓存文件名统一为 `{market}_{provider}_daily_{symbol}_{START}_{END}.parquet`。
+  * 若设置 `data.cache_tag`（或 `cache_version`），文件名会变为 `{market}_{provider}_{cache_tag}_daily_{symbol}_{START}_{END}.parquet`。
 * 若 `data.end_date` 使用 `today/now`，每天都会生成新的缓存键；想复用缓存请固定 `start_date/end_date`。
 * 港股通股票池默认配置在 `config/universe.hk_connect.yml`，CLI 参数可覆盖。
 * `mode=backtest` 要求固定 `end_date`；`mode=daily` 默认使用最近一个已完成交易日 (T-1)，并在输出文件名后追加日期。

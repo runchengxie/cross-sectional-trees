@@ -4,8 +4,12 @@ Usage:
     # provider-specific auth may be required (e.g. TUSHARE_TOKEN/TUSHARE_TOKEN_2)
 """
 import argparse
+import hashlib
+import json
+import logging
 import os
 import sys
+import time
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
@@ -21,12 +25,17 @@ import pyarrow  # ensures parquet support
 from dotenv import load_dotenv
 import yaml
 from xgboost import XGBRegressor
-from sklearn.model_selection import TimeSeriesSplit
 import warnings
 
 from data_providers import fetch_daily, load_basic, normalize_market, resolve_provider
+from csxgb.metrics import daily_ic_series, summarize_ic, quantile_returns, estimate_turnover
+from csxgb.transform import apply_cross_sectional_transform
+from csxgb.split import time_series_cv_ic
+from csxgb.backtest import backtest_topk
 
 warnings.filterwarnings("ignore")
+
+logger = logging.getLogger("csxgb")
 
 # -----------------------------------------------------------------------------
 # 1. Config
@@ -39,6 +48,46 @@ def load_config(path: Path) -> dict:
     if not isinstance(cfg, dict):
         sys.exit("Config root must be a mapping.")
     return cfg
+
+
+def setup_logging(cfg: dict) -> None:
+    log_cfg = cfg.get("logging") if isinstance(cfg, dict) else None
+    log_cfg = log_cfg if isinstance(log_cfg, dict) else {}
+    level_name = str(log_cfg.get("level", "INFO")).upper()
+    log_file = log_cfg.get("file")
+    level = getattr(logging, level_name, logging.INFO)
+    handlers = [logging.StreamHandler()]
+    if log_file:
+        handlers.append(logging.FileHandler(log_file))
+    logging.basicConfig(
+        level=level,
+        handlers=handlers,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+
+
+def config_hash(cfg: dict) -> str:
+    dumped = yaml.safe_dump(cfg, sort_keys=True)
+    return hashlib.md5(dumped.encode("utf-8")).hexdigest()[:8]
+
+
+def save_series(series: pd.Series, path: Path, value_name: Optional[str] = None) -> None:
+    if series is None or series.empty:
+        return
+    name = value_name or series.name or "value"
+    out = series.rename(name).reset_index()
+    out.to_csv(path, index=False)
+
+
+def save_frame(frame: pd.DataFrame, path: Path) -> None:
+    if frame is None or frame.empty:
+        return
+    frame.to_csv(path, index=False)
+
+
+def save_json(payload: dict, path: Path) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=True, indent=2, default=str)
 
 
 def normalize_symbol_list(value) -> list[str]:
@@ -170,6 +219,7 @@ parser.add_argument("--config", default="config/config.yml", help="Path to YAML 
 args = parser.parse_args()
 
 config = load_config(Path(args.config))
+setup_logging(config)
 
 data_cfg = config.get("data", {})
 MARKET = normalize_market(config.get("market") or data_cfg.get("market"))
@@ -183,18 +233,30 @@ backtest_cfg = config.get("backtest", {})
 load_dotenv()
 provider = resolve_provider(data_cfg)
 data_client = None
+tushare_tokens: list[str] = []
+tushare_token_idx = 0
 if provider == "tushare":
-    TOKEN = (
-        os.getenv("TUSHARE_TOKEN")
-        or os.getenv("TUSHARE_TOKEN_2")
-        or os.getenv("TUSHARE_API_KEY")  # legacy alias
-    )
-    if not TOKEN:
+    raw_tokens = [
+        os.getenv("TUSHARE_TOKEN"),
+        os.getenv("TUSHARE_TOKEN_2"),
+        os.getenv("TUSHARE_API_KEY"),  # legacy alias
+    ]
+    for token in raw_tokens:
+        if token and token not in tushare_tokens:
+            tushare_tokens.append(token)
+    if not tushare_tokens:
         sys.exit(
             "Please set TUSHARE_TOKEN (or TUSHARE_TOKEN_2 / legacy TUSHARE_API_KEY) first."
         )
-    ts.set_token(TOKEN)
-    data_client = ts.pro_api()
+
+    def make_tushare_client(token: str):
+        try:
+            return ts.pro_api(token)
+        except TypeError:
+            ts.set_token(token)
+            return ts.pro_api()
+
+    data_client = make_tushare_client(tushare_tokens[tushare_token_idx])
 elif provider == "rqdata":
     try:
         import rqdatac
@@ -326,9 +388,12 @@ SIGNAL_DIRECTION = float(eval_cfg.get("signal_direction", 1.0))
 if SIGNAL_DIRECTION == 0:
     sys.exit("eval.signal_direction cannot be 0.")
 EMBARGO_DAYS = eval_cfg.get("embargo_days")
-if EMBARGO_DAYS is None:
-    EMBARGO_DAYS = LABEL_HORIZON_DAYS + LABEL_SHIFT_DAYS
-EMBARGO_DAYS = int(EMBARGO_DAYS)
+EMBARGO_DAYS = int(EMBARGO_DAYS) if EMBARGO_DAYS is not None else 0
+PURGE_DAYS = eval_cfg.get("purge_days")
+if PURGE_DAYS is None:
+    PURGE_DAYS = LABEL_HORIZON_DAYS + LABEL_SHIFT_DAYS
+PURGE_DAYS = int(PURGE_DAYS)
+EFFECTIVE_GAP_DAYS = max(EMBARGO_DAYS, PURGE_DAYS)
 REPORT_TRAIN_IC = bool(eval_cfg.get("report_train_ic", True))
 perm_cfg = eval_cfg.get("permutation_test") or {}
 if isinstance(perm_cfg, dict):
@@ -343,6 +408,10 @@ if PERM_TEST_SEED is not None:
     PERM_TEST_SEED = int(PERM_TEST_SEED)
 if PERM_TEST_RUNS < 1:
     PERM_TEST_ENABLED = False
+
+SAVE_ARTIFACTS = bool(eval_cfg.get("save_artifacts", True))
+OUTPUT_DIR = eval_cfg.get("output_dir", "out/runs")
+RUN_NAME = eval_cfg.get("run_name")
 
 MIN_SYMBOLS_PER_DATE = int(universe_cfg.get("min_symbols_per_date", N_QUANTILES))
 MIN_LISTED_DAYS = int(universe_cfg.get("min_listed_days", 0))
@@ -398,11 +467,35 @@ BACKTEST_LONG_ONLY = bool(backtest_cfg.get("long_only", True))
 BACKTEST_SIGNAL_DIRECTION = float(backtest_cfg.get("signal_direction", SIGNAL_DIRECTION))
 if BACKTEST_SIGNAL_DIRECTION == 0:
     sys.exit("backtest.signal_direction cannot be 0.")
+BACKTEST_EXIT_MODE = str(backtest_cfg.get("exit_mode", "rebalance")).strip().lower()
+if BACKTEST_EXIT_MODE not in {"rebalance", "label_horizon"}:
+    sys.exit("backtest.exit_mode must be one of: rebalance, label_horizon.")
+BACKTEST_EXIT_HORIZON_DAYS = backtest_cfg.get("exit_horizon_days")
+if BACKTEST_EXIT_MODE == "label_horizon":
+    if BACKTEST_EXIT_HORIZON_DAYS is None:
+        BACKTEST_EXIT_HORIZON_DAYS = LABEL_HORIZON_DAYS
+    BACKTEST_EXIT_HORIZON_DAYS = int(BACKTEST_EXIT_HORIZON_DAYS)
+
+run_name = str(RUN_NAME or Path(args.config).stem)
+run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+run_hash = config_hash(config)
+run_dir = Path(OUTPUT_DIR) / f"{run_name}_{run_stamp}_{run_hash}"
+if SAVE_ARTIFACTS:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Artifacts will be saved to %s", run_dir)
 # -----------------------------------------------------------------------------
 # 2. Data download
 # -----------------------------------------------------------------------------
 CACHE_DIR = Path(data_cfg.get("cache_dir", "cache"))
 CACHE_DIR.mkdir(exist_ok=True)
+
+retry_cfg = data_cfg.get("retry") if isinstance(data_cfg, dict) else None
+retry_cfg = retry_cfg if isinstance(retry_cfg, dict) else {}
+MAX_ATTEMPTS = int(retry_cfg.get("max_attempts", 1))
+MAX_ATTEMPTS = max(1, MAX_ATTEMPTS)
+BACKOFF_SECONDS = float(retry_cfg.get("backoff_seconds", 0.5))
+MAX_BACKOFF_SECONDS = float(retry_cfg.get("max_backoff_seconds", 5.0))
+ROTATE_TOKENS = bool(retry_cfg.get("rotate_tokens", True))
 
 benchmark_symbol = str(BACKTEST_BENCHMARK).strip() if BACKTEST_BENCHMARK else None
 symbols_for_data = symbols[:]
@@ -410,20 +503,46 @@ if benchmark_symbol and benchmark_symbol not in symbols_for_data:
     symbols_for_data.append(benchmark_symbol)
 
 frames = []
+def fetch_daily_with_retry(symbol: str) -> pd.DataFrame:
+    global data_client, tushare_token_idx
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            return fetch_daily(
+                MARKET,
+                symbol,
+                START_DATE,
+                END_DATE,
+                CACHE_DIR,
+                data_client,
+                data_cfg,
+            )
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "Daily data load failed for %s (attempt %s/%s): %s",
+                symbol,
+                attempt,
+                MAX_ATTEMPTS,
+                exc,
+            )
+            if provider == "tushare" and ROTATE_TOKENS and len(tushare_tokens) > 1:
+                tushare_token_idx = (tushare_token_idx + 1) % len(tushare_tokens)
+                data_client = make_tushare_client(tushare_tokens[tushare_token_idx])
+                logger.info("Switched Tushare token to index %s.", tushare_token_idx)
+            if attempt < MAX_ATTEMPTS:
+                sleep_for = min(BACKOFF_SECONDS * (2 ** (attempt - 1)), MAX_BACKOFF_SECONDS)
+                time.sleep(sleep_for)
+    if last_exc is not None:
+        raise last_exc
+    return pd.DataFrame()
+
 for symbol in symbols_for_data:
-    print(f"Fetching daily data for {symbol} ({MARKET}) ...")
+    logger.info("Fetching daily data for %s (%s) ...", symbol, MARKET)
     try:
-        data = fetch_daily(
-            MARKET,
-            symbol,
-            START_DATE,
-            END_DATE,
-            CACHE_DIR,
-            data_client,
-            data_cfg,
-        )
+        data = fetch_daily_with_retry(symbol)
     except Exception as exc:
-        print(f"Warning: daily data load failed for {symbol} ({exc}) - skipping.")
+        logger.warning("Skipping %s after retries (%s).", symbol, exc)
         data = pd.DataFrame()
     if not data.empty:
         frames.append(data)
@@ -438,7 +557,7 @@ df.sort_values(["ts_code", "trade_date"], inplace=True)
 benchmark_df = None
 if benchmark_symbol:
     if benchmark_symbol in symbols:
-        print(f"Benchmark symbol {benchmark_symbol} removed from modeling universe.")
+        logger.info("Benchmark symbol %s removed from modeling universe.", benchmark_symbol)
     benchmark_df = df[df["ts_code"] == benchmark_symbol].copy()
     df = df[df["ts_code"] != benchmark_symbol].copy()
 
@@ -446,10 +565,10 @@ basic_df = None
 if DROP_ST or MIN_LISTED_DAYS > 0:
     try:
         if MARKET != "cn" and DROP_ST:
-            print(f"Note: drop_st is CN-specific; attempting basic data for market '{MARKET}'.")
+            logger.info("drop_st is CN-specific; attempting basic data for market '%s'.", MARKET)
         basic_df = load_basic(MARKET, CACHE_DIR, data_client, data_cfg, symbols_for_data)
     except Exception as exc:
-        print(f"Warning: basic data load failed ({exc}); skipping ST/listed filters.")
+        logger.warning("Basic data load failed (%s); skipping ST/listed filters.", exc)
         basic_df = None
 
 if DROP_ST and basic_df is not None and "name" in basic_df.columns:
@@ -478,7 +597,7 @@ if MIN_TURNOVER > 0 and "amount" in df.columns:
 # -----------------------------------------------------------------------------
 # 3. Feature engineering (per symbol) + label
 # -----------------------------------------------------------------------------
-print("Engineering features ...")
+logger.info("Engineering features ...")
 
 if PRICE_COL not in df.columns:
     sys.exit(f"Price column '{PRICE_COL}' not found in data.")
@@ -556,7 +675,7 @@ if universe_by_date is not None:
     before_rows = len(df)
     df = apply_universe_by_date(df, universe_by_date)
     after_rows = len(df)
-    print(f"Applied universe-by-date filter: {before_rows} -> {after_rows} rows")
+    logger.info("Applied universe-by-date filter: %s -> %s rows", before_rows, after_rows)
     if df.empty:
         sys.exit("Universe-by-date filter removed all rows.")
 
@@ -569,39 +688,20 @@ if WINSORIZE_PCT:
 
     df = df.groupby("trade_date", group_keys=False).apply(_winsorize)
 
-
-def apply_cross_sectional_transform(
-    data: pd.DataFrame,
-    features: list[str],
-    method: str,
-    winsorize_pct: Optional[float],
-) -> pd.DataFrame:
-    if method == "none":
-        return data
-
-    def _transform(group: pd.DataFrame) -> pd.DataFrame:
-        values = group[features].copy()
-        if winsorize_pct:
-            lower = values.quantile(winsorize_pct)
-            upper = values.quantile(1 - winsorize_pct)
-            values = values.clip(lower=lower, upper=upper, axis=1)
-        if method == "zscore":
-            mean = values.mean()
-            std = values.std(ddof=0).replace(0, np.nan)
-            values = (values - mean) / std
-            values = values.fillna(0.0)
-        elif method == "rank":
-            values = values.rank(method="average", pct=True) - 0.5
-        group[features] = values
-        return group
-
-    return data.groupby("trade_date", group_keys=False, sort=False).apply(_transform).reset_index(drop=True)
-
 # Drop dates with too few symbols for evaluation
 date_counts = df.groupby("trade_date")["ts_code"].nunique()
 valid_dates = date_counts[date_counts >= MIN_SYMBOLS_PER_DATE].index
+dropped_date_counts = date_counts[date_counts < MIN_SYMBOLS_PER_DATE].sort_index()
 if len(valid_dates) != len(date_counts):
     df = df[df["trade_date"].isin(valid_dates)].copy()
+if not dropped_date_counts.empty:
+    logger.info(
+        "Dropped %s dates with < %s symbols (min=%s, max=%s).",
+        len(dropped_date_counts),
+        MIN_SYMBOLS_PER_DATE,
+        int(dropped_date_counts.min()),
+        int(dropped_date_counts.max()),
+    )
 
 if CS_METHOD != "none":
     df = apply_cross_sectional_transform(df, FEATURES, CS_METHOD, CS_WINSORIZE_PCT)
@@ -609,15 +709,15 @@ if CS_METHOD != "none":
 # -----------------------------------------------------------------------------
 # 4. Train-test split (time-series by date)
 # -----------------------------------------------------------------------------
-print("Splitting train/test by date ...")
+logger.info("Splitting train/test by date ...")
 all_dates = np.array(sorted(df["trade_date"].unique()))
 if len(all_dates) < 10:
     sys.exit("Not enough dates for a meaningful split.")
 
 split_idx = int(len(all_dates) * (1 - TEST_SIZE))
 train_end = split_idx
-if EMBARGO_DAYS > 0:
-    train_end = max(0, split_idx - EMBARGO_DAYS)
+if EFFECTIVE_GAP_DAYS > 0:
+    train_end = max(0, split_idx - EFFECTIVE_GAP_DAYS)
 train_dates = all_dates[:train_end]
 test_dates = all_dates[split_idx:]
 
@@ -627,40 +727,21 @@ test_df = df[df["trade_date"].isin(test_dates)].copy()
 if train_df.empty or test_df.empty:
     sys.exit("Not enough dates for train/test after embargo.")
 
+logger.info(
+    "Train/test split: train_dates=%s, test_dates=%s, purge_days=%s, embargo_days=%s.",
+    len(train_dates),
+    len(test_dates),
+    PURGE_DAYS,
+    EMBARGO_DAYS,
+)
+
 X_train, y_train = train_df[FEATURES], train_df[TARGET]
 X_test, y_test = test_df[FEATURES], test_df[TARGET]
 
 # -----------------------------------------------------------------------------
 # 5. Cross-validation on dates (IC metric)
 # -----------------------------------------------------------------------------
-print("Time-series cross-validation (IC) ...")
-
-
-def spearman_corr(x: pd.Series, y: pd.Series) -> float:
-    if len(x) < 2:
-        return np.nan
-    x_rank = x.rank(method="average")
-    y_rank = y.rank(method="average")
-    return x_rank.corr(y_rank)
-
-
-def daily_ic_series(data: pd.DataFrame, target_col: str, pred_col: str) -> np.ndarray:
-    daily = []
-    for _, group in data.groupby("trade_date"):
-        if group[target_col].nunique() < 2:
-            continue
-        ic = spearman_corr(group[pred_col], group[target_col])
-        if not np.isnan(ic):
-            daily.append(ic)
-    return np.array(daily)
-
-
-def summarize_ic(data: pd.DataFrame, target_col: str, pred_col: str) -> tuple[np.ndarray, float, float, float]:
-    ic_values = daily_ic_series(data, target_col, pred_col)
-    ic_mean = np.nanmean(ic_values)
-    ic_std = np.nanstd(ic_values)
-    ic_ir = ic_mean / ic_std if ic_std > 0 else np.nan
-    return ic_values, ic_mean, ic_std, ic_ir
+logger.info("Time-series cross-validation (IC) ...")
 
 
 def permute_target_within_date(
@@ -698,59 +779,37 @@ def permutation_test_ic(
             perm_test["pred"] = perm_test["pred"] * signal_direction
 
         ic_values = daily_ic_series(perm_test, TARGET, "pred")
-        scores.append(np.nanmean(ic_values))
+        scores.append(float(ic_values.mean()) if not ic_values.empty else np.nan)
     return scores
 
 
-def time_series_cv_ic(
-    data: pd.DataFrame,
-    n_splits: int,
-    embargo_days: int,
-    signal_direction: float,
-) -> list:
-    dates = np.array(sorted(data["trade_date"].unique()))
-    tscv = TimeSeriesSplit(n_splits=n_splits)
-    scores = []
-    for train_idx, val_idx in tscv.split(dates):
-        if embargo_days > 0:
-            cutoff = val_idx[0] - embargo_days
-            train_idx = train_idx[train_idx < cutoff]
-            if len(train_idx) == 0:
-                continue
-        tr_dates = dates[train_idx]
-        va_dates = dates[val_idx]
-        tr_df = data[data["trade_date"].isin(tr_dates)]
-        va_df = data[data["trade_date"].isin(va_dates)].copy()
-
-        model = XGBRegressor(**XGB_PARAMS)
-        model.fit(tr_df[FEATURES], tr_df[TARGET])
-        va_df["pred"] = model.predict(va_df[FEATURES])
-        if signal_direction != 1.0:
-            va_df["pred"] = va_df["pred"] * signal_direction
-
-        ic_values = daily_ic_series(va_df, TARGET, "pred")
-        scores.append(np.nanmean(ic_values))
-    return scores
-
-
-cv_scores = time_series_cv_ic(train_df, N_SPLITS, EMBARGO_DAYS, SIGNAL_DIRECTION)
+cv_scores = time_series_cv_ic(
+    train_df,
+    FEATURES,
+    TARGET,
+    N_SPLITS,
+    EMBARGO_DAYS,
+    PURGE_DAYS,
+    XGB_PARAMS,
+    SIGNAL_DIRECTION,
+)
 if cv_scores:
-    print(f"CV IC: mean={np.nanmean(cv_scores):.4f}, std={np.nanstd(cv_scores):.4f}")
-    print(f"CV fold ICs: {[f'{s:.4f}' for s in cv_scores]}")
+    logger.info("CV IC: mean=%.4f, std=%.4f", np.nanmean(cv_scores), np.nanstd(cv_scores))
+    logger.info("CV fold ICs: %s", [f"{s:.4f}" for s in cv_scores])
 else:
-    print("CV IC not available - insufficient data after embargo.")
+    logger.info("CV IC not available - insufficient data after embargo/purge.")
 
 # -----------------------------------------------------------------------------
 # 6. Fit final model
 # -----------------------------------------------------------------------------
-print("Fitting XGBoost regressor ...")
+logger.info("Fitting XGBoost regressor ...")
 model = XGBRegressor(**XGB_PARAMS)
 model.fit(X_train, y_train)
 
 # -----------------------------------------------------------------------------
 # 7. Evaluation (cross-sectional factor style)
 # -----------------------------------------------------------------------------
-print("Evaluating model on train/test sets ...")
+logger.info("Evaluating model on train/test sets ...")
 
 train_eval_df = train_df.copy()
 train_eval_df["pred"] = model.predict(train_eval_df[FEATURES])
@@ -758,13 +817,19 @@ train_signal_col = "pred"
 if SIGNAL_DIRECTION != 1.0:
     train_eval_df["signal"] = train_eval_df["pred"] * SIGNAL_DIRECTION
     train_signal_col = "signal"
+train_ic_series = pd.Series(dtype=float, name="ic")
+train_ic_stats = {}
 if REPORT_TRAIN_IC:
-    train_ic_values, train_ic_mean, train_ic_std, train_ic_ir = summarize_ic(
-        train_eval_df, TARGET, train_signal_col
-    )
-    print(
-        f"Train Daily IC: mean={train_ic_mean:.4f}, std={train_ic_std:.4f}, "
-        f"IR={train_ic_ir:.2f} (n={len(train_ic_values)})"
+    train_ic_series = daily_ic_series(train_eval_df, TARGET, train_signal_col)
+    train_ic_stats = summarize_ic(train_ic_series)
+    logger.info(
+        "Train Daily IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
+        train_ic_stats["mean"],
+        train_ic_stats["std"],
+        train_ic_stats["ir"],
+        train_ic_stats["t_stat"],
+        train_ic_stats["p_value"],
+        train_ic_stats["n"],
     )
 
 test_df["pred"] = model.predict(test_df[FEATURES])
@@ -772,14 +837,23 @@ signal_col = "pred"
 if SIGNAL_DIRECTION != 1.0:
     test_df["signal"] = test_df["pred"] * SIGNAL_DIRECTION
     signal_col = "signal"
-    print(f"Signal direction applied to ranking: {SIGNAL_DIRECTION}")
+    logger.info("Signal direction applied to ranking: %s", SIGNAL_DIRECTION)
 
 # Daily IC
-ic_values, ic_mean, ic_std, ic_ir = summarize_ic(test_df, TARGET, signal_col)
-print(f"Daily IC: mean={ic_mean:.4f}, std={ic_std:.4f}, IR={ic_ir:.2f} (n={len(ic_values)})")
+ic_series = daily_ic_series(test_df, TARGET, signal_col)
+ic_stats = summarize_ic(ic_series)
+logger.info(
+    "Daily IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
+    ic_stats["mean"],
+    ic_stats["std"],
+    ic_stats["ir"],
+    ic_stats["t_stat"],
+    ic_stats["p_value"],
+    ic_stats["n"],
+)
 
 if PERM_TEST_ENABLED:
-    print("Permutation test (shuffle train labels within date) ...")
+    logger.info("Permutation test (shuffle train labels within date) ...")
     perm_scores = permutation_test_ic(
         train_df,
         test_df,
@@ -790,8 +864,13 @@ if PERM_TEST_ENABLED:
     if perm_scores:
         perm_mean = np.nanmean(perm_scores)
         perm_std = np.nanstd(perm_scores)
-        print(f"Permutation IC: mean={perm_mean:.4f}, std={perm_std:.4f}, runs={len(perm_scores)}")
-        print(f"Permutation ICs: {[f'{s:.4f}' for s in perm_scores]}")
+        logger.info(
+            "Permutation IC: mean=%.4f, std=%.4f, runs=%s",
+            perm_mean,
+            perm_std,
+            len(perm_scores),
+        )
+        logger.info("Permutation ICs: %s", [f"{s:.4f}" for s in perm_scores])
 
 # Quantile returns on rebalance dates
 
@@ -806,178 +885,67 @@ def get_rebalance_dates(dates, freq: str) -> list:
     return rebalance_dates
 
 
-def quantile_returns(data: pd.DataFrame, pred_col: str, target_col: str, n_quantiles: int) -> pd.Series:
-    def _add_quantile(group):
-        if len(group) < n_quantiles:
-            return pd.Series([np.nan] * len(group), index=group.index)
-        ranks = group[pred_col].rank(method="first")
-        return pd.qcut(ranks, n_quantiles, labels=False)
+def estimate_rebalance_gap(trade_dates: list[pd.Timestamp], rebalance_dates: list[pd.Timestamp]) -> float:
+    if len(rebalance_dates) < 2:
+        return np.nan
+    date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
+    gaps = []
+    for i in range(len(rebalance_dates) - 1):
+        start = rebalance_dates[i]
+        end = rebalance_dates[i + 1]
+        if start in date_to_idx and end in date_to_idx:
+            gaps.append(date_to_idx[end] - date_to_idx[start])
+    if not gaps:
+        return np.nan
+    return float(np.median(gaps))
 
-    data = data.copy()
-    data["quantile"] = data.groupby("trade_date", group_keys=False).apply(_add_quantile)
-    data = data.dropna(subset=["quantile"])  # drop dates with insufficient symbols
 
-    q_ret = data.groupby(["trade_date", "quantile"])[target_col].mean().unstack()
-    return q_ret.mean()
-
-
-rebalance_dates = get_rebalance_dates(sorted(test_df["trade_date"].unique()), REBALANCE_FREQUENCY)
+trade_dates_sorted = sorted(test_df["trade_date"].unique())
+rebalance_dates = get_rebalance_dates(trade_dates_sorted, REBALANCE_FREQUENCY)
+rebalance_gap = estimate_rebalance_gap(trade_dates_sorted, rebalance_dates)
+if BACKTEST_EXIT_MODE == "rebalance" and np.isfinite(rebalance_gap):
+    gap_diff = abs(rebalance_gap - LABEL_HORIZON_DAYS)
+    if gap_diff >= max(3.0, rebalance_gap * 0.25):
+        logger.warning(
+            "Label horizon (%s days) differs from rebalance gap (median %.1f days).",
+            LABEL_HORIZON_DAYS,
+            rebalance_gap,
+        )
 eval_df = test_df[test_df["trade_date"].isin(rebalance_dates)].copy()
 
-quantile_mean = quantile_returns(eval_df, signal_col, TARGET, N_QUANTILES)
+quantile_ts = quantile_returns(eval_df, signal_col, TARGET, N_QUANTILES)
+quantile_mean = quantile_ts.mean() if not quantile_ts.empty else pd.Series(dtype=float)
 if not quantile_mean.empty:
     for q_idx, value in quantile_mean.items():
-        print(f"Q{int(q_idx) + 1} mean return: {value:.4%}")
+        logger.info("Q%s mean return: %.4f%%", int(q_idx) + 1, value * 100)
     long_short = quantile_mean.iloc[-1] - quantile_mean.iloc[0]
-    print(f"Long-short (Q{N_QUANTILES}-Q1): {long_short:.4%}")
+    logger.info("Long-short (Q%s-Q1): %.4f%%", N_QUANTILES, long_short * 100)
 else:
-    print("Quantile returns not available - insufficient symbols per date.")
+    logger.info("Quantile returns not available - insufficient symbols per date.")
 
 # Turnover estimate for top-K portfolio
-
-def estimate_turnover(data: pd.DataFrame, pred_col: str, k: int, freq: str):
-    dates = sorted(data["trade_date"].unique())
-    rebalance = get_rebalance_dates(dates, freq)
-    prev = None
-    turnovers = []
-    for date in rebalance:
-        day = data[data["trade_date"] == date]
-        if len(day) < k:
-            continue
-        holdings = set(day.nlargest(k, pred_col)["ts_code"])
-        if prev is not None:
-            overlap = len(holdings & prev)
-            turnovers.append(1 - overlap / k)
-        prev = holdings
-    return np.nanmean(turnovers), len(turnovers)
-
-
 k = min(TOP_K, eval_df["ts_code"].nunique())
-turnover, n_turn = estimate_turnover(eval_df, signal_col, k, REBALANCE_FREQUENCY)
-if not np.isnan(turnover):
+turnover_series = estimate_turnover(eval_df, signal_col, k, rebalance_dates)
+if not turnover_series.empty:
+    turnover = turnover_series.mean()
     cost_drag = 2 * (TRANSACTION_COST_BPS / 10000.0) * turnover
-    print(f"Top-{k} turnover per rebalance: {turnover:.2%} (n={n_turn})")
-    print(f"Approx cost drag per rebalance: {cost_drag:.2%} at {TRANSACTION_COST_BPS} bps per side")
-
-
-def backtest_topk(
-    data: pd.DataFrame,
-    pred_col: str,
-    price_col: str,
-    rebalance_dates: list[pd.Timestamp],
-    top_k: int,
-    shift_days: int,
-    cost_bps: float,
-    trading_days_per_year: int,
-):
-    trade_dates = sorted(data["trade_date"].unique())
-    if len(trade_dates) < 2:
-        return None
-    date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
-    price_table = data.pivot(index="trade_date", columns="ts_code", values=price_col)
-
-    net_returns = []
-    gross_returns = []
-    turnovers = []
-    period_info = []
-    prev_holdings = None
-
-    for i in range(len(rebalance_dates) - 1):
-        reb_date = rebalance_dates[i]
-        next_reb = rebalance_dates[i + 1]
-        if reb_date not in date_to_idx or next_reb not in date_to_idx:
-            continue
-
-        entry_idx = date_to_idx[reb_date] + shift_days
-        exit_idx = date_to_idx[next_reb] + shift_days
-        if entry_idx >= len(trade_dates) or exit_idx >= len(trade_dates) or entry_idx >= exit_idx:
-            continue
-
-        entry_date = trade_dates[entry_idx]
-        exit_date = trade_dates[exit_idx]
-        day = data[data["trade_date"] == reb_date]
-        if day.empty:
-            continue
-
-        k = min(top_k, len(day))
-        if k <= 0:
-            continue
-
-        holdings = list(day.nlargest(k, pred_col)["ts_code"])
-        entry_prices = price_table.loc[entry_date, holdings]
-        exit_prices = price_table.loc[exit_date, holdings]
-        valid = entry_prices.notna() & exit_prices.notna()
-        if valid.sum() == 0:
-            continue
-
-        period_returns = (exit_prices[valid] / entry_prices[valid]) - 1.0
-        gross = period_returns.mean()
-        turnover = np.nan
-        if prev_holdings is not None:
-            overlap = len(set(holdings) & prev_holdings)
-            turnover = 1 - overlap / k
-        cost = 0.0 if prev_holdings is None else 2 * (cost_bps / 10000.0) * turnover
-        net = gross - cost
-
-        gross_returns.append(gross)
-        net_returns.append(net)
-        turnovers.append(turnover)
-        period_info.append((entry_idx, exit_idx, entry_date, exit_date))
-        prev_holdings = set(holdings)
-
-    if not net_returns:
-        return None
-
-    index = [info[3] for info in period_info]
-    net_series = pd.Series(net_returns, index=index, name="net_return")
-    gross_series = pd.Series(gross_returns, index=index, name="gross_return")
-    turnover_series = pd.Series(turnovers, index=index, name="turnover")
-
-    nav = (1 + net_series).cumprod()
-    total_return = nav.iloc[-1] - 1.0
-    max_drawdown = (nav / nav.cummax() - 1.0).min()
-
-    entry_first, exit_last = period_info[0][0], period_info[-1][1]
-    total_days = exit_last - entry_first
-    if total_days > 0:
-        ann_return = (1 + total_return) ** (trading_days_per_year / total_days) - 1.0
-    else:
-        ann_return = np.nan
-
-    holding_lengths = [info[1] - info[0] for info in period_info]
-    avg_holding = np.mean(holding_lengths) if holding_lengths else np.nan
-    periods_per_year = (
-        trading_days_per_year / avg_holding
-        if np.isfinite(avg_holding) and avg_holding > 0
-        else np.nan
+    logger.info("Top-%s turnover per rebalance: %.2f%% (n=%s)", k, turnover * 100, len(turnover_series))
+    logger.info(
+        "Approx cost drag per rebalance: %.2f%% at %s bps per side",
+        cost_drag * 100,
+        TRANSACTION_COST_BPS,
     )
-    period_vol = net_series.std(ddof=1)
-    if np.isfinite(period_vol) and period_vol > 0 and np.isfinite(periods_per_year):
-        ann_vol = period_vol * np.sqrt(periods_per_year)
-        sharpe = net_series.mean() / period_vol * np.sqrt(periods_per_year)
-    else:
-        ann_vol = np.nan
-        sharpe = np.nan
 
-    avg_turnover = turnover_series.dropna().mean() if turnover_series.notna().any() else np.nan
-    avg_cost = 2 * (cost_bps / 10000.0) * avg_turnover if not np.isnan(avg_turnover) else np.nan
-
-    stats = {
-        "periods": len(net_series),
-        "total_return": total_return,
-        "ann_return": ann_return,
-        "ann_vol": ann_vol,
-        "sharpe": sharpe,
-        "max_drawdown": max_drawdown,
-        "avg_turnover": avg_turnover,
-        "avg_cost_drag": avg_cost,
-    }
-    return stats, net_series, gross_series, period_info
+bt_stats = None
+bt_net_series = pd.Series(dtype=float, name="net_return")
+bt_gross_series = pd.Series(dtype=float, name="gross_return")
+bt_turnover_series = pd.Series(dtype=float, name="turnover")
+bt_periods: list[dict] = []
 
 
 if BACKTEST_ENABLED:
     if not BACKTEST_LONG_ONLY:
-        print("Backtest only supports long-only at the moment; set backtest.long_only: true.")
+        logger.info("Backtest only supports long-only at the moment; set backtest.long_only: true.")
     else:
         bt_rebalance = get_rebalance_dates(sorted(test_df["trade_date"].unique()), BACKTEST_REBALANCE_FREQUENCY)
         bt_pred_col = signal_col
@@ -993,28 +961,36 @@ if BACKTEST_ENABLED:
             shift_days=LABEL_SHIFT_DAYS,
             cost_bps=BACKTEST_COST_BPS,
             trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
+            exit_mode=BACKTEST_EXIT_MODE,
+            exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
         )
 
         if bt_result is None:
-            print("Backtest not available - insufficient data.")
+            logger.info("Backtest not available - insufficient data.")
         else:
-            stats, net_series, gross_series, period_info = bt_result
-            print("Backtest (long-only, top-K):")
-            print(f"  periods: {stats['periods']}")
-            print(f"  total return: {stats['total_return']:.2%}")
-            print(f"  ann return: {stats['ann_return']:.2%}")
-            print(f"  ann vol: {stats['ann_vol']:.2%}")
-            print(f"  sharpe: {stats['sharpe']:.2f}")
-            print(f"  max drawdown: {stats['max_drawdown']:.2%}")
+            stats, net_series, gross_series, bt_turnover_series, period_info = bt_result
+            bt_stats = stats
+            bt_net_series = net_series
+            bt_gross_series = gross_series
+            bt_periods = period_info
+            logger.info("Backtest (long-only, top-K, exit_mode=%s):", BACKTEST_EXIT_MODE)
+            logger.info("  periods: %s", stats["periods"])
+            logger.info("  total return: %.2f%%", stats["total_return"] * 100)
+            logger.info("  ann return: %.2f%%", stats["ann_return"] * 100)
+            logger.info("  ann vol: %.2f%%", stats["ann_vol"] * 100)
+            logger.info("  sharpe: %.2f", stats["sharpe"])
+            logger.info("  max drawdown: %.2f%%", stats["max_drawdown"] * 100)
             if not np.isnan(stats["avg_turnover"]):
-                print(f"  avg turnover: {stats['avg_turnover']:.2%}")
-                print(f"  avg cost drag: {stats['avg_cost_drag']:.2%}")
+                logger.info("  avg turnover: %.2f%%", stats["avg_turnover"] * 100)
+                logger.info("  avg cost drag: %.2f%%", stats["avg_cost_drag"] * 100)
 
             if benchmark_df is not None and not benchmark_df.empty:
                 bench_prices = benchmark_df.set_index("trade_date")[PRICE_COL]
                 bench_returns = []
                 bench_index = []
-                for _, _, entry_date, exit_date in period_info:
+                for info in period_info:
+                    entry_date = info["entry_date"]
+                    exit_date = info["exit_date"]
                     if entry_date not in bench_prices.index or exit_date not in bench_prices.index:
                         continue
                     bench_returns.append(bench_prices.loc[exit_date] / bench_prices.loc[entry_date] - 1.0)
@@ -1023,15 +999,85 @@ if BACKTEST_ENABLED:
                     bench_series = pd.Series(bench_returns, index=bench_index, name="benchmark_return")
                     bench_nav = (1 + bench_series).cumprod()
                     bench_total = bench_nav.iloc[-1] - 1.0
-                    print(f"  benchmark total return: {bench_total:.2%}")
+                    logger.info("  benchmark total return: %.2f%%", bench_total * 100)
 
 # Feature importance
-print("Feature importance:")
+logger.info("Feature importance:")
 importance_df = pd.DataFrame(
     {"feature": FEATURES, "importance": model.feature_importances_}
 ).sort_values("importance", ascending=False)
 for _, row in importance_df.iterrows():
-    print(f"  {row['feature']:<20}: {row['importance']:.4f}")
+    logger.info("  %-20s: %.4f", row["feature"], row["importance"])
+
+# Persist artifacts
+if SAVE_ARTIFACTS:
+    save_frame(importance_df, run_dir / "feature_importance.csv")
+    save_series(ic_series, run_dir / "ic_test.csv", value_name="ic")
+    if REPORT_TRAIN_IC:
+        save_series(train_ic_series, run_dir / "ic_train.csv", value_name="ic")
+    if not quantile_ts.empty:
+        quantile_out = quantile_ts.reset_index()
+        quantile_out.to_csv(run_dir / "quantile_returns.csv", index=False)
+    save_series(turnover_series, run_dir / "turnover_eval.csv", value_name="turnover")
+    if not dropped_date_counts.empty:
+        dropped_date_counts.rename("symbol_count").reset_index().to_csv(
+            run_dir / "dropped_dates.csv", index=False
+        )
+    if bt_stats is not None:
+        save_series(bt_net_series, run_dir / "backtest_net.csv", value_name="net_return")
+        save_series(bt_gross_series, run_dir / "backtest_gross.csv", value_name="gross_return")
+        save_series(bt_turnover_series, run_dir / "backtest_turnover.csv", value_name="turnover")
+        if bt_periods:
+            pd.DataFrame(bt_periods).to_csv(run_dir / "backtest_periods.csv", index=False)
+
+    summary = {
+        "run": {
+            "name": run_name,
+            "timestamp": run_stamp,
+            "config_hash": run_hash,
+            "config_path": str(args.config),
+            "output_dir": str(run_dir),
+        },
+        "data": {
+            "market": MARKET,
+            "provider": provider,
+            "start_date": START_DATE,
+            "end_date": END_DATE,
+            "symbols": len(symbols),
+            "rows": len(df),
+            "min_symbols_per_date": MIN_SYMBOLS_PER_DATE,
+            "dropped_dates": int(dropped_date_counts.shape[0]),
+        },
+        "label": {
+            "horizon_days": LABEL_HORIZON_DAYS,
+            "shift_days": LABEL_SHIFT_DAYS,
+            "winsorize_pct": WINSORIZE_PCT,
+        },
+        "split": {
+            "train_dates": len(train_dates),
+            "test_dates": len(test_dates),
+            "purge_days": PURGE_DAYS,
+            "embargo_days": EMBARGO_DAYS,
+        },
+        "eval": {
+            "ic": ic_stats,
+            "train_ic": train_ic_stats if REPORT_TRAIN_IC else None,
+            "quantile_mean": quantile_mean.to_dict() if not quantile_mean.empty else {},
+            "long_short": float(quantile_mean.iloc[-1] - quantile_mean.iloc[0])
+            if not quantile_mean.empty
+            else None,
+            "turnover_mean": float(turnover_series.mean()) if not turnover_series.empty else None,
+            "turnover_count": int(turnover_series.shape[0]),
+        },
+        "backtest": {
+            "enabled": BACKTEST_ENABLED,
+            "exit_mode": BACKTEST_EXIT_MODE,
+            "stats": bt_stats,
+        },
+    }
+    save_json(summary, run_dir / "summary.json")
+    with (run_dir / "config.used.yml").open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(config, handle, sort_keys=False)
 
 # Optional: save the model
 # from joblib import dump; dump(model, "xgb_factor_model.joblib")

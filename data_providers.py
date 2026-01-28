@@ -215,12 +215,38 @@ def _fetch_daily_rqdata(
     return _prepare_rqdata_daily_frame(df, symbol)
 
 
-def _basic_cache_file(cache_dir: Path, market: str, provider: str, symbols: Optional[Iterable[str]]) -> Path:
+def _basic_cache_file(
+    cache_dir: Path,
+    market: str,
+    provider: str,
+    symbols: Optional[Iterable[str]],
+    tag: Optional[str] = None,
+) -> Path:
+    prefix = f"{market}_{provider}"
+    if tag:
+        prefix = f"{prefix}_{tag}"
     if symbols:
         normalized = "|".join(sorted(str(sym) for sym in symbols))
         digest = hashlib.md5(normalized.encode("utf-8")).hexdigest()[:12]
-        return cache_dir / f"{market}_{provider}_basic_{digest}.parquet"
-    return cache_dir / f"{market}_{provider}_basic.parquet"
+        return cache_dir / f"{prefix}_basic_{digest}.parquet"
+    return cache_dir / f"{prefix}_basic.parquet"
+
+
+def _sanitize_cache_tag(tag: Optional[str]) -> Optional[str]:
+    if not tag:
+        return None
+    text = str(tag).strip()
+    if not text:
+        return None
+    cleaned = "".join(ch for ch in text if ch.isalnum() or ch in {"-", "_"})
+    return cleaned or None
+
+
+def _cache_tag(data_cfg: Optional[Mapping]) -> Optional[str]:
+    if not isinstance(data_cfg, Mapping):
+        return None
+    tag = data_cfg.get("cache_tag") or data_cfg.get("cache_version")
+    return _sanitize_cache_tag(tag)
 
 
 def _resolve_eodhd_config(data_cfg: Mapping, client) -> dict:
@@ -523,7 +549,11 @@ def fetch_daily(
     market = normalize_market(market)
     data_cfg = data_cfg or {}
     provider = resolve_provider(data_cfg)
-    cache_file = cache_dir / f"{market}_{provider}_daily_{symbol}_{start_date}_{end_date}.parquet"
+    tag = _cache_tag(data_cfg)
+    prefix = f"{market}_{provider}"
+    if tag:
+        prefix = f"{prefix}_{tag}"
+    cache_file = cache_dir / f"{prefix}_daily_{symbol}_{start_date}_{end_date}.parquet"
     if cache_file.exists():
         return pd.read_parquet(cache_file)
 
@@ -579,7 +609,8 @@ def load_basic(
     market = normalize_market(market)
     data_cfg = data_cfg or {}
     provider = resolve_provider(data_cfg)
-    cache_file = _basic_cache_file(cache_dir, market, provider, symbols)
+    tag = _cache_tag(data_cfg)
+    cache_file = _basic_cache_file(cache_dir, market, provider, symbols, tag=tag)
     if cache_file.exists():
         return pd.read_parquet(cache_file)
 
