@@ -2,8 +2,8 @@ market: hk
 
 data:
   provider: "rqdata"
-  start_years: 5
-  end_date: "today"
+  start_date: "20200101"
+  end_date: "20251231"
   cache_dir: "cache"
   price_col: "close"
   eodhd:

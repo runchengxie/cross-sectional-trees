@@ -174,6 +174,7 @@ universe:
 * `drop_suspended` 通过成交量/成交额为 0 的数据近似过滤停牌。
 * `drop_st` 基于 `stock_basic` 的名称匹配，仅适用于 A 股，属于粗过滤。
 * 日线缓存文件名统一为 `{market}_{provider}_daily_{symbol}_{START}_{END}.parquet`。
+* 若 `data.end_date` 使用 `today/now`，每天都会生成新的缓存键；想复用缓存请固定 `start_date/end_date`。
 * 港股通股票池默认配置在 `config/universe.hk_connect.yml`，CLI 参数可覆盖。
 * `mode=backtest` 要求固定 `end_date`；`mode=daily` 默认使用最近一个已完成交易日 (T-1)，并在输出文件名后追加日期。
 * `top_quantile` 的语义是“保留分位数以上的标的”，例如 `0.8` 会保留流动性最高的 20%。
