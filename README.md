@@ -150,7 +150,7 @@ python project_tools/build_hk_connect_universe.py
 python project_tools/build_hk_connect_universe.py --top-quantile 0.9
 ```
 
-明确日期区间（回测）： 
+明确日期区间（回测）：
 
 ```bash
 python project_tools/build_hk_connect_universe.py \
@@ -158,7 +158,7 @@ python project_tools/build_hk_connect_universe.py \
   --end-date 20251231
 ```
 
-日常更新（默认 T-1）： 
+日常更新（默认 T-1）：
 
 ```bash
 python project_tools/build_hk_connect_universe.py --mode daily
