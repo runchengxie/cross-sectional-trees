@@ -249,7 +249,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rqdatac" },
+    { name = "rqdatac", specifier = ">=3.4.3" },
     { name = "rqdatac-hk" },
     { name = "rqsdk" },
     { name = "scikit-learn", specifier = ">=1.2" },
