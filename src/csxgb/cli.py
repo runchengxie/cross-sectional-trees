@@ -80,7 +80,11 @@ def _handle_rqdata_quota(args) -> int:
 def _handle_universe_hk_connect(args) -> int:
     from .project_tools import build_hk_connect_universe
 
-    build_hk_connect_universe.main(args.args)
+    argv: list[str] = []
+    if args.config:
+        argv += ["--config", args.config]
+    argv += list(args.args or [])
+    build_hk_connect_universe.main(argv)
     return 0
 
 
@@ -153,6 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
     uni_sub = universe.add_subparsers(dest="uni_command", required=True)
 
     hk = uni_sub.add_parser("hk-connect", help="Build HK Connect universe")
+    hk.add_argument("--config", help="YAML config path (optional).")
     hk.add_argument("args", nargs=argparse.REMAINDER)
     hk.set_defaults(func=_handle_universe_hk_connect)
 
