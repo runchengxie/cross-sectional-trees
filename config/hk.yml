@@ -31,14 +31,9 @@ data:
     amount: total_turnover
 
 universe:
-  symbols:
-    - "00700.HK"
-    - "00005.HK"
-    - "00941.HK"
-    - "00001.HK"
-    - "00388.HK"
+  symbols: []
   symbols_file: null
-  by_date_file: null
+  by_date_file: "out/universe/universe_by_date.csv"
   min_symbols_per_date: 5
   min_listed_days: 0
   min_turnover: 0
@@ -46,7 +41,7 @@ universe:
   drop_suspended: true
 
 label:
-  horizon_days: 5
+  horizon_days: 20
   shift_days: 1
   target_col: "future_return"
   winsorize_pct: null
@@ -90,7 +85,7 @@ eval:
   rebalance_frequency: "M"
   top_k: 5
   signal_direction: -1
-  transaction_cost_bps: 10
+  transaction_cost_bps: 25
   embargo_days: null
   purge_days: null
   report_train_ic: true
@@ -106,7 +101,7 @@ backtest:
   enabled: true
   top_k: 5
   rebalance_frequency: "M"
-  transaction_cost_bps: 10
+  transaction_cost_bps: 25
   trading_days_per_year: 252
   long_only: true
   benchmark_symbol: null

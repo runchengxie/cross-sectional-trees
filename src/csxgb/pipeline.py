@@ -995,7 +995,8 @@ def run(config_ref: str | Path | None = None) -> None:
     bt_gross_series = pd.Series(dtype=float, name="gross_return")
     bt_turnover_series = pd.Series(dtype=float, name="turnover")
     bt_periods: list[dict] = []
-
+    bt_result = None
+    bt_attempted = False
 
     if BACKTEST_ENABLED:
         if not BACKTEST_LONG_ONLY:
@@ -1006,23 +1007,25 @@ def run(config_ref: str | Path | None = None) -> None:
             if BACKTEST_SIGNAL_DIRECTION != SIGNAL_DIRECTION:
                 test_df["signal_bt"] = test_df["pred"] * BACKTEST_SIGNAL_DIRECTION
                 bt_pred_col = "signal_bt"
-        try:
-            bt_result = backtest_topk(
-                test_df,
-                pred_col=bt_pred_col,
-                price_col=PRICE_COL,
-                rebalance_dates=bt_rebalance,
-                top_k=BACKTEST_TOP_K,
-                shift_days=LABEL_SHIFT_DAYS,
-                cost_bps=BACKTEST_COST_BPS,
-                trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
-                exit_mode=BACKTEST_EXIT_MODE,
-                exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
-            )
-        except ValueError as exc:
-            logger.warning("Backtest skipped: %s", exc)
-            bt_result = None
+            bt_attempted = True
+            try:
+                bt_result = backtest_topk(
+                    test_df,
+                    pred_col=bt_pred_col,
+                    price_col=PRICE_COL,
+                    rebalance_dates=bt_rebalance,
+                    top_k=BACKTEST_TOP_K,
+                    shift_days=LABEL_SHIFT_DAYS,
+                    cost_bps=BACKTEST_COST_BPS,
+                    trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
+                    exit_mode=BACKTEST_EXIT_MODE,
+                    exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
+                )
+            except ValueError as exc:
+                logger.warning("Backtest skipped: %s", exc)
+                bt_result = None
 
+        if bt_attempted:
             if bt_result is None:
                 logger.info("Backtest not available - insufficient data.")
             else:
