@@ -11,6 +11,7 @@ import pandas as pd
 from dotenv import load_dotenv
 import yaml
 
+from ..config_utils import resolve_config
 
 DEFAULTS = {
     "mode": "backtest",
@@ -81,16 +82,13 @@ def normalize_date_token(value: object, label: str) -> str | None:
     return validate_yyyymmdd(text, label)
 
 
-def load_yaml_config(path: Path | None) -> dict:
-    if not path:
-        return {}
-    if not path.exists():
-        raise SystemExit(f"Config file not found: {path}")
-    with path.open("r", encoding="utf-8") as handle:
-        cfg = yaml.safe_load(handle) or {}
-    if not isinstance(cfg, dict):
-        raise SystemExit("Config root must be a mapping.")
-    return cfg
+def load_yaml_config(path: str | Path | None) -> dict:
+    resolved = resolve_config(
+        path,
+        package="csxgb.config",
+        default_name="universe.hk_connect.yml",
+    )
+    return resolved.data
 
 
 def extract_universe_config(cfg: dict) -> dict:
@@ -269,8 +267,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build HK Connect universe (PIT + liquidity).")
     parser.add_argument(
         "--config",
-        default="config/universe.hk_connect.yml",
-        help="YAML config path (default: config/universe.hk_connect.yml)",
+        help="YAML config path (optional). If omitted, uses packaged default.",
     )
     parser.add_argument("--mode", choices=["backtest", "daily"], help="Mode: backtest or daily")
     parser.add_argument("--start-date", help="Start date in YYYYMMDD")
@@ -322,7 +319,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--rqdata-pass", help="RQData password (optional)")
     args = parser.parse_args(argv)
 
-    cfg = extract_universe_config(load_yaml_config(Path(args.config)))
+    cfg = extract_universe_config(load_yaml_config(args.config))
     settings = merge_settings(DEFAULTS, cfg, vars(args))
 
     mode = normalize_mode(settings.get("mode"))

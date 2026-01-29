@@ -6,20 +6,14 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-import yaml
+from .config_utils import read_package_text, resolve_pipeline_config, resolve_pipeline_filename
 
 
 def _load_config(path: str | None) -> dict:
     if not path:
         return {}
-    cfg_path = Path(path)
-    if not cfg_path.exists():
-        raise SystemExit(f"Config file not found: {cfg_path}")
-    with cfg_path.open("r", encoding="utf-8") as handle:
-        cfg = yaml.safe_load(handle) or {}
-    if not isinstance(cfg, dict):
-        raise SystemExit("Config root must be a mapping.")
-    return cfg
+    resolved = resolve_pipeline_config(path)
+    return resolved.data
 
 
 def _init_rqdatac(args) -> object:
@@ -57,9 +51,9 @@ def _init_rqdatac(args) -> object:
 
 
 def _handle_run(args) -> int:
-    import main as pipeline
+    from . import pipeline
 
-    pipeline.main(["--config", args.config])
+    pipeline.run(args.config)
     return 0
 
 
@@ -84,23 +78,48 @@ def _handle_rqdata_quota(args) -> int:
 
 
 def _handle_universe_hk_connect(args) -> int:
-    from project_tools import build_hk_connect_universe
+    from .project_tools import build_hk_connect_universe
 
     build_hk_connect_universe.main(args.args)
     return 0
 
 
 def _handle_universe_index_components(args) -> int:
-    from project_tools import fetch_index_components
+    from .project_tools import fetch_index_components
 
     fetch_index_components.main(args.args)
     return 0
 
 
 def _handle_tushare_verify(args) -> int:
-    from project_tools import verify_tushare_tokens
+    from .project_tools import verify_tushare_tokens
 
     verify_tushare_tokens.main(args.args)
+    return 0
+
+
+def _handle_init_config(args) -> int:
+    filename = resolve_pipeline_filename(args.market)
+    content = read_package_text("csxgb.config", filename)
+
+    if args.out:
+        out_path = Path(args.out)
+        if out_path.exists() and out_path.is_dir():
+            out_path = out_path / filename
+        elif not out_path.suffix:
+            out_path.mkdir(parents=True, exist_ok=True)
+            out_path = out_path / filename
+    else:
+        out_dir = Path.cwd() / "config"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / filename
+
+    if out_path.exists() and not args.force:
+        raise SystemExit(f"Refusing to overwrite existing file: {out_path}")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(content, encoding="utf-8")
+    print(f"Wrote {out_path}")
     return 0
 
 
@@ -109,7 +128,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run = subparsers.add_parser("run", help="Run the main training/eval/backtest pipeline")
-    run.add_argument("--config", default="config/config.yml", help="Path to YAML config")
+    run.add_argument(
+        "--config",
+        help="Path to YAML config or built-in name (default/cn/hk/us).",
+    )
     run.set_defaults(func=_handle_run)
 
     rqdata = subparsers.add_parser("rqdata", help="RQData utilities")
@@ -146,6 +168,25 @@ def build_parser() -> argparse.ArgumentParser:
     verify = tu_sub.add_parser("verify-token", help="Verify TuShare token(s)")
     verify.add_argument("args", nargs=argparse.REMAINDER)
     verify.set_defaults(func=_handle_tushare_verify)
+
+    init_cfg = subparsers.add_parser(
+        "init-config", help="Export a packaged config template to the filesystem"
+    )
+    init_cfg.add_argument(
+        "--market",
+        default="default",
+        help="Template to export (default/cn/hk/us).",
+    )
+    init_cfg.add_argument(
+        "--out",
+        help="Output path or directory (default: ./config/<template>.yml).",
+    )
+    init_cfg.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing files.",
+    )
+    init_cfg.set_defaults(func=_handle_init_config)
 
     return parser
 

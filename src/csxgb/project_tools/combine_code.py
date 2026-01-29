@@ -6,9 +6,15 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 # --- CONFIGURATION ---
+def _find_project_root(start: Path) -> Path:
+    for parent in [start, *start.parents]:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return start
+
+
 try:
-    # Assumes the script is in a 'tools' folder inside the project root
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    PROJECT_ROOT = _find_project_root(Path(__file__).resolve())
 except NameError:
     # Fallback for interactive environments where __file__ is not defined
     PROJECT_ROOT = Path.cwd()

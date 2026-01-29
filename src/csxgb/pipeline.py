@@ -1,7 +1,8 @@
-"""main.py - Cross-sectional factor mining with XGBoost regression (multi-market).
+"""pipeline.py - Cross-sectional factor mining with XGBoost regression (multi-market).
 Usage:
-    $ csxgb run --config config/config.yml
-    # or: python main.py --config config/config.yml
+    $ csxgb run
+    $ csxgb run --config config/default.yml
+    $ csxgb run --config cn
     # provider-specific auth may be required (e.g. TUSHARE_TOKEN/TUSHARE_TOKEN_2)
 """
 import argparse
@@ -28,12 +29,13 @@ import yaml
 from xgboost import XGBRegressor
 import warnings
 
-from data_providers import fetch_daily, load_basic, normalize_market, resolve_provider
-from csxgb.metrics import daily_ic_series, summarize_ic, quantile_returns, estimate_turnover
-from csxgb.transform import apply_cross_sectional_transform
-from csxgb.split import time_series_cv_ic
-from csxgb.backtest import backtest_topk
-from csxgb.rebalance import estimate_rebalance_gap, get_rebalance_dates
+from .config_utils import ResolvedConfig, resolve_pipeline_config
+from .data_providers import fetch_daily, load_basic, normalize_market, resolve_provider
+from .metrics import daily_ic_series, summarize_ic, quantile_returns, estimate_turnover
+from .transform import apply_cross_sectional_transform
+from .split import time_series_cv_ic
+from .backtest import backtest_topk
+from .rebalance import estimate_rebalance_gap, get_rebalance_dates
 
 warnings.filterwarnings("ignore")
 
@@ -123,16 +125,6 @@ def _patch_rqdatac_adjust_price_readonly() -> None:
 # -----------------------------------------------------------------------------
 # 1. Config
 # -----------------------------------------------------------------------------
-def load_config(path: Path) -> dict:
-    if not path.exists():
-        sys.exit(f"Config file not found: {path}")
-    with path.open("r", encoding="utf-8") as handle:
-        cfg = yaml.safe_load(handle) or {}
-    if not isinstance(cfg, dict):
-        sys.exit("Config root must be a mapping.")
-    return cfg
-
-
 def setup_logging(cfg: dict) -> None:
     log_cfg = cfg.get("logging") if isinstance(cfg, dict) else None
     log_cfg = log_cfg if isinstance(log_cfg, dict) else {}
@@ -298,12 +290,12 @@ def parse_feature_windows(features: list[str], prefix: str, suffix: str = "") ->
 
 
 
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Cross-sectional XGBoost pipeline")
-    parser.add_argument("--config", default="config/config.yml", help="Path to YAML config")
-    args = parser.parse_args(argv)
-
-    config = load_config(Path(args.config))
+def run(config_ref: str | Path | None = None) -> None:
+    resolved = resolve_pipeline_config(config_ref)
+    config = resolved.data
+    config_label = resolved.label
+    config_path = resolved.path
+    config_source = resolved.source
     setup_logging(config)
 
     data_cfg = config.get("data", {})
@@ -562,7 +554,7 @@ def main(argv: list[str] | None = None) -> None:
             BACKTEST_EXIT_HORIZON_DAYS = LABEL_HORIZON_DAYS
         BACKTEST_EXIT_HORIZON_DAYS = int(BACKTEST_EXIT_HORIZON_DAYS)
 
-    run_name = str(RUN_NAME or Path(args.config).stem)
+    run_name = str(RUN_NAME or config_label)
     run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_hash = config_hash(config)
     run_dir = Path(OUTPUT_DIR) / f"{run_name}_{run_stamp}_{run_hash}"
@@ -1101,7 +1093,8 @@ def main(argv: list[str] | None = None) -> None:
                 "name": run_name,
                 "timestamp": run_stamp,
                 "config_hash": run_hash,
-                "config_path": str(args.config),
+                "config_path": str(config_path) if config_path else None,
+                "config_source": config_source,
                 "output_dir": str(run_dir),
             },
             "data": {
@@ -1147,6 +1140,17 @@ def main(argv: list[str] | None = None) -> None:
 
     # Optional: save the model
     # from joblib import dump; dump(model, "xgb_factor_model.joblib")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Cross-sectional XGBoost pipeline")
+    parser.add_argument(
+        "--config",
+        help="Path to YAML config or built-in name (default/cn/hk/us).",
+    )
+    args = parser.parse_args(argv)
+    run(args.config)
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,114 @@
+market: hk
+
+data:
+  provider: "rqdata"
+  start_date: "20200101"
+  end_date: "20251231"
+  cache_dir: "cache"
+  cache_tag: null
+  price_col: "close"
+  retry:
+    max_attempts: 1
+    backoff_seconds: 0.5
+    max_backoff_seconds: 5.0
+    rotate_tokens: true
+  eodhd:
+    exchange: "HK"
+    period: "d"
+    order: "a"
+    fmt: "json"
+    hk_symbol_mode: "strip_one"
+  rqdata:
+    market: "hk"
+    frequency: "1d"
+    skip_suspended: true
+    fields: ["close", "volume", "total_turnover"]
+  column_map:
+    trade_date: trade_date
+    ts_code: ts_code
+    close: close
+    vol: volume
+    amount: total_turnover
+
+universe:
+  symbols:
+    - "00700.HK"
+    - "00005.HK"
+    - "00941.HK"
+    - "00001.HK"
+    - "00388.HK"
+  symbols_file: null
+  by_date_file: null
+  min_symbols_per_date: 5
+  min_listed_days: 0
+  min_turnover: 0
+  drop_st: false
+  drop_suspended: true
+
+label:
+  horizon_days: 5
+  shift_days: 1
+  target_col: "future_return"
+  winsorize_pct: null
+
+features:
+  list:
+    - sma_20
+    - sma_5_diff
+    - sma_10_diff
+    - sma_20_diff
+    - rsi_14
+    - macd_hist
+    - volume_sma5_ratio
+    - vol
+  params:
+    sma_windows: [5, 10, 20]
+    rsi: 14
+    macd: [12, 26, 9]
+    volume_sma_windows: [5]
+  cross_sectional:
+    method: "zscore"
+    winsorize_pct: null
+
+model:
+  type: xgb_regressor
+  params:
+    n_estimators: 300
+    learning_rate: 0.05
+    max_depth: 3
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.0
+    reg_lambda: 1.0
+    objective: "reg:squarederror"
+    random_state: 42
+
+eval:
+  test_size: 0.2
+  n_splits: 5
+  n_quantiles: 5
+  rebalance_frequency: "M"
+  top_k: 5
+  signal_direction: -1
+  transaction_cost_bps: 10
+  embargo_days: null
+  purge_days: null
+  report_train_ic: true
+  save_artifacts: true
+  output_dir: "out/runs"
+  run_name: null
+  permutation_test:
+    enabled: false
+    n_runs: 3
+    seed: 42
+
+backtest:
+  enabled: true
+  top_k: 5
+  rebalance_frequency: "M"
+  transaction_cost_bps: 10
+  trading_days_per_year: 252
+  long_only: true
+  benchmark_symbol: null
+  exit_mode: "rebalance"
+  exit_horizon_days: null

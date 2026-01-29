@@ -1,0 +1,20 @@
+# Default HK Connect universe settings (PIT + liquidity)
+# backtest: fixed end_date; daily: end_date defaults to T-1
+hk_connect_universe:
+  mode: backtest
+  start_date: 20200101
+  end_date: 20251231  # backtest fixed end date; daily mode defaults to T-1 unless --end-date provided
+  rebalance_frequency: "M"
+  lookback_days: 60
+  min_window_days: 30
+  top_quantile: 0.8
+  min_turnover: 0
+  out: "out/universe/universe_by_date.csv"
+  latest_out: "out/universe/hk_connect_symbols.txt"
+  append_date: true
+  write_meta: true
+  meta_out: "out/universe/universe_by_date.meta.yml"
+  # Optional RQData credentials (env vars still supported)
+  rqdata:
+    username: null
+    password: null

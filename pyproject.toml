@@ -37,5 +37,10 @@ stats = [
 csxgb = "csxgb.cli:main"
 
 [tool.setuptools]
-py-modules = ["main"]
-packages = ["csxgb", "project_tools"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+csxgb = ["config/*.yml"]
