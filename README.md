@@ -160,6 +160,7 @@ CLI 已封装常用脚本（见上方命令速览），也可直接运行：
 
 * `python -m csxgb.project_tools.verify_tushare_tokens`：验证 TuShare Token 是否可用
 * `project_tools/combine_code.py`：打包项目源码为单文件文本（用于归档/审查）
+* `project_tools/run_grid.py`：批量跑 Top-K × 成本敏感性并汇总 CSV
 * `python -m csxgb.project_tools.fetch_index_components`：拉取指数成分并导出为 `symbols_file` 列表
 * `python -m csxgb.project_tools.build_hk_connect_universe`：基于港股通 PIT + 成交额筛选生成 `out/universe/universe_by_date.csv`
 
@@ -242,3 +243,29 @@ universe:
 * `mode=backtest` 要求固定 `end_date`；`mode=daily` 默认使用最近一个已完成交易日 (T-1)，并在输出文件名后追加日期。
 * `top_quantile` 的语义是“保留分位数以上的标的”，例如 `0.8` 会保留流动性最高的 20%。
 * 默认会在 CSV 旁输出 `*.meta.yml`，记录最终生效参数与每期股票池数量（默认路径在 `out/universe/`）。
+
+## SOP：港股通池 + 成本/Top-K 网格对照
+
+推荐的最小流程（先生成 PIT 流动性池，再跑 Top-K × 成本敏感性）：
+
+```bash
+# 1) 生成港股通 PIT + 流动性池
+csxgb universe hk-connect --config config/universe.hk_connect.yml
+
+# 2) 批量跑 Top-K / 交易成本组合
+python project_tools/run_grid.py --config config/hk.yml
+
+# 3) 查看汇总结果
+ls -lh out/runs/grid_summary.csv
+```
+
+默认网格为 `top_k = 5,10,20`，`transaction_cost_bps = 15,25,40`（单边）。可按需覆盖：
+
+```bash
+python project_tools/run_grid.py \
+  --config config/hk.yml \
+  --top-k 5,10 \
+  --cost-bps 25,40 \
+  --output out/runs/my_grid.csv \
+  --run-name-prefix hk_grid
+```
