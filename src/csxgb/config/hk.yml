@@ -30,7 +30,39 @@ data:
     vol: volume
     amount: total_turnover
 
+fundamentals:
+  enabled: true
+  source: "file"
+  file: "out/fundamentals/hk_fundamentals_daily.csv"
+  endpoint: null
+  fields: null
+  symbol_param: "ts_code"
+  start_param: "start_date"
+  end_param: "end_date"
+  params: {}
+  column_map:
+    trade_date: trade_date
+    ts_code: ts_code
+    market_cap: market_cap
+    pe_ttm: pe_ttm
+    pb: pb
+  features:
+    - market_cap
+    - pe_ttm
+    - pb
+    - log_mcap
+  auto_add_features: true
+  allow_missing_features: true
+  required: false
+  ffill: true
+  ffill_limit: null
+  log_market_cap: true
+  market_cap_col: "market_cap"
+  log_market_cap_col: "log_mcap"
+
 universe:
+  mode: "pit"
+  require_by_date: true
   symbols: []
   symbols_file: null
   by_date_file: "out/universe/universe_by_date.csv"
@@ -39,8 +71,11 @@ universe:
   min_turnover: 0
   drop_st: false
   drop_suspended: true
+  suspended_policy: "mark"
 
 label:
+  horizon_mode: "next_rebalance"
+  rebalance_frequency: "M"
   horizon_days: 20
   shift_days: 1
   target_col: "future_return"
@@ -87,6 +122,9 @@ eval:
   signal_direction: -1
   signal_direction_mode: "fixed"
   transaction_cost_bps: 25
+  buffer_exit: 2
+  buffer_entry: 1
+  sample_on_rebalance_dates: true
   embargo_days: null
   purge_days: null
   report_train_ic: true
@@ -120,3 +158,7 @@ backtest:
   benchmark_symbol: null
   exit_mode: "rebalance"
   exit_horizon_days: null
+  buffer_exit: 2
+  buffer_entry: 1
+  exit_price_policy: "delay"
+  exit_fallback_policy: "ffill"

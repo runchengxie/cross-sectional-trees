@@ -12,6 +12,7 @@
 
 * 拉取 TuShare / RQData / EODHD 日线数据（按 `data.provider` 选择数据源）并缓存到 `cache/`（Parquet）
 * 计算 SMA、RSI、MACD、成交量等技术指标
+* 可选合并 Level 0 基本面（市值/估值）并纳入特征
 * 训练 XGBoost 回归模型并评估截面 IC
 * 输出分位数组合收益、长短组合收益、换手率估计
 
@@ -145,14 +146,14 @@ csxgb tushare verify-token
 * 回测为 long-only Top-K 等权组合，按再平衡周期持有。
 * 成交价使用 `price_col`（默认 close）并在 `rebalance_date + shift_days` 入场、下一次再平衡/持有期结束出场；近似 EOD 策略。
 * 成本模型：`transaction_cost_bps` 为单边成本；首期建仓只计单边成本，后续按换手率计算双边成本。
-* 换手率已考虑权重漂移后的再平衡需求，但仍忽略滑点、成交冲击、停牌/涨跌停限制等。
+* 换手率已考虑权重漂移后的再平衡需求；支持 Top-K 缓冲区（`buffer_exit/buffer_entry`）降低换手；停牌/缺失通过 `is_tradable` + `backtest.exit_price_policy` 近似处理（strict/ffill/delay），仍未建模涨跌停/盘口滑点等。
 * `exit_mode=label_horizon` 不支持与再平衡频率重叠（若持有期 > 再平衡间隔会直接跳过/报错）；需保持间隔≈持有期，或改用 `exit_mode=rebalance`。
 
 ## 数据偏差声明
 
-* 静态 `symbols`/`symbols_file` 会在历史回测中产生前视偏差；严谨回测应使用 `by_date_file`（PIT）。
+* 静态 `symbols`/`symbols_file` 会在历史回测中产生前视偏差；严谨回测应使用 `by_date_file`（PIT），并将 `universe.mode` 设为 `pit` 或开启 `universe.require_by_date`。
 * `fetch_index_components.py` 默认导出静态成分列表，适合研究/当期池；历史回测请使用 `--by-date-out` 生成 PIT 成分并接入 `by_date_file`。
-* `drop_st` 基于名称匹配，`drop_suspended` 基于成交量/成交额近似过滤，均非严格 PIT。
+* `drop_st` 基于名称匹配；`drop_suspended` 默认改为生成 `is_tradable` 标记（可用 `universe.suspended_policy=filter` 继续硬过滤），仍非严格 PIT。
 
 ## 工具脚本
 
@@ -168,14 +169,15 @@ CLI 已封装常用脚本（见上方命令速览），也可直接运行：
 
 在 `config/default.yml` 或各市场配置中调整：
 
-* `universe`：股票池、过滤条件、最小截面规模（支持 `by_date_file` 动态池）
+* `universe`：股票池、过滤条件、最小截面规模（支持 `by_date_file` 动态池；可用 `mode/require_by_date/suspended_policy` 明确 PIT 与停牌处理）
 * `market`：`cn` / `hk` / `us`
 * `data`：`provider`、`rqdata` / `eodhd` 或 `daily_endpoint` / `basic_endpoint` / `column_map`（字段映射为 `trade_date/ts_code/close/vol/amount`）、`cache_tag`、`retry`
-* `label`：预测窗口、shift、winsorize
+* `fundamentals`：Level 0 基本面数据合并（`features`/`column_map`/`ffill`/`log_market_cap`/`required`）
+* `label`：预测窗口、shift、winsorize（支持 `horizon_mode=next_rebalance`）
 * `features`：特征清单与窗口
 * `model`：XGBoost 参数
-* `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`，以及可选的 `report_train_ic`、`save_artifacts`、`permutation_test` 与 `walk_forward`
-* `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准与 `exit_mode`
+* `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`、`sample_on_rebalance_dates`，以及可选的 `report_train_ic`、`save_artifacts`、`permutation_test` 与 `walk_forward`
+* `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准、`exit_mode`、`exit_price_policy` 与 `buffer_exit/buffer_entry`
 
 示例（生成指数成分列表）：
 
@@ -233,7 +235,7 @@ universe:
 
 说明：
 
-* `drop_suspended` 通过成交量/成交额为 0 的数据近似过滤停牌。
+* `drop_suspended` 通过成交量/成交额为 0 的数据近似生成 `is_tradable`（默认不删行；可用 `universe.suspended_policy=filter` 继续硬过滤）。
 * `drop_st` 基于 `stock_basic` 的名称匹配，仅适用于 A 股，属于粗过滤。
 * `eval.embargo_days` / `eval.purge_days` 按交易日索引计数（基于已排序的 `trade_date`）。
 * 日线缓存文件名统一为 `{market}_{provider}_daily_{symbol}_{START}_{END}.parquet`。
@@ -243,6 +245,14 @@ universe:
 * `mode=backtest` 要求固定 `end_date`；`mode=daily` 默认使用最近一个已完成交易日 (T-1)，并在输出文件名后追加日期。
 * `top_quantile` 的语义是“保留分位数以上的标的”，例如 `0.8` 会保留流动性最高的 20%。
 * 默认会在 CSV 旁输出 `*.meta.yml`，记录最终生效参数与每期股票池数量（默认路径在 `out/universe/`）。
+
+## Level 0 基本面（可选）
+
+* 配置已默认开启 `fundamentals.enabled=true`（CN/Default 走 TuShare `daily_basic`，HK/US 默认走本地文件）；如无数据可先设为 `false`。
+* 开启后会合并日频估值/规模类字段（如市值、PE_TTM、PB），并按 `fundamentals.features` 自动加入特征。
+* `fundamentals.source=provider` 走数据源接口（目前仅支持 TuShare）；`source=file` 则读取本地 CSV/Parquet。缺文件会警告并跳过（可用 `fundamentals.required=true` 强制报错）。
+* 使用 `fundamentals.column_map` 将数据源字段映射为统一列名（如 `market_cap/pe_ttm/pb`），再通过 `ffill` 做按股票的时间向前填充。
+* 若希望加入 `log(market_cap)`，启用 `fundamentals.log_market_cap=true` 并确认 `market_cap_col` 对应正确字段。
 
 ## SOP：港股通池 + 成本/Top-K 网格对照
 

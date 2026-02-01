@@ -30,7 +30,7 @@ from xgboost import XGBRegressor
 import warnings
 
 from .config_utils import ResolvedConfig, resolve_pipeline_config
-from .data_providers import fetch_daily, load_basic, normalize_market, resolve_provider
+from .data_providers import fetch_daily, fetch_fundamentals, load_basic, normalize_market, resolve_provider
 from .metrics import (
     daily_ic_series,
     summarize_ic,
@@ -384,6 +384,7 @@ def run(config_ref: str | Path | None = None) -> None:
     universe_cfg = config.get("universe", {})
     label_cfg = config.get("label", {})
     features_cfg = config.get("features", {})
+    fundamentals_cfg = config.get("fundamentals", {})
     model_cfg = config.get("model", {})
     eval_cfg = config.get("eval", {})
     backtest_cfg = config.get("backtest", {})
@@ -488,10 +489,16 @@ def run(config_ref: str | Path | None = None) -> None:
 
     DEFAULT_SYMBOLS = DEFAULT_SYMBOLS_BY_MARKET.get(MARKET, DEFAULT_SYMBOLS_BY_MARKET["cn"])
 
+    UNIVERSE_MODE = str(universe_cfg.get("mode", "auto")).strip().lower()
+    if UNIVERSE_MODE not in {"auto", "pit", "static"}:
+        sys.exit("universe.mode must be one of: auto, pit, static.")
+    REQUIRE_BY_DATE = bool(universe_cfg.get("require_by_date", False))
+
     symbols = normalize_symbol_list(universe_cfg.get("symbols"))
     symbols_file = universe_cfg.get("symbols_file")
     by_date_file = universe_cfg.get("by_date_file")
     universe_by_date = None
+    universe_mode_effective = UNIVERSE_MODE
 
     if not symbols and symbols_file:
         symbols = load_symbols_file(Path(symbols_file))
@@ -503,6 +510,18 @@ def run(config_ref: str | Path | None = None) -> None:
             symbols = sorted(set(symbols) | set(symbols_from_universe))
         else:
             symbols = symbols_from_universe
+        universe_mode_effective = "pit"
+        if UNIVERSE_MODE == "static":
+            logger.warning("universe.mode=static but by_date_file provided; using PIT universe.")
+    else:
+        if REQUIRE_BY_DATE or UNIVERSE_MODE == "pit":
+            sys.exit("universe.by_date_file is required when universe.mode=pit or require_by_date=true.")
+        universe_mode_effective = "static"
+        if UNIVERSE_MODE == "auto":
+            logger.warning(
+                "Universe-by-date not provided; using static symbols (survivorship bias). "
+                "Set universe.mode=static to acknowledge or provide by_date_file for PIT."
+            )
 
     if not symbols:
         symbols = DEFAULT_SYMBOLS
@@ -530,6 +549,10 @@ def run(config_ref: str | Path | None = None) -> None:
 
     LABEL_HORIZON_DAYS = int(label_cfg.get("horizon_days", 5))
     LABEL_SHIFT_DAYS = int(label_cfg.get("shift_days", 0))
+    LABEL_HORIZON_MODE = str(label_cfg.get("horizon_mode", "fixed")).strip().lower()
+    if LABEL_HORIZON_MODE not in {"fixed", "next_rebalance"}:
+        sys.exit("label.horizon_mode must be one of: fixed, next_rebalance.")
+    LABEL_REBALANCE_FREQUENCY = label_cfg.get("rebalance_frequency", eval_cfg.get("rebalance_frequency", "M"))
     TARGET = label_cfg.get("target_col", "future_return")
     WINSORIZE_PCT = label_cfg.get("winsorize_pct")
     if WINSORIZE_PCT is not None:
@@ -543,6 +566,8 @@ def run(config_ref: str | Path | None = None) -> None:
     TOP_K = int(eval_cfg.get("top_k", 20))
     REBALANCE_FREQUENCY = eval_cfg.get("rebalance_frequency", "W")
     TRANSACTION_COST_BPS = float(eval_cfg.get("transaction_cost_bps", 10))
+    EVAL_BUFFER_EXIT = int(eval_cfg.get("buffer_exit", backtest_cfg.get("buffer_exit", 0) if isinstance(backtest_cfg, dict) else 0))
+    EVAL_BUFFER_ENTRY = int(eval_cfg.get("buffer_entry", backtest_cfg.get("buffer_entry", 0) if isinstance(backtest_cfg, dict) else 0))
     SIGNAL_DIRECTION_MODE = str(eval_cfg.get("signal_direction_mode", "fixed")).strip().lower()
     if SIGNAL_DIRECTION_MODE not in {"fixed", "train_ic", "cv_ic"}:
         sys.exit("eval.signal_direction_mode must be one of: fixed, train_ic, cv_ic.")
@@ -552,12 +577,11 @@ def run(config_ref: str | Path | None = None) -> None:
         sys.exit("eval.signal_direction cannot be 0.")
     EMBARGO_DAYS = eval_cfg.get("embargo_days")
     EMBARGO_DAYS = int(EMBARGO_DAYS) if EMBARGO_DAYS is not None else 0
-    PURGE_DAYS = eval_cfg.get("purge_days")
-    if PURGE_DAYS is None:
-        PURGE_DAYS = LABEL_HORIZON_DAYS + LABEL_SHIFT_DAYS
-    PURGE_DAYS = int(PURGE_DAYS)
-    EFFECTIVE_GAP_DAYS = max(EMBARGO_DAYS, PURGE_DAYS)
+    PURGE_DAYS_RAW = eval_cfg.get("purge_days")
+    PURGE_DAYS = None
+    EFFECTIVE_GAP_DAYS = None
     REPORT_TRAIN_IC = bool(eval_cfg.get("report_train_ic", True))
+    SAMPLE_ON_REBALANCE_DATES = bool(eval_cfg.get("sample_on_rebalance_dates", False))
     perm_cfg = eval_cfg.get("permutation_test") or {}
     if isinstance(perm_cfg, dict):
         PERM_TEST_ENABLED = bool(perm_cfg.get("enabled", False))
@@ -617,8 +641,29 @@ def run(config_ref: str | Path | None = None) -> None:
     MIN_TURNOVER = float(universe_cfg.get("min_turnover", 0))
     DROP_ST = bool(universe_cfg.get("drop_st", False))
     DROP_SUSPENDED = bool(universe_cfg.get("drop_suspended", True))
+    SUSPENDED_POLICY = str(universe_cfg.get("suspended_policy", "mark")).strip().lower()
+    if SUSPENDED_POLICY not in {"mark", "filter"}:
+        sys.exit("universe.suspended_policy must be one of: mark, filter.")
     if MIN_SYMBOLS_PER_DATE < N_QUANTILES:
         MIN_SYMBOLS_PER_DATE = N_QUANTILES
+
+    fundamentals_cfg = fundamentals_cfg if isinstance(fundamentals_cfg, dict) else {}
+    FUNDAMENTALS_ENABLED = bool(fundamentals_cfg.get("enabled", False))
+    FUNDAMENTALS_SOURCE = str(fundamentals_cfg.get("source", "provider")).strip().lower()
+    if FUNDAMENTALS_SOURCE not in {"provider", "file"}:
+        sys.exit("fundamentals.source must be one of: provider, file.")
+    FUNDAMENTALS_FILE = fundamentals_cfg.get("file")
+    FUNDAMENTALS_FEATURES = normalize_symbol_list(fundamentals_cfg.get("features"))
+    FUNDAMENTALS_AUTO_ADD = bool(fundamentals_cfg.get("auto_add_features", True))
+    FUNDAMENTALS_ALLOW_MISSING = bool(fundamentals_cfg.get("allow_missing_features", False))
+    FUNDAMENTALS_FFILL = bool(fundamentals_cfg.get("ffill", True))
+    FUNDAMENTALS_FFILL_LIMIT = fundamentals_cfg.get("ffill_limit")
+    if FUNDAMENTALS_FFILL_LIMIT is not None:
+        FUNDAMENTALS_FFILL_LIMIT = int(FUNDAMENTALS_FFILL_LIMIT)
+    FUNDAMENTALS_LOG_MCAP = bool(fundamentals_cfg.get("log_market_cap", False))
+    FUNDAMENTALS_MCAP_COL = str(fundamentals_cfg.get("market_cap_col", "market_cap")).strip()
+    FUNDAMENTALS_LOG_MCAP_COL = str(fundamentals_cfg.get("log_market_cap_col", "log_mcap")).strip()
+    FUNDAMENTALS_REQUIRED = bool(fundamentals_cfg.get("required", False))
 
     feature_list = features_cfg.get("list") or []
     FEATURES = normalize_symbol_list(feature_list) if feature_list else [
@@ -631,6 +676,8 @@ def run(config_ref: str | Path | None = None) -> None:
         "volume_sma5_ratio",
         "vol",
     ]
+    if FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
+        FEATURES = list(dict.fromkeys(FEATURES + FUNDAMENTALS_FEATURES))
     feature_params = features_cfg.get("params", {})
     cs_cfg = features_cfg.get("cross_sectional") or {}
     CS_METHOD = str(cs_cfg.get("method", "none")).strip().lower() if isinstance(cs_cfg, dict) else "none"
@@ -663,6 +710,8 @@ def run(config_ref: str | Path | None = None) -> None:
     BACKTEST_TRADING_DAYS_PER_YEAR = int(backtest_cfg.get("trading_days_per_year", 252))
     BACKTEST_BENCHMARK = backtest_cfg.get("benchmark_symbol")
     BACKTEST_LONG_ONLY = bool(backtest_cfg.get("long_only", True))
+    BACKTEST_BUFFER_EXIT = int(backtest_cfg.get("buffer_exit", 0))
+    BACKTEST_BUFFER_ENTRY = int(backtest_cfg.get("buffer_entry", 0))
     BACKTEST_SIGNAL_DIRECTION_RAW = backtest_cfg.get("signal_direction")
     if BACKTEST_SIGNAL_DIRECTION_RAW is not None:
         BACKTEST_SIGNAL_DIRECTION_RAW = float(BACKTEST_SIGNAL_DIRECTION_RAW)
@@ -675,6 +724,17 @@ def run(config_ref: str | Path | None = None) -> None:
     if BACKTEST_EXIT_MODE not in {"rebalance", "label_horizon"}:
         sys.exit("backtest.exit_mode must be one of: rebalance, label_horizon.")
     BACKTEST_EXIT_HORIZON_DAYS = backtest_cfg.get("exit_horizon_days")
+    BACKTEST_EXIT_PRICE_POLICY = str(backtest_cfg.get("exit_price_policy", "strict")).strip().lower()
+    if BACKTEST_EXIT_PRICE_POLICY not in {"strict", "ffill", "delay"}:
+        sys.exit("backtest.exit_price_policy must be one of: strict, ffill, delay.")
+    BACKTEST_EXIT_FALLBACK_POLICY = str(
+        backtest_cfg.get("exit_fallback_policy", "ffill")
+    ).strip().lower()
+    if BACKTEST_EXIT_FALLBACK_POLICY not in {"ffill", "none"}:
+        sys.exit("backtest.exit_fallback_policy must be one of: ffill, none.")
+    BACKTEST_TRADABLE_COL = backtest_cfg.get("tradable_col", "is_tradable")
+    if BACKTEST_TRADABLE_COL is not None:
+        BACKTEST_TRADABLE_COL = str(BACKTEST_TRADABLE_COL).strip() or None
     if BACKTEST_EXIT_MODE == "label_horizon":
         if BACKTEST_EXIT_HORIZON_DAYS is None:
             BACKTEST_EXIT_HORIZON_DAYS = LABEL_HORIZON_DAYS
@@ -790,14 +850,188 @@ def run(config_ref: str | Path | None = None) -> None:
         df = df[df["list_date"].notna()].copy()
         df = df[df["trade_date"] >= df["list_date"] + pd.Timedelta(days=MIN_LISTED_DAYS)].copy()
 
+    df["is_tradable"] = True
     if DROP_SUSPENDED:
         if "amount" in df.columns:
-            df = df[(df["vol"] > 0) & (df["amount"] > 0)].copy()
+            tradable_mask = (df["vol"] > 0) & (df["amount"] > 0)
         else:
-            df = df[df["vol"] > 0].copy()
+            tradable_mask = df["vol"] > 0
+        tradable_mask = tradable_mask.fillna(False)
+        df["is_tradable"] = tradable_mask
+        if SUSPENDED_POLICY == "filter":
+            df = df[df["is_tradable"]].copy()
 
     if MIN_TURNOVER > 0 and "amount" in df.columns:
         df = df[df["amount"] >= MIN_TURNOVER].copy()
+
+    fundamentals_cols: list[str] = []
+    if FUNDAMENTALS_ENABLED:
+        if FUNDAMENTALS_SOURCE == "provider" and provider != "tushare":
+            message = "Fundamentals provider mode currently supports only Tushare; use source=file instead."
+            if FUNDAMENTALS_REQUIRED:
+                sys.exit(message)
+            logger.warning("%s Fundamentals disabled.", message)
+            FUNDAMENTALS_ENABLED = False
+        if FUNDAMENTALS_SOURCE == "provider":
+            endpoint_name = fundamentals_cfg.get("endpoint") or data_cfg.get("fundamentals_endpoint")
+            if not endpoint_name:
+                message = "fundamentals.endpoint is required for provider mode."
+                if FUNDAMENTALS_REQUIRED:
+                    sys.exit(message)
+                logger.warning("%s Fundamentals disabled.", message)
+                FUNDAMENTALS_ENABLED = False
+        if FUNDAMENTALS_SOURCE == "file" and not FUNDAMENTALS_FILE:
+            message = "fundamentals.file is required when fundamentals.source=file."
+            if FUNDAMENTALS_REQUIRED:
+                sys.exit(message)
+            logger.warning("%s Fundamentals disabled.", message)
+            FUNDAMENTALS_ENABLED = False
+
+    if not FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
+        FEATURES = [feat for feat in FEATURES if feat not in FUNDAMENTALS_FEATURES]
+
+    if FUNDAMENTALS_ENABLED:
+        fundamentals_frames = []
+        if FUNDAMENTALS_SOURCE == "file":
+            fund_path = Path(FUNDAMENTALS_FILE)
+            if not fund_path.exists():
+                message = f"Fundamentals file not found: {fund_path}"
+                if FUNDAMENTALS_REQUIRED:
+                    sys.exit(message)
+                logger.warning("%s Fundamentals disabled.", message)
+                FUNDAMENTALS_ENABLED = False
+            else:
+                if fund_path.suffix.lower() in {".parquet", ".pq"}:
+                    fundamentals_frames.append(pd.read_parquet(fund_path))
+                else:
+                    fundamentals_frames.append(pd.read_csv(fund_path))
+        else:
+            fund_cache_dir = Path(
+                fundamentals_cfg.get("cache_dir", data_cfg.get("cache_dir", "cache"))
+            )
+            fund_cache_dir.mkdir(exist_ok=True)
+
+            def fetch_fundamentals_with_retry(symbol: str) -> pd.DataFrame:
+                nonlocal data_client, tushare_token_idx
+                last_exc: Optional[Exception] = None
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    try:
+                        return fetch_fundamentals(
+                            MARKET,
+                            symbol,
+                            START_DATE,
+                            END_DATE,
+                            fund_cache_dir,
+                            data_client,
+                            data_cfg,
+                            fundamentals_cfg,
+                        )
+                    except Exception as exc:
+                        last_exc = exc
+                        logger.warning(
+                            "Fundamentals load failed for %s (attempt %s/%s): %s",
+                            symbol,
+                            attempt,
+                            MAX_ATTEMPTS,
+                            exc,
+                            exc_info=True,
+                        )
+                        if provider == "tushare" and ROTATE_TOKENS and len(tushare_tokens) > 1:
+                            tushare_token_idx = (tushare_token_idx + 1) % len(tushare_tokens)
+                            data_client = make_tushare_client(tushare_tokens[tushare_token_idx])
+                            logger.info("Switched Tushare token to index %s.", tushare_token_idx)
+                        if attempt < MAX_ATTEMPTS:
+                            sleep_for = min(BACKOFF_SECONDS * (2 ** (attempt - 1)), MAX_BACKOFF_SECONDS)
+                            time.sleep(sleep_for)
+                if last_exc is not None:
+                    raise last_exc
+                return pd.DataFrame()
+
+            for symbol in symbols_for_data:
+                logger.info("Fetching fundamentals for %s (%s) ...", symbol, MARKET)
+                try:
+                    fdata = fetch_fundamentals_with_retry(symbol)
+                except Exception as exc:
+                    logger.warning("Skipping fundamentals for %s after retries (%s).", symbol, exc)
+                    fdata = pd.DataFrame()
+                if fdata is not None and not fdata.empty:
+                    fundamentals_frames.append(fdata)
+
+        if FUNDAMENTALS_ENABLED and fundamentals_frames:
+            fund_df = pd.concat(fundamentals_frames, ignore_index=True)
+            column_map = fundamentals_cfg.get("column_map") or {}
+            if column_map:
+                rename_map = {
+                    source: standard
+                    for standard, source in column_map.items()
+                    if source in fund_df.columns and standard != source
+                }
+                if rename_map:
+                    fund_df = fund_df.rename(columns=rename_map)
+            if "trade_date" not in fund_df.columns:
+                if "date" in fund_df.columns:
+                    fund_df = fund_df.rename(columns={"date": "trade_date"})
+            if "ts_code" not in fund_df.columns:
+                if "symbol" in fund_df.columns:
+                    fund_df = fund_df.rename(columns={"symbol": "ts_code"})
+            if "trade_date" not in fund_df.columns or "ts_code" not in fund_df.columns:
+                sys.exit("Fundamentals data must include trade_date and ts_code columns.")
+            fund_df["trade_date"] = pd.to_datetime(fund_df["trade_date"], errors="coerce")
+            fund_df = fund_df[fund_df["trade_date"].notna()].copy()
+            fund_df["trade_date"] = fund_df["trade_date"].dt.normalize()
+            fund_df["ts_code"] = fund_df["ts_code"].astype(str).str.strip()
+            fund_df = fund_df.drop_duplicates(subset=["trade_date", "ts_code"])
+            fundamentals_cols = [
+                col for col in fund_df.columns if col not in {"trade_date", "ts_code"}
+            ]
+            df = df.merge(fund_df, on=["trade_date", "ts_code"], how="left")
+            if FUNDAMENTALS_FFILL and fundamentals_cols:
+                df.sort_values(["ts_code", "trade_date"], inplace=True)
+                df[fundamentals_cols] = df.groupby("ts_code")[fundamentals_cols].ffill(
+                    limit=FUNDAMENTALS_FFILL_LIMIT
+                )
+            if FUNDAMENTALS_LOG_MCAP and FUNDAMENTALS_MCAP_COL in df.columns:
+                df[FUNDAMENTALS_LOG_MCAP_COL] = np.where(
+                    df[FUNDAMENTALS_MCAP_COL] > 0,
+                    np.log(df[FUNDAMENTALS_MCAP_COL]),
+                    np.nan,
+                )
+                if FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_LOG_MCAP_COL not in FEATURES:
+                    FEATURES = list(dict.fromkeys(FEATURES + [FUNDAMENTALS_LOG_MCAP_COL]))
+            logger.info(
+                "Merged fundamentals: %s rows, %s columns.",
+                len(fund_df),
+                len(fundamentals_cols),
+            )
+        elif FUNDAMENTALS_ENABLED:
+            logger.warning("Fundamentals enabled but no data was loaded.")
+
+    label_next_rebalance_map = None
+    label_horizon_gap = None
+    if LABEL_HORIZON_MODE == "next_rebalance":
+        label_trade_dates = sorted(df["trade_date"].unique())
+        label_rebalance_dates = get_rebalance_dates(label_trade_dates, LABEL_REBALANCE_FREQUENCY)
+        if len(label_rebalance_dates) < 2:
+            logger.warning(
+                "label.horizon_mode=next_rebalance but insufficient rebalance dates; "
+                "falling back to fixed horizon_days."
+            )
+            LABEL_HORIZON_MODE = "fixed"
+        else:
+            rebalance_array = np.array(label_rebalance_dates)
+            trade_array = np.array(label_trade_dates)
+            idx = np.searchsorted(rebalance_array, trade_array, side="right")
+            next_dates = [
+                rebalance_array[i] if i < len(rebalance_array) else pd.NaT
+                for i in idx
+            ]
+            label_next_rebalance_map = dict(zip(label_trade_dates, next_dates))
+            label_horizon_gap = estimate_rebalance_gap(label_trade_dates, label_rebalance_dates)
+            if np.isfinite(label_horizon_gap):
+                logger.info(
+                    "Label horizon set to next rebalance date (median gap %.1f days).",
+                    label_horizon_gap,
+                )
 
     # -----------------------------------------------------------------------------
     # 3. Feature engineering (per symbol) + label
@@ -858,8 +1092,17 @@ def run(config_ref: str | Path | None = None) -> None:
             if f"volume_sma{win}_ratio" in needed:
                 group[f"volume_sma{win}_ratio"] = group["vol"] / group[f"volume_sma{win}"]
 
-        entry_price = group[PRICE_COL].shift(-LABEL_SHIFT_DAYS)
-        exit_price = group[PRICE_COL].shift(-(LABEL_HORIZON_DAYS + LABEL_SHIFT_DAYS))
+        if LABEL_SHIFT_DAYS > 0:
+            shifted_price = group[PRICE_COL].shift(-LABEL_SHIFT_DAYS)
+        else:
+            shifted_price = group[PRICE_COL]
+        entry_price = shifted_price
+        if LABEL_HORIZON_MODE == "next_rebalance" and label_next_rebalance_map is not None:
+            exit_base = group["trade_date"].map(label_next_rebalance_map)
+            shifted_by_date = pd.Series(shifted_price.values, index=group["trade_date"])
+            exit_price = exit_base.map(shifted_by_date)
+        else:
+            exit_price = shifted_price.shift(-LABEL_HORIZON_DAYS)
         group[TARGET] = exit_price / entry_price - 1.0
 
         return group
@@ -869,10 +1112,15 @@ def run(config_ref: str | Path | None = None) -> None:
 
     missing_features = [feat for feat in FEATURES if feat not in df.columns]
     if missing_features:
-        sys.exit(f"Missing features after engineering: {missing_features}")
+        if FUNDAMENTALS_ALLOW_MISSING:
+            logger.warning("Dropping missing features: %s", missing_features)
+            FEATURES = [feat for feat in FEATURES if feat in df.columns]
+        else:
+            sys.exit(f"Missing features after engineering: {missing_features}")
 
     # Keep only the necessary columns & drop NaNs from rolling calcs / future label
-    cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + [TARGET]
+    meta_cols = ["is_tradable"] if "is_tradable" in df.columns else []
+    cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + meta_cols + [TARGET]
     cols = list(dict.fromkeys(cols))
     df = df[cols].dropna().reset_index(drop=True)
 
@@ -893,12 +1141,24 @@ def run(config_ref: str | Path | None = None) -> None:
 
         df = df.groupby("trade_date", group_keys=False).apply(_winsorize)
 
-    # Drop dates with too few symbols for evaluation
-    date_counts = df.groupby("trade_date")["ts_code"].nunique()
+    if CS_METHOD != "none":
+        df = apply_cross_sectional_transform(df, FEATURES, CS_METHOD, CS_WINSORIZE_PCT)
+
+    df_full = df
+    all_dates_full = np.array(sorted(df_full["trade_date"].unique()))
+    rebalance_dates_all = None
+    if SAMPLE_ON_REBALANCE_DATES:
+        rebalance_dates_all = get_rebalance_dates(all_dates_full, REBALANCE_FREQUENCY)
+        df_model = df_full[df_full["trade_date"].isin(rebalance_dates_all)].copy()
+    else:
+        df_model = df_full
+
+    # Drop dates with too few symbols for evaluation (model sample only)
+    date_counts = df_model.groupby("trade_date")["ts_code"].nunique()
     valid_dates = date_counts[date_counts >= MIN_SYMBOLS_PER_DATE].index
     dropped_date_counts = date_counts[date_counts < MIN_SYMBOLS_PER_DATE].sort_index()
     if len(valid_dates) != len(date_counts):
-        df = df[df["trade_date"].isin(valid_dates)].copy()
+        df_model = df_model[df_model["trade_date"].isin(valid_dates)].copy()
     if not dropped_date_counts.empty:
         logger.info(
             "Dropped %s dates with < %s symbols (min=%s, max=%s).",
@@ -907,15 +1167,23 @@ def run(config_ref: str | Path | None = None) -> None:
             int(dropped_date_counts.min()),
             int(dropped_date_counts.max()),
         )
-
-    if CS_METHOD != "none":
-        df = apply_cross_sectional_transform(df, FEATURES, CS_METHOD, CS_WINSORIZE_PCT)
+    valid_dates_set = set(pd.to_datetime(valid_dates))
 
     # -----------------------------------------------------------------------------
     # 4. Train-test split (time-series by date)
     # -----------------------------------------------------------------------------
     logger.info("Splitting train/test by date ...")
-    all_dates = np.array(sorted(df["trade_date"].unique()))
+    label_horizon_effective = LABEL_HORIZON_DAYS
+    if LABEL_HORIZON_MODE == "next_rebalance" and label_horizon_gap is not None:
+        if np.isfinite(label_horizon_gap):
+            label_horizon_effective = int(round(label_horizon_gap))
+    if PURGE_DAYS_RAW is None:
+        PURGE_DAYS = int(label_horizon_effective + LABEL_SHIFT_DAYS)
+    else:
+        PURGE_DAYS = int(PURGE_DAYS_RAW)
+    EFFECTIVE_GAP_DAYS = max(EMBARGO_DAYS, PURGE_DAYS)
+
+    all_dates = np.array(sorted(df_model["trade_date"].unique()))
     if len(all_dates) < 10:
         sys.exit("Not enough dates for a meaningful split.")
 
@@ -926,8 +1194,8 @@ def run(config_ref: str | Path | None = None) -> None:
     train_dates = all_dates[:train_end]
     test_dates = all_dates[split_idx:]
 
-    train_df = df[df["trade_date"].isin(train_dates)].copy()
-    test_df = df[df["trade_date"].isin(test_dates)].copy()
+    train_df = df_model[df_model["trade_date"].isin(train_dates)].copy()
+    test_df = df_model[df_model["trade_date"].isin(test_dates)].copy()
 
     if train_df.empty or test_df.empty:
         sys.exit("Not enough dates for train/test after embargo.")
@@ -992,8 +1260,8 @@ def run(config_ref: str | Path | None = None) -> None:
         window_id = int(window_meta["window"])
         train_dates = window_meta["train_dates"]
         test_dates = window_meta["test_dates"]
-        train_df_w = df[df["trade_date"].isin(train_dates)].copy()
-        test_df_w = df[df["trade_date"].isin(test_dates)].copy()
+        train_df_w = df_model[df_model["trade_date"].isin(train_dates)].copy()
+        test_df_w = df_model[df_model["trade_date"].isin(test_dates)].copy()
         result = {
             "window": window_id,
             "train_start": pd.to_datetime(window_meta["train_start"]).strftime("%Y-%m-%d"),
@@ -1082,6 +1350,11 @@ def run(config_ref: str | Path | None = None) -> None:
 
         trade_dates_sorted = sorted(test_eval["trade_date"].unique())
         rebalance_dates_w = get_rebalance_dates(trade_dates_sorted, REBALANCE_FREQUENCY)
+        if valid_dates_set:
+            rebalance_dates_w = [d for d in rebalance_dates_w if d in valid_dates_set]
+        if SAMPLE_ON_REBALANCE_DATES:
+            test_dates_set = set(pd.to_datetime(test_dates))
+            rebalance_dates_w = [d for d in rebalance_dates_w if d in test_dates_set]
         eval_df_w = test_eval[test_eval["trade_date"].isin(rebalance_dates_w)].copy()
 
         quantile_ts_w = quantile_returns(eval_df_w, signal_col_w, TARGET, N_QUANTILES)
@@ -1093,7 +1366,14 @@ def run(config_ref: str | Path | None = None) -> None:
         )
 
         k_w = min(TOP_K, eval_df_w["ts_code"].nunique())
-        turnover_series_w = estimate_turnover(eval_df_w, signal_col_w, k_w, rebalance_dates_w)
+        turnover_series_w = estimate_turnover(
+            eval_df_w,
+            signal_col_w,
+            k_w,
+            rebalance_dates_w,
+            buffer_exit=EVAL_BUFFER_EXIT,
+            buffer_entry=EVAL_BUFFER_ENTRY,
+        )
         turnover_mean_w = (
             float(turnover_series_w.mean()) if not turnover_series_w.empty else None
         )
@@ -1104,27 +1384,45 @@ def run(config_ref: str | Path | None = None) -> None:
         if WF_BACKTEST_ENABLED:
             bt_pred_col = signal_col_w
             bt_direction = direction if BACKTEST_SIGNAL_DIRECTION_RAW is None else BACKTEST_SIGNAL_DIRECTION_RAW
-            if bt_direction != direction:
-                test_eval["signal_bt"] = test_eval["pred"] * bt_direction
-                bt_pred_col = "signal_bt"
-            bt_rebalance = get_rebalance_dates(trade_dates_sorted, BACKTEST_REBALANCE_FREQUENCY)
-            try:
-                bt_result_w = backtest_topk(
-                    test_eval,
-                    pred_col=bt_pred_col,
-                    price_col=PRICE_COL,
-                    rebalance_dates=bt_rebalance,
-                    top_k=BACKTEST_TOP_K,
-                    shift_days=LABEL_SHIFT_DAYS,
-                    cost_bps=BACKTEST_COST_BPS,
-                    trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
-                    exit_mode=BACKTEST_EXIT_MODE,
-                    exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
-                    long_only=BACKTEST_LONG_ONLY,
-                    short_k=BACKTEST_SHORT_K,
-                )
-            except ValueError:
+            test_start = pd.to_datetime(window_meta["test_start"])
+            test_end = pd.to_datetime(window_meta["test_end"])
+            test_full_w = df_full[
+                (df_full["trade_date"] >= test_start) & (df_full["trade_date"] <= test_end)
+            ].copy()
+            if test_full_w.empty:
                 bt_result_w = None
+            else:
+                test_full_w["pred"] = model_w.predict(test_full_w[FEATURES])
+                if bt_direction != direction:
+                    test_full_w["signal_bt"] = test_full_w["pred"] * bt_direction
+                    bt_pred_col = "signal_bt"
+                bt_rebalance = get_rebalance_dates(
+                    sorted(test_full_w["trade_date"].unique()), BACKTEST_REBALANCE_FREQUENCY
+                )
+                if valid_dates_set:
+                    bt_rebalance = [d for d in bt_rebalance if d in valid_dates_set]
+                try:
+                    bt_result_w = backtest_topk(
+                        test_full_w,
+                        pred_col=bt_pred_col,
+                        price_col=PRICE_COL,
+                        rebalance_dates=bt_rebalance,
+                        top_k=BACKTEST_TOP_K,
+                        shift_days=LABEL_SHIFT_DAYS,
+                        cost_bps=BACKTEST_COST_BPS,
+                        trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
+                        exit_mode=BACKTEST_EXIT_MODE,
+                        exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
+                        long_only=BACKTEST_LONG_ONLY,
+                        short_k=BACKTEST_SHORT_K,
+                        buffer_exit=BACKTEST_BUFFER_EXIT,
+                        buffer_entry=BACKTEST_BUFFER_ENTRY,
+                        tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_full_w.columns else None,
+                        exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
+                        exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
+                    )
+                except ValueError:
+                    bt_result_w = None
             if bt_result_w is not None:
                 bt_stats_w, bt_net_w, _, _, bt_periods_w = bt_result_w
                 if benchmark_df is not None and not benchmark_df.empty:
@@ -1201,6 +1499,14 @@ def run(config_ref: str | Path | None = None) -> None:
     # -----------------------------------------------------------------------------
     logger.info("Evaluating model on train/test sets ...")
 
+    test_start = pd.to_datetime(test_dates[0])
+    test_end = pd.to_datetime(test_dates[-1])
+    test_df_full = df_full[
+        (df_full["trade_date"] >= test_start) & (df_full["trade_date"] <= test_end)
+    ].copy()
+    if test_df_full.empty:
+        sys.exit("Not enough test data after applying the split window.")
+
     train_eval_df = train_df.copy()
     train_eval_df["pred"] = model.predict(train_eval_df[FEATURES])
     train_ic_raw_stats = {}
@@ -1244,15 +1550,21 @@ def run(config_ref: str | Path | None = None) -> None:
             train_ic_stats["n"],
         )
 
-    test_df["pred"] = model.predict(test_df[FEATURES])
+    test_df_full["pred"] = model.predict(test_df_full[FEATURES])
+    if SAMPLE_ON_REBALANCE_DATES:
+        test_eval_df = test_df_full[test_df_full["trade_date"].isin(test_dates)].copy()
+    else:
+        test_eval_df = test_df_full
     signal_col = "pred"
     if SIGNAL_DIRECTION != 1.0:
-        test_df["signal"] = test_df["pred"] * SIGNAL_DIRECTION
+        test_df_full["signal"] = test_df_full["pred"] * SIGNAL_DIRECTION
+        if SAMPLE_ON_REBALANCE_DATES:
+            test_eval_df["signal"] = test_eval_df["pred"] * SIGNAL_DIRECTION
         signal_col = "signal"
         logger.info("Signal direction applied to ranking: %s", SIGNAL_DIRECTION)
 
     # Daily IC
-    ic_series = daily_ic_series(test_df, TARGET, signal_col)
+    ic_series = daily_ic_series(test_eval_df, TARGET, signal_col)
     ic_stats = summarize_ic(ic_series)
     logger.info(
         "Daily IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
@@ -1310,18 +1622,28 @@ def run(config_ref: str | Path | None = None) -> None:
     # Quantile returns on rebalance dates
 
 
-    trade_dates_sorted = sorted(test_df["trade_date"].unique())
-    rebalance_dates = get_rebalance_dates(trade_dates_sorted, REBALANCE_FREQUENCY)
-    rebalance_gap = estimate_rebalance_gap(trade_dates_sorted, rebalance_dates)
-    if BACKTEST_EXIT_MODE == "rebalance" and np.isfinite(rebalance_gap):
-        gap_diff = abs(rebalance_gap - LABEL_HORIZON_DAYS)
+    trade_dates_sorted_full = sorted(test_df_full["trade_date"].unique())
+    rebalance_dates_full = get_rebalance_dates(trade_dates_sorted_full, REBALANCE_FREQUENCY)
+    rebalance_gap = estimate_rebalance_gap(trade_dates_sorted_full, rebalance_dates_full)
+    if (
+        BACKTEST_EXIT_MODE == "rebalance"
+        and np.isfinite(rebalance_gap)
+        and LABEL_HORIZON_MODE == "fixed"
+    ):
+        gap_diff = abs(rebalance_gap - label_horizon_effective)
         if gap_diff >= max(3.0, rebalance_gap * 0.25):
             logger.warning(
                 "Label horizon (%s days) differs from rebalance gap (median %.1f days).",
-                LABEL_HORIZON_DAYS,
+                label_horizon_effective,
                 rebalance_gap,
             )
-    eval_df = test_df[test_df["trade_date"].isin(rebalance_dates)].copy()
+    rebalance_dates_eval = rebalance_dates_full
+    if valid_dates_set:
+        rebalance_dates_eval = [d for d in rebalance_dates_eval if d in valid_dates_set]
+    if SAMPLE_ON_REBALANCE_DATES:
+        test_dates_set = set(pd.to_datetime(test_dates))
+        rebalance_dates_eval = [d for d in rebalance_dates_eval if d in test_dates_set]
+    eval_df = test_eval_df[test_eval_df["trade_date"].isin(rebalance_dates_eval)].copy()
 
     quantile_ts = quantile_returns(eval_df, signal_col, TARGET, N_QUANTILES)
     quantile_mean = quantile_ts.mean() if not quantile_ts.empty else pd.Series(dtype=float)
@@ -1335,7 +1657,14 @@ def run(config_ref: str | Path | None = None) -> None:
 
     # Turnover estimate for top-K portfolio
     k = min(TOP_K, eval_df["ts_code"].nunique())
-    turnover_series = estimate_turnover(eval_df, signal_col, k, rebalance_dates)
+    turnover_series = estimate_turnover(
+        eval_df,
+        signal_col,
+        k,
+        rebalance_dates_eval,
+        buffer_exit=EVAL_BUFFER_EXIT,
+        buffer_entry=EVAL_BUFFER_ENTRY,
+    )
     if not turnover_series.empty:
         turnover = turnover_series.mean()
         cost_drag = 2 * (TRANSACTION_COST_BPS / 10000.0) * turnover
@@ -1364,16 +1693,18 @@ def run(config_ref: str | Path | None = None) -> None:
 
     if BACKTEST_ENABLED:
         bt_rebalance = get_rebalance_dates(
-            sorted(test_df["trade_date"].unique()), BACKTEST_REBALANCE_FREQUENCY
+            sorted(test_df_full["trade_date"].unique()), BACKTEST_REBALANCE_FREQUENCY
         )
+        if valid_dates_set:
+            bt_rebalance = [d for d in bt_rebalance if d in valid_dates_set]
         bt_pred_col = signal_col
         if BACKTEST_SIGNAL_DIRECTION != SIGNAL_DIRECTION:
-            test_df["signal_bt"] = test_df["pred"] * BACKTEST_SIGNAL_DIRECTION
+            test_df_full["signal_bt"] = test_df_full["pred"] * BACKTEST_SIGNAL_DIRECTION
             bt_pred_col = "signal_bt"
         bt_attempted = True
         try:
             bt_result = backtest_topk(
-                test_df,
+                test_df_full,
                 pred_col=bt_pred_col,
                 price_col=PRICE_COL,
                 rebalance_dates=bt_rebalance,
@@ -1385,6 +1716,11 @@ def run(config_ref: str | Path | None = None) -> None:
                 exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
                 long_only=BACKTEST_LONG_ONLY,
                 short_k=BACKTEST_SHORT_K,
+                buffer_exit=BACKTEST_BUFFER_EXIT,
+                buffer_entry=BACKTEST_BUFFER_ENTRY,
+                tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_df_full.columns else None,
+                exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
+                exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
             )
         except ValueError as exc:
             logger.warning("Backtest skipped: %s", exc)
@@ -1523,12 +1859,23 @@ def run(config_ref: str | Path | None = None) -> None:
                 "start_date": START_DATE,
                 "end_date": END_DATE,
                 "symbols": len(symbols),
-                "rows": len(df),
+                "rows": len(df_full),
+                "rows_model": len(df_model),
                 "min_symbols_per_date": MIN_SYMBOLS_PER_DATE,
                 "dropped_dates": int(dropped_date_counts.shape[0]),
             },
+            "universe": {
+                "mode": universe_mode_effective,
+                "by_date_file": str(by_date_file) if by_date_file else None,
+                "require_by_date": REQUIRE_BY_DATE,
+                "drop_suspended": DROP_SUSPENDED,
+                "suspended_policy": SUSPENDED_POLICY,
+            },
             "label": {
                 "horizon_days": LABEL_HORIZON_DAYS,
+                "horizon_days_effective": label_horizon_effective,
+                "horizon_mode": LABEL_HORIZON_MODE,
+                "rebalance_frequency": LABEL_REBALANCE_FREQUENCY,
                 "shift_days": LABEL_SHIFT_DAYS,
                 "winsorize_pct": WINSORIZE_PCT,
             },
@@ -1552,16 +1899,31 @@ def run(config_ref: str | Path | None = None) -> None:
                 else None,
                 "turnover_mean": float(turnover_series.mean()) if not turnover_series.empty else None,
                 "turnover_count": int(turnover_series.shape[0]),
+                "buffer_exit": EVAL_BUFFER_EXIT,
+                "buffer_entry": EVAL_BUFFER_ENTRY,
+                "sample_on_rebalance_dates": SAMPLE_ON_REBALANCE_DATES,
                 "permutation_test": perm_stats,
             },
             "backtest": {
                 "enabled": BACKTEST_ENABLED,
                 "exit_mode": BACKTEST_EXIT_MODE,
+                "exit_price_policy": BACKTEST_EXIT_PRICE_POLICY,
+                "exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
+                "buffer_exit": BACKTEST_BUFFER_EXIT,
+                "buffer_entry": BACKTEST_BUFFER_ENTRY,
                 "mode": "long_only" if BACKTEST_LONG_ONLY else "long_short",
                 "benchmark_symbol": benchmark_symbol,
                 "stats": bt_stats,
                 "benchmark": bt_benchmark_stats,
                 "active": bt_active_stats,
+            },
+            "fundamentals": {
+                "enabled": FUNDAMENTALS_ENABLED,
+                "source": FUNDAMENTALS_SOURCE if FUNDAMENTALS_ENABLED else None,
+                "file": str(FUNDAMENTALS_FILE) if FUNDAMENTALS_FILE else None,
+                "features": FUNDAMENTALS_FEATURES,
+                "log_market_cap": FUNDAMENTALS_LOG_MCAP,
+                "market_cap_col": FUNDAMENTALS_MCAP_COL,
             },
             "walk_forward": {
                 "enabled": WF_ENABLED,

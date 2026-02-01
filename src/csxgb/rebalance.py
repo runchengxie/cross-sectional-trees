@@ -38,4 +38,5 @@ def estimate_rebalance_gap(
             gaps.append(date_to_idx[end] - date_to_idx[start])
     if not gaps:
         return np.nan
-    return float(np.median(gaps))
+    median_gap = float(np.median(gaps))
+    return float(np.floor(median_gap + 0.5))

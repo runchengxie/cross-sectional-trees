@@ -77,12 +77,25 @@ def backtest_topk(
     exit_horizon_days: Optional[int] = None,
     long_only: bool = True,
     short_k: Optional[int] = None,
+    buffer_exit: int = 0,
+    buffer_entry: int = 0,
+    tradable_col: Optional[str] = None,
+    exit_price_policy: Literal["strict", "ffill", "delay"] = "strict",
+    exit_fallback_policy: Literal["ffill", "none"] = "ffill",
 ):
+    if exit_price_policy not in {"strict", "ffill", "delay"}:
+        raise ValueError("exit_price_policy must be one of: strict, ffill, delay.")
+    if exit_fallback_policy not in {"ffill", "none"}:
+        raise ValueError("exit_fallback_policy must be one of: ffill, none.")
     trade_dates = sorted(data["trade_date"].unique())
     if len(trade_dates) < 2:
         return None
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
     price_table = data.pivot(index="trade_date", columns="ts_code", values=price_col)
+    tradable_table = None
+    if tradable_col and tradable_col in data.columns:
+        tradable_table = data.pivot(index="trade_date", columns="ts_code", values=tradable_col)
+        tradable_table = tradable_table.fillna(False).astype(bool)
 
     net_returns = []
     gross_returns = []
@@ -132,6 +145,124 @@ def backtest_topk(
         overlap = len(set(current_holdings) & prev_set)
         return 1 - overlap / len(current_holdings)
 
+    def _select_holdings(
+        day: pd.DataFrame,
+        entry_date: pd.Timestamp,
+        k: int,
+        ascending: bool,
+        prev_holdings: Optional[set],
+        buffer_exit: int,
+        buffer_entry: int,
+    ) -> tuple[list[str], pd.Series]:
+        if day.empty or k <= 0:
+            return [], pd.Series(dtype=float)
+        if entry_date not in price_table.index:
+            return [], pd.Series(dtype=float)
+        ranked = day.sort_values(pred_col, ascending=ascending)
+        ranked_codes = ranked["ts_code"].tolist()
+        candidate_order: list[str]
+        if prev_holdings is None or (buffer_exit <= 0 and buffer_entry <= 0):
+            candidate_order = ranked_codes
+        else:
+            keep_limit = min(len(ranked_codes), k + max(0, buffer_exit))
+            entry_limit = min(len(ranked_codes), max(0, k - max(0, buffer_entry)))
+            keep_set = set(ranked_codes[:keep_limit]) & prev_holdings
+            candidate_order = [code for code in ranked_codes if code in keep_set]
+            preferred = set(ranked_codes[:entry_limit]) if entry_limit > 0 else set()
+            for code in ranked_codes:
+                if len(candidate_order) >= k:
+                    break
+                if code in candidate_order:
+                    continue
+                if preferred and code not in preferred:
+                    continue
+                candidate_order.append(code)
+            if len(candidate_order) < k:
+                for code in ranked_codes:
+                    if len(candidate_order) >= k:
+                        break
+                    if code in candidate_order:
+                        continue
+                    candidate_order.append(code)
+        entry_prices = price_table.loc[entry_date]
+        tradable_flags = None
+        if tradable_table is not None:
+            if entry_date not in tradable_table.index:
+                return [], pd.Series(dtype=float)
+            tradable_flags = tradable_table.loc[entry_date]
+        holdings: list[str] = []
+        for symbol in candidate_order:
+            if len(holdings) >= k:
+                break
+            price = entry_prices.get(symbol, np.nan)
+            if not np.isfinite(price):
+                continue
+            if tradable_flags is not None and not bool(tradable_flags.get(symbol, False)):
+                continue
+            holdings.append(symbol)
+        if not holdings:
+            return [], pd.Series(dtype=float)
+        return holdings, entry_prices.reindex(holdings)
+
+    def _resolve_exit_idx(symbol: str, planned_exit_idx: int) -> Optional[int]:
+        if planned_exit_idx >= len(trade_dates):
+            return None
+        series = price_table[symbol]
+        if exit_price_policy == "strict":
+            if not np.isfinite(series.iloc[planned_exit_idx]):
+                return None
+            if tradable_table is not None:
+                tradable_series = tradable_table[symbol]
+                if not bool(tradable_series.iloc[planned_exit_idx]):
+                    return None
+            return planned_exit_idx
+        if exit_price_policy == "ffill":
+            window = series.iloc[: planned_exit_idx + 1]
+            if tradable_table is not None:
+                tradable_series = tradable_table[symbol].iloc[: planned_exit_idx + 1]
+                window = window[tradable_series]
+            exit_date = window.last_valid_index()
+            return date_to_idx[exit_date] if exit_date is not None else None
+        window = series.iloc[planned_exit_idx:]
+        if tradable_table is not None:
+            tradable_series = tradable_table[symbol].iloc[planned_exit_idx:]
+            window = window[tradable_series]
+        exit_date = window.first_valid_index()
+        if exit_date is None and exit_fallback_policy == "ffill":
+            window = series.iloc[: planned_exit_idx + 1]
+            if tradable_table is not None:
+                tradable_series = tradable_table[symbol].iloc[: planned_exit_idx + 1]
+                window = window[tradable_series]
+            exit_date = window.last_valid_index()
+        return date_to_idx[exit_date] if exit_date is not None else None
+
+    def _resolve_exit_prices(
+        holdings: list[str],
+        planned_exit_idx: int,
+    ) -> tuple[pd.Series, int]:
+        if not holdings:
+            return pd.Series(dtype=float), planned_exit_idx
+        exit_idx_map: dict[str, int] = {}
+        exit_price_map: dict[str, float] = {}
+        for symbol in holdings:
+            exit_idx = _resolve_exit_idx(symbol, planned_exit_idx)
+            if exit_idx is None:
+                continue
+            exit_price = price_table.iloc[exit_idx][symbol]
+            if not np.isfinite(exit_price):
+                continue
+            exit_idx_map[symbol] = int(exit_idx)
+            exit_price_map[symbol] = float(exit_price)
+        if not exit_price_map:
+            return pd.Series(dtype=float), planned_exit_idx
+        exit_prices = pd.Series(exit_price_map)
+        if exit_price_policy == "delay":
+            max_exit_idx = max(exit_idx_map.values())
+            period_exit_idx = max(planned_exit_idx, max_exit_idx)
+        else:
+            period_exit_idx = planned_exit_idx
+        return exit_prices, period_exit_idx
+
     for i, reb_date in enumerate(rebalance_dates):
         if reb_date not in date_to_idx:
             continue
@@ -154,11 +285,13 @@ def backtest_topk(
                     "Increase rebalance_frequency or use exit_mode='rebalance'."
                 )
 
+        if prev_exit_idx is not None and entry_idx < prev_exit_idx:
+            continue
+
         if entry_idx >= len(trade_dates) or exit_idx >= len(trade_dates) or entry_idx >= exit_idx:
             continue
 
         entry_date = trade_dates[entry_idx]
-        exit_date = trade_dates[exit_idx]
         day = data[data["trade_date"] == reb_date]
         if day.empty:
             continue
@@ -169,20 +302,27 @@ def backtest_topk(
 
         cost_per_side = cost_bps / 10000.0
         if long_only:
-            holdings = list(day.nlargest(k, pred_col)["ts_code"])
-            entry_prices = price_table.loc[entry_date, holdings]
-            exit_prices = price_table.loc[exit_date, holdings]
-            valid = entry_prices.notna() & exit_prices.notna()
-            if valid.sum() == 0:
+            holdings, entry_prices = _select_holdings(
+                day,
+                entry_date,
+                k,
+                ascending=False,
+                prev_holdings=prev_holdings,
+                buffer_exit=buffer_exit,
+                buffer_entry=buffer_entry,
+            )
+            if not holdings:
                 continue
-
-            entry_prices = entry_prices[valid]
-            exit_prices = exit_prices[valid]
-            holdings = list(entry_prices.index)
+            exit_prices, period_exit_idx = _resolve_exit_prices(holdings, exit_idx)
+            if exit_prices.empty:
+                continue
+            entry_prices = entry_prices.reindex(exit_prices.index)
+            holdings = list(exit_prices.index)
             k = len(holdings)
             if k == 0:
                 continue
-
+            exit_idx = period_exit_idx
+            exit_date = trade_dates[exit_idx]
             period_returns = (exit_prices / entry_prices) - 1.0
             gross = period_returns.mean()
             turnover = _compute_turnover(prev_holdings, prev_entry_prices, prev_entry_date, holdings, entry_date)
@@ -201,25 +341,39 @@ def backtest_topk(
             if short_k_final <= 0:
                 continue
 
-            long_holdings = list(day.nlargest(k, pred_col)["ts_code"])
-            short_holdings = list(day.nsmallest(short_k_final, pred_col)["ts_code"])
-
-            long_entry = price_table.loc[entry_date, long_holdings]
-            long_exit = price_table.loc[exit_date, long_holdings]
-            long_valid = long_entry.notna() & long_exit.notna()
-            long_entry = long_entry[long_valid]
-            long_exit = long_exit[long_valid]
-            long_holdings = list(long_entry.index)
-
-            short_entry = price_table.loc[entry_date, short_holdings]
-            short_exit = price_table.loc[exit_date, short_holdings]
-            short_valid = short_entry.notna() & short_exit.notna()
-            short_entry = short_entry[short_valid]
-            short_exit = short_exit[short_valid]
-            short_holdings = list(short_entry.index)
-
+            long_holdings, long_entry = _select_holdings(
+                day,
+                entry_date,
+                k,
+                ascending=False,
+                prev_holdings=prev_holdings,
+                buffer_exit=buffer_exit,
+                buffer_entry=buffer_entry,
+            )
+            short_holdings, short_entry = _select_holdings(
+                day,
+                entry_date,
+                short_k_final,
+                ascending=True,
+                prev_holdings=prev_short_holdings,
+                buffer_exit=buffer_exit,
+                buffer_entry=buffer_entry,
+            )
             if not long_holdings or not short_holdings:
                 continue
+
+            long_exit, period_exit_idx_long = _resolve_exit_prices(long_holdings, exit_idx)
+            short_exit, period_exit_idx_short = _resolve_exit_prices(short_holdings, exit_idx)
+            if long_exit.empty or short_exit.empty:
+                continue
+            long_entry = long_entry.reindex(long_exit.index)
+            short_entry = short_entry.reindex(short_exit.index)
+            long_holdings = list(long_exit.index)
+            short_holdings = list(short_exit.index)
+            if not long_holdings or not short_holdings:
+                continue
+            exit_idx = max(exit_idx, period_exit_idx_long, period_exit_idx_short)
+            exit_date = trade_dates[exit_idx]
 
             long_returns = (long_exit / long_entry) - 1.0
             short_returns = (short_exit / short_entry) - 1.0

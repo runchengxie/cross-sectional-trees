@@ -37,6 +37,13 @@ DEFAULT_BASIC_PARAMS = {
     "us": {},
 }
 
+FUNDAMENTAL_COLUMN_CANDIDATES = {
+    "trade_date": ["trade_date", "date", "trade_dt", "trade_day"],
+    "ts_code": ["ts_code", "symbol", "ticker", "code", "sec_code", "tscode", "order_book_id"],
+}
+
+FUNDAMENTAL_REQUIRED_COLUMNS = ("trade_date", "ts_code")
+
 DEFAULT_COLUMN_MAPS = {
     "cn": {
         "trade_date": "trade_date",
@@ -497,6 +504,33 @@ def _infer_missing_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _infer_fundamental_columns(df: pd.DataFrame) -> pd.DataFrame:
+    for standard, candidates in FUNDAMENTAL_COLUMN_CANDIDATES.items():
+        if standard in df.columns:
+            continue
+        for candidate in candidates:
+            if candidate in df.columns:
+                df = df.rename(columns={candidate: standard})
+                break
+    return df
+
+
+def _standardize_fundamentals_frame(
+    df: pd.DataFrame,
+    column_map: Mapping[str, str],
+    symbol: str,
+) -> pd.DataFrame:
+    df = _apply_column_map(df, column_map)
+    df = _infer_fundamental_columns(df)
+    if "ts_code" not in df.columns:
+        df = df.copy()
+        df["ts_code"] = symbol
+    missing = [col for col in FUNDAMENTAL_REQUIRED_COLUMNS if col not in df.columns]
+    if missing:
+        raise ValueError(f"Fundamentals data missing required columns: {missing}")
+    return df
+
+
 def _standardize_daily_frame(
     df: pd.DataFrame,
     market: str,
@@ -649,3 +683,70 @@ def load_basic(
     df_basic = df_basic.copy(deep=True)
     df_basic.to_parquet(cache_file)
     return df_basic
+
+
+def fetch_fundamentals(
+    market: str,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    cache_dir: Path,
+    client,
+    data_cfg: Optional[Mapping] = None,
+    fundamentals_cfg: Optional[Mapping] = None,
+) -> pd.DataFrame:
+    market = normalize_market(market)
+    data_cfg = data_cfg or {}
+    fundamentals_cfg = fundamentals_cfg or {}
+    provider = resolve_provider({"provider": fundamentals_cfg.get("provider")}) if fundamentals_cfg.get("provider") else resolve_provider(data_cfg)
+    tag = _sanitize_cache_tag(
+        fundamentals_cfg.get("cache_tag")
+        or fundamentals_cfg.get("cache_version")
+        or _cache_tag(data_cfg)
+    )
+    prefix = f"{market}_{provider}"
+    if tag:
+        prefix = f"{prefix}_{tag}"
+    cache_file = cache_dir / f"{prefix}_fundamentals_{symbol}_{start_date}_{end_date}.parquet"
+    if cache_file.exists():
+        return pd.read_parquet(cache_file)
+
+    if provider != "tushare":
+        raise ValueError(
+            "Fundamentals provider not supported (use fundamentals.source=file or provider=tushare)."
+        )
+    endpoint_name = fundamentals_cfg.get("endpoint") or data_cfg.get("fundamentals_endpoint")
+    if not endpoint_name:
+        raise ValueError("Fundamentals endpoint is required (fundamentals.endpoint).")
+    if client is None:
+        raise ValueError("Tushare client is required for fundamentals.")
+    endpoint = getattr(client, endpoint_name, None)
+    if endpoint is None:
+        raise ValueError(f"Tushare endpoint '{endpoint_name}' not found.")
+
+    params = {}
+    symbol_param = fundamentals_cfg.get("symbol_param", "ts_code")
+    start_param = fundamentals_cfg.get("start_param", "start_date")
+    end_param = fundamentals_cfg.get("end_param", "end_date")
+    if symbol_param:
+        params[str(symbol_param)] = symbol
+    if start_param:
+        params[str(start_param)] = start_date
+    if end_param:
+        params[str(end_param)] = end_date
+
+    params.update(fundamentals_cfg.get("params") or {})
+
+    fields = fundamentals_cfg.get("fields")
+    if fields:
+        params["fields"] = fields
+
+    df = endpoint(**params)
+    if df is None or df.empty:
+        return df
+
+    column_map = fundamentals_cfg.get("column_map") or {}
+    df = _standardize_fundamentals_frame(df, column_map, symbol)
+    df = df.copy(deep=True)
+    df.to_parquet(cache_file)
+    return df
