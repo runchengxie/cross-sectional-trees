@@ -102,6 +102,13 @@ def _handle_tushare_verify(args) -> int:
     return 0
 
 
+def _handle_grid(args) -> int:
+    from .project_tools import run_grid
+
+    run_grid.main(args.args)
+    return 0
+
+
 def _handle_init_config(args) -> int:
     filename = resolve_pipeline_filename(args.market)
     content = read_package_text("csxgb.config", filename)
@@ -173,6 +180,10 @@ def build_parser() -> argparse.ArgumentParser:
     verify = tu_sub.add_parser("verify-token", help="Verify TuShare token(s)")
     verify.add_argument("args", nargs=argparse.REMAINDER)
     verify.set_defaults(func=_handle_tushare_verify)
+
+    grid = subparsers.add_parser("grid", help="Run Top-K × cost grid and summarize results")
+    grid.add_argument("args", nargs=argparse.REMAINDER)
+    grid.set_defaults(func=_handle_grid)
 
     init_cfg = subparsers.add_parser(
         "init-config", help="Export a packaged config template to the filesystem"

@@ -1,30 +1,23 @@
+from __future__ import annotations
+
 import argparse
 import copy
 import csv
 import json
 import logging
-import sys
 import tempfile
 from pathlib import Path
 
 import yaml
 
-
-def _find_project_root(start: Path) -> Path:
-    for parent in [start, *start.parents]:
-        if (parent / "pyproject.toml").exists():
-            return parent
-    return start
+from ..config_utils import resolve_pipeline_config
 
 
-def _resolve_path(path_text: str, project_root: Path) -> Path:
+def _resolve_output_path(path_text: str) -> Path:
     candidate = Path(path_text).expanduser()
-    if candidate.is_absolute() and candidate.exists():
+    if candidate.is_absolute():
         return candidate
-    if candidate.exists():
-        return candidate.resolve()
-    fallback = (project_root / candidate).resolve()
-    return fallback
+    return (Path.cwd() / candidate).resolve()
 
 
 def _parse_int_list(values: list[str]) -> list[int]:
@@ -120,12 +113,12 @@ def _extract_row(summary: dict | None, top_k: int, cost_bps: float, run_name: st
     return row
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run a grid of Top-K and cost bps settings")
     parser.add_argument(
         "--config",
         default="config/hk.yml",
-        help="Base config path (default: config/hk.yml)",
+        help="Base config path or built-in name (default: config/hk.yml)",
     )
     parser.add_argument(
         "--top-k",
@@ -156,29 +149,23 @@ def main() -> None:
         help="Logging level",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),
         format="%(levelname)s: %(message)s",
     )
 
-    project_root = _find_project_root(Path(__file__).resolve())
-    config_path = _resolve_path(args.config, project_root)
-    if not config_path.exists():
-        raise SystemExit(f"Config not found: {config_path}")
+    resolved = resolve_pipeline_config(args.config)
+    base_cfg = resolved.data
+    base_label = args.run_name_prefix or resolved.label
 
-    sys.path.insert(0, str(project_root / "src"))
-    from csxgb import pipeline  # pylint: disable=import-error
+    from .. import pipeline
 
-    with config_path.open("r", encoding="utf-8") as handle:
-        base_cfg = yaml.safe_load(handle) or {}
-
-    base_label = args.run_name_prefix or config_path.stem
     top_k_values = _parse_int_list(args.top_k)
     cost_values = _parse_float_list(args.cost_bps)
     combos = [(top_k, cost) for top_k in top_k_values for cost in cost_values]
 
-    output_path = _resolve_path(args.output, project_root)
+    output_path = _resolve_output_path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     logging.info("Running %s combinations ...", len(combos))
@@ -209,7 +196,7 @@ def main() -> None:
             try:
                 pipeline.run(str(cfg_path))
                 output_dir = Path(cfg.get("eval", {}).get("output_dir", "out/runs"))
-                output_dir = _resolve_path(str(output_dir), project_root)
+                output_dir = _resolve_output_path(str(output_dir))
                 summary_path = _find_latest_summary(output_dir, run_name)
                 if summary_path and summary_path.exists():
                     with summary_path.open("r", encoding="utf-8") as handle:

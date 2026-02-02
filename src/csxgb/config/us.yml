@@ -107,6 +107,7 @@ model:
     reg_lambda: 1.0
     objective: "reg:squarederror"
     random_state: 42
+  sample_weight_mode: "date_equal"
 
 eval:
   test_size: 0.2
@@ -114,8 +115,9 @@ eval:
   n_quantiles: 5
   rebalance_frequency: "M"
   top_k: 5
-  signal_direction: -1
-  signal_direction_mode: "fixed"
+  signal_direction: 1
+  signal_direction_mode: "cv_ic"
+  min_abs_ic_to_flip: 0.002
   transaction_cost_bps: 10
   buffer_exit: 2
   buffer_entry: 1

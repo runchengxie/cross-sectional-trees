@@ -39,7 +39,7 @@ from .metrics import (
     summarize_active_returns,
 )
 from .transform import apply_cross_sectional_transform
-from .split import time_series_cv_ic
+from .split import build_sample_weight, time_series_cv_ic
 from .backtest import backtest_topk, summarize_period_returns
 from .rebalance import estimate_rebalance_gap, get_rebalance_dates
 
@@ -575,6 +575,10 @@ def run(config_ref: str | Path | None = None) -> None:
     SIGNAL_DIRECTION = float(SIGNAL_DIRECTION_RAW) if SIGNAL_DIRECTION_RAW is not None else 1.0
     if SIGNAL_DIRECTION == 0:
         sys.exit("eval.signal_direction cannot be 0.")
+    MIN_ABS_IC_TO_FLIP_RAW = eval_cfg.get("min_abs_ic_to_flip", 0.0)
+    MIN_ABS_IC_TO_FLIP = float(MIN_ABS_IC_TO_FLIP_RAW) if MIN_ABS_IC_TO_FLIP_RAW is not None else 0.0
+    if MIN_ABS_IC_TO_FLIP < 0:
+        sys.exit("eval.min_abs_ic_to_flip must be >= 0.")
     EMBARGO_DAYS = eval_cfg.get("embargo_days")
     EMBARGO_DAYS = int(EMBARGO_DAYS) if EMBARGO_DAYS is not None else 0
     PURGE_DAYS_RAW = eval_cfg.get("purge_days")
@@ -702,6 +706,13 @@ def run(config_ref: str | Path | None = None) -> None:
             objective="reg:squarederror",
             random_state=42,
         )
+    SAMPLE_WEIGHT_MODE = str(model_cfg.get("sample_weight_mode", "none")).strip().lower()
+    if SAMPLE_WEIGHT_MODE in {"", "none", "null"}:
+        SAMPLE_WEIGHT_MODE = "none"
+    if SAMPLE_WEIGHT_MODE in {"date"}:
+        SAMPLE_WEIGHT_MODE = "date_equal"
+    if SAMPLE_WEIGHT_MODE not in {"none", "date_equal"}:
+        sys.exit("model.sample_weight_mode must be one of: none, date_equal.")
 
     BACKTEST_ENABLED = bool(backtest_cfg.get("enabled", True))
     BACKTEST_TOP_K = int(backtest_cfg.get("top_k", TOP_K))
@@ -1244,7 +1255,11 @@ def run(config_ref: str | Path | None = None) -> None:
             perm_train = permute_target_within_date(train_data, TARGET, rng)
 
             perm_model = XGBRegressor(**XGB_PARAMS)
-            perm_model.fit(perm_train[FEATURES], perm_train[TARGET])
+            perm_weights = build_sample_weight(perm_train, SAMPLE_WEIGHT_MODE)
+            if perm_weights is not None:
+                perm_model.fit(perm_train[FEATURES], perm_train[TARGET], sample_weight=perm_weights)
+            else:
+                perm_model.fit(perm_train[FEATURES], perm_train[TARGET])
 
             perm_test = test_data.copy()
             perm_test["pred"] = perm_model.predict(perm_test[FEATURES])
@@ -1286,11 +1301,12 @@ def run(config_ref: str | Path | None = None) -> None:
                 PURGE_DAYS,
                 XGB_PARAMS,
                 1.0,
+                sample_weight_mode=SAMPLE_WEIGHT_MODE,
             )
             if cv_scores_w:
                 cv_mean = float(np.nanmean(cv_scores_w))
                 cv_std = float(np.nanstd(cv_scores_w))
-                if np.isfinite(cv_mean) and cv_mean != 0:
+                if np.isfinite(cv_mean) and cv_mean != 0 and abs(cv_mean) >= MIN_ABS_IC_TO_FLIP:
                     direction = float(np.sign(cv_mean))
                 cv_stats = {
                     "mean": cv_mean,
@@ -1299,7 +1315,11 @@ def run(config_ref: str | Path | None = None) -> None:
                 }
 
         model_w = XGBRegressor(**XGB_PARAMS)
-        model_w.fit(train_df_w[FEATURES], train_df_w[TARGET])
+        train_weights_w = build_sample_weight(train_df_w, SAMPLE_WEIGHT_MODE)
+        if train_weights_w is not None:
+            model_w.fit(train_df_w[FEATURES], train_df_w[TARGET], sample_weight=train_weights_w)
+        else:
+            model_w.fit(train_df_w[FEATURES], train_df_w[TARGET])
 
         train_eval = train_df_w.copy()
         train_eval["pred"] = model_w.predict(train_eval[FEATURES])
@@ -1469,6 +1489,7 @@ def run(config_ref: str | Path | None = None) -> None:
         PURGE_DAYS,
         XGB_PARAMS,
         1.0,
+        sample_weight_mode=SAMPLE_WEIGHT_MODE,
     )
     if cv_scores_raw:
         logger.info(
@@ -1481,18 +1502,26 @@ def run(config_ref: str | Path | None = None) -> None:
     cv_scores_adj = None
     if SIGNAL_DIRECTION_MODE == "cv_ic" and cv_scores_raw:
         cv_mean = float(np.nanmean(cv_scores_raw))
-        if np.isfinite(cv_mean) and cv_mean != 0:
+        if np.isfinite(cv_mean) and cv_mean != 0 and abs(cv_mean) >= MIN_ABS_IC_TO_FLIP:
             SIGNAL_DIRECTION = float(np.sign(cv_mean))
+            logger.info("Signal direction set from CV IC: %s", SIGNAL_DIRECTION)
         else:
-            SIGNAL_DIRECTION = 1.0
-        logger.info("Signal direction set from CV IC: %s", SIGNAL_DIRECTION)
+            logger.info(
+                "CV IC mean below threshold (|mean| < %.4f); keeping signal direction: %s",
+                MIN_ABS_IC_TO_FLIP,
+                SIGNAL_DIRECTION,
+            )
 
     # -----------------------------------------------------------------------------
     # 6. Fit final model
     # -----------------------------------------------------------------------------
     logger.info("Fitting XGBoost regressor ...")
     model = XGBRegressor(**XGB_PARAMS)
-    model.fit(X_train, y_train)
+    train_weights = build_sample_weight(train_df, SAMPLE_WEIGHT_MODE)
+    if train_weights is not None:
+        model.fit(X_train, y_train, sample_weight=train_weights)
+    else:
+        model.fit(X_train, y_train)
 
     # -----------------------------------------------------------------------------
     # 7. Evaluation (cross-sectional factor style)
@@ -1533,7 +1562,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 np.nanmean(cv_scores_adj),
                 np.nanstd(cv_scores_adj),
             )
-            logger.info("CV fold ICs (adj): %s", [f\"{s:.4f}\" for s in cv_scores_adj])
+            logger.info("CV fold ICs (adj): %s", [f"{s:.4f}" for s in cv_scores_adj])
 
     train_ic_series = pd.Series(dtype=float, name="ic")
     train_ic_stats = {}

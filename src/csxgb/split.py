@@ -8,6 +8,23 @@ from xgboost import XGBRegressor
 from .metrics import daily_ic_series
 
 
+def build_sample_weight(
+    data: pd.DataFrame,
+    mode: str | None,
+    *,
+    date_col: str = "trade_date",
+) -> np.ndarray | None:
+    if mode is None:
+        return None
+    mode_text = str(mode).strip().lower()
+    if mode_text in {"", "none", "null"}:
+        return None
+    if mode_text in {"date_equal", "date"}:
+        counts = data.groupby(date_col, sort=False)[date_col].transform("count")
+        return (1.0 / counts).to_numpy()
+    raise ValueError(f"Unsupported sample_weight_mode: {mode}")
+
+
 def time_series_cv_ic(
     data: pd.DataFrame,
     features: list[str],
@@ -17,6 +34,8 @@ def time_series_cv_ic(
     purge_days: int,
     model_params: dict,
     signal_direction: float,
+    sample_weight_mode: str | None = None,
+    date_col: str = "trade_date",
 ):
     dates = np.array(sorted(data["trade_date"].unique()))
     tscv = TimeSeriesSplit(n_splits=n_splits)
@@ -30,11 +49,15 @@ def time_series_cv_ic(
                 continue
         tr_dates = dates[train_idx]
         va_dates = dates[val_idx]
-        tr_df = data[data["trade_date"].isin(tr_dates)]
-        va_df = data[data["trade_date"].isin(va_dates)].copy()
+        tr_df = data[data[date_col].isin(tr_dates)]
+        va_df = data[data[date_col].isin(va_dates)].copy()
 
         model = XGBRegressor(**model_params)
-        model.fit(tr_df[features], tr_df[target_col])
+        sample_weight = build_sample_weight(tr_df, sample_weight_mode, date_col=date_col)
+        if sample_weight is not None:
+            model.fit(tr_df[features], tr_df[target_col], sample_weight=sample_weight)
+        else:
+            model.fit(tr_df[features], tr_df[target_col])
         va_df["pred"] = model.predict(va_df[features])
         if signal_direction != 1.0:
             va_df["pred"] = va_df["pred"] * signal_direction

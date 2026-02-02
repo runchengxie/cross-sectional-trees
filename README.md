@@ -45,6 +45,15 @@ pip install -e .
 pip install -e .[rqdata]
 ```
 
+## 开发 / 测试
+
+建议至少跑语法检查与单测，避免低级语法问题混进主干：
+
+```bash
+python -m compileall src
+pytest
+```
+
 ## 配置 TuShare Token（仅当 data.provider=tushare）
 
 主程序与工具脚本优先读取 `TUSHARE_TOKEN`，其次 `TUSHARE_TOKEN_2`，仅在兼容旧配置时才读取 `TUSHARE_API_KEY`。
@@ -114,6 +123,9 @@ csxgb run --config config/us.yml
 # 主流程
 csxgb run
 
+# Top-K × 成本敏感性网格
+csxgb grid --config config/hk.yml
+
 # RQData 信息 / 配额
 csxgb rqdata info
 csxgb rqdata quota
@@ -160,8 +172,9 @@ csxgb tushare verify-token
 CLI 已封装常用脚本（见上方命令速览），也可直接运行：
 
 * `python -m csxgb.project_tools.verify_tushare_tokens`：验证 TuShare Token 是否可用
-* `project_tools/combine_code.py`：打包项目源码为单文件文本（用于归档/审查）
-* `project_tools/run_grid.py`：批量跑 Top-K × 成本敏感性并汇总 CSV
+* `scripts/combine_code.py`：打包项目源码为单文件文本（用于归档/审查）
+* `scripts/run_grid.py`：批量跑 Top-K × 成本敏感性并汇总 CSV
+* `csxgb grid`：同上（更推荐，便于安装后直接使用）
 * `python -m csxgb.project_tools.fetch_index_components`：拉取指数成分并导出为 `symbols_file` 列表
 * `python -m csxgb.project_tools.build_hk_connect_universe`：基于港股通 PIT + 成交额筛选生成 `out/universe/universe_by_date.csv`
 
@@ -175,8 +188,8 @@ CLI 已封装常用脚本（见上方命令速览），也可直接运行：
 * `fundamentals`：Level 0 基本面数据合并（`features`/`column_map`/`ffill`/`log_market_cap`/`required`）
 * `label`：预测窗口、shift、winsorize（支持 `horizon_mode=next_rebalance`）
 * `features`：特征清单与窗口
-* `model`：XGBoost 参数
-* `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`、`sample_on_rebalance_dates`，以及可选的 `report_train_ic`、`save_artifacts`、`permutation_test` 与 `walk_forward`
+* `model`：XGBoost 参数，`sample_weight_mode`（`none`/`date_equal`）
+* `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`、`min_abs_ic_to_flip`、`sample_on_rebalance_dates`，以及可选的 `report_train_ic`、`save_artifacts`、`permutation_test` 与 `walk_forward`
 * `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准、`exit_mode`、`exit_price_policy` 与 `buffer_exit/buffer_entry`
 
 示例（生成指数成分列表）：
@@ -263,7 +276,7 @@ universe:
 csxgb universe hk-connect --config config/universe.hk_connect.yml
 
 # 2) 批量跑 Top-K / 交易成本组合
-python project_tools/run_grid.py --config config/hk.yml
+csxgb grid --config config/hk.yml
 
 # 3) 查看汇总结果
 ls -lh out/runs/grid_summary.csv
@@ -272,8 +285,7 @@ ls -lh out/runs/grid_summary.csv
 默认网格为 `top_k = 5,10,20`，`transaction_cost_bps = 15,25,40`（单边）。可按需覆盖：
 
 ```bash
-python project_tools/run_grid.py \
-  --config config/hk.yml \
+csxgb grid --config config/hk.yml \
   --top-k 5,10 \
   --cost-bps 25,40 \
   --output out/runs/my_grid.csv \
