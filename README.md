@@ -131,6 +131,8 @@ csxgb rqdata info
 csxgb rqdata quota
 ```
 
+注：`csxgb grid` 现在支持直接传参，无需 `--` 透传。
+
 注：`rqdata` 命令需要安装可选依赖 `.[rqdata]`。
 
 ```bash

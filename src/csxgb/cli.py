@@ -105,7 +105,24 @@ def _handle_tushare_verify(args) -> int:
 def _handle_grid(args) -> int:
     from .project_tools import run_grid
 
-    run_grid.main(args.args)
+    argv: list[str] = []
+    if getattr(args, "config", None):
+        argv += ["--config", args.config]
+    if getattr(args, "top_k", None):
+        for entry in args.top_k:
+            argv += ["--top-k", entry]
+    if getattr(args, "cost_bps", None):
+        for entry in args.cost_bps:
+            argv += ["--cost-bps", entry]
+    if getattr(args, "output", None):
+        argv += ["--output", args.output]
+    if getattr(args, "run_name_prefix", None):
+        argv += ["--run-name-prefix", args.run_name_prefix]
+    if getattr(args, "log_level", None):
+        argv += ["--log-level", args.log_level]
+    if getattr(args, "args", None):
+        argv += list(args.args)
+    run_grid.main(argv)
     return 0
 
 
@@ -182,7 +199,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify.set_defaults(func=_handle_tushare_verify)
 
     grid = subparsers.add_parser("grid", help="Run Top-K × cost grid and summarize results")
-    grid.add_argument("args", nargs=argparse.REMAINDER)
+    from .project_tools import run_grid
+
+    run_grid.add_grid_args(grid)
     grid.set_defaults(func=_handle_grid)
 
     init_cfg = subparsers.add_parser(

@@ -113,8 +113,7 @@ def _extract_row(summary: dict | None, top_k: int, cost_bps: float, run_name: st
     return row
 
 
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Run a grid of Top-K and cost bps settings")
+def add_grid_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         default="config/hk.yml",
@@ -148,6 +147,12 @@ def main(argv: list[str] | None = None) -> None:
         choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"],
         help="Logging level",
     )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Run a grid of Top-K and cost bps settings")
+    add_grid_args(parser)
 
     args = parser.parse_args(argv)
     logging.basicConfig(
