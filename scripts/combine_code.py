@@ -47,7 +47,13 @@ EXCLUDE_DIRS_ROOT_ONLY: Set[str] = {
     "data",  # User-specific data, not source code
     "scripts",
     "tests",
-    ".ruff_cache",    
+    ".ruff_cache",
+    "out",
+    "cache",
+    ".venv",
+    "venv",
+    ".git/",
+    "__pycache__/",
 }
 
 # Directory name patterns to exclude (e.g., any directory ending with .egg-info).
