@@ -1402,8 +1402,8 @@ def run(config_ref: str | Path | None = None) -> None:
         bt_benchmark_stats_w = None
         bt_active_stats_w = None
         if WF_BACKTEST_ENABLED:
-            bt_pred_col = signal_col_w
             bt_direction = direction if BACKTEST_SIGNAL_DIRECTION_RAW is None else BACKTEST_SIGNAL_DIRECTION_RAW
+            bt_pred_col = "pred"
             test_start = pd.to_datetime(window_meta["test_start"])
             test_end = pd.to_datetime(window_meta["test_end"])
             test_full_w = df_full[
@@ -1413,7 +1413,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 bt_result_w = None
             else:
                 test_full_w["pred"] = model_w.predict(test_full_w[FEATURES])
-                if bt_direction != direction:
+                if bt_direction != 1.0:
                     test_full_w["signal_bt"] = test_full_w["pred"] * bt_direction
                     bt_pred_col = "signal_bt"
                 bt_rebalance = get_rebalance_dates(
