@@ -122,13 +122,13 @@ def add_grid_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "--top-k",
         action="append",
-        default=["5,10,20"],
+        default=None,
         help="Comma-separated top_k values (default: 5,10,20)",
     )
     parser.add_argument(
         "--cost-bps",
         action="append",
-        default=["15,25,40"],
+        default=None,
         help="Comma-separated cost bps per side (default: 15,25,40)",
     )
     parser.add_argument(
@@ -166,8 +166,14 @@ def main(argv: list[str] | None = None) -> None:
 
     from .. import pipeline
 
-    top_k_values = _parse_int_list(args.top_k)
-    cost_values = _parse_float_list(args.cost_bps)
+    top_k_entries = args.top_k or ["5,10,20"]
+    cost_entries = args.cost_bps or ["15,25,40"]
+
+    top_k_values = _parse_int_list(top_k_entries)
+    cost_values = _parse_float_list(cost_entries)
+
+    top_k_values = list(dict.fromkeys(top_k_values))
+    cost_values = list(dict.fromkeys(cost_values))
     combos = [(top_k, cost) for top_k in top_k_values for cost in cost_values]
 
     output_path = _resolve_output_path(args.output)
