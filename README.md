@@ -120,14 +120,17 @@ csxgb run --config config/us.yml
 ## CLI 命令速览
 
 ```bash
-# 主流程
+# 主流程（先跑一次 pipeline 生成持仓文件）
 csxgb run
+csxgb run --config config/hk.yml
 
 # Top-K × 成本敏感性网格
 csxgb grid --config config/hk.yml
 
 # 当期持仓清单（从最近一次 run 读取）
 csxgb holdings --config config/hk.yml --as-of t-1
+csxgb holdings --config config/hk.yml --as-of 20260131 --format csv --out out/positions/20260131.csv
+csxgb holdings --config config/hk.yml --top-k 10
 
 # RQData 信息 / 配额
 csxgb rqdata info
