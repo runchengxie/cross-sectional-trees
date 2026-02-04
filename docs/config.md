@@ -19,9 +19,31 @@ csxgb init-config --market hk --out config/
 * `model`：XGBoost 参数，`sample_weight_mode`（`none`/`date_equal`）
 * `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`、`min_abs_ic_to_flip`、`sample_on_rebalance_dates`，以及可选的 `report_train_ic`、`save_artifacts`、`permutation_test` 与 `walk_forward`
 * `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准、`exit_mode`、`exit_price_policy` 与 `buffer_exit/buffer_entry`
+* `live`：可选“当下持仓快照”，用于在固定回测之外输出当前组合
 
 ## 基本面数据
 
 * 默认 `fundamentals.enabled=true`（CN/Default 走 TuShare `daily_basic`，HK/US 默认走本地文件）；如无数据可先设为 `false`。
 * `fundamentals.source=provider` 走数据源接口（目前仅支持 TuShare）；`source=file` 则读取本地 CSV/Parquet。缺文件会警告并跳过（可用 `fundamentals.required=true` 强制报错）。
 * 使用 `fundamentals.column_map` 映射字段，再通过 `ffill` 做按股票时间向前填充。
+
+## Live 模式
+
+`live` 用于在同一套配置下生成“当前持仓快照”。建议搭配单独的 live 配置文件与输出目录，避免和回测产物混在一起。
+
+```yaml
+data:
+  end_date: "t-1"   # 支持 today / t-1 / YYYYMMDD
+
+eval:
+  output_dir: "out/live_runs"
+  save_artifacts: true
+
+backtest:
+  enabled: false
+
+live:
+  enabled: true
+  as_of: "t-1"
+  train_mode: "full"   # full=用全部可用标签训练; train=复用回测训练集模型
+```

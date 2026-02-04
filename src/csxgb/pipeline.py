@@ -49,6 +49,38 @@ warnings.filterwarnings("ignore")
 logger = logging.getLogger("csxgb")
 
 
+def _normalize_date_token(value: object | None, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    lowered = text.lower()
+    if lowered in {"today", "t", "now"}:
+        return "today"
+    if lowered in {"t-1", "yesterday", "last_trading_day", "last_completed_trading_day"}:
+        return "t-1"
+    return text
+
+
+def _resolve_date_token(value: object | None, default: str = "today") -> pd.Timestamp:
+    token = _normalize_date_token(value, default)
+    today = pd.Timestamp.now().normalize()
+    if token == "today":
+        return today
+    if token == "t-1":
+        return today - pd.Timedelta(days=1)
+    text = str(token).strip()
+    compact = text.replace("-", "")
+    if compact.isdigit() and len(compact) == 8:
+        parsed = pd.to_datetime(compact, format="%Y%m%d", errors="coerce")
+    else:
+        parsed = pd.to_datetime(text, errors="coerce")
+    if pd.isna(parsed):
+        raise SystemExit(f"Invalid date token: {value}")
+    return pd.Timestamp(parsed).normalize()
+
+
 def build_benchmark_series(
     benchmark_df: Optional[pd.DataFrame],
     price_col: str,
@@ -389,6 +421,9 @@ def run(config_ref: str | Path | None = None) -> None:
     model_cfg = config.get("model", {})
     eval_cfg = config.get("eval", {})
     backtest_cfg = config.get("backtest", {})
+    live_cfg = config.get("live", {})
+    if not isinstance(live_cfg, dict):
+        live_cfg = {}
 
     load_dotenv()
     provider = resolve_provider(data_cfg)
@@ -531,10 +566,7 @@ def run(config_ref: str | Path | None = None) -> None:
         sys.exit("No symbols configured.")
 
     end_date_cfg = data_cfg.get("end_date", "today")
-    if not end_date_cfg or str(end_date_cfg).lower() in {"today", "now"}:
-        end_date = datetime.now()
-    else:
-        end_date = datetime.strptime(str(end_date_cfg), "%Y%m%d")
+    end_date = _resolve_date_token(end_date_cfg, default="today")
 
     start_date_cfg = data_cfg.get("start_date")
     if start_date_cfg:
@@ -753,6 +785,16 @@ def run(config_ref: str | Path | None = None) -> None:
         if BACKTEST_EXIT_HORIZON_DAYS is None:
             BACKTEST_EXIT_HORIZON_DAYS = LABEL_HORIZON_DAYS
         BACKTEST_EXIT_HORIZON_DAYS = int(BACKTEST_EXIT_HORIZON_DAYS)
+
+    LIVE_ENABLED = bool(live_cfg.get("enabled", False))
+    LIVE_AS_OF = live_cfg.get("as_of", "t-1")
+    LIVE_TRAIN_MODE = str(live_cfg.get("train_mode", "full")).strip().lower()
+    if LIVE_TRAIN_MODE not in {"full", "train"}:
+        sys.exit("live.train_mode must be one of: full, train.")
+    if LIVE_ENABLED and not SAVE_ARTIFACTS:
+        logger.warning(
+            "live.enabled=true but eval.save_artifacts=false; live positions will not be saved."
+        )
 
     run_name = str(RUN_NAME or config_label)
     run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1132,18 +1174,21 @@ def run(config_ref: str | Path | None = None) -> None:
         else:
             sys.exit(f"Missing features after engineering: {missing_features}")
 
-    # Keep only the necessary columns & drop NaNs from rolling calcs / future label
+    # Keep only the necessary columns; drop NaNs in features for live snapshot support
     meta_cols = ["is_tradable"] if "is_tradable" in df.columns else []
     cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + meta_cols + [TARGET]
     cols = list(dict.fromkeys(cols))
-    df = df[cols].dropna().reset_index(drop=True)
+    df = df[cols].copy()
+
+    required_cols = [PRICE_COL] + FEATURES
+    df_features = df.dropna(subset=required_cols).reset_index(drop=True)
 
     if universe_by_date is not None:
-        before_rows = len(df)
-        df = apply_universe_by_date(df, universe_by_date)
-        after_rows = len(df)
+        before_rows = len(df_features)
+        df_features = apply_universe_by_date(df_features, universe_by_date)
+        after_rows = len(df_features)
         logger.info("Applied universe-by-date filter: %s -> %s rows", before_rows, after_rows)
-        if df.empty:
+        if df_features.empty:
             sys.exit("Universe-by-date filter removed all rows.")
 
     if WINSORIZE_PCT:
@@ -1153,12 +1198,14 @@ def run(config_ref: str | Path | None = None) -> None:
             group[TARGET] = group[TARGET].clip(lower, upper)
             return group
 
-        df = df.groupby("trade_date", group_keys=False).apply(_winsorize)
+        df_features = df_features.groupby("trade_date", group_keys=False).apply(_winsorize)
 
     if CS_METHOD != "none":
-        df = apply_cross_sectional_transform(df, FEATURES, CS_METHOD, CS_WINSORIZE_PCT)
+        df_features = apply_cross_sectional_transform(
+            df_features, FEATURES, CS_METHOD, CS_WINSORIZE_PCT
+        )
 
-    df_full = df
+    df_full = df_features.dropna().reset_index(drop=True)
     all_dates_full = np.array(sorted(df_full["trade_date"].unique()))
     rebalance_dates_all = None
     if SAMPLE_ON_REBALANCE_DATES:
@@ -1623,6 +1670,75 @@ def run(config_ref: str | Path | None = None) -> None:
             train_ic_stats["n"],
         )
 
+    positions_by_rebalance_live = None
+    live_as_of = None
+    if LIVE_ENABLED:
+        live_as_of = _resolve_date_token(LIVE_AS_OF, default="t-1")
+        df_live = df_features[df_features["trade_date"] <= live_as_of].copy()
+        if df_live.empty:
+            logger.warning("Live snapshot skipped: no data on or before %s.", live_as_of.date())
+        else:
+            df_live_labeled = df_live[df_live[TARGET].notna()].copy()
+            if df_live_labeled.empty:
+                logger.warning("Live snapshot skipped: no labeled data on or before %s.", live_as_of.date())
+            else:
+                live_model = model
+                if LIVE_TRAIN_MODE == "full":
+                    live_model = XGBRegressor(**XGB_PARAMS)
+                    live_weights = build_sample_weight(df_live_labeled, SAMPLE_WEIGHT_MODE)
+                    if live_weights is not None:
+                        live_model.fit(
+                            df_live_labeled[FEATURES],
+                            df_live_labeled[TARGET],
+                            sample_weight=live_weights,
+                        )
+                    else:
+                        live_model.fit(df_live_labeled[FEATURES], df_live_labeled[TARGET])
+
+                df_live["pred"] = live_model.predict(df_live[FEATURES])
+                live_pred_col = "pred"
+                if SIGNAL_DIRECTION != 1.0:
+                    df_live["signal"] = df_live["pred"] * SIGNAL_DIRECTION
+                    live_pred_col = "signal"
+
+                live_dates = sorted(df_live["trade_date"].unique())
+                live_rebalance = get_rebalance_dates(live_dates, BACKTEST_REBALANCE_FREQUENCY)
+                live_counts = df_live.groupby("trade_date")["ts_code"].nunique()
+                live_valid_dates = set(
+                    live_counts[live_counts >= MIN_SYMBOLS_PER_DATE].index
+                )
+                live_rebalance = [d for d in live_rebalance if d in live_valid_dates]
+
+                positions_by_rebalance_live = build_positions_by_rebalance(
+                    df_live,
+                    pred_col=live_pred_col,
+                    price_col=PRICE_COL,
+                    rebalance_dates=live_rebalance,
+                    top_k=BACKTEST_TOP_K,
+                    shift_days=LABEL_SHIFT_DAYS,
+                    buffer_exit=BACKTEST_BUFFER_EXIT,
+                    buffer_entry=BACKTEST_BUFFER_ENTRY,
+                    long_only=BACKTEST_LONG_ONLY,
+                    short_k=BACKTEST_SHORT_K,
+                    tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in df_live.columns else None,
+                )
+
+                if positions_by_rebalance_live is None or positions_by_rebalance_live.empty:
+                    logger.warning("Live snapshot skipped: no positions generated.")
+                else:
+                    entry_dates_live = pd.to_datetime(
+                        positions_by_rebalance_live["entry_date"], errors="coerce"
+                    )
+                    if entry_dates_live.notna().any():
+                        latest_entry = entry_dates_live.max()
+                        holdings_count = int((entry_dates_live == latest_entry).sum())
+                        logger.info(
+                            "Live snapshot ready: as_of=%s, entry_date=%s, holdings=%s",
+                            live_as_of.strftime("%Y-%m-%d"),
+                            latest_entry.strftime("%Y-%m-%d"),
+                            holdings_count,
+                        )
+
     test_df_full["pred"] = model.predict(test_df_full[FEATURES])
     if SAMPLE_ON_REBALANCE_DATES:
         test_eval_df = test_df_full[test_df_full["trade_date"].isin(test_dates)].copy()
@@ -1775,8 +1891,17 @@ def run(config_ref: str | Path | None = None) -> None:
         short_k=BACKTEST_SHORT_K,
         tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_df_full.columns else None,
     )
+    if (
+        LIVE_ENABLED
+        and not BACKTEST_ENABLED
+        and positions_by_rebalance_live is not None
+        and not positions_by_rebalance_live.empty
+    ):
+        positions_by_rebalance = positions_by_rebalance_live
     positions_by_rebalance_path: Optional[Path] = None
     positions_current_path: Optional[Path] = None
+    positions_by_rebalance_live_path: Optional[Path] = None
+    positions_current_live_path: Optional[Path] = None
 
     bt_stats = None
     bt_net_series = pd.Series(dtype=float, name="net_return")
@@ -1935,6 +2060,25 @@ def run(config_ref: str | Path | None = None) -> None:
                     positions_current_path = run_dir / "positions_current.csv"
                     save_frame(positions_current, positions_current_path)
 
+        if (
+            BACKTEST_ENABLED
+            and positions_by_rebalance_live is not None
+            and not positions_by_rebalance_live.empty
+        ):
+            positions_by_rebalance_live_path = run_dir / "positions_by_rebalance_live.csv"
+            save_frame(positions_by_rebalance_live, positions_by_rebalance_live_path)
+            live_entry_dates = pd.to_datetime(
+                positions_by_rebalance_live["entry_date"], errors="coerce"
+            )
+            if live_entry_dates.notna().any():
+                live_latest_entry = live_entry_dates.max()
+                positions_current_live = positions_by_rebalance_live[
+                    live_entry_dates == live_latest_entry
+                ].copy()
+                if not positions_current_live.empty:
+                    positions_current_live_path = run_dir / "positions_current_live.csv"
+                    save_frame(positions_current_live, positions_current_live_path)
+
         if perm_stats and perm_stats.get("scores"):
             pd.DataFrame({"ic": perm_stats["scores"]}).to_csv(
                 run_dir / "permutation_test.csv", index=False
@@ -1944,6 +2088,16 @@ def run(config_ref: str | Path | None = None) -> None:
             pd.DataFrame(walk_forward_results).to_csv(
                 run_dir / "walk_forward_summary.csv", index=False
             )
+
+        live_positions_file = None
+        live_current_file = None
+        if LIVE_ENABLED:
+            if BACKTEST_ENABLED:
+                live_positions_file = positions_by_rebalance_live_path
+                live_current_file = positions_current_live_path
+            else:
+                live_positions_file = positions_by_rebalance_path
+                live_current_file = positions_current_path
 
         summary = {
             "run": {
@@ -2037,6 +2191,13 @@ def run(config_ref: str | Path | None = None) -> None:
                 "shift_days": LABEL_SHIFT_DAYS,
                 "buffer_exit": BACKTEST_BUFFER_EXIT,
                 "buffer_entry": BACKTEST_BUFFER_ENTRY,
+            },
+            "live": {
+                "enabled": LIVE_ENABLED,
+                "as_of": live_as_of.strftime("%Y%m%d") if LIVE_ENABLED and live_as_of else None,
+                "train_mode": LIVE_TRAIN_MODE if LIVE_ENABLED else None,
+                "positions_file": str(live_positions_file) if live_positions_file else None,
+                "current_file": str(live_current_file) if live_current_file else None,
             },
             "fundamentals": {
                 "enabled": FUNDAMENTALS_ENABLED,
