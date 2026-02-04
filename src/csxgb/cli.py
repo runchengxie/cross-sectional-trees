@@ -148,6 +148,22 @@ def _handle_holdings(args) -> int:
     return 0
 
 
+def _handle_snapshot(args) -> int:
+    from .project_tools import snapshot
+
+    argv: list[str] = ["--config", args.config]
+    if getattr(args, "as_of", None):
+        argv += ["--as-of", args.as_of]
+    if getattr(args, "top_k", None) is not None:
+        argv += ["--top-k", str(args.top_k)]
+    if getattr(args, "format", None):
+        argv += ["--format", args.format]
+    if getattr(args, "out", None):
+        argv += ["--out", args.out]
+    snapshot.main(argv)
+    return 0
+
+
 def _handle_init_config(args) -> int:
     filename = resolve_pipeline_filename(args.market)
     content = read_package_text("csxgb.config", filename)
@@ -262,6 +278,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional output path (default: stdout).",
     )
     holdings.set_defaults(func=_handle_holdings)
+
+    snapshot = subparsers.add_parser(
+        "snapshot", help="Run a live snapshot and emit latest holdings"
+    )
+    snapshot.add_argument(
+        "--config",
+        required=True,
+        help="Pipeline config path or built-in name.",
+    )
+    snapshot.add_argument(
+        "--as-of",
+        default="t-1",
+        help="As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1). Default: t-1.",
+    )
+    snapshot.add_argument(
+        "--top-k",
+        type=int,
+        help="Optional Top-K filter when selecting the latest run.",
+    )
+    snapshot.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "csv", "json"],
+        help="Output format (text/csv/json). Default: text.",
+    )
+    snapshot.add_argument(
+        "--out",
+        help="Optional output path (default: stdout).",
+    )
+    snapshot.set_defaults(func=_handle_snapshot)
 
     init_cfg = subparsers.add_parser(
         "init-config", help="Export a packaged config template to the filesystem"

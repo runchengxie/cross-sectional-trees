@@ -2119,7 +2119,7 @@ def run(config_ref: str | Path | None = None) -> None:
                     save_frame(positions_current, positions_current_path)
 
         if (
-            BACKTEST_ENABLED
+            LIVE_ENABLED
             and positions_by_rebalance_live is not None
             and not positions_by_rebalance_live.empty
         ):
@@ -2150,11 +2150,14 @@ def run(config_ref: str | Path | None = None) -> None:
         live_positions_file = None
         live_current_file = None
         if LIVE_ENABLED:
-            if BACKTEST_ENABLED:
+            if positions_by_rebalance_live_path is not None:
                 live_positions_file = positions_by_rebalance_live_path
-                live_current_file = positions_current_live_path
-            else:
+            elif not BACKTEST_ENABLED:
                 live_positions_file = positions_by_rebalance_path
+
+            if positions_current_live_path is not None:
+                live_current_file = positions_current_live_path
+            elif not BACKTEST_ENABLED:
                 live_current_file = positions_current_path
 
         summary = {

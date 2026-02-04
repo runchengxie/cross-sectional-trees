@@ -50,3 +50,5 @@ live:
 
 说明：
 * `last_trading_day` / `last_completed_trading_day` 需要交易日历支持（`provider=rqdata`），否则会退回到自然日并给出警告。
+* Live 产物固定写入 `positions_by_rebalance_live.csv` 与 `positions_current_live.csv`；`csxgb holdings --source live` 会优先读取 summary 中的 live 文件路径。
+* 一键快照：`csxgb snapshot --config config/hk_live.yml`（内部先 run 再输出 holdings）。

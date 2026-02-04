@@ -117,6 +117,26 @@ def _resolve_run_dir(config_path: str | None, run_dir: str | None, top_k: int | 
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
+def _resolve_summary_path(value: object, run_dir: Path) -> Path | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    raw = Path(text)
+    candidates: list[Path] = []
+    if raw.is_absolute():
+        candidates.append(raw)
+    else:
+        candidates.append((Path.cwd() / raw).resolve())
+        candidates.append((run_dir / raw).resolve())
+    candidates.append(run_dir / raw.name)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _parse_date_column(values: pd.Series) -> pd.Series:
     text = values.astype(str).str.strip()
     compact = text.str.replace("-", "", regex=False)
@@ -159,6 +179,8 @@ def _render_text(
     *,
     data_end_date: pd.Timestamp | None = None,
     source: str | None = None,
+    run_dir: Path | None = None,
+    positions_path: Path | None = None,
 ) -> str:
     rebalance_date = None
     if "rebalance_date" in df.columns:
@@ -171,6 +193,10 @@ def _render_text(
         lines.append(f"Data end date: {data_end_date.strftime('%Y-%m-%d')}")
     if source:
         lines.append(f"Source: {source}")
+    if run_dir is not None:
+        lines.append(f"Run dir: {run_dir}")
+    if positions_path is not None:
+        lines.append(f"Positions file: {positions_path}")
     if rebalance_date:
         lines.append(f"Rebalance date: {rebalance_date}")
     lines.append(f"Holdings: {len(df)}")
@@ -267,6 +293,27 @@ def main(argv: list[str] | None = None) -> None:
         except Exception:
             summary = None
 
+    def _pick_summary_positions_path(kind: str) -> Path | None:
+        if not isinstance(summary, dict):
+            return None
+        if kind == "live":
+            live_section = summary.get("live")
+            if not isinstance(live_section, dict):
+                return None
+            for key in ("positions_file", "current_file"):
+                resolved = _resolve_summary_path(live_section.get(key), run_dir)
+                if resolved is not None:
+                    return resolved
+            return None
+        positions_section = summary.get("positions")
+        if not isinstance(positions_section, dict):
+            return None
+        for key in ("by_rebalance_file", "current_file"):
+            resolved = _resolve_summary_path(positions_section.get(key), run_dir)
+            if resolved is not None:
+                return resolved
+        return None
+
     def _pick_positions_path(kind: str) -> Path | None:
         if kind == "live":
             live_path = run_dir / "positions_by_rebalance_live.csv"
@@ -284,14 +331,21 @@ def main(argv: list[str] | None = None) -> None:
             return backtest_current
         return None
 
+    def _resolve_positions_path(kind: str) -> Path | None:
+        return _pick_summary_positions_path(kind) or _pick_positions_path(kind)
+
     source = args.source
     if source == "auto":
-        positions_path = _pick_positions_path("live") or _pick_positions_path("backtest")
-        source = "live" if positions_path and "live" in positions_path.name else "backtest"
+        positions_path = _resolve_positions_path("live")
+        if positions_path is not None:
+            source = "live"
+        else:
+            positions_path = _resolve_positions_path("backtest")
+            source = "backtest"
     elif source == "live":
-        positions_path = _pick_positions_path("live")
+        positions_path = _resolve_positions_path("live")
     else:
-        positions_path = _pick_positions_path("backtest")
+        positions_path = _resolve_positions_path("backtest")
 
     if positions_path is None or not positions_path.exists():
         raise SystemExit(f"No positions file found for source '{source}' in {run_dir}")
@@ -340,6 +394,8 @@ def main(argv: list[str] | None = None) -> None:
             latest_entry,
             data_end_date=data_end_date,
             source=source,
+            run_dir=run_dir,
+            positions_path=positions_path,
         )
     elif args.format == "csv":
         content = selection.to_csv(index=False)
@@ -352,6 +408,8 @@ def main(argv: list[str] | None = None) -> None:
             else None,
             "data_end_date": data_end_date.strftime("%Y-%m-%d") if data_end_date is not None else None,
             "source": source,
+            "run_dir": str(run_dir),
+            "positions_file": str(positions_path),
             "holdings": selection.to_dict(orient="records"),
         }
         content = json.dumps(payload, ensure_ascii=False, indent=2, default=str)

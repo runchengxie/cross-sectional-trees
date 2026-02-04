@@ -123,6 +123,7 @@ data:
 * `csxgb run`
 * `csxgb grid`
 * `csxgb holdings`
+* `csxgb snapshot`
 * `csxgb rqdata info`
 * `csxgb rqdata quota`
 * `csxgb tushare verify-token`
@@ -143,6 +144,11 @@ csxgb grid --config config/hk.yml
 csxgb holdings --config config/hk.yml --as-of t-1
 csxgb holdings --config config/hk.yml --as-of 20260131 --format csv --out out/positions/20260131.csv
 
+# 实盘快照（推荐 live 配置）
+csxgb run --config config/hk_live.yml
+csxgb holdings --config config/hk_live.yml --source live
+csxgb snapshot --config config/hk_live.yml
+
 # RQData 信息 / 配额
 csxgb rqdata info
 csxgb rqdata quota
@@ -161,11 +167,13 @@ csxgb universe hk-connect --mode daily
 * 产物目录：`out/runs/<run_name>_<timestamp>_<hash>/`
 * 典型产物：`summary.json`、`config.used.yml`、`ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`、`feature_importance.csv`
 * 持仓清单：`positions_by_rebalance.csv`、`positions_current.csv`
+* Live 持仓清单：`positions_by_rebalance_live.csv`、`positions_current_live.csv`
 
 ## 模型假设
 
 * 回测为 long-only Top-K 等权组合，按再平衡周期持有。
 * 成交价使用 `price_col`（默认 close）并在 `rebalance_date + shift_days` 入场、下一次再平衡/持有期结束出场；近似 EOD 策略。
+* 持仓快照输出的是 target holdings，`entry_date = rebalance_date + shift_days`。当 `shift_days=1` 时，月末信号对应次月首个交易日入场，“当月持仓”可能仍是上月组合。
 * 成本模型：`transaction_cost_bps` 为单边成本；首期建仓只计单边成本，后续按换手率计算双边成本。
 * 换手率已考虑权重漂移后的再平衡需求；支持 Top-K 缓冲区（`buffer_exit/buffer_entry`）降低换手；停牌/缺失通过 `is_tradable` + `backtest.exit_price_policy` 近似处理（strict/ffill/delay），仍未建模涨跌停/盘口滑点等。
 * `exit_mode=label_horizon` 不支持与再平衡频率重叠（若持有期 > 再平衡间隔会直接跳过/报错）；需保持间隔≈持有期，或改用 `exit_mode=rebalance`。
