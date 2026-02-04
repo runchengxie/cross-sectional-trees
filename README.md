@@ -89,6 +89,25 @@ csxgb run --config config/hk.yml
 ls -lh out/runs/
 ```
 
+## 推荐流程
+
+1. （如果你做 HK 且需要严谨历史池）先把 PIT 股票池准备好（示例里是 hk-connect）。
+
+2. 跑网格：
+  `csxgb grid --config config/hk.yml`
+  看结果：`out/runs/grid_summary.csv`
+
+3. 选一组满意的参数（参考Sharpe / 回撤 / 换手等等）。
+
+4. 复制一份配置：`config/hk.yml -> config/hk_selected.yml`，改这几个键：
+
+* `eval.top_k`、`backtest.top_k`
+* `eval.transaction_cost_bps`、`backtest.transaction_cost_bps`
+
+1. 跑正式单次：
+  `csxgb run --config config/hk_selected.yml`
+  然后你会拿到完整产物目录，包含 `summary.json`、`config.used.yml`、回测/IC/特征重要性、以及持仓 CSV 等。
+
 ## 数据库变量
 
 环境变量清单（推荐写入 `.env`）：
@@ -131,11 +150,14 @@ data:
 * `csxgb universe hk-connect`
 * `csxgb init-config`
 
-常用例子：
+常用指令：
 
 ```bash
 # 主流程
 csxgb run --config hk
+
+# 或指定配置文件
+csxgb run --config config/hk_selected.yml
 
 # Top-K × 成本敏感性网格
 csxgb grid --config config/hk.yml

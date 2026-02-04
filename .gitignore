@@ -214,3 +214,6 @@ full_project_source.txt
 
 # Derived outputs
 /out/
+
+# Designated config
+config/hk_selected.yml
