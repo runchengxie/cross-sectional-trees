@@ -104,6 +104,25 @@ def _resolve_run_dir(config_path: str | None, run_dir: str | None, top_k: int | 
         return candidate
 
     output_dir, run_name = _resolve_output_dir(config_path)
+    if top_k is None:
+        latest_path = output_dir / "latest.json"
+        if latest_path.exists():
+            try:
+                latest_payload = json.loads(latest_path.read_text(encoding="utf-8"))
+            except Exception:
+                latest_payload = None
+            if isinstance(latest_payload, dict):
+                latest_name = latest_payload.get("run_name")
+                if latest_name and str(latest_name) != str(run_name):
+                    latest_payload = None
+            if isinstance(latest_payload, dict):
+                latest_dir = latest_payload.get("run_dir")
+                if latest_dir:
+                    candidate = Path(latest_dir).expanduser()
+                    if not candidate.is_absolute():
+                        candidate = (Path.cwd() / candidate).resolve()
+                    if candidate.exists():
+                        return candidate
     summary_path = _find_latest_summary(output_dir, run_name, top_k)
     if summary_path is not None:
         return summary_path.parent
@@ -159,6 +178,15 @@ def _format_float(value: object, decimals: int) -> str:
     return f"{val:.{decimals}f}"
 
 
+def _format_date_value(value: object) -> str | None:
+    if value is None:
+        return None
+    parsed = _parse_date_column(pd.Series([value])).iloc[0]
+    if pd.isna(parsed):
+        return str(value)
+    return parsed.strftime("%Y-%m-%d")
+
+
 def _format_table(rows: list[list[str]], headers: list[str]) -> str:
     widths = [len(header) for header in headers]
     for row in rows:
@@ -185,10 +213,28 @@ def _render_text(
     rebalance_date = None
     if "rebalance_date" in df.columns:
         rebalance_date = str(df["rebalance_date"].iloc[0])
+    signal_asof = None
+    if "signal_asof" in df.columns:
+        signal_asof = str(df["signal_asof"].iloc[0])
+    elif rebalance_date:
+        signal_asof = rebalance_date
+    next_entry_date = None
+    if "next_entry_date" in df.columns:
+        next_entry_date = str(df["next_entry_date"].iloc[0]) or None
     lines = [
         f"As-of: {as_of.strftime('%Y-%m-%d')}",
         f"Entry date: {entry_date.strftime('%Y-%m-%d')}",
     ]
+    if signal_asof:
+        formatted_signal = _format_date_value(signal_asof)
+        if formatted_signal:
+            lines.append(f"Signal as-of: {formatted_signal}")
+    if next_entry_date:
+        formatted_next = _format_date_value(next_entry_date)
+        if formatted_next:
+            lines.append(
+                f"Holding window: {entry_date.strftime('%Y-%m-%d')} -> {formatted_next} (next rebalance)"
+            )
     if data_end_date is not None:
         lines.append(f"Data end date: {data_end_date.strftime('%Y-%m-%d')}")
     if source:
@@ -198,7 +244,8 @@ def _render_text(
     if positions_path is not None:
         lines.append(f"Positions file: {positions_path}")
     if rebalance_date:
-        lines.append(f"Rebalance date: {rebalance_date}")
+        formatted_rebalance = _format_date_value(rebalance_date)
+        lines.append(f"Rebalance date: {formatted_rebalance or rebalance_date}")
     lines.append(f"Holdings: {len(df)}")
     if data_end_date is not None and as_of > data_end_date:
         lines.append(
@@ -400,10 +447,27 @@ def main(argv: list[str] | None = None) -> None:
     elif args.format == "csv":
         content = selection.to_csv(index=False)
     else:
+        signal_asof = None
+        if "signal_asof" in selection.columns:
+            signal_asof = selection["signal_asof"].iloc[0]
+        elif "rebalance_date" in selection.columns:
+            signal_asof = selection["rebalance_date"].iloc[0]
+        next_entry_date = None
+        if "next_entry_date" in selection.columns:
+            next_entry_date = selection["next_entry_date"].iloc[0]
+        holding_window = None
+        formatted_next = _format_date_value(next_entry_date) if next_entry_date else None
+        if formatted_next:
+            holding_window = (
+                f"{latest_entry.strftime('%Y-%m-%d')} -> {formatted_next} (next rebalance)"
+            )
         payload = {
             "as_of": as_of.strftime("%Y-%m-%d"),
             "entry_date": latest_entry.strftime("%Y-%m-%d"),
-            "rebalance_date": selection["rebalance_date"].iloc[0]
+            "signal_asof": _format_date_value(signal_asof) if signal_asof else None,
+            "next_entry_date": formatted_next,
+            "holding_window": holding_window,
+            "rebalance_date": _format_date_value(selection["rebalance_date"].iloc[0])
             if "rebalance_date" in selection.columns
             else None,
             "data_end_date": data_end_date.strftime("%Y-%m-%d") if data_end_date is not None else None,

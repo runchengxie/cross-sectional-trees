@@ -311,23 +311,140 @@ def config_hash(cfg: dict) -> str:
     return hashlib.md5(dumped.encode("utf-8")).hexdigest()[:8]
 
 
+def _atomic_write(path: Path, write_fn) -> None:
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    try:
+        write_fn(tmp_path)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
 def save_series(series: pd.Series, path: Path, value_name: Optional[str] = None) -> None:
     if series is None or series.empty:
         return
     name = value_name or series.name or "value"
     out = series.rename(name).reset_index()
-    out.to_csv(path, index=False)
+
+    def _write(tmp_path: Path) -> None:
+        out.to_csv(tmp_path, index=False)
+
+    _atomic_write(path, _write)
 
 
 def save_frame(frame: pd.DataFrame, path: Path) -> None:
     if frame is None or frame.empty:
         return
-    frame.to_csv(path, index=False)
+
+    def _write(tmp_path: Path) -> None:
+        frame.to_csv(tmp_path, index=False)
+
+    _atomic_write(path, _write)
 
 
 def save_json(payload: dict, path: Path) -> None:
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=True, indent=2, default=str)
+    def _write(tmp_path: Path) -> None:
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=True, indent=2, default=str)
+
+    _atomic_write(path, _write)
+
+
+def _coerce_yyyymmdd(values: pd.Series) -> pd.Series:
+    text = values.astype(str).str.strip()
+    compact = text.str.replace("-", "", regex=False)
+    parsed = pd.to_datetime(compact, format="%Y%m%d", errors="coerce")
+    formatted = parsed.dt.strftime("%Y%m%d")
+    return formatted.where(parsed.notna(), text)
+
+
+def _annotate_positions_window(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return frame
+    out = frame.copy()
+    if "rebalance_date" in out.columns:
+        rebalance_compact = _coerce_yyyymmdd(out["rebalance_date"])
+        out["rebalance_date"] = rebalance_compact
+        out["signal_asof"] = rebalance_compact
+    if "entry_date" in out.columns:
+        entry_compact = _coerce_yyyymmdd(out["entry_date"])
+        out["entry_date"] = entry_compact
+        entry_dt = pd.to_datetime(entry_compact, format="%Y%m%d", errors="coerce")
+        unique_entries = sorted(entry_dt.dropna().unique())
+        next_map = {
+            unique_entries[idx]: unique_entries[idx + 1]
+            for idx in range(len(unique_entries) - 1)
+        }
+        next_entry = entry_dt.map(next_map)
+        next_entry_str = next_entry.dt.strftime("%Y%m%d").where(next_entry.notna(), "")
+        out["next_entry_date"] = next_entry_str
+        holding_window = out["entry_date"].astype(str) + " -> " + out["next_entry_date"]
+        holding_window = holding_window.where(out["next_entry_date"].astype(str) != "", out["entry_date"])
+        out["holding_window"] = holding_window
+    return out
+
+
+def _build_rebalance_diff(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame is None or frame.empty or "entry_date" not in frame.columns:
+        return pd.DataFrame()
+    entry_compact = _coerce_yyyymmdd(frame["entry_date"])
+    entry_dt = pd.to_datetime(entry_compact, format="%Y%m%d", errors="coerce")
+    unique_entries = sorted(entry_dt.dropna().unique())
+    if len(unique_entries) < 2:
+        return pd.DataFrame()
+    latest_entry = unique_entries[-1]
+    prev_entry = unique_entries[-2]
+    current = frame[entry_dt == latest_entry].copy()
+    previous = frame[entry_dt == prev_entry].copy()
+
+    for df in (current, previous):
+        if "side" not in df.columns:
+            df["side"] = "long"
+        if "weight" not in df.columns:
+            df["weight"] = np.nan
+        if "signal" not in df.columns:
+            df["signal"] = np.nan
+        if "rank" not in df.columns:
+            df["rank"] = np.nan
+
+    current = current[["ts_code", "side", "weight", "signal", "rank"]].rename(
+        columns={
+            "weight": "weight",
+            "signal": "signal",
+            "rank": "rank",
+        }
+    )
+    previous = previous[["ts_code", "side", "weight", "signal", "rank"]].rename(
+        columns={
+            "weight": "weight_prev",
+            "signal": "signal_prev",
+            "rank": "rank_prev",
+        }
+    )
+
+    merged = current.merge(
+        previous, on=["ts_code", "side"], how="outer", indicator=True
+    )
+    merged["weight"] = merged["weight"].fillna(0.0)
+    merged["weight_prev"] = merged["weight_prev"].fillna(0.0)
+    merged["weight_delta"] = merged["weight"] - merged["weight_prev"]
+    merged["change"] = merged["_merge"].map(
+        {"left_only": "added", "right_only": "removed", "both": "changed"}
+    )
+    merged.loc[
+        (merged["_merge"] == "both") & (merged["weight_delta"].abs() < 1e-12),
+        "change",
+    ] = "unchanged"
+    merged = merged[merged["change"] != "unchanged"].copy()
+    merged["entry_date"] = latest_entry.strftime("%Y%m%d")
+    merged["entry_date_prev"] = prev_entry.strftime("%Y%m%d")
+    merged.drop(columns=["_merge"], inplace=True)
+    merged.sort_values(["change", "side", "ts_code"], inplace=True)
+    return merged
 
 
 def normalize_symbol_list(value) -> list[str]:
@@ -1956,10 +2073,16 @@ def run(config_ref: str | Path | None = None) -> None:
         )
     if LIVE_ENABLED and not BACKTEST_ENABLED:
         positions_by_rebalance = positions_by_rebalance_live
+    if positions_by_rebalance is not None and not positions_by_rebalance.empty:
+        positions_by_rebalance = _annotate_positions_window(positions_by_rebalance)
+    if positions_by_rebalance_live is not None and not positions_by_rebalance_live.empty:
+        positions_by_rebalance_live = _annotate_positions_window(positions_by_rebalance_live)
     positions_by_rebalance_path: Optional[Path] = None
     positions_current_path: Optional[Path] = None
     positions_by_rebalance_live_path: Optional[Path] = None
     positions_current_live_path: Optional[Path] = None
+    positions_diff_path: Optional[Path] = None
+    positions_diff_live_path: Optional[Path] = None
 
     bt_stats = None
     bt_net_series = pd.Series(dtype=float, name="net_return")
@@ -2088,12 +2211,11 @@ def run(config_ref: str | Path | None = None) -> None:
             save_series(train_ic_series, run_dir / "ic_train.csv", value_name="ic")
         if not quantile_ts.empty:
             quantile_out = quantile_ts.reset_index()
-            quantile_out.to_csv(run_dir / "quantile_returns.csv", index=False)
+            save_frame(quantile_out, run_dir / "quantile_returns.csv")
         save_series(turnover_series, run_dir / "turnover_eval.csv", value_name="turnover")
         if not dropped_date_counts.empty:
-            dropped_date_counts.rename("symbol_count").reset_index().to_csv(
-                run_dir / "dropped_dates.csv", index=False
-            )
+            dropped_df = dropped_date_counts.rename("symbol_count").reset_index()
+            save_frame(dropped_df, run_dir / "dropped_dates.csv")
         if bt_stats is not None:
             save_series(bt_net_series, run_dir / "backtest_net.csv", value_name="net_return")
             save_series(bt_gross_series, run_dir / "backtest_gross.csv", value_name="gross_return")
@@ -2105,9 +2227,13 @@ def run(config_ref: str | Path | None = None) -> None:
             if not bt_active_series.empty:
                 save_series(bt_active_series, run_dir / "backtest_active.csv", value_name="active_return")
             if bt_periods:
-                pd.DataFrame(bt_periods).to_csv(run_dir / "backtest_periods.csv", index=False)
+                save_frame(pd.DataFrame(bt_periods), run_dir / "backtest_periods.csv")
 
-        if positions_by_rebalance is not None and not positions_by_rebalance.empty:
+        if (
+            positions_by_rebalance is not None
+            and not positions_by_rebalance.empty
+            and (BACKTEST_ENABLED or not LIVE_ENABLED)
+        ):
             positions_by_rebalance_path = run_dir / "positions_by_rebalance.csv"
             save_frame(positions_by_rebalance, positions_by_rebalance_path)
             entry_dates = pd.to_datetime(positions_by_rebalance["entry_date"], errors="coerce")
@@ -2137,28 +2263,38 @@ def run(config_ref: str | Path | None = None) -> None:
                     positions_current_live_path = run_dir / "positions_current_live.csv"
                     save_frame(positions_current_live, positions_current_live_path)
 
+        if (
+            positions_by_rebalance is not None
+            and not positions_by_rebalance.empty
+            and (BACKTEST_ENABLED or not LIVE_ENABLED)
+        ):
+            diff_frame = _build_rebalance_diff(positions_by_rebalance)
+            if not diff_frame.empty:
+                positions_diff_path = run_dir / "rebalance_diff.csv"
+                save_frame(diff_frame, positions_diff_path)
+
+        if LIVE_ENABLED and positions_by_rebalance_live is not None and not positions_by_rebalance_live.empty:
+            diff_live = _build_rebalance_diff(positions_by_rebalance_live)
+            if not diff_live.empty:
+                positions_diff_live_path = run_dir / "rebalance_diff_live.csv"
+                save_frame(diff_live, positions_diff_live_path)
+
         if perm_stats and perm_stats.get("scores"):
-            pd.DataFrame({"ic": perm_stats["scores"]}).to_csv(
-                run_dir / "permutation_test.csv", index=False
+            save_frame(
+                pd.DataFrame({"ic": perm_stats["scores"]}),
+                run_dir / "permutation_test.csv",
             )
 
         if walk_forward_results:
-            pd.DataFrame(walk_forward_results).to_csv(
-                run_dir / "walk_forward_summary.csv", index=False
-            )
+            save_frame(pd.DataFrame(walk_forward_results), run_dir / "walk_forward_summary.csv")
 
         live_positions_file = None
         live_current_file = None
         if LIVE_ENABLED:
             if positions_by_rebalance_live_path is not None:
                 live_positions_file = positions_by_rebalance_live_path
-            elif not BACKTEST_ENABLED:
-                live_positions_file = positions_by_rebalance_path
-
             if positions_current_live_path is not None:
                 live_current_file = positions_current_live_path
-            elif not BACKTEST_ENABLED:
-                live_current_file = positions_current_path
 
         summary = {
             "run": {
@@ -2249,9 +2385,16 @@ def run(config_ref: str | Path | None = None) -> None:
                 if positions_by_rebalance_path
                 else None,
                 "current_file": str(positions_current_path) if positions_current_path else None,
+                "diff_file": str(positions_diff_path) if positions_diff_path else None,
                 "shift_days": LABEL_SHIFT_DAYS,
                 "buffer_exit": BACKTEST_BUFFER_EXIT,
                 "buffer_entry": BACKTEST_BUFFER_ENTRY,
+                "window_fields": {
+                    "signal_asof": "signal_asof",
+                    "entry_date": "entry_date",
+                    "next_entry_date": "next_entry_date",
+                    "holding_window": "holding_window",
+                },
             },
             "live": {
                 "enabled": LIVE_ENABLED,
@@ -2259,6 +2402,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 "train_mode": LIVE_TRAIN_MODE if LIVE_ENABLED else None,
                 "positions_file": str(live_positions_file) if live_positions_file else None,
                 "current_file": str(live_current_file) if live_current_file else None,
+                "diff_file": str(positions_diff_live_path) if positions_diff_live_path else None,
             },
             "fundamentals": {
                 "enabled": FUNDAMENTALS_ENABLED,
@@ -2280,6 +2424,19 @@ def run(config_ref: str | Path | None = None) -> None:
         save_json(summary, run_dir / "summary.json")
         with (run_dir / "config.used.yml").open("w", encoding="utf-8") as handle:
             yaml.safe_dump(config, handle, sort_keys=False)
+        if LIVE_ENABLED:
+            latest_payload = {
+                "run_dir": str(run_dir),
+                "run_name": run_name,
+                "timestamp": run_stamp,
+                "config_hash": run_hash,
+                "summary_file": str(run_dir / "summary.json"),
+                "as_of": summary.get("live", {}).get("as_of"),
+                "positions_file": summary.get("live", {}).get("positions_file"),
+                "current_file": summary.get("live", {}).get("current_file"),
+                "diff_file": summary.get("live", {}).get("diff_file"),
+            }
+            save_json(latest_payload, run_dir.parent / "latest.json")
 
     # Optional: save the model
     # from joblib import dump; dump(model, "xgb_factor_model.joblib")

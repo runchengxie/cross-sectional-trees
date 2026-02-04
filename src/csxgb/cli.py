@@ -151,9 +151,15 @@ def _handle_holdings(args) -> int:
 def _handle_snapshot(args) -> int:
     from .project_tools import snapshot
 
-    argv: list[str] = ["--config", args.config]
+    argv: list[str] = []
+    if getattr(args, "config", None):
+        argv += ["--config", args.config]
+    if getattr(args, "run_dir", None):
+        argv += ["--run-dir", args.run_dir]
     if getattr(args, "as_of", None):
         argv += ["--as-of", args.as_of]
+    if getattr(args, "skip_run", None):
+        argv += ["--skip-run"]
     if getattr(args, "top_k", None) is not None:
         argv += ["--top-k", str(args.top_k)]
     if getattr(args, "format", None):
@@ -284,13 +290,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     snapshot.add_argument(
         "--config",
-        required=True,
         help="Pipeline config path or built-in name.",
+    )
+    snapshot.add_argument(
+        "--run-dir",
+        help="Use an existing run directory (skips pipeline run).",
     )
     snapshot.add_argument(
         "--as-of",
         default="t-1",
         help="As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1). Default: t-1.",
+    )
+    snapshot.add_argument(
+        "--skip-run",
+        action="store_true",
+        help="Skip running the pipeline and only emit holdings from the latest run.",
     )
     snapshot.add_argument(
         "--top-k",

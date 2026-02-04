@@ -22,7 +22,7 @@ def _write_positions(path, entry_date="2020-01-02", rebalance_date="2020-01-01")
 def test_holdings_live_uses_summary_path(tmp_path, capsys):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    positions_path = run_dir / "positions_by_rebalance.csv"
+    positions_path = run_dir / "positions_by_rebalance_live.csv"
     _write_positions(positions_path)
     summary = {
         "data": {"end_date": "20200103"},
@@ -52,7 +52,7 @@ def test_holdings_live_uses_summary_path(tmp_path, capsys):
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["source"] == "live"
-    assert payload["positions_file"].endswith("positions_by_rebalance.csv")
+    assert payload["positions_file"].endswith("positions_by_rebalance_live.csv")
     assert payload["run_dir"].endswith("run")
 
 
