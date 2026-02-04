@@ -432,7 +432,7 @@ def _build_rebalance_diff(frame: pd.DataFrame) -> pd.DataFrame:
     merged["weight"] = merged["weight"].fillna(0.0)
     merged["weight_prev"] = merged["weight_prev"].fillna(0.0)
     merged["weight_delta"] = merged["weight"] - merged["weight_prev"]
-    merged["change"] = merged["_merge"].map(
+    merged["change"] = merged["_merge"].astype(str).map(
         {"left_only": "added", "right_only": "removed", "both": "changed"}
     )
     merged.loc[
