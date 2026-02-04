@@ -64,29 +64,10 @@ pip install -e .
 pip install -e .[rqdata]
 ```
 
-1. 准备环境变量（见 `Credentials`）：
+准备环境变量（见 `Credentials`）：
 
 ```bash
 cp .env.example .env
-```
-
-1. 导出内置配置模板（`default/cn/hk/us`）：
-
-```bash
-csxgb init-config --market hk --out config/
-```
-
-1. 运行一次（`--config` 支持内置别名或路径）：
-
-```bash
-csxgb run --config hk
-csxgb run --config config/hk.yml
-```
-
-1. 查看产物：
-
-```bash
-ls -lh out/runs/
 ```
 
 ## 推荐流程
