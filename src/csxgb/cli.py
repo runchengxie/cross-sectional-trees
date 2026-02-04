@@ -138,6 +138,8 @@ def _handle_holdings(args) -> int:
         argv += ["--top-k", str(args.top_k)]
     if getattr(args, "as_of", None):
         argv += ["--as-of", args.as_of]
+    if getattr(args, "source", None):
+        argv += ["--source", args.source]
     if getattr(args, "format", None):
         argv += ["--format", args.format]
     if getattr(args, "out", None):
@@ -242,6 +244,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--as-of",
         default="t-1",
         help="As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1). Default: t-1.",
+    )
+    holdings.add_argument(
+        "--source",
+        default="auto",
+        choices=["auto", "backtest", "live"],
+        help="Positions source (auto/backtest/live). Default: auto.",
     )
     holdings.add_argument(
         "--format",

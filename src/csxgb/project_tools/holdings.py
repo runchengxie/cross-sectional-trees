@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -19,8 +20,10 @@ def _normalize_as_of_token(value: str | None) -> str:
     lowered = text.lower()
     if lowered in {"today", "t", "now"}:
         return "today"
-    if lowered in {"t-1", "yesterday", "last_trading_day", "last_completed_trading_day"}:
+    if lowered in {"t-1", "yesterday"}:
         return "t-1"
+    if lowered in {"last_trading_day", "last_completed_trading_day"}:
+        return lowered
     return text
 
 
@@ -29,6 +32,13 @@ def _resolve_as_of(value: str | None) -> pd.Timestamp:
     today = pd.Timestamp.now().normalize()
     if token == "today":
         return today
+    if token in {"last_trading_day", "last_completed_trading_day"}:
+        include_today = token == "last_trading_day"
+        print(
+            f"Warning: --as-of={token} uses calendar day fallback (no trading calendar).",
+            file=sys.stderr,
+        )
+        return today if include_today else today - pd.Timedelta(days=1)
     if token == "t-1":
         return today - pd.Timedelta(days=1)
     text = str(token).strip()
@@ -142,7 +152,14 @@ def _format_table(rows: list[list[str]], headers: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _render_text(df: pd.DataFrame, as_of: pd.Timestamp, entry_date: pd.Timestamp) -> str:
+def _render_text(
+    df: pd.DataFrame,
+    as_of: pd.Timestamp,
+    entry_date: pd.Timestamp,
+    *,
+    data_end_date: pd.Timestamp | None = None,
+    source: str | None = None,
+) -> str:
     rebalance_date = None
     if "rebalance_date" in df.columns:
         rebalance_date = str(df["rebalance_date"].iloc[0])
@@ -150,9 +167,17 @@ def _render_text(df: pd.DataFrame, as_of: pd.Timestamp, entry_date: pd.Timestamp
         f"As-of: {as_of.strftime('%Y-%m-%d')}",
         f"Entry date: {entry_date.strftime('%Y-%m-%d')}",
     ]
+    if data_end_date is not None:
+        lines.append(f"Data end date: {data_end_date.strftime('%Y-%m-%d')}")
+    if source:
+        lines.append(f"Source: {source}")
     if rebalance_date:
         lines.append(f"Rebalance date: {rebalance_date}")
     lines.append(f"Holdings: {len(df)}")
+    if data_end_date is not None and as_of > data_end_date:
+        lines.append(
+            "Warning: as-of is after data end date; holdings may be stale."
+        )
 
     display = df.copy()
     if "side" not in display.columns:
@@ -199,6 +224,12 @@ def main(argv: list[str] | None = None) -> None:
         help="As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1). Default: t-1.",
     )
     parser.add_argument(
+        "--source",
+        default="auto",
+        choices=["auto", "backtest", "live"],
+        help="Positions source (auto/backtest/live). Default: auto.",
+    )
+    parser.add_argument(
         "--format",
         default="text",
         choices=["text", "csv", "json"],
@@ -228,16 +259,49 @@ def main(argv: list[str] | None = None) -> None:
                         )
                 except (TypeError, ValueError):
                     pass
-    positions_path = run_dir / "positions_by_rebalance.csv"
-    if not positions_path.exists():
-        raise SystemExit(f"positions_by_rebalance.csv not found in {run_dir}")
+    summary = None
+    summary_path = run_dir / "summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            summary = None
+
+    def _pick_positions_path(kind: str) -> Path | None:
+        if kind == "live":
+            live_path = run_dir / "positions_by_rebalance_live.csv"
+            if live_path.exists():
+                return live_path
+            live_current = run_dir / "positions_current_live.csv"
+            if live_current.exists():
+                return live_current
+            return None
+        backtest_path = run_dir / "positions_by_rebalance.csv"
+        if backtest_path.exists():
+            return backtest_path
+        backtest_current = run_dir / "positions_current.csv"
+        if backtest_current.exists():
+            return backtest_current
+        return None
+
+    source = args.source
+    if source == "auto":
+        positions_path = _pick_positions_path("live") or _pick_positions_path("backtest")
+        source = "live" if positions_path and "live" in positions_path.name else "backtest"
+    elif source == "live":
+        positions_path = _pick_positions_path("live")
+    else:
+        positions_path = _pick_positions_path("backtest")
+
+    if positions_path is None or not positions_path.exists():
+        raise SystemExit(f"No positions file found for source '{source}' in {run_dir}")
 
     df = pd.read_csv(positions_path)
     if df.empty:
-        raise SystemExit("positions_by_rebalance.csv is empty.")
+        raise SystemExit(f"{positions_path.name} is empty.")
 
     if "entry_date" not in df.columns:
-        raise SystemExit("positions_by_rebalance.csv is missing entry_date.")
+        raise SystemExit(f"{positions_path.name} is missing entry_date.")
 
     entry_dates = _parse_date_column(df["entry_date"])
     if entry_dates.isna().all():
@@ -253,7 +317,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("No holdings found for the latest entry date.")
 
     if "ts_code" not in selection.columns:
-        raise SystemExit("positions_by_rebalance.csv is missing ts_code.")
+        raise SystemExit(f"{positions_path.name} is missing ts_code.")
     if "side" not in selection.columns:
         selection["side"] = "long"
     if "rank" not in selection.columns:
@@ -261,8 +325,22 @@ def main(argv: list[str] | None = None) -> None:
 
     selection.sort_values(["side", "rank", "ts_code"], inplace=True, na_position="last")
 
+    data_end_date = None
+    if isinstance(summary, dict):
+        data_end_raw = summary.get("data", {}).get("end_date")
+        if data_end_raw:
+            data_end_date = _parse_date_column(pd.Series([data_end_raw])).iloc[0]
+            if pd.isna(data_end_date):
+                data_end_date = None
+
     if args.format == "text":
-        content = _render_text(selection, as_of, latest_entry)
+        content = _render_text(
+            selection,
+            as_of,
+            latest_entry,
+            data_end_date=data_end_date,
+            source=source,
+        )
     elif args.format == "csv":
         content = selection.to_csv(index=False)
     else:
@@ -272,6 +350,8 @@ def main(argv: list[str] | None = None) -> None:
             "rebalance_date": selection["rebalance_date"].iloc[0]
             if "rebalance_date" in selection.columns
             else None,
+            "data_end_date": data_end_date.strftime("%Y-%m-%d") if data_end_date is not None else None,
+            "source": source,
             "holdings": selection.to_dict(orient="records"),
         }
         content = json.dumps(payload, ensure_ascii=False, indent=2, default=str)

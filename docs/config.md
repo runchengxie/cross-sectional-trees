@@ -33,7 +33,7 @@ csxgb init-config --market hk --out config/
 
 ```yaml
 data:
-  end_date: "t-1"   # 支持 today / t-1 / YYYYMMDD
+  end_date: "t-1"   # 支持 today / t-1 / YYYYMMDD / last_trading_day
 
 eval:
   output_dir: "out/live_runs"
@@ -47,3 +47,6 @@ live:
   as_of: "t-1"
   train_mode: "full"   # full=用全部可用标签训练; train=复用回测训练集模型
 ```
+
+说明：
+* `last_trading_day` / `last_completed_trading_day` 需要交易日历支持（`provider=rqdata`），否则会退回到自然日并给出警告。

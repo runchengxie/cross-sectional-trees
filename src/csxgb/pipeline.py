@@ -58,16 +58,67 @@ def _normalize_date_token(value: object | None, default: str) -> str:
     lowered = text.lower()
     if lowered in {"today", "t", "now"}:
         return "today"
-    if lowered in {"t-1", "yesterday", "last_trading_day", "last_completed_trading_day"}:
+    if lowered in {"t-1", "yesterday"}:
         return "t-1"
+    if lowered in {"last_trading_day", "last_completed_trading_day"}:
+        return lowered
     return text
 
 
-def _resolve_date_token(value: object | None, default: str = "today") -> pd.Timestamp:
+def _resolve_last_trading_date(
+    as_of: pd.Timestamp,
+    market: str,
+    *,
+    include_today: bool,
+) -> Optional[pd.Timestamp]:
+    try:
+        import rqdatac
+    except ImportError:
+        return None
+
+    as_of = pd.to_datetime(as_of).normalize()
+    lookbacks = [366, 365 * 5]
+    for days in lookbacks:
+        start = (as_of - pd.Timedelta(days=days)).strftime("%Y%m%d")
+        end = as_of.strftime("%Y%m%d")
+        try:
+            dates = rqdatac.get_trading_dates(start, end, market=market)
+        except Exception:
+            continue
+        if not dates:
+            continue
+        candidates = [d.normalize() for d in pd.to_datetime(dates)]
+        if include_today:
+            candidates = [d for d in candidates if d <= as_of]
+        else:
+            candidates = [d for d in candidates if d < as_of]
+        if candidates:
+            return max(candidates)
+    return None
+
+
+def _resolve_date_token(
+    value: object | None,
+    default: str = "today",
+    *,
+    market: Optional[str] = None,
+    provider: Optional[str] = None,
+) -> pd.Timestamp:
     token = _normalize_date_token(value, default)
     today = pd.Timestamp.now().normalize()
     if token == "today":
         return today
+    if token in {"last_trading_day", "last_completed_trading_day"}:
+        include_today = token == "last_trading_day"
+        if provider == "rqdata" and market:
+            resolved = _resolve_last_trading_date(today, market, include_today=include_today)
+            if resolved is not None:
+                return resolved
+        logger.warning(
+            "Token '%s' requested but trading calendar unavailable; falling back to calendar day.",
+            token,
+        )
+        return today if include_today else today - pd.Timedelta(days=1)
     if token == "t-1":
         return today - pd.Timedelta(days=1)
     text = str(token).strip()
@@ -566,7 +617,7 @@ def run(config_ref: str | Path | None = None) -> None:
         sys.exit("No symbols configured.")
 
     end_date_cfg = data_cfg.get("end_date", "today")
-    end_date = _resolve_date_token(end_date_cfg, default="today")
+    end_date = _resolve_date_token(end_date_cfg, default="today", market=MARKET, provider=provider)
 
     start_date_cfg = data_cfg.get("start_date")
     if start_date_cfg:
@@ -792,8 +843,8 @@ def run(config_ref: str | Path | None = None) -> None:
     if LIVE_TRAIN_MODE not in {"full", "train"}:
         sys.exit("live.train_mode must be one of: full, train.")
     if LIVE_ENABLED and not SAVE_ARTIFACTS:
-        logger.warning(
-            "live.enabled=true but eval.save_artifacts=false; live positions will not be saved."
+        raise SystemExit(
+            "live.enabled=true requires eval.save_artifacts=true to persist holdings."
         )
 
     run_name = str(RUN_NAME or config_label)
@@ -1672,8 +1723,11 @@ def run(config_ref: str | Path | None = None) -> None:
 
     positions_by_rebalance_live = None
     live_as_of = None
+    live_positions_ready = False
     if LIVE_ENABLED:
-        live_as_of = _resolve_date_token(LIVE_AS_OF, default="t-1")
+        live_as_of = _resolve_date_token(
+            LIVE_AS_OF, default="t-1", market=MARKET, provider=provider
+        )
         df_live = df_features[df_features["trade_date"] <= live_as_of].copy()
         if df_live.empty:
             logger.warning("Live snapshot skipped: no data on or before %s.", live_as_of.date())
@@ -1726,6 +1780,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 if positions_by_rebalance_live is None or positions_by_rebalance_live.empty:
                     logger.warning("Live snapshot skipped: no positions generated.")
                 else:
+                    live_positions_ready = True
                     entry_dates_live = pd.to_datetime(
                         positions_by_rebalance_live["entry_date"], errors="coerce"
                     )
@@ -1738,6 +1793,12 @@ def run(config_ref: str | Path | None = None) -> None:
                             latest_entry.strftime("%Y-%m-%d"),
                             holdings_count,
                         )
+
+    if LIVE_ENABLED and not BACKTEST_ENABLED and not live_positions_ready:
+        raise SystemExit(
+            "live.enabled=true but no live positions were generated; "
+            "refusing to fall back to backtest holdings."
+        )
 
     test_df_full["pred"] = model.predict(test_df_full[FEATURES])
     if SAMPLE_ON_REBALANCE_DATES:
@@ -1878,25 +1939,22 @@ def run(config_ref: str | Path | None = None) -> None:
         test_df_full["signal_bt"] = test_df_full["pred"] * BACKTEST_SIGNAL_DIRECTION
         bt_pred_col = "signal_bt"
 
-    positions_by_rebalance = build_positions_by_rebalance(
-        test_df_full,
-        pred_col=bt_pred_col,
-        price_col=PRICE_COL,
-        rebalance_dates=bt_rebalance,
-        top_k=BACKTEST_TOP_K,
-        shift_days=LABEL_SHIFT_DAYS,
-        buffer_exit=BACKTEST_BUFFER_EXIT,
-        buffer_entry=BACKTEST_BUFFER_ENTRY,
-        long_only=BACKTEST_LONG_ONLY,
-        short_k=BACKTEST_SHORT_K,
-        tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_df_full.columns else None,
-    )
-    if (
-        LIVE_ENABLED
-        and not BACKTEST_ENABLED
-        and positions_by_rebalance_live is not None
-        and not positions_by_rebalance_live.empty
-    ):
+    positions_by_rebalance = None
+    if BACKTEST_ENABLED or not LIVE_ENABLED:
+        positions_by_rebalance = build_positions_by_rebalance(
+            test_df_full,
+            pred_col=bt_pred_col,
+            price_col=PRICE_COL,
+            rebalance_dates=bt_rebalance,
+            top_k=BACKTEST_TOP_K,
+            shift_days=LABEL_SHIFT_DAYS,
+            buffer_exit=BACKTEST_BUFFER_EXIT,
+            buffer_entry=BACKTEST_BUFFER_ENTRY,
+            long_only=BACKTEST_LONG_ONLY,
+            short_k=BACKTEST_SHORT_K,
+            tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_df_full.columns else None,
+        )
+    if LIVE_ENABLED and not BACKTEST_ENABLED:
         positions_by_rebalance = positions_by_rebalance_live
     positions_by_rebalance_path: Optional[Path] = None
     positions_current_path: Optional[Path] = None
