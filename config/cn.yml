@@ -130,7 +130,7 @@ eval:
     n_runs: 3
     seed: 42
   walk_forward:
-    enabled: false
+    enabled: true
     n_windows: 3
     test_size: null
     step_size: null

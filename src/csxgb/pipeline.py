@@ -580,11 +580,13 @@ def run(config_ref: str | Path | None = None) -> None:
     MIN_ABS_IC_TO_FLIP = float(MIN_ABS_IC_TO_FLIP_RAW) if MIN_ABS_IC_TO_FLIP_RAW is not None else 0.0
     if MIN_ABS_IC_TO_FLIP < 0:
         sys.exit("eval.min_abs_ic_to_flip must be >= 0.")
-    EMBARGO_DAYS = eval_cfg.get("embargo_days")
-    EMBARGO_DAYS = int(EMBARGO_DAYS) if EMBARGO_DAYS is not None else 0
+    EMBARGO_DAYS_RAW = eval_cfg.get("embargo_days")
+    EMBARGO_DAYS_CFG = int(EMBARGO_DAYS_RAW) if EMBARGO_DAYS_RAW is not None else 0
     PURGE_DAYS_RAW = eval_cfg.get("purge_days")
-    PURGE_DAYS = None
-    EFFECTIVE_GAP_DAYS = None
+    PURGE_DAYS_CFG = int(PURGE_DAYS_RAW) if PURGE_DAYS_RAW is not None else None
+    PURGE_STEPS = None
+    EMBARGO_STEPS = None
+    EFFECTIVE_GAP_STEPS = None
     REPORT_TRAIN_IC = bool(eval_cfg.get("report_train_ic", True))
     SAMPLE_ON_REBALANCE_DATES = bool(eval_cfg.get("sample_on_rebalance_dates", False))
     perm_cfg = eval_cfg.get("permutation_test") or {}
@@ -1180,6 +1182,16 @@ def run(config_ref: str | Path | None = None) -> None:
             int(dropped_date_counts.max()),
         )
     valid_dates_set = set(pd.to_datetime(valid_dates))
+    rebalance_gap_days = None
+    if SAMPLE_ON_REBALANCE_DATES:
+        sample_dates = sorted(df_model["trade_date"].unique())
+        if len(sample_dates) >= 2:
+            rebalance_gap_days = estimate_rebalance_gap(all_dates_full, sample_dates)
+            if np.isfinite(rebalance_gap_days):
+                logger.info(
+                    "Sample-on-rebalance enabled: median gap %.1f trade days.",
+                    rebalance_gap_days,
+                )
 
     # -----------------------------------------------------------------------------
     # 4. Train-test split (time-series by date)
@@ -1189,11 +1201,42 @@ def run(config_ref: str | Path | None = None) -> None:
     if LABEL_HORIZON_MODE == "next_rebalance" and label_horizon_gap is not None:
         if np.isfinite(label_horizon_gap):
             label_horizon_effective = int(round(label_horizon_gap))
-    if PURGE_DAYS_RAW is None:
-        PURGE_DAYS = int(label_horizon_effective + LABEL_SHIFT_DAYS)
+    if PURGE_DAYS_CFG is None:
+        purge_days = int(label_horizon_effective + LABEL_SHIFT_DAYS)
     else:
-        PURGE_DAYS = int(PURGE_DAYS_RAW)
-    EFFECTIVE_GAP_DAYS = max(EMBARGO_DAYS, PURGE_DAYS)
+        purge_days = int(PURGE_DAYS_CFG)
+    embargo_days = int(EMBARGO_DAYS_CFG)
+
+    def _days_to_steps(days: int, gap_days: Optional[float]) -> int:
+        if days <= 0:
+            return 0
+        if gap_days is None or not np.isfinite(gap_days) or gap_days <= 0:
+            return int(days)
+        return max(0, int(np.floor(days / gap_days)))
+
+    if SAMPLE_ON_REBALANCE_DATES:
+        PURGE_STEPS = _days_to_steps(purge_days, rebalance_gap_days)
+        EMBARGO_STEPS = _days_to_steps(embargo_days, rebalance_gap_days)
+        if rebalance_gap_days is not None and np.isfinite(rebalance_gap_days):
+            logger.info(
+                "Converted embargo/purge from days to rebalance steps: "
+                "embargo=%s->%s, purge=%s->%s (gap≈%.1f days).",
+                embargo_days,
+                EMBARGO_STEPS,
+                purge_days,
+                PURGE_STEPS,
+                rebalance_gap_days,
+            )
+        else:
+            logger.warning(
+                "Sample-on-rebalance enabled but rebalance gap could not be estimated; "
+                "using raw embargo/purge values as steps."
+            )
+    else:
+        PURGE_STEPS = purge_days
+        EMBARGO_STEPS = embargo_days
+
+    EFFECTIVE_GAP_STEPS = max(EMBARGO_STEPS, PURGE_STEPS)
 
     all_dates = np.array(sorted(df_model["trade_date"].unique()))
     if len(all_dates) < 10:
@@ -1201,8 +1244,8 @@ def run(config_ref: str | Path | None = None) -> None:
 
     split_idx = int(len(all_dates) * (1 - TEST_SIZE))
     train_end = split_idx
-    if EFFECTIVE_GAP_DAYS > 0:
-        train_end = max(0, split_idx - EFFECTIVE_GAP_DAYS)
+    if EFFECTIVE_GAP_STEPS > 0:
+        train_end = max(0, split_idx - EFFECTIVE_GAP_STEPS)
     train_dates = all_dates[:train_end]
     test_dates = all_dates[split_idx:]
 
@@ -1213,11 +1256,11 @@ def run(config_ref: str | Path | None = None) -> None:
         sys.exit("Not enough dates for train/test after embargo.")
 
     logger.info(
-        "Train/test split: train_dates=%s, test_dates=%s, purge_days=%s, embargo_days=%s.",
+        "Train/test split: train_dates=%s, test_dates=%s, purge_steps=%s, embargo_steps=%s.",
         len(train_dates),
         len(test_dates),
-        PURGE_DAYS,
-        EMBARGO_DAYS,
+        PURGE_STEPS,
+        EMBARGO_STEPS,
     )
 
     X_train, y_train = train_df[FEATURES], train_df[TARGET]
@@ -1298,8 +1341,8 @@ def run(config_ref: str | Path | None = None) -> None:
                 FEATURES,
                 TARGET,
                 N_SPLITS,
-                EMBARGO_DAYS,
-                PURGE_DAYS,
+                EMBARGO_STEPS,
+                PURGE_STEPS,
                 XGB_PARAMS,
                 1.0,
                 sample_weight_mode=SAMPLE_WEIGHT_MODE,
@@ -1486,8 +1529,8 @@ def run(config_ref: str | Path | None = None) -> None:
         FEATURES,
         TARGET,
         N_SPLITS,
-        EMBARGO_DAYS,
-        PURGE_DAYS,
+        EMBARGO_STEPS,
+        PURGE_STEPS,
         XGB_PARAMS,
         1.0,
         sample_weight_mode=SAMPLE_WEIGHT_MODE,
@@ -1836,7 +1879,7 @@ def run(config_ref: str | Path | None = None) -> None:
             wf_test_size,
             WF_N_WINDOWS,
             WF_STEP_SIZE,
-            EFFECTIVE_GAP_DAYS,
+            EFFECTIVE_GAP_STEPS,
             WF_ANCHOR_END,
         )
         if not windows:
@@ -1940,8 +1983,15 @@ def run(config_ref: str | Path | None = None) -> None:
             "split": {
                 "train_dates": len(train_dates),
                 "test_dates": len(test_dates),
-                "purge_days": PURGE_DAYS,
-                "embargo_days": EMBARGO_DAYS,
+                "purge_days": purge_days,
+                "embargo_days": embargo_days,
+                "purge_steps": PURGE_STEPS,
+                "embargo_steps": EMBARGO_STEPS,
+                "rebalance_gap_days": float(rebalance_gap_days)
+                if SAMPLE_ON_REBALANCE_DATES
+                and rebalance_gap_days is not None
+                and np.isfinite(rebalance_gap_days)
+                else None,
             },
             "eval": {
                 "ic": ic_stats,

@@ -259,7 +259,7 @@ universe:
 
 * `drop_suspended` 通过成交量/成交额为 0 的数据近似生成 `is_tradable`（默认不删行；可用 `universe.suspended_policy=filter` 继续硬过滤）。
 * `drop_st` 基于 `stock_basic` 的名称匹配，仅适用于 A 股，属于粗过滤。
-* `eval.embargo_days` / `eval.purge_days` 按交易日索引计数（基于已排序的 `trade_date`）。
+* `eval.embargo_days` / `eval.purge_days` 以交易日为单位（基于已排序的 `trade_date`）；当 `sample_on_rebalance_dates=true` 时会按再平衡采样频率换算为采样步长（基于再平衡中位数 gap），避免“天数当成样本数”。
 * 日线缓存文件名统一为 `{market}_{provider}_daily_{symbol}_{START}_{END}.parquet`。
   * 若设置 `data.cache_tag`（或 `cache_version`），文件名会变为 `{market}_{provider}_{cache_tag}_daily_{symbol}_{START}_{END}.parquet`。
 * 若 `data.end_date` 使用 `today/now`，每天都会生成新的缓存键；想复用缓存请固定 `start_date/end_date`。
