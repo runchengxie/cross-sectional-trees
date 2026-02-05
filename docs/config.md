@@ -21,6 +21,31 @@ csxgb init-config --market hk --out config/
 * `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准、`exit_mode`、`exit_price_policy` 与 `buffer_exit/buffer_entry`，可选 `execution`（cost_model / exit_policy）
 * `live`：可选“当下持仓快照”，用于在固定回测之外输出当前组合
 
+## 数据与缓存（data）
+
+常用键：
+
+* `start_date` / `start_years`：若同时配置，`start_date` 优先生效；`start_years` 会从 `end_date` 往前回推。
+* `end_date`：支持 `today` / `t-1` / `last_trading_day` / `last_completed_trading_day` / `YYYYMMDD`。
+* `price_col`：价格列名（用于标签与回测）。
+* `cache_dir`：缓存目录。
+* `cache_tag` / `cache_version`：缓存命名空间（同一数据源下隔离不同版本）。
+* `cache_mode` / `daily_cache_mode`：`symbol`（每个 symbol 一个缓存）或 `range/window`（按时间区间缓存）。
+* `cache_refresh_days`：命中缓存时刷新最近 N 天的范围（仅 `symbol` 模式有意义）。
+* `cache_refresh_on_hit`：命中缓存时是否也触发刷新。
+
+TuShare 相关可覆盖项（按需配置）：
+
+* `daily_endpoint` / `basic_endpoint`：覆盖默认接口。
+* `daily_fields` / `basic_fields`：覆盖字段列表。
+* `daily_params` / `basic_params`：额外参数（与上面字段合并）。
+* `daily_symbol_param` / `daily_start_param` / `daily_end_param`：覆盖接口参数名。
+
+## Walk-forward 细节
+
+* `eval.walk_forward.backtest_enabled`：为 walk-forward 的每个窗口是否跑回测（对 live 配置常设为 false）。
+* `eval.walk_forward.permutation_test`：可在每个窗口单独做置换检验。
+
 ## 基本面数据
 
 * 默认 `fundamentals.enabled=true`（CN/Default 走 TuShare `daily_basic`，HK/US 默认走本地文件）；如无数据可先设为 `false`。

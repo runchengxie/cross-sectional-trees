@@ -6,6 +6,9 @@ data:
   end_date: "20251231"
   cache_dir: "cache"
   cache_tag: null
+  cache_mode: "symbol"
+  cache_refresh_days: 10
+  cache_refresh_on_hit: false
   price_col: "close"
   retry:
     max_attempts: 1
@@ -126,11 +129,12 @@ eval:
   transaction_cost_bps: 25
   buffer_exit: 2
   buffer_entry: 1
-  sample_on_rebalance_dates: false
+  sample_on_rebalance_dates: true
   embargo_days: null
   purge_days: null
   report_train_ic: true
   save_artifacts: true
+  save_dataset: false
   output_dir: "out/runs"
   run_name: null
   permutation_test:
@@ -145,7 +149,7 @@ eval:
     anchor_end: true
     backtest_enabled: true
     permutation_test:
-      enabled: false
+      enabled: true
       n_runs: 3
       seed: 42
   final_oos:
@@ -160,7 +164,7 @@ backtest:
   trading_days_per_year: 252
   long_only: true
   short_k: null
-  benchmark_symbol: "02800.HK"
+  benchmark_symbol: null
   exit_mode: "rebalance"
   exit_horizon_days: null
   buffer_exit: 2
