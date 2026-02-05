@@ -97,20 +97,75 @@ data:
       password: "your-pass"
 ```
 
-## CLI 指令参考
+## CLI 命令一览
 
-命令一览：
+### 1) `csxgb run`
 
-* `csxgb run`
-* `csxgb grid`
-* `csxgb holdings`
-* `csxgb snapshot`
-* `csxgb rqdata info`
-* `csxgb rqdata quota`
-* `csxgb tushare verify-token`
-* `csxgb universe index-components`
-* `csxgb universe hk-connect`
-* `csxgb init-config`
+* 作用：跑主流程 pipeline（训练/评估/回测一条龙），配置用 `--config` 指定（YAML 路径或内置模板名 `default/cn/hk/us`）。
+* 输出：会落到 `out/runs/<run_name>_<timestamp>_<hash>/`，典型产物包括 `summary.json`、`config.used.yml`、IC/回测/特征重要性、以及持仓 CSV 等。
+* 注意：数据源可能需要环境变量鉴权（例如 TuShare 的 token）。
+
+### 2) `csxgb grid`
+
+* 作用：做 Top-K × 交易成本(bps) 的敏感性网格，逐个组合跑 pipeline，然后把关键指标汇总到一个 CSV。
+* 常用参数（脚本侧定义的）：`--top-k`（可多次传、逗号分隔）、`--cost-bps`、`--output`（默认 `out/runs/grid_summary.csv`）、`--run-name-prefix`、`--log-level`。
+* 额外入口：也能用 `csxgb-grid` 直接跑，功能等效。
+
+### 3) `csxgb holdings`
+
+* 作用：从最近一次 run 的产物里读“当前持仓清单”，并按 `--as-of`（支持 `today/t-1/日期`）输出；支持 backtest/live 两类持仓源。
+* 关键参数：
+
+  * `--config`（用于定位“哪个配置的最近 run”）或 `--run-dir`（直接指定 run 目录）
+  * `--source auto|backtest|live`（默认 auto）
+  * `--format text|csv|json`、`--out`（写文件或 stdout）
+* 它读的典型文件：`positions_current.csv`（回测）/ `positions_current_live.csv`（实盘）。
+
+### 4) `csxgb snapshot`
+
+* 作用：给“实盘/准实盘”用的快捷命令：
+
+  * 默认会先跑一次 pipeline（除非你 `--skip-run` 或直接给 `--run-dir`），然后用 live 源吐出 holdings。
+* 必须满足：要么 `--config` 要么 `--run-dir`，否则直接报错退出。
+* 关键参数：`--as-of`、`--skip-run`、`--top-k`、`--format`、`--out`。
+* 隐藏但很重要的约束：如果你用 live 配置，配置解析时要求 `live.enabled=true` 时必须 `eval.save_artifacts=true`（否则无法形成 snapshot）。
+
+### 5) `csxgb rqdata info`
+
+* 作用：初始化 `rqdatac` 并打印登录/用户信息。
+* 账号来源优先级：CLI 显式 `--username/--password` > 配置 `rqdata.init` > 环境变量 `RQDATA_USERNAME/RQDATA_PASSWORD`。
+
+### 6) `csxgb rqdata quota`
+
+* 作用：同样初始化 `rqdatac`，然后查 quota 使用情况；`--pretty` 会输出人类可读信息 + 图形化显示剩余流量。
+* 依赖：RQData 相关依赖在 optional-deps 里（`rqdata` 这组）。
+
+### 7) `csxgb tushare verify-token`
+
+* 作用：验证 TuShare token 是否可用（实际做法：拿 token 调 TuShare 的接口看能不能返回配额/积分信息），并逐个打印结果。
+* 读取的环境变量：`TUSHARE_TOKEN`、`TUSHARE_TOKEN_2`，以及兼容用的 `TUSHARE_API_KEY`。
+
+### 8) `csxgb universe index-components`
+
+* 作用：从 TuShare 拉“指数成分”，写成一个 symbols 文本文件（每行一个）。
+* 鉴权：必须先设 `TUSHARE_TOKEN`（或 `TUSHARE_TOKEN_2` / legacy `TUSHARE_API_KEY`），否则直接退出。
+* 实现方式：CLI 这层用 `argparse.REMAINDER` 把剩余参数原样转发给脚本（所以脚本支持什么参数，以脚本为准）。
+
+### 9) `csxgb universe hk-connect`
+
+* 作用：构建“港股通股票池（PIT）+ 流动性过滤”的 universe：用 RQData 拉可买标的，再按一段窗口的成交额等指标筛选，输出按日期的 universe 表和“最新一期 symbols”。
+* 默认输出：
+
+  * `out/universe/universe_by_date.csv`
+  * `out/universe/hk_connect_symbols.txt`
+  * meta：`out/universe/universe_by_date.meta.yml`
+* 参数入口：`csxgb universe hk-connect --config <yaml> ...`，其余参数同样是转发给脚本。
+
+### 10) `csxgb init-config`
+
+* 作用：把包内置的配置模板导出到你本地文件系统（默认写到 `./config/<template>.yml`）。
+* 参数：`--market default/cn/hk/us`、`--out`（文件或目录）、`--force`（允许覆盖）。
+* 覆盖保护：目标存在且没 `--force` 就拒绝覆盖。
 
 常用指令：
 
