@@ -1,19 +1,33 @@
 # Cookbook
 
-## 港股通 PIT + 成本/Top-K 网格对照
+## 推荐流程（港股示例）
 
-```bash
-# 1) 生成港股通 PIT + 流动性池
-csxgb universe hk-connect --config config/universe.hk_connect.yml
+1. （如果你做 HK 且需要严谨历史池）先把 PIT 股票池准备好（示例里是 hk-connect）。
 
-# 2) 批量跑 Top-K / 交易成本组合
-csxgb grid --config config/hk.yml
+   ```bash
+   csxgb universe hk-connect --config config/universe.hk_connect.yml
+   ```
 
-# 3) 查看汇总结果
-ls -lh out/runs/grid_summary.csv
-```
+1. 跑网格并查看结果。
 
-覆盖默认网格参数：
+   ```bash
+   csxgb grid --config config/hk.yml
+   ls -lh out/runs/grid_summary.csv
+   ```
+
+1. 选一组满意的参数（参考 Sharpe / 回撤 / 换手等）。
+
+1. 复制一份配置：`config/hk.yml -> config/hk_selected.yml`，改这些键：`eval.top_k`、`backtest.top_k`、`eval.transaction_cost_bps`、`backtest.transaction_cost_bps`。
+
+1. 跑正式单次：
+
+   ```bash
+   csxgb run --config config/hk_selected.yml
+   ```
+
+   然后你会拿到完整产物目录，包含 `summary.json`、`config.used.yml`、回测/IC/特征重要性、以及持仓 CSV 等。
+
+## 覆盖默认网格参数（可选）
 
 ```bash
 csxgb grid --config config/hk.yml \
