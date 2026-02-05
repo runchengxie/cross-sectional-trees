@@ -4,39 +4,130 @@
 
 ### 1) 选市场、选股票池（Universe）
 
-配置里支持 static universe（手写 symbols）也支持 PIT/by-date universe（按日期变化的股票池），还有港股通 PIT 股票池构建脚本。
+* 动态股票池（PIT by-date）与最小截面规模
+  * 支持 `universe.mode`（静态/文件/按日期），并可要求 by-date 文件必须覆盖（`require_by_date`）。
+  * 会按 `min_symbols_per_date` 把截面太小的交易日整天丢掉，并记录 dropped_dates（还会落盘 dropped_dates.csv）。
+* 上市天数过滤（min_listed_days）
+  * 通过 `list_date` 计算 `listed_days = (trade_date - list_date).days`，再按 `MIN_LISTED_DAYS` 过滤。
+* ST 过滤（drop_st）
+  * 仅 CN 市场启用：基于 `basic_df["name"]` 是否包含 “ST”（大小写不敏感）得到 `st_codes`，再把这些代码剔除。
+* 停牌/不可交易处理（drop_suspended + suspended_policy）
+  * 先定义 `is_tradable = (vol > 0) & (amount > 0)`。
+  * `suspended_policy: "mark"`：不删除，只是保留 `is_tradable` 标记列（给回测/信号用）。
+  * `suspended_policy: "filter"`：把 `is_tradable=False` 的行直接删掉。
+  * 另一个硬开关 `drop_suspended` 也会触发过滤逻辑（本质就是“删掉停牌行”）。
+* 最小流动性（min_turnover）
+  * 用 `amount >= MIN_TURNOVER` 做过滤（注意这里叫 turnover 但实际字段是成交额 `amount`）。
+* 港股通股票池PIT HK Connect universe：
+  * 项目自带 `build_hk_connect_universe.py`：按 `lookback_days / min_window_days / top_quantile / min_turnover` 做流动性筛选，输出 `universe_by_date.csv` 和 `hk_connect_symbols.txt`，并可写 meta。
 
-并且对停牌、ST、最小流动性等有策略开关（例如 `drop_suspended`、`suspended_policy`）。
+### 2) 拉数据
 
-### 2) 拉数据（而且不止一种来源）
+* provider 选择（tushare / rqdata / eodhd）
+  * 市场到默认 provider 的映射、以及 provider 名称合法性检查都在 `normalize_market` 做。
+* HK 代码内部标准格式
+  * 内部标准是 5 位补零 + `.HK`，例如 `1.HK / 0001.HK / 00001.XHKG` 都会被规范成 `00001.HK`。
+* RQData 代码转换（HK）
+  * 内部 `00001.HK` → RQData `00001.XHKG`（港股用 XHKG 交易所标记）。
+* EODHD 代码转换（HK）与 hk_symbol_mode ，EODHD 的 HK 代码格式可以配置，支持这些模式
+  * `strip_one`：去掉前导 0（至少保留一个字符），再拼 suffix（默认 `.HK`）。
+  * `strip_all`：更激进地转成 int 再转回字符串（本质也是去前导 0，但更偏“数字化”）。
+  * `pad4`：补零到 4 位。
+  * `pad5`：补零到 5 位（与内部一致）。
 
-它会根据配置决定数据提供方（tushare / rqdata / eodhd），并且还要做不同市场的代码格式转换（港股的补零、后缀、交易所标记等）。
+配置支持基本面数据
 
-同时 README 里明确了需要环境变量（token/账号）来对接外部数据源。
-
-配置还支持 fundamentals（比如 daily_basic 这类字段映射、衍生特征如 log_mcap、ffill 等）。
+* 配置层面支持：
+  * `column_map` 做字段标准化，`features` 选择要合并进主表的基本面列，`required/allow_missing_features` 控制缺失时是报错还是放过。
+* 实现层面支持：
+  * 合并后会按 `ts_code` 做 `ffill`（可配 `ffill_limit`）。
+  * `log_market_cap: true` 时，会把 `market_cap_col` 做 `np.log` 生成 `log_market_cap_col`（默认 `log_mcap`）。
+  * fundamentals 开了但没拿到数据：`required=true` 会直接报错；否则只是警告然后继续跑。
 
 ### 3) 打标签（label）
 
-对数据进行按再平衡周期定义的未来收益这种更贴近组合交易的标签逻辑，比如 `horizon_mode: next_rebalance`、`rebalance_frequency: M`、`shift_days` 等。
+对数据进行按再平衡周期定义的未来收益这种更贴近组合交易的标签逻辑
+
+* `label.horizon_mode` 有两种：`fixed` 或 `next_rebalance`。
+* `next_rebalance` 的真实逻辑：
+
+  * 先算 rebalance dates，再把每个交易日映射到下一个 rebalance 日。
+  * 用“下一个 rebalance 日的 close”（考虑 shift）当 `exit_price`，然后 `future_return = exit_price / close - 1`。
 
 ### 4) 做特征（features）
 
-包含技术指标（SMA、RSI、MACD、波动率、量比等）和横截面标准化（zscore/winsorize）。
+当前实现的特征（就是配置 `features.list` ）：
+
+* `sma_{w}`：对 `close` 做 SMA（窗口来自 `sma_windows`）。
+* `sma_{w}_diff`：用 SMA 做相对差（实现里是 `sma_w / sma_ref - 1`）。
+* `rsi_{n}`：RSI（`rsi` 参数默认 14）。
+* `macd_hist`：MACD histogram（参数来自 `macd: [fast, slow, signal]`）。
+* `volume_sma{w}_ratio`：`vol / SMA(vol,w) - 1`（默认 w=5）。
+* 以及原始 `vol`（成交量列本身）。
+
+参数入口：`sma_windows / rsi / macd / volume_sma_windows`。
+
+横截面标准化，`cross_sectional.method` 支持：
+
+* `none`
+* `zscore`：按日截面减均值除标准差（std=0 会处理成 NaN 后再填 0）。
+* `winsorize`：按日截面用分位数裁剪（`winsorize_pct`）。
+* `rank`：按截面做分位排名（pct rank - 0.5）。
+  并且 method 合法性校验写在 parser 里。
 
 ### 5) 训练模型（XGBoost 回归）
 
-配置里就是 XGB regressor，带一堆常用参数（n_estimators、max_depth、subsample…）以及 sample_weight 方案。
+配置里就是 XGB regressor，自带常用参数（n_estimators、max_depth、subsample…）以及 sample_weight 方案。
+
+XGBRegressor(params)模型参数包括：
+
+* `n_estimators`
+* `max_depth`
+* `learning_rate`
+* `subsample`
+* `colsample_bytree`
+* `reg_alpha`
+* `reg_lambda`
+* `random_state`
+* `min_child_weight`
+* `gamma`
+
+* `sample_weight_mode` 有：
+  * `none`
+  * `date_equal`：每个日期的样本权重 = `1 / 当天样本数`（让每个交易日权重相等）。
 
 ### 6) 评估
 
-* n_splits、分位数分组、IC/IR 等（你还带了 `signal_direction_mode`、`min_abs_ic_to_flip` 这类“信号方向自适应/反转阈值”的逻辑）。
+* n_splits、分位数分组、IC/IR。
+  * `cv.n_splits` 控制时间序列 CV 的折数（默认 5）。
+  * `evaluation.quantiles` 控制分位数分组数（默认 5）。
+  * 输出 IC/IR 到 `ic_<oos/live>.csv`，分位数收益到 `quantile_returns.csv`。
 * permutation test（打乱标签检验是不是靠运气）。
 * walk-forward（滚动窗口验证，还可以连带回测）。
+* 时间序列 CV + embargo/purge（其实是一个 gap）
+  * 用 `TimeSeriesSplit(n_splits)`，然后 `gap = max(embargo_days, purge_days)`，把训练集尾部切掉避免泄露。
+* IC/IR 统计项
+  * IC 支持 `spearman` / `pearson`，按日算 corr，再汇总 `mean/std/ir/t_stat/p_value`（如果 scipy 可用）。
+* 分位数组（quantile returns）
+  * 每天对 `pred` 做 rank，再 `qcut` 分箱，算每箱平均未来收益，得到 `q_ret`（按 trade_date）。
+* signal_direction_mode + min_abs_ic_to_flip（方向自适应阈值）
+* `signal_direction_mode` 支持 `fixed/train_ic/cv_ic`。
+* `cv_ic` 模式下：只有当 `|mean(IC)| >= min_abs_ic_to_flip` 才会把信号方向设为 `sign(mean_ic)`，否则保持原方向。
+* permutation test
+  * 核心：按 trade_date 分组打乱训练集 label（不是全局洗牌），每次跑一遍 CV IC，记录 mean/std/scores/runs。
+* walk-forward
+  * 支持 `n_windows / test_size / step_size / anchor_end`，会切出一系列滚动窗口（含 train_start/end、test_start/end）。
 
 ### 7) 回测（Top-K 组合 + 成本 + 交易规则）
 
-回测参数包括：Top-K、再平衡频率、单边成本 bps、buffer 规则、exit_mode、价格/缺失处理策略等。
+回测参数包括：Top-K、再平衡频率、单边成本 bps、buffer 规则、exit_mode、价格/缺失处理策略。
+
+* backtest 会用 `backtest_topk(...)`，参数里包含 top_k、rebalance_dates、buffer_exit/entry、long_only/short_k、tradable_col、exit_price_policy、exit_fallback_policy、execution model。
+  * `exit_price_policy` 三选一：`strict/ffill/delay`；`exit_fallback_policy` 二选一：`ffill/none`。
+  * 交易成本模型可配：
+    * `none`
+    * `bps`（可选 `round_trip`，默认 true）。
+* 配置解析层附带校验。
 
 而且它会落盘持仓文件：`positions_by_rebalance.csv`、`positions_current.csv`，以及 OOS 和 live 版本。
 
