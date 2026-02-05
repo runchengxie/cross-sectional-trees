@@ -129,6 +129,7 @@ eval:
   purge_days: null
   report_train_ic: true
   save_artifacts: true
+  save_dataset: false
   output_dir: "out/runs"
   run_name: null
   permutation_test:
@@ -146,6 +147,9 @@ eval:
       enabled: false
       n_runs: 3
       seed: 42
+  final_oos:
+    enabled: false
+    size: null
 
 backtest:
   enabled: true

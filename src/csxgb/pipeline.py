@@ -9,9 +9,8 @@ import argparse
 import hashlib
 import json
 import logging
-import os
 import sys
-import time
+import math
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
@@ -22,15 +21,17 @@ if not hasattr(np, "NaN"):
     np.NaN = np.nan
 import pandas as pd
 import pandas_ta as ta
-import tushare as ts
 import pyarrow  # ensures parquet support
 from dotenv import load_dotenv
 import yaml
 from xgboost import XGBRegressor
 import warnings
 
-from .config_utils import ResolvedConfig, resolve_pipeline_config
-from .data_providers import fetch_daily, fetch_fundamentals, load_basic, normalize_market, resolve_provider
+from .config_utils import resolve_pipeline_config
+from .data_interface import DataInterface
+from .data_providers import normalize_market
+from .dataset import DatasetSchema, build_dataset
+from .execution import build_execution_model, describe_execution_model, BpsCostModel
 from .metrics import (
     daily_ic_series,
     summarize_ic,
@@ -207,87 +208,6 @@ def build_walk_forward_windows(
     return windows
 
 # -----------------------------------------------------------------------------
-# rqdatac workaround
-# -----------------------------------------------------------------------------
-def _patch_rqdatac_adjust_price_readonly() -> None:
-    """Ensure rqdatac's in-place adjust doesn't choke on read-only arrays."""
-    try:
-        import rqdatac.services.detail.adjust_price as adjust_price
-    except Exception as exc:  # pragma: no cover - defensive import
-        logger.debug("rqdatac adjust_price import failed: %s", exc)
-        return
-    if getattr(adjust_price, "_csxgb_readonly_patch", False):
-        return
-
-    original = adjust_price.adjust_price_multi_df
-
-    def wrapped(df, order_book_ids, how, obid_slice_map, market):
-        r_map_fields = {
-            f: i
-            for i, f in enumerate(df.columns)
-            if f in adjust_price.FIELDS_NEED_TO_ADJUST
-        }
-        if not r_map_fields:
-            return
-        pre = how in ("pre", "pre_volume")
-        volume_adjust_by_ex_factor = how in ("pre_volume", "post_volume")
-        ex_factors = adjust_price.get_ex_factor_for(order_book_ids, market)
-        volume_adjust_factors = {}
-        if "volume" in r_map_fields:
-            if not volume_adjust_by_ex_factor:
-                volume_adjust_factors = adjust_price.get_split_factor_for(order_book_ids, market)
-            else:
-                volume_adjust_factors = ex_factors
-
-        data = df.to_numpy(copy=True)
-        try:
-            data.setflags(write=True)
-        except Exception:
-            pass
-        timestamps_level = df.index.get_level_values(1)
-        for order_book_id, slice_ in obid_slice_map.items():
-            if order_book_id not in order_book_ids:
-                continue
-            timestamps = timestamps_level[slice_]
-
-            def calculate_factor(factors_map, order_book_id):
-                factors = factors_map.get(order_book_id, None)
-                if factors is not None:
-                    factor = np.take(
-                        factors.values,
-                        factors.index.searchsorted(timestamps, side="right") - 1,
-                    )
-                    if pre:
-                        factor /= factors.iloc[-1]
-                    return factor
-
-            factor = calculate_factor(ex_factors, order_book_id)
-            if factor is None:
-                continue
-
-            if not volume_adjust_by_ex_factor:
-                factor_volume = calculate_factor(volume_adjust_factors, order_book_id)
-            else:
-                factor_volume = factor
-
-            for f, j in r_map_fields.items():
-                if f in adjust_price.PRICE_FIELDS:
-                    data[slice_, j] *= factor
-                elif factor_volume is not None:
-                    data[slice_, j] *= 1 / factor_volume
-
-        df.iloc[:, :] = data
-
-    wrapped.__name__ = original.__name__
-    wrapped.__doc__ = original.__doc__
-    adjust_price._csxgb_original_adjust_price_multi_df = original
-    adjust_price.adjust_price_multi_df = wrapped
-    adjust_price._csxgb_readonly_patch = True
-    logger.warning(
-        "Applied rqdatac read-only adjust_price patch (DataFrame copy on demand)."
-    )
-
-# -----------------------------------------------------------------------------
 # 1. Config
 # -----------------------------------------------------------------------------
 def setup_logging(cfg: dict) -> None:
@@ -342,6 +262,16 @@ def save_frame(frame: pd.DataFrame, path: Path) -> None:
 
     def _write(tmp_path: Path) -> None:
         frame.to_csv(tmp_path, index=False)
+
+    _atomic_write(path, _write)
+
+
+def save_parquet(frame: pd.DataFrame, path: Path) -> None:
+    if frame is None or frame.empty:
+        return
+
+    def _write(tmp_path: Path) -> None:
+        frame.to_parquet(tmp_path)
 
     _atomic_write(path, _write)
 
@@ -594,73 +524,9 @@ def run(config_ref: str | Path | None = None) -> None:
         live_cfg = {}
 
     load_dotenv()
-    provider = resolve_provider(data_cfg)
-    data_client = None
-    tushare_tokens: list[str] = []
-    tushare_token_idx = 0
-    if provider == "tushare":
-        raw_tokens = [
-            os.getenv("TUSHARE_TOKEN"),
-            os.getenv("TUSHARE_TOKEN_2"),
-            os.getenv("TUSHARE_API_KEY"),  # legacy alias
-        ]
-        for token in raw_tokens:
-            if token and token not in tushare_tokens:
-                tushare_tokens.append(token)
-        if not tushare_tokens:
-            sys.exit(
-                "Please set TUSHARE_TOKEN (or TUSHARE_TOKEN_2 / legacy TUSHARE_API_KEY) first."
-            )
-
-        def make_tushare_client(token: str):
-            try:
-                return ts.pro_api(token)
-            except TypeError:
-                ts.set_token(token)
-                return ts.pro_api()
-
-        data_client = make_tushare_client(tushare_tokens[tushare_token_idx])
-    elif provider == "rqdata":
-        try:
-            import rqdatac
-        except ImportError as exc:
-            sys.exit(f"rqdatac is required for provider='rqdata' ({exc}).")
-        rq_cfg = data_cfg.get("rqdata") or {}
-        init_kwargs = {}
-        if isinstance(rq_cfg, dict) and isinstance(rq_cfg.get("init"), dict):
-            init_kwargs.update(rq_cfg.get("init"))
-        # Allow .env / environment-based credentials as a fallback.
-        env_username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
-        env_password = os.getenv("RQDATA_PASSWORD")
-        if env_username and "username" not in init_kwargs:
-            init_kwargs["username"] = env_username
-        if env_password and "password" not in init_kwargs:
-            init_kwargs["password"] = env_password
-        try:
-            rqdatac.init(**init_kwargs)
-        except Exception as exc:
-            sys.exit(f"rqdatac.init failed: {exc}")
-        _patch_rqdatac_adjust_price_readonly()
-        data_client = rqdatac
-    elif provider == "eodhd":
-        eod_cfg = data_cfg.get("eodhd") or {}
-        api_token = (
-            (eod_cfg.get("api_token") if isinstance(eod_cfg, dict) else None)
-            or os.getenv("EODHD_API_TOKEN")
-            or os.getenv("EODHD_API_KEY")
-        )
-        if not api_token:
-            sys.exit("Please set EODHD_API_TOKEN (or data.eodhd.api_token) first.")
-        data_client = {"api_token": api_token}
-        if isinstance(eod_cfg, dict):
-            if eod_cfg.get("base_url"):
-                data_client["base_url"] = eod_cfg.get("base_url")
-            if eod_cfg.get("exchange"):
-                data_client["exchange"] = eod_cfg.get("exchange")
-            if eod_cfg.get("timeout"):
-                data_client["timeout"] = eod_cfg.get("timeout")
-    else:
-        sys.exit(f"Unsupported data.provider '{provider}'.")
+    CACHE_DIR = Path(data_cfg.get("cache_dir", "cache"))
+    data_interface = DataInterface(MARKET, data_cfg, cache_dir=CACHE_DIR, logger=logger)
+    provider = data_interface.provider
 
     DEFAULT_SYMBOLS_BY_MARKET = {
         "cn": [
@@ -839,9 +705,23 @@ def run(config_ref: str | Path | None = None) -> None:
     if WF_PERM_TEST_RUNS < 1:
         WF_PERM_TEST_ENABLED = False
 
+    final_oos_cfg = eval_cfg.get("final_oos")
+    FINAL_OOS_SIZE_RAW = None
+    if isinstance(final_oos_cfg, dict):
+        FINAL_OOS_SIZE_RAW = final_oos_cfg.get("size")
+        FINAL_OOS_ENABLED = bool(final_oos_cfg.get("enabled", False) or FINAL_OOS_SIZE_RAW)
+    elif final_oos_cfg is None:
+        FINAL_OOS_ENABLED = False
+    else:
+        FINAL_OOS_SIZE_RAW = final_oos_cfg
+        FINAL_OOS_ENABLED = bool(final_oos_cfg)
+
     SAVE_ARTIFACTS = bool(eval_cfg.get("save_artifacts", True))
+    SAVE_DATASET = bool(eval_cfg.get("save_dataset", False))
     OUTPUT_DIR = eval_cfg.get("output_dir", "out/runs")
     RUN_NAME = eval_cfg.get("run_name")
+    if SAVE_DATASET and not SAVE_ARTIFACTS:
+        raise SystemExit("eval.save_dataset=true requires eval.save_artifacts=true.")
 
     MIN_SYMBOLS_PER_DATE = int(universe_cfg.get("min_symbols_per_date", N_QUANTILES))
     MIN_LISTED_DAYS = int(universe_cfg.get("min_listed_days", 0))
@@ -946,6 +826,20 @@ def run(config_ref: str | Path | None = None) -> None:
     ).strip().lower()
     if BACKTEST_EXIT_FALLBACK_POLICY not in {"ffill", "none"}:
         sys.exit("backtest.exit_fallback_policy must be one of: ffill, none.")
+    execution_cfg = backtest_cfg.get("execution") if isinstance(backtest_cfg, dict) else None
+    execution_model = build_execution_model(
+        execution_cfg,
+        default_cost_bps=BACKTEST_COST_BPS,
+        default_exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
+        default_exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
+    )
+    BACKTEST_EXIT_PRICE_POLICY = execution_model.exit_policy.price_policy
+    BACKTEST_EXIT_FALLBACK_POLICY = execution_model.exit_policy.fallback_policy
+    BACKTEST_COST_BPS_EFFECTIVE = BACKTEST_COST_BPS
+    BACKTEST_COST_BPS_REPORT = None
+    if isinstance(execution_model.cost_model, BpsCostModel):
+        BACKTEST_COST_BPS_EFFECTIVE = float(execution_model.cost_model.bps)
+        BACKTEST_COST_BPS_REPORT = BACKTEST_COST_BPS_EFFECTIVE
     BACKTEST_TRADABLE_COL = backtest_cfg.get("tradable_col", "is_tradable")
     if BACKTEST_TRADABLE_COL is not None:
         BACKTEST_TRADABLE_COL = str(BACKTEST_TRADABLE_COL).strip() or None
@@ -974,17 +868,6 @@ def run(config_ref: str | Path | None = None) -> None:
     # -----------------------------------------------------------------------------
     # 2. Data download
     # -----------------------------------------------------------------------------
-    CACHE_DIR = Path(data_cfg.get("cache_dir", "cache"))
-    CACHE_DIR.mkdir(exist_ok=True)
-
-    retry_cfg = data_cfg.get("retry") if isinstance(data_cfg, dict) else None
-    retry_cfg = retry_cfg if isinstance(retry_cfg, dict) else {}
-    MAX_ATTEMPTS = int(retry_cfg.get("max_attempts", 1))
-    MAX_ATTEMPTS = max(1, MAX_ATTEMPTS)
-    BACKOFF_SECONDS = float(retry_cfg.get("backoff_seconds", 0.5))
-    MAX_BACKOFF_SECONDS = float(retry_cfg.get("max_backoff_seconds", 5.0))
-    ROTATE_TOKENS = bool(retry_cfg.get("rotate_tokens", True))
-
     benchmark_symbol = str(BACKTEST_BENCHMARK).strip() if BACKTEST_BENCHMARK else None
     symbols_for_data = symbols[:]
     if benchmark_symbol and benchmark_symbol not in symbols_for_data:
@@ -992,39 +875,7 @@ def run(config_ref: str | Path | None = None) -> None:
 
     frames = []
     def fetch_daily_with_retry(symbol: str) -> pd.DataFrame:
-        nonlocal data_client, tushare_token_idx
-        last_exc: Optional[Exception] = None
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            try:
-                return fetch_daily(
-                    MARKET,
-                    symbol,
-                    START_DATE,
-                    END_DATE,
-                    CACHE_DIR,
-                    data_client,
-                    data_cfg,
-                )
-            except Exception as exc:
-                last_exc = exc
-                logger.warning(
-                    "Daily data load failed for %s (attempt %s/%s): %s",
-                    symbol,
-                    attempt,
-                    MAX_ATTEMPTS,
-                    exc,
-                    exc_info=True,
-                )
-                if provider == "tushare" and ROTATE_TOKENS and len(tushare_tokens) > 1:
-                    tushare_token_idx = (tushare_token_idx + 1) % len(tushare_tokens)
-                    data_client = make_tushare_client(tushare_tokens[tushare_token_idx])
-                    logger.info("Switched Tushare token to index %s.", tushare_token_idx)
-                if attempt < MAX_ATTEMPTS:
-                    sleep_for = min(BACKOFF_SECONDS * (2 ** (attempt - 1)), MAX_BACKOFF_SECONDS)
-                    time.sleep(sleep_for)
-        if last_exc is not None:
-            raise last_exc
-        return pd.DataFrame()
+        return data_interface.fetch_daily(symbol, START_DATE, END_DATE)
 
     for symbol in symbols_for_data:
         logger.info("Fetching daily data for %s (%s) ...", symbol, MARKET)
@@ -1055,7 +906,7 @@ def run(config_ref: str | Path | None = None) -> None:
         try:
             if MARKET != "cn" and DROP_ST:
                 logger.info("drop_st is CN-specific; attempting basic data for market '%s'.", MARKET)
-            basic_df = load_basic(MARKET, CACHE_DIR, data_client, data_cfg, symbols_for_data)
+            basic_df = data_interface.load_basic(symbols_for_data)
         except Exception as exc:
             logger.warning("Basic data load failed (%s); skipping ST/listed filters.", exc)
             basic_df = None
@@ -1136,40 +987,13 @@ def run(config_ref: str | Path | None = None) -> None:
             fund_cache_dir.mkdir(exist_ok=True)
 
             def fetch_fundamentals_with_retry(symbol: str) -> pd.DataFrame:
-                nonlocal data_client, tushare_token_idx
-                last_exc: Optional[Exception] = None
-                for attempt in range(1, MAX_ATTEMPTS + 1):
-                    try:
-                        return fetch_fundamentals(
-                            MARKET,
-                            symbol,
-                            START_DATE,
-                            END_DATE,
-                            fund_cache_dir,
-                            data_client,
-                            data_cfg,
-                            fundamentals_cfg,
-                        )
-                    except Exception as exc:
-                        last_exc = exc
-                        logger.warning(
-                            "Fundamentals load failed for %s (attempt %s/%s): %s",
-                            symbol,
-                            attempt,
-                            MAX_ATTEMPTS,
-                            exc,
-                            exc_info=True,
-                        )
-                        if provider == "tushare" and ROTATE_TOKENS and len(tushare_tokens) > 1:
-                            tushare_token_idx = (tushare_token_idx + 1) % len(tushare_tokens)
-                            data_client = make_tushare_client(tushare_tokens[tushare_token_idx])
-                            logger.info("Switched Tushare token to index %s.", tushare_token_idx)
-                        if attempt < MAX_ATTEMPTS:
-                            sleep_for = min(BACKOFF_SECONDS * (2 ** (attempt - 1)), MAX_BACKOFF_SECONDS)
-                            time.sleep(sleep_for)
-                if last_exc is not None:
-                    raise last_exc
-                return pd.DataFrame()
+                return data_interface.fetch_fundamentals(
+                    symbol,
+                    START_DATE,
+                    END_DATE,
+                    fundamentals_cfg,
+                    cache_dir=fund_cache_dir,
+                )
 
             for symbol in symbols_for_data:
                 logger.info("Fetching fundamentals for %s (%s) ...", symbol, MARKET)
@@ -1373,21 +1197,31 @@ def run(config_ref: str | Path | None = None) -> None:
             df_features, FEATURES, CS_METHOD, CS_WINSORIZE_PCT
         )
 
+    dataset_schema = DatasetSchema(
+        date_col="trade_date",
+        instrument_col="ts_code",
+        price_col=PRICE_COL,
+        label_col=TARGET,
+        tradable_col="is_tradable" if "is_tradable" in df_features.columns else None,
+        feature_cols=FEATURES,
+    )
+    dataset = build_dataset(df_features, dataset_schema)
+    df_features = dataset.frame
     df_full = df_features.dropna().reset_index(drop=True)
     all_dates_full = np.array(sorted(df_full["trade_date"].unique()))
     rebalance_dates_all = None
     if SAMPLE_ON_REBALANCE_DATES:
         rebalance_dates_all = get_rebalance_dates(all_dates_full, REBALANCE_FREQUENCY)
-        df_model = df_full[df_full["trade_date"].isin(rebalance_dates_all)].copy()
+        df_model_all = df_full[df_full["trade_date"].isin(rebalance_dates_all)].copy()
     else:
-        df_model = df_full
+        df_model_all = df_full
 
     # Drop dates with too few symbols for evaluation (model sample only)
-    date_counts = df_model.groupby("trade_date")["ts_code"].nunique()
+    date_counts = df_model_all.groupby("trade_date")["ts_code"].nunique()
     valid_dates = date_counts[date_counts >= MIN_SYMBOLS_PER_DATE].index
     dropped_date_counts = date_counts[date_counts < MIN_SYMBOLS_PER_DATE].sort_index()
     if len(valid_dates) != len(date_counts):
-        df_model = df_model[df_model["trade_date"].isin(valid_dates)].copy()
+        df_model_all = df_model_all[df_model_all["trade_date"].isin(valid_dates)].copy()
     if not dropped_date_counts.empty:
         logger.info(
             "Dropped %s dates with < %s symbols (min=%s, max=%s).",
@@ -1397,6 +1231,54 @@ def run(config_ref: str | Path | None = None) -> None:
             int(dropped_date_counts.max()),
         )
     valid_dates_set = set(pd.to_datetime(valid_dates))
+
+    def _resolve_holdout_len(value: object | None, n_dates: int) -> int:
+        if value is None:
+            return 0
+        if n_dates <= 0:
+            return 0
+        try:
+            size = float(value)
+        except (TypeError, ValueError):
+            raise SystemExit("eval.final_oos.size must be a number.")
+        if size <= 0:
+            return 0
+        if size < 1:
+            return max(1, int(np.floor(n_dates * size)))
+        return int(size)
+
+    df_model = df_model_all
+    df_model_oos = pd.DataFrame()
+    final_oos_dates = np.array([], dtype="datetime64[ns]")
+    final_oos_len = 0
+    final_oos_start = None
+    final_oos_end = None
+    if FINAL_OOS_ENABLED and FINAL_OOS_SIZE_RAW is None:
+        FINAL_OOS_SIZE_RAW = TEST_SIZE
+        logger.info(
+            "final_oos.enabled=true but size not set; using eval.test_size=%s.",
+            TEST_SIZE,
+        )
+    if FINAL_OOS_ENABLED:
+        all_dates_model_full = np.array(sorted(df_model_all["trade_date"].unique()))
+        final_oos_len = _resolve_holdout_len(FINAL_OOS_SIZE_RAW, len(all_dates_model_full))
+        if final_oos_len <= 0:
+            FINAL_OOS_ENABLED = False
+        elif final_oos_len >= len(all_dates_model_full):
+            sys.exit("eval.final_oos.size leaves no in-sample dates.")
+        else:
+            final_oos_dates = all_dates_model_full[-final_oos_len:]
+            final_oos_start = pd.to_datetime(final_oos_dates[0])
+            final_oos_end = pd.to_datetime(final_oos_dates[-1])
+            df_model_oos = df_model_all[df_model_all["trade_date"].isin(final_oos_dates)].copy()
+            df_model = df_model_all[~df_model_all["trade_date"].isin(final_oos_dates)].copy()
+            logger.info(
+                "Final OOS holdout enabled: %s dates (%s -> %s).",
+                final_oos_len,
+                final_oos_start.strftime("%Y-%m-%d"),
+                final_oos_end.strftime("%Y-%m-%d"),
+            )
+
     rebalance_gap_days = None
     if SAMPLE_ON_REBALANCE_DATES:
         sample_dates = sorted(df_model["trade_date"].unique())
@@ -1427,7 +1309,7 @@ def run(config_ref: str | Path | None = None) -> None:
             return 0
         if gap_days is None or not np.isfinite(gap_days) or gap_days <= 0:
             return int(days)
-        return max(0, int(np.floor(days / gap_days)))
+        return max(0, int(math.ceil(days / gap_days)))
 
     if SAMPLE_ON_REBALANCE_DATES:
         PURGE_STEPS = _days_to_steps(purge_days, rebalance_gap_days)
@@ -1688,7 +1570,7 @@ def run(config_ref: str | Path | None = None) -> None:
                         rebalance_dates=bt_rebalance,
                         top_k=BACKTEST_TOP_K,
                         shift_days=LABEL_SHIFT_DAYS,
-                        cost_bps=BACKTEST_COST_BPS,
+                        cost_bps=BACKTEST_COST_BPS_EFFECTIVE,
                         trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
                         exit_mode=BACKTEST_EXIT_MODE,
                         exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
@@ -1699,6 +1581,7 @@ def run(config_ref: str | Path | None = None) -> None:
                         tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_full_w.columns else None,
                         exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
                         exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
+                        execution=execution_model,
                     )
                 except ValueError:
                     bt_result_w = None
@@ -1917,58 +1800,344 @@ def run(config_ref: str | Path | None = None) -> None:
             "refusing to fall back to backtest holdings."
         )
 
-    test_df_full["pred"] = model.predict(test_df_full[FEATURES])
-    if SAMPLE_ON_REBALANCE_DATES:
-        test_eval_df = test_df_full[test_df_full["trade_date"].isin(test_dates)].copy()
-    else:
-        test_eval_df = test_df_full
-    signal_col = "pred"
-    if SIGNAL_DIRECTION != 1.0:
-        test_df_full["signal"] = test_df_full["pred"] * SIGNAL_DIRECTION
-        if SAMPLE_ON_REBALANCE_DATES:
-            test_eval_df["signal"] = test_eval_df["pred"] * SIGNAL_DIRECTION
-        signal_col = "signal"
-        logger.info("Signal direction applied to ranking: %s", SIGNAL_DIRECTION)
+    def evaluate_period(
+        label: str,
+        model_eval: XGBRegressor,
+        test_df_full: pd.DataFrame,
+        test_dates: np.ndarray,
+        *,
+        run_perm_test: bool,
+        perm_train_df: Optional[pd.DataFrame] = None,
+        perm_test_df: Optional[pd.DataFrame] = None,
+        allow_live_fallback: bool = True,
+    ) -> dict:
+        label_prefix = f"[{label}] " if label else ""
+        default_series = pd.Series(dtype=float)
+        default_frame = pd.DataFrame()
+        result = {
+            "ic_series": default_series,
+            "ic_stats": {},
+            "quantile_ts": default_frame,
+            "quantile_mean": default_series,
+            "turnover_series": default_series,
+            "positions_by_rebalance": None,
+            "bt_stats": None,
+            "bt_net_series": pd.Series(dtype=float, name="net_return"),
+            "bt_gross_series": pd.Series(dtype=float, name="gross_return"),
+            "bt_turnover_series": pd.Series(dtype=float, name="turnover"),
+            "bt_benchmark_series": pd.Series(dtype=float, name="benchmark_return"),
+            "bt_active_series": pd.Series(dtype=float, name="active_return"),
+            "bt_benchmark_stats": None,
+            "bt_active_stats": None,
+            "bt_periods": [],
+            "perm_stats": None,
+        }
+        if test_df_full is None or test_df_full.empty:
+            logger.info("%sEvaluation skipped: no data.", label_prefix)
+            return result
 
-    # Daily IC
-    ic_series = daily_ic_series(test_eval_df, TARGET, signal_col)
-    ic_stats = summarize_ic(ic_series)
-    logger.info(
-        "Daily IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
-        ic_stats["mean"],
-        ic_stats["std"],
-        ic_stats["ir"],
-        ic_stats["t_stat"],
-        ic_stats["p_value"],
-        ic_stats["n"],
+        eval_df_full = test_df_full.copy()
+        eval_df_full["pred"] = model_eval.predict(eval_df_full[FEATURES])
+        if SAMPLE_ON_REBALANCE_DATES:
+            test_eval_df = eval_df_full[eval_df_full["trade_date"].isin(test_dates)].copy()
+        else:
+            test_eval_df = eval_df_full
+        signal_col = "pred"
+        if SIGNAL_DIRECTION != 1.0:
+            eval_df_full["signal"] = eval_df_full["pred"] * SIGNAL_DIRECTION
+            if SAMPLE_ON_REBALANCE_DATES:
+                test_eval_df["signal"] = test_eval_df["pred"] * SIGNAL_DIRECTION
+            signal_col = "signal"
+            logger.info("%sSignal direction applied to ranking: %s", label_prefix, SIGNAL_DIRECTION)
+
+        ic_series = daily_ic_series(test_eval_df, TARGET, signal_col)
+        ic_stats = summarize_ic(ic_series)
+        logger.info(
+            "%sDaily IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
+            label_prefix,
+            ic_stats["mean"],
+            ic_stats["std"],
+            ic_stats["ir"],
+            ic_stats["t_stat"],
+            ic_stats["p_value"],
+            ic_stats["n"],
+        )
+        result["ic_series"] = ic_series
+        result["ic_stats"] = ic_stats
+
+        if run_perm_test:
+            if perm_train_df is None or perm_test_df is None:
+                raise SystemExit("Permutation test requested but data was not provided.")
+            logger.info("%sPermutation test (shuffle train labels within date) ...", label_prefix)
+            perm_scores = permutation_test_ic(
+                perm_train_df,
+                perm_test_df,
+                PERM_TEST_RUNS,
+                PERM_TEST_SEED,
+                SIGNAL_DIRECTION,
+            )
+            if perm_scores:
+                perm_mean = np.nanmean(perm_scores)
+                perm_std = np.nanstd(perm_scores)
+                logger.info(
+                    "%sPermutation IC: mean=%.4f, std=%.4f, runs=%s",
+                    label_prefix,
+                    perm_mean,
+                    perm_std,
+                    len(perm_scores),
+                )
+                logger.info("%sPermutation ICs: %s", label_prefix, [f"{s:.4f}" for s in perm_scores])
+                result["perm_stats"] = {
+                    "mean": float(perm_mean),
+                    "std": float(perm_std),
+                    "scores": [float(score) for score in perm_scores],
+                    "runs": int(len(perm_scores)),
+                }
+
+        trade_dates_sorted_full = sorted(eval_df_full["trade_date"].unique())
+        rebalance_dates_full = get_rebalance_dates(trade_dates_sorted_full, REBALANCE_FREQUENCY)
+        rebalance_gap = estimate_rebalance_gap(trade_dates_sorted_full, rebalance_dates_full)
+        if (
+            BACKTEST_EXIT_MODE == "rebalance"
+            and np.isfinite(rebalance_gap)
+            and LABEL_HORIZON_MODE == "fixed"
+        ):
+            gap_diff = abs(rebalance_gap - label_horizon_effective)
+            if gap_diff >= max(3.0, rebalance_gap * 0.25):
+                logger.warning(
+                    "%sLabel horizon (%s days) differs from rebalance gap (median %.1f days).",
+                    label_prefix,
+                    label_horizon_effective,
+                    rebalance_gap,
+                )
+        rebalance_dates_eval = rebalance_dates_full
+        if valid_dates_set:
+            rebalance_dates_eval = [d for d in rebalance_dates_eval if d in valid_dates_set]
+        if SAMPLE_ON_REBALANCE_DATES:
+            test_dates_set = set(pd.to_datetime(test_dates))
+            rebalance_dates_eval = [d for d in rebalance_dates_eval if d in test_dates_set]
+        eval_df = test_eval_df[test_eval_df["trade_date"].isin(rebalance_dates_eval)].copy()
+
+        quantile_ts = quantile_returns(eval_df, signal_col, TARGET, N_QUANTILES)
+        quantile_mean = quantile_ts.mean() if not quantile_ts.empty else pd.Series(dtype=float)
+        result["quantile_ts"] = quantile_ts
+        result["quantile_mean"] = quantile_mean
+        if not quantile_mean.empty:
+            for q_idx, value in quantile_mean.items():
+                logger.info("%sQ%s mean return: %.4f%%", label_prefix, int(q_idx) + 1, value * 100)
+            long_short = quantile_mean.iloc[-1] - quantile_mean.iloc[0]
+            logger.info(
+                "%sLong-short (Q%s-Q1): %.4f%%", label_prefix, N_QUANTILES, long_short * 100
+            )
+        else:
+            logger.info("%sQuantile returns not available - insufficient symbols per date.", label_prefix)
+
+        k = min(TOP_K, eval_df["ts_code"].nunique()) if not eval_df.empty else 0
+        turnover_series = estimate_turnover(
+            eval_df,
+            signal_col,
+            k,
+            rebalance_dates_eval,
+            buffer_exit=EVAL_BUFFER_EXIT,
+            buffer_entry=EVAL_BUFFER_ENTRY,
+        )
+        result["turnover_series"] = turnover_series
+        if not turnover_series.empty:
+            turnover = turnover_series.mean()
+            cost_drag = 2 * (TRANSACTION_COST_BPS / 10000.0) * turnover
+            logger.info(
+                "%sTop-%s turnover per rebalance: %.2f%% (n=%s)",
+                label_prefix,
+                k,
+                turnover * 100,
+                len(turnover_series),
+            )
+            logger.info(
+                "%sApprox cost drag per rebalance: %.2f%% at %s bps per side",
+                label_prefix,
+                cost_drag * 100,
+                TRANSACTION_COST_BPS,
+            )
+
+        bt_rebalance = get_rebalance_dates(
+            sorted(eval_df_full["trade_date"].unique()), BACKTEST_REBALANCE_FREQUENCY
+        )
+        if valid_dates_set:
+            bt_rebalance = [d for d in bt_rebalance if d in valid_dates_set]
+        bt_pred_col = signal_col
+        if BACKTEST_SIGNAL_DIRECTION != SIGNAL_DIRECTION:
+            eval_df_full["signal_bt"] = eval_df_full["pred"] * BACKTEST_SIGNAL_DIRECTION
+            bt_pred_col = "signal_bt"
+
+        positions_by_rebalance = None
+        if BACKTEST_ENABLED or not LIVE_ENABLED or not allow_live_fallback:
+            positions_by_rebalance = build_positions_by_rebalance(
+                eval_df_full,
+                pred_col=bt_pred_col,
+                price_col=PRICE_COL,
+                rebalance_dates=bt_rebalance,
+                top_k=BACKTEST_TOP_K,
+                shift_days=LABEL_SHIFT_DAYS,
+                buffer_exit=BACKTEST_BUFFER_EXIT,
+                buffer_entry=BACKTEST_BUFFER_ENTRY,
+                long_only=BACKTEST_LONG_ONLY,
+                short_k=BACKTEST_SHORT_K,
+                tradable_col=BACKTEST_TRADABLE_COL
+                if BACKTEST_TRADABLE_COL in eval_df_full.columns
+                else None,
+            )
+        if allow_live_fallback and LIVE_ENABLED and not BACKTEST_ENABLED:
+            positions_by_rebalance = positions_by_rebalance_live
+        result["positions_by_rebalance"] = positions_by_rebalance
+
+        bt_result = None
+        bt_attempted = False
+        if BACKTEST_ENABLED:
+            bt_attempted = True
+            try:
+                bt_result = backtest_topk(
+                    eval_df_full,
+                    pred_col=bt_pred_col,
+                    price_col=PRICE_COL,
+                    rebalance_dates=bt_rebalance,
+                    top_k=BACKTEST_TOP_K,
+                    shift_days=LABEL_SHIFT_DAYS,
+                    cost_bps=BACKTEST_COST_BPS_EFFECTIVE,
+                    trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
+                    exit_mode=BACKTEST_EXIT_MODE,
+                    exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
+                    long_only=BACKTEST_LONG_ONLY,
+                    short_k=BACKTEST_SHORT_K,
+                    buffer_exit=BACKTEST_BUFFER_EXIT,
+                    buffer_entry=BACKTEST_BUFFER_ENTRY,
+                    tradable_col=BACKTEST_TRADABLE_COL
+                    if BACKTEST_TRADABLE_COL in eval_df_full.columns
+                    else None,
+                    exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
+                    exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
+                    execution=execution_model,
+                )
+            except ValueError as exc:
+                logger.warning("%sBacktest skipped: %s", label_prefix, exc)
+                bt_result = None
+
+        if bt_attempted:
+            if bt_result is None:
+                logger.info("%sBacktest not available - insufficient data.", label_prefix)
+            else:
+                stats, net_series, gross_series, bt_turnover_series, period_info = bt_result
+                result["bt_stats"] = stats
+                result["bt_net_series"] = net_series
+                result["bt_gross_series"] = gross_series
+                result["bt_turnover_series"] = bt_turnover_series
+                result["bt_periods"] = period_info
+                mode_text = "long-only" if BACKTEST_LONG_ONLY else "long-short"
+                logger.info(
+                    "%sBacktest (%s, top-K, exit_mode=%s):",
+                    label_prefix,
+                    mode_text,
+                    BACKTEST_EXIT_MODE,
+                )
+                logger.info("%s  periods: %s", label_prefix, stats["periods"])
+                logger.info("%s  total return: %.2f%%", label_prefix, stats["total_return"] * 100)
+                logger.info("%s  ann return: %.2f%%", label_prefix, stats["ann_return"] * 100)
+                logger.info("%s  ann vol: %.2f%%", label_prefix, stats["ann_vol"] * 100)
+                logger.info("%s  sharpe: %.2f", label_prefix, stats["sharpe"])
+                logger.info("%s  max drawdown: %.2f%%", label_prefix, stats["max_drawdown"] * 100)
+                if not np.isnan(stats["avg_turnover"]):
+                    logger.info("%s  avg turnover: %.2f%%", label_prefix, stats["avg_turnover"] * 100)
+                    logger.info(
+                        "%s  avg cost drag: %.2f%%",
+                        label_prefix,
+                        stats["avg_cost_drag"] * 100,
+                    )
+
+                if benchmark_df is not None and not benchmark_df.empty:
+                    bench_series, bench_periods = build_benchmark_series(
+                        benchmark_df, PRICE_COL, period_info
+                    )
+                    if not bench_series.empty:
+                        result["bt_benchmark_series"] = bench_series
+                        bt_benchmark_stats = summarize_period_returns(
+                            bench_series, bench_periods, BACKTEST_TRADING_DAYS_PER_YEAR
+                        )
+                        result["bt_benchmark_stats"] = bt_benchmark_stats
+                        logger.info(
+                            "%s  benchmark total return: %.2f%%",
+                            label_prefix,
+                            bt_benchmark_stats["total_return"] * 100,
+                        )
+                        periods_per_year = stats.get("periods_per_year", np.nan)
+                        bt_active_stats, bt_active_series = summarize_active_returns(
+                            net_series, bench_series, periods_per_year
+                        )
+                        result["bt_active_stats"] = bt_active_stats
+                        result["bt_active_series"] = bt_active_series
+                        if bt_active_stats and bt_active_stats.get("n", 0) > 0:
+                            logger.info(
+                                "%s  active total return: %.2f%%",
+                                label_prefix,
+                                bt_active_stats["active_total_return"] * 100,
+                            )
+                            if np.isfinite(bt_active_stats.get("information_ratio", np.nan)):
+                                logger.info(
+                                    "%s  information ratio: %.2f",
+                                    label_prefix,
+                                    bt_active_stats["information_ratio"],
+                                )
+                            if np.isfinite(bt_active_stats.get("beta", np.nan)):
+                                logger.info("%s  beta: %.2f", label_prefix, bt_active_stats["beta"])
+                            if np.isfinite(bt_active_stats.get("alpha", np.nan)):
+                                logger.info(
+                                    "%s  alpha (ann): %.2f%%",
+                                    label_prefix,
+                                    bt_active_stats["alpha"] * 100,
+                                )
+
+        return result
+
+    BACKTEST_SIGNAL_DIRECTION = (
+        SIGNAL_DIRECTION if BACKTEST_SIGNAL_DIRECTION_RAW is None else BACKTEST_SIGNAL_DIRECTION_RAW
     )
 
-    perm_stats = None
-    if PERM_TEST_ENABLED:
-        logger.info("Permutation test (shuffle train labels within date) ...")
-        perm_scores = permutation_test_ic(
-            train_df,
-            test_df,
-            PERM_TEST_RUNS,
-            PERM_TEST_SEED,
-            SIGNAL_DIRECTION,
-        )
-        if perm_scores:
-            perm_mean = np.nanmean(perm_scores)
-            perm_std = np.nanstd(perm_scores)
-            logger.info(
-                "Permutation IC: mean=%.4f, std=%.4f, runs=%s",
-                perm_mean,
-                perm_std,
-                len(perm_scores),
-            )
-            logger.info("Permutation ICs: %s", [f"{s:.4f}" for s in perm_scores])
-            perm_stats = {
-                "mean": float(perm_mean),
-                "std": float(perm_std),
-                "scores": [float(score) for score in perm_scores],
-                "runs": int(len(perm_scores)),
-            }
+    eval_main = evaluate_period(
+        "Test",
+        model,
+        test_df_full,
+        test_dates,
+        run_perm_test=PERM_TEST_ENABLED,
+        perm_train_df=train_df,
+        perm_test_df=test_df,
+        allow_live_fallback=True,
+    )
+
+    ic_series = eval_main["ic_series"]
+    ic_stats = eval_main["ic_stats"]
+    quantile_ts = eval_main["quantile_ts"]
+    quantile_mean = eval_main["quantile_mean"]
+    turnover_series = eval_main["turnover_series"]
+    positions_by_rebalance = eval_main["positions_by_rebalance"]
+    bt_stats = eval_main["bt_stats"]
+    bt_net_series = eval_main["bt_net_series"]
+    bt_gross_series = eval_main["bt_gross_series"]
+    bt_turnover_series = eval_main["bt_turnover_series"]
+    bt_benchmark_series = eval_main["bt_benchmark_series"]
+    bt_active_series = eval_main["bt_active_series"]
+    bt_benchmark_stats = eval_main["bt_benchmark_stats"]
+    bt_active_stats = eval_main["bt_active_stats"]
+    bt_periods = eval_main["bt_periods"]
+    perm_stats = eval_main["perm_stats"]
+
+    if positions_by_rebalance is not None and not positions_by_rebalance.empty:
+        positions_by_rebalance = _annotate_positions_window(positions_by_rebalance)
+    if positions_by_rebalance_live is not None and not positions_by_rebalance_live.empty:
+        positions_by_rebalance_live = _annotate_positions_window(positions_by_rebalance_live)
+    positions_by_rebalance_path: Optional[Path] = None
+    positions_current_path: Optional[Path] = None
+    positions_by_rebalance_live_path: Optional[Path] = None
+    positions_current_live_path: Optional[Path] = None
+    positions_diff_path: Optional[Path] = None
+    positions_diff_live_path: Optional[Path] = None
 
     cv_stats_raw = None
     cv_stats = None
@@ -1985,194 +2154,6 @@ def run(config_ref: str | Path | None = None) -> None:
             "std": float(np.nanstd(cv_scores_adj)),
             "scores": [float(score) for score in cv_scores_adj],
         }
-
-    # Quantile returns on rebalance dates
-
-
-    trade_dates_sorted_full = sorted(test_df_full["trade_date"].unique())
-    rebalance_dates_full = get_rebalance_dates(trade_dates_sorted_full, REBALANCE_FREQUENCY)
-    rebalance_gap = estimate_rebalance_gap(trade_dates_sorted_full, rebalance_dates_full)
-    if (
-        BACKTEST_EXIT_MODE == "rebalance"
-        and np.isfinite(rebalance_gap)
-        and LABEL_HORIZON_MODE == "fixed"
-    ):
-        gap_diff = abs(rebalance_gap - label_horizon_effective)
-        if gap_diff >= max(3.0, rebalance_gap * 0.25):
-            logger.warning(
-                "Label horizon (%s days) differs from rebalance gap (median %.1f days).",
-                label_horizon_effective,
-                rebalance_gap,
-            )
-    rebalance_dates_eval = rebalance_dates_full
-    if valid_dates_set:
-        rebalance_dates_eval = [d for d in rebalance_dates_eval if d in valid_dates_set]
-    if SAMPLE_ON_REBALANCE_DATES:
-        test_dates_set = set(pd.to_datetime(test_dates))
-        rebalance_dates_eval = [d for d in rebalance_dates_eval if d in test_dates_set]
-    eval_df = test_eval_df[test_eval_df["trade_date"].isin(rebalance_dates_eval)].copy()
-
-    quantile_ts = quantile_returns(eval_df, signal_col, TARGET, N_QUANTILES)
-    quantile_mean = quantile_ts.mean() if not quantile_ts.empty else pd.Series(dtype=float)
-    if not quantile_mean.empty:
-        for q_idx, value in quantile_mean.items():
-            logger.info("Q%s mean return: %.4f%%", int(q_idx) + 1, value * 100)
-        long_short = quantile_mean.iloc[-1] - quantile_mean.iloc[0]
-        logger.info("Long-short (Q%s-Q1): %.4f%%", N_QUANTILES, long_short * 100)
-    else:
-        logger.info("Quantile returns not available - insufficient symbols per date.")
-
-    # Turnover estimate for top-K portfolio
-    k = min(TOP_K, eval_df["ts_code"].nunique())
-    turnover_series = estimate_turnover(
-        eval_df,
-        signal_col,
-        k,
-        rebalance_dates_eval,
-        buffer_exit=EVAL_BUFFER_EXIT,
-        buffer_entry=EVAL_BUFFER_ENTRY,
-    )
-    if not turnover_series.empty:
-        turnover = turnover_series.mean()
-        cost_drag = 2 * (TRANSACTION_COST_BPS / 10000.0) * turnover
-        logger.info("Top-%s turnover per rebalance: %.2f%% (n=%s)", k, turnover * 100, len(turnover_series))
-        logger.info(
-            "Approx cost drag per rebalance: %.2f%% at %s bps per side",
-            cost_drag * 100,
-            TRANSACTION_COST_BPS,
-        )
-
-    BACKTEST_SIGNAL_DIRECTION = (
-        SIGNAL_DIRECTION if BACKTEST_SIGNAL_DIRECTION_RAW is None else BACKTEST_SIGNAL_DIRECTION_RAW
-    )
-
-    bt_rebalance = get_rebalance_dates(
-        sorted(test_df_full["trade_date"].unique()), BACKTEST_REBALANCE_FREQUENCY
-    )
-    if valid_dates_set:
-        bt_rebalance = [d for d in bt_rebalance if d in valid_dates_set]
-    bt_pred_col = signal_col
-    if BACKTEST_SIGNAL_DIRECTION != SIGNAL_DIRECTION:
-        test_df_full["signal_bt"] = test_df_full["pred"] * BACKTEST_SIGNAL_DIRECTION
-        bt_pred_col = "signal_bt"
-
-    positions_by_rebalance = None
-    if BACKTEST_ENABLED or not LIVE_ENABLED:
-        positions_by_rebalance = build_positions_by_rebalance(
-            test_df_full,
-            pred_col=bt_pred_col,
-            price_col=PRICE_COL,
-            rebalance_dates=bt_rebalance,
-            top_k=BACKTEST_TOP_K,
-            shift_days=LABEL_SHIFT_DAYS,
-            buffer_exit=BACKTEST_BUFFER_EXIT,
-            buffer_entry=BACKTEST_BUFFER_ENTRY,
-            long_only=BACKTEST_LONG_ONLY,
-            short_k=BACKTEST_SHORT_K,
-            tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_df_full.columns else None,
-        )
-    if LIVE_ENABLED and not BACKTEST_ENABLED:
-        positions_by_rebalance = positions_by_rebalance_live
-    if positions_by_rebalance is not None and not positions_by_rebalance.empty:
-        positions_by_rebalance = _annotate_positions_window(positions_by_rebalance)
-    if positions_by_rebalance_live is not None and not positions_by_rebalance_live.empty:
-        positions_by_rebalance_live = _annotate_positions_window(positions_by_rebalance_live)
-    positions_by_rebalance_path: Optional[Path] = None
-    positions_current_path: Optional[Path] = None
-    positions_by_rebalance_live_path: Optional[Path] = None
-    positions_current_live_path: Optional[Path] = None
-    positions_diff_path: Optional[Path] = None
-    positions_diff_live_path: Optional[Path] = None
-
-    bt_stats = None
-    bt_net_series = pd.Series(dtype=float, name="net_return")
-    bt_gross_series = pd.Series(dtype=float, name="gross_return")
-    bt_turnover_series = pd.Series(dtype=float, name="turnover")
-    bt_benchmark_series = pd.Series(dtype=float, name="benchmark_return")
-    bt_active_series = pd.Series(dtype=float, name="active_return")
-    bt_benchmark_stats = None
-    bt_active_stats = None
-    bt_periods: list[dict] = []
-    bt_result = None
-    bt_attempted = False
-
-    if BACKTEST_ENABLED:
-        bt_attempted = True
-        try:
-            bt_result = backtest_topk(
-                test_df_full,
-                pred_col=bt_pred_col,
-                price_col=PRICE_COL,
-                rebalance_dates=bt_rebalance,
-                top_k=BACKTEST_TOP_K,
-                shift_days=LABEL_SHIFT_DAYS,
-                cost_bps=BACKTEST_COST_BPS,
-                trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
-                exit_mode=BACKTEST_EXIT_MODE,
-                exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
-                long_only=BACKTEST_LONG_ONLY,
-                short_k=BACKTEST_SHORT_K,
-                buffer_exit=BACKTEST_BUFFER_EXIT,
-                buffer_entry=BACKTEST_BUFFER_ENTRY,
-                tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_df_full.columns else None,
-                exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
-                exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
-            )
-        except ValueError as exc:
-            logger.warning("Backtest skipped: %s", exc)
-            bt_result = None
-
-    if bt_attempted:
-        if bt_result is None:
-            logger.info("Backtest not available - insufficient data.")
-        else:
-            stats, net_series, gross_series, bt_turnover_series, period_info = bt_result
-            bt_stats = stats
-            bt_net_series = net_series
-            bt_gross_series = gross_series
-            bt_periods = period_info
-            mode_text = "long-only" if BACKTEST_LONG_ONLY else "long-short"
-            logger.info("Backtest (%s, top-K, exit_mode=%s):", mode_text, BACKTEST_EXIT_MODE)
-            logger.info("  periods: %s", stats["periods"])
-            logger.info("  total return: %.2f%%", stats["total_return"] * 100)
-            logger.info("  ann return: %.2f%%", stats["ann_return"] * 100)
-            logger.info("  ann vol: %.2f%%", stats["ann_vol"] * 100)
-            logger.info("  sharpe: %.2f", stats["sharpe"])
-            logger.info("  max drawdown: %.2f%%", stats["max_drawdown"] * 100)
-            if not np.isnan(stats["avg_turnover"]):
-                logger.info("  avg turnover: %.2f%%", stats["avg_turnover"] * 100)
-                logger.info("  avg cost drag: %.2f%%", stats["avg_cost_drag"] * 100)
-
-            if benchmark_df is not None and not benchmark_df.empty:
-                bench_series, bench_periods = build_benchmark_series(
-                    benchmark_df, PRICE_COL, period_info
-                )
-                if not bench_series.empty:
-                    bt_benchmark_series = bench_series
-                    bt_benchmark_stats = summarize_period_returns(
-                        bench_series, bench_periods, BACKTEST_TRADING_DAYS_PER_YEAR
-                    )
-                    logger.info(
-                        "  benchmark total return: %.2f%%", bt_benchmark_stats["total_return"] * 100
-                    )
-                    periods_per_year = stats.get("periods_per_year", np.nan)
-                    bt_active_stats, bt_active_series = summarize_active_returns(
-                        bt_net_series, bench_series, periods_per_year
-                    )
-                    if bt_active_stats and bt_active_stats.get("n", 0) > 0:
-                        logger.info(
-                            "  active total return: %.2f%%",
-                            bt_active_stats["active_total_return"] * 100,
-                        )
-                        if np.isfinite(bt_active_stats.get("information_ratio", np.nan)):
-                            logger.info(
-                                "  information ratio: %.2f",
-                                bt_active_stats["information_ratio"],
-                            )
-                        if np.isfinite(bt_active_stats.get("beta", np.nan)):
-                            logger.info("  beta: %.2f", bt_active_stats["beta"])
-                        if np.isfinite(bt_active_stats.get("alpha", np.nan)):
-                            logger.info("  alpha (ann): %.2f%%", bt_active_stats["alpha"] * 100)
 
     walk_forward_results: list[dict] = []
     if WF_ENABLED:
@@ -2195,6 +2176,73 @@ def run(config_ref: str | Path | None = None) -> None:
             for window_meta in windows:
                 walk_forward_results.append(evaluate_window(window_meta))
 
+    final_oos_eval = None
+    ic_series_oos = pd.Series(dtype=float, name="ic")
+    ic_stats_oos = {}
+    quantile_ts_oos = pd.DataFrame()
+    quantile_mean_oos = pd.Series(dtype=float)
+    turnover_series_oos = pd.Series(dtype=float, name="turnover")
+    positions_by_rebalance_oos = None
+    bt_stats_oos = None
+    bt_net_series_oos = pd.Series(dtype=float, name="net_return")
+    bt_gross_series_oos = pd.Series(dtype=float, name="gross_return")
+    bt_turnover_series_oos = pd.Series(dtype=float, name="turnover")
+    bt_benchmark_series_oos = pd.Series(dtype=float, name="benchmark_return")
+    bt_active_series_oos = pd.Series(dtype=float, name="active_return")
+    bt_benchmark_stats_oos = None
+    bt_active_stats_oos = None
+    bt_periods_oos: list[dict] = []
+    positions_by_rebalance_oos_path: Optional[Path] = None
+    positions_current_oos_path: Optional[Path] = None
+    positions_diff_oos_path: Optional[Path] = None
+    if FINAL_OOS_ENABLED and final_oos_dates.size > 0:
+        oos_start = pd.to_datetime(final_oos_dates[0])
+        oos_end = pd.to_datetime(final_oos_dates[-1])
+        oos_df_full = df_full[
+            (df_full["trade_date"] >= oos_start) & (df_full["trade_date"] <= oos_end)
+        ].copy()
+        if oos_df_full.empty:
+            logger.info(
+                "Final OOS evaluation skipped: no data between %s and %s.",
+                oos_start.date(),
+                oos_end.date(),
+            )
+        else:
+            logger.info("Fitting final model on all in-sample data for OOS evaluation ...")
+            final_model = XGBRegressor(**XGB_PARAMS)
+            final_weights = build_sample_weight(df_model, SAMPLE_WEIGHT_MODE)
+            if final_weights is not None:
+                final_model.fit(
+                    df_model[FEATURES], df_model[TARGET], sample_weight=final_weights
+                )
+            else:
+                final_model.fit(df_model[FEATURES], df_model[TARGET])
+            final_oos_eval = evaluate_period(
+                "Final OOS",
+                final_model,
+                oos_df_full,
+                final_oos_dates,
+                run_perm_test=False,
+                allow_live_fallback=False,
+            )
+            ic_series_oos = final_oos_eval["ic_series"]
+            ic_stats_oos = final_oos_eval["ic_stats"]
+            quantile_ts_oos = final_oos_eval["quantile_ts"]
+            quantile_mean_oos = final_oos_eval["quantile_mean"]
+            turnover_series_oos = final_oos_eval["turnover_series"]
+            positions_by_rebalance_oos = final_oos_eval["positions_by_rebalance"]
+            bt_stats_oos = final_oos_eval["bt_stats"]
+            bt_net_series_oos = final_oos_eval["bt_net_series"]
+            bt_gross_series_oos = final_oos_eval["bt_gross_series"]
+            bt_turnover_series_oos = final_oos_eval["bt_turnover_series"]
+            bt_benchmark_series_oos = final_oos_eval["bt_benchmark_series"]
+            bt_active_series_oos = final_oos_eval["bt_active_series"]
+            bt_benchmark_stats_oos = final_oos_eval["bt_benchmark_stats"]
+            bt_active_stats_oos = final_oos_eval["bt_active_stats"]
+            bt_periods_oos = final_oos_eval["bt_periods"]
+            if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
+                positions_by_rebalance_oos = _annotate_positions_window(positions_by_rebalance_oos)
+
     # Feature importance
     logger.info("Feature importance:")
     importance_df = pd.DataFrame(
@@ -2204,7 +2252,11 @@ def run(config_ref: str | Path | None = None) -> None:
         logger.info("  %-20s: %.4f", row["feature"], row["importance"])
 
     # Persist artifacts
+    dataset_path: Optional[Path] = None
     if SAVE_ARTIFACTS:
+        if SAVE_DATASET:
+            dataset_path = run_dir / "dataset.parquet"
+            save_parquet(dataset.as_multiindex(), dataset_path)
         save_frame(importance_df, run_dir / "feature_importance.csv")
         save_series(ic_series, run_dir / "ic_test.csv", value_name="ic")
         if REPORT_TRAIN_IC:
@@ -2213,6 +2265,16 @@ def run(config_ref: str | Path | None = None) -> None:
             quantile_out = quantile_ts.reset_index()
             save_frame(quantile_out, run_dir / "quantile_returns.csv")
         save_series(turnover_series, run_dir / "turnover_eval.csv", value_name="turnover")
+        if final_oos_eval is not None:
+            save_series(ic_series_oos, run_dir / "ic_oos.csv", value_name="ic")
+            if not quantile_ts_oos.empty:
+                quantile_oos_out = quantile_ts_oos.reset_index()
+                save_frame(quantile_oos_out, run_dir / "quantile_returns_oos.csv")
+            save_series(
+                turnover_series_oos,
+                run_dir / "turnover_eval_oos.csv",
+                value_name="turnover",
+            )
         if not dropped_date_counts.empty:
             dropped_df = dropped_date_counts.rename("symbol_count").reset_index()
             save_frame(dropped_df, run_dir / "dropped_dates.csv")
@@ -2228,6 +2290,28 @@ def run(config_ref: str | Path | None = None) -> None:
                 save_series(bt_active_series, run_dir / "backtest_active.csv", value_name="active_return")
             if bt_periods:
                 save_frame(pd.DataFrame(bt_periods), run_dir / "backtest_periods.csv")
+        if bt_stats_oos is not None:
+            save_series(bt_net_series_oos, run_dir / "backtest_net_oos.csv", value_name="net_return")
+            save_series(
+                bt_gross_series_oos, run_dir / "backtest_gross_oos.csv", value_name="gross_return"
+            )
+            save_series(
+                bt_turnover_series_oos, run_dir / "backtest_turnover_oos.csv", value_name="turnover"
+            )
+            if not bt_benchmark_series_oos.empty:
+                save_series(
+                    bt_benchmark_series_oos,
+                    run_dir / "backtest_benchmark_oos.csv",
+                    value_name="benchmark_return",
+                )
+            if not bt_active_series_oos.empty:
+                save_series(
+                    bt_active_series_oos,
+                    run_dir / "backtest_active_oos.csv",
+                    value_name="active_return",
+                )
+            if bt_periods_oos:
+                save_frame(pd.DataFrame(bt_periods_oos), run_dir / "backtest_periods_oos.csv")
 
         if (
             positions_by_rebalance is not None
@@ -2243,6 +2327,20 @@ def run(config_ref: str | Path | None = None) -> None:
                 if not positions_current.empty:
                     positions_current_path = run_dir / "positions_current.csv"
                     save_frame(positions_current, positions_current_path)
+        if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
+            positions_by_rebalance_oos_path = run_dir / "positions_by_rebalance_oos.csv"
+            save_frame(positions_by_rebalance_oos, positions_by_rebalance_oos_path)
+            oos_entry_dates = pd.to_datetime(
+                positions_by_rebalance_oos["entry_date"], errors="coerce"
+            )
+            if oos_entry_dates.notna().any():
+                oos_latest_entry = oos_entry_dates.max()
+                positions_current_oos = positions_by_rebalance_oos[
+                    oos_entry_dates == oos_latest_entry
+                ].copy()
+                if not positions_current_oos.empty:
+                    positions_current_oos_path = run_dir / "positions_current_oos.csv"
+                    save_frame(positions_current_oos, positions_current_oos_path)
 
         if (
             LIVE_ENABLED
@@ -2272,6 +2370,11 @@ def run(config_ref: str | Path | None = None) -> None:
             if not diff_frame.empty:
                 positions_diff_path = run_dir / "rebalance_diff.csv"
                 save_frame(diff_frame, positions_diff_path)
+        if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
+            diff_oos = _build_rebalance_diff(positions_by_rebalance_oos)
+            if not diff_oos.empty:
+                positions_diff_oos_path = run_dir / "rebalance_diff_oos.csv"
+                save_frame(diff_oos, positions_diff_oos_path)
 
         if LIVE_ENABLED and positions_by_rebalance_live is not None and not positions_by_rebalance_live.empty:
             diff_live = _build_rebalance_diff(positions_by_rebalance_live)
@@ -2312,9 +2415,19 @@ def run(config_ref: str | Path | None = None) -> None:
                 "end_date": END_DATE,
                 "symbols": len(symbols),
                 "rows": len(df_full),
-                "rows_model": len(df_model),
+                "rows_model": len(df_model_all),
+                "rows_model_in_sample": len(df_model),
+                "rows_model_oos": len(df_model_oos) if FINAL_OOS_ENABLED else 0,
                 "min_symbols_per_date": MIN_SYMBOLS_PER_DATE,
                 "dropped_dates": int(dropped_date_counts.shape[0]),
+            },
+            "dataset": {
+                "schema": dataset.schema.to_dict() if dataset is not None else None,
+                "rows": int(len(dataset.frame)) if dataset is not None else 0,
+                "file": str(dataset_path) if dataset_path else None,
+                "index": [dataset.schema.date_col, dataset.schema.instrument_col]
+                if dataset is not None
+                else None,
             },
             "universe": {
                 "mode": universe_mode_effective,
@@ -2376,9 +2489,49 @@ def run(config_ref: str | Path | None = None) -> None:
                 "rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,
                 "signal_direction": BACKTEST_SIGNAL_DIRECTION,
                 "benchmark_symbol": benchmark_symbol,
+                "transaction_cost_bps": BACKTEST_COST_BPS_REPORT,
+                "execution": describe_execution_model(execution_model),
                 "stats": bt_stats,
                 "benchmark": bt_benchmark_stats,
                 "active": bt_active_stats,
+            },
+            "final_oos": {
+                "enabled": FINAL_OOS_ENABLED,
+                "size": FINAL_OOS_SIZE_RAW,
+                "dates": int(final_oos_len) if FINAL_OOS_ENABLED else 0,
+                "start": final_oos_start.strftime("%Y%m%d") if final_oos_start else None,
+                "end": final_oos_end.strftime("%Y%m%d") if final_oos_end else None,
+                "ic": ic_stats_oos if final_oos_eval is not None else None,
+                "quantile_mean": quantile_mean_oos.to_dict()
+                if final_oos_eval is not None and not quantile_mean_oos.empty
+                else {},
+                "long_short": float(quantile_mean_oos.iloc[-1] - quantile_mean_oos.iloc[0])
+                if final_oos_eval is not None and not quantile_mean_oos.empty
+                else None,
+                "turnover_mean": float(turnover_series_oos.mean())
+                if final_oos_eval is not None and not turnover_series_oos.empty
+                else None,
+                "turnover_count": int(turnover_series_oos.shape[0])
+                if final_oos_eval is not None
+                else 0,
+                "backtest": {
+                    "stats": bt_stats_oos,
+                    "benchmark": bt_benchmark_stats_oos,
+                    "active": bt_active_stats_oos,
+                }
+                if final_oos_eval is not None
+                else None,
+                "positions": {
+                    "by_rebalance_file": str(positions_by_rebalance_oos_path)
+                    if positions_by_rebalance_oos_path
+                    else None,
+                    "current_file": str(positions_current_oos_path)
+                    if positions_current_oos_path
+                    else None,
+                    "diff_file": str(positions_diff_oos_path) if positions_diff_oos_path else None,
+                }
+                if final_oos_eval is not None
+                else None,
             },
             "positions": {
                 "by_rebalance_file": str(positions_by_rebalance_path)

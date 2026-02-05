@@ -17,8 +17,8 @@ csxgb init-config --market hk --out config/
 * `label`：预测窗口、shift、winsorize（支持 `horizon_mode=next_rebalance`）
 * `features`：特征清单与窗口
 * `model`：XGBoost 参数，`sample_weight_mode`（`none`/`date_equal`）
-* `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`、`min_abs_ic_to_flip`、`sample_on_rebalance_dates`，以及可选的 `report_train_ic`、`save_artifacts`、`permutation_test` 与 `walk_forward`
-* `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准、`exit_mode`、`exit_price_policy` 与 `buffer_exit/buffer_entry`
+* `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`、`min_abs_ic_to_flip`、`sample_on_rebalance_dates`，以及可选的 `report_train_ic`、`save_artifacts`、`save_dataset`、`permutation_test`、`walk_forward` 与 `final_oos`
+* `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准、`exit_mode`、`exit_price_policy` 与 `buffer_exit/buffer_entry`，可选 `execution`（cost_model / exit_policy）
 * `live`：可选“当下持仓快照”，用于在固定回测之外输出当前组合
 
 ## 基本面数据
@@ -53,3 +53,34 @@ live:
 * Live 产物固定写入 `positions_by_rebalance_live.csv` 与 `positions_current_live.csv`（live-only 不再生成普通文件）；持仓文件会包含 `signal_asof/next_entry_date/holding_window` 辅助字段。
 * `csxgb holdings --source live` 会优先读取 summary 中的 live 文件路径。
 * 一键快照：`csxgb snapshot --config config/hk_live.yml`（内部先 run 再输出 holdings），可用 `--skip-run` / `--run-dir` 只读已有结果。
+
+## 最终 OOS 留出期
+
+当需要在 walk-forward/CV 之外保留一段“最终验收期”，可使用 `eval.final_oos`。该留出期不会参与任何训练/调参，仅用于最后评估。
+
+```yaml
+eval:
+  final_oos:
+    enabled: true
+    size: 0.1   # 支持比例(0-1)或绝对日期数量
+```
+
+## Dataset 输出（可选）
+
+设置 `eval.save_dataset=true`（需同时 `eval.save_artifacts=true`）会在 run_dir 额外写出 `dataset.parquet`。Schema 固定为 `(trade_date, ts_code)` 索引，对应列为 `price_col` + `features` + `label` + `is_tradable`（如存在），便于后续接 Qlib 或其他框架。
+
+## 执行假设模块（可选）
+
+`backtest.execution` 可覆盖成本与退出规则，未配置时仍使用 `transaction_cost_bps` 与 `exit_*` 旧键：
+
+```yaml
+backtest:
+  execution:
+    cost_model:
+      name: bps
+      bps: 15
+      round_trip: true
+    exit_policy:
+      price: delay
+      fallback: ffill
+```

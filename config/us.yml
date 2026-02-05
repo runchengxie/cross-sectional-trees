@@ -143,6 +143,9 @@ eval:
       enabled: false
       n_runs: 3
       seed: 42
+  final_oos:
+    enabled: false
+    size: null
 
 backtest:
   enabled: true

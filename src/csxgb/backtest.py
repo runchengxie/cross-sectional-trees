@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .portfolio import select_holdings
+from .execution import BpsCostModel, ExecutionModel, ExitPolicy
 
 def summarize_period_returns(
     returns: pd.Series,
@@ -83,11 +84,18 @@ def backtest_topk(
     tradable_col: Optional[str] = None,
     exit_price_policy: Literal["strict", "ffill", "delay"] = "strict",
     exit_fallback_policy: Literal["ffill", "none"] = "ffill",
+    execution: Optional[ExecutionModel] = None,
 ):
-    if exit_price_policy not in {"strict", "ffill", "delay"}:
-        raise ValueError("exit_price_policy must be one of: strict, ffill, delay.")
-    if exit_fallback_policy not in {"ffill", "none"}:
-        raise ValueError("exit_fallback_policy must be one of: ffill, none.")
+    if execution is None:
+        if exit_price_policy not in {"strict", "ffill", "delay"}:
+            raise ValueError("exit_price_policy must be one of: strict, ffill, delay.")
+        if exit_fallback_policy not in {"ffill", "none"}:
+            raise ValueError("exit_fallback_policy must be one of: ffill, none.")
+        exit_policy = ExitPolicy(exit_price_policy, exit_fallback_policy)
+        cost_model = BpsCostModel(cost_bps)
+    else:
+        exit_policy = execution.exit_policy
+        cost_model = execution.cost_model
     trade_dates = sorted(data["trade_date"].unique())
     if len(trade_dates) < 2:
         return None
@@ -146,64 +154,18 @@ def backtest_topk(
         overlap = len(set(current_holdings) & prev_set)
         return 1 - overlap / len(current_holdings)
 
-    def _resolve_exit_idx(symbol: str, planned_exit_idx: int) -> Optional[int]:
-        if planned_exit_idx >= len(trade_dates):
-            return None
-        series = price_table[symbol]
-        if exit_price_policy == "strict":
-            if not np.isfinite(series.iloc[planned_exit_idx]):
-                return None
-            if tradable_table is not None:
-                tradable_series = tradable_table[symbol]
-                if not bool(tradable_series.iloc[planned_exit_idx]):
-                    return None
-            return planned_exit_idx
-        if exit_price_policy == "ffill":
-            window = series.iloc[: planned_exit_idx + 1]
-            if tradable_table is not None:
-                tradable_series = tradable_table[symbol].iloc[: planned_exit_idx + 1]
-                window = window[tradable_series]
-            exit_date = window.last_valid_index()
-            return date_to_idx[exit_date] if exit_date is not None else None
-        window = series.iloc[planned_exit_idx:]
-        if tradable_table is not None:
-            tradable_series = tradable_table[symbol].iloc[planned_exit_idx:]
-            window = window[tradable_series]
-        exit_date = window.first_valid_index()
-        if exit_date is None and exit_fallback_policy == "ffill":
-            window = series.iloc[: planned_exit_idx + 1]
-            if tradable_table is not None:
-                tradable_series = tradable_table[symbol].iloc[: planned_exit_idx + 1]
-                window = window[tradable_series]
-            exit_date = window.last_valid_index()
-        return date_to_idx[exit_date] if exit_date is not None else None
-
     def _resolve_exit_prices(
         holdings: list[str],
         planned_exit_idx: int,
     ) -> tuple[pd.Series, int]:
-        if not holdings:
-            return pd.Series(dtype=float), planned_exit_idx
-        exit_idx_map: dict[str, int] = {}
-        exit_price_map: dict[str, float] = {}
-        for symbol in holdings:
-            exit_idx = _resolve_exit_idx(symbol, planned_exit_idx)
-            if exit_idx is None:
-                continue
-            exit_price = price_table.iloc[exit_idx][symbol]
-            if not np.isfinite(exit_price):
-                continue
-            exit_idx_map[symbol] = int(exit_idx)
-            exit_price_map[symbol] = float(exit_price)
-        if not exit_price_map:
-            return pd.Series(dtype=float), planned_exit_idx
-        exit_prices = pd.Series(exit_price_map)
-        if exit_price_policy == "delay":
-            max_exit_idx = max(exit_idx_map.values())
-            period_exit_idx = max(planned_exit_idx, max_exit_idx)
-        else:
-            period_exit_idx = planned_exit_idx
-        return exit_prices, period_exit_idx
+        return exit_policy.resolve_exit_prices(
+            holdings,
+            planned_exit_idx,
+            price_table=price_table,
+            tradable_table=tradable_table,
+            trade_dates=trade_dates,
+            date_to_idx=date_to_idx,
+        )
 
     for i, reb_date in enumerate(rebalance_dates):
         if reb_date not in date_to_idx:
@@ -242,7 +204,6 @@ def backtest_topk(
         if k <= 0:
             continue
 
-        cost_per_side = cost_bps / 10000.0
         if long_only:
             holdings, entry_prices = select_holdings(
                 day,
@@ -271,10 +232,7 @@ def backtest_topk(
             period_returns = (exit_prices / entry_prices) - 1.0
             gross = period_returns.mean()
             turnover = _compute_turnover(prev_holdings, prev_entry_prices, prev_entry_date, holdings, entry_date)
-            if prev_holdings is None:
-                cost = cost_per_side
-            else:
-                cost = 2 * cost_per_side * turnover
+            cost = cost_model.cost(turnover, is_initial=prev_holdings is None, side="long")
             net = gross - cost
 
             prev_holdings = set(holdings)
@@ -342,10 +300,8 @@ def backtest_topk(
                 short_holdings,
                 entry_date,
             )
-            cost_long = cost_per_side if prev_holdings is None else 2 * cost_per_side * turnover_long
-            cost_short = (
-                cost_per_side if prev_short_holdings is None else 2 * cost_per_side * turnover_short
-            )
+            cost_long = cost_model.cost(turnover_long, is_initial=prev_holdings is None, side="long")
+            cost_short = cost_model.cost(turnover_short, is_initial=prev_short_holdings is None, side="short")
             cost = cost_long + cost_short
             net = gross - cost
             turnover = turnover_long + turnover_short
