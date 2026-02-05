@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=7.4",
+  "pytest-cov",
 ]
 rqdata = [
   "rqdatac>=3.4.3",
