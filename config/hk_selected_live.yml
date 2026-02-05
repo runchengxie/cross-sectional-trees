@@ -35,7 +35,7 @@ data:
     vol: volume
     amount: total_turnover
 fundamentals:
-  enabled: true
+  enabled: false
   source: file
   file: out/fundamentals/hk_fundamentals_daily.csv
   endpoint: null
@@ -130,8 +130,8 @@ eval:
   signal_direction_mode: cv_ic
   min_abs_ic_to_flip: 0.002
   transaction_cost_bps: 25
-  buffer_exit: 6
-  buffer_entry: 3
+  buffer_exit: 10
+  buffer_entry: 5
   sample_on_rebalance_dates: false
   embargo_days: 20
   purge_days: 20
@@ -169,8 +169,8 @@ backtest:
   benchmark_symbol: 02800.HK
   exit_mode: rebalance
   exit_horizon_days: null
-  buffer_exit: 6
-  buffer_entry: 3
+  buffer_exit: 10
+  buffer_entry: 5
   exit_price_policy: delay
   exit_fallback_policy: ffill
 
