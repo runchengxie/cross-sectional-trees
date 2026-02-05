@@ -27,6 +27,14 @@
 
    然后你会拿到完整产物目录，包含 `summary.json`、`config.used.yml`、回测/IC/特征重要性、以及持仓 CSV 等。
 
+1. 实盘跑一次，获得当月的持股建议
+
+   ```bash
+   csxgb snapshot --config config/hk_selected_live.yml
+   # 或者你已经跑过了，只想复用最新结果
+   csxgb snapshot --config config/hk_selected_live.yml --skip-run
+   ```
+
 ## 覆盖默认网格参数（可选）
 
 ```bash
