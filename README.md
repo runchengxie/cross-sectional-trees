@@ -178,7 +178,9 @@ data:
 * 作用：跨多个历史 run 目录聚合关键指标（读取每个 run 的 `summary.json` + `config.used.yml`），输出总表 CSV。
 * 默认扫描：`out/runs`（递归）。
 * 常用参数：`--runs-dir`（可重复传多个目录）、`--output`（默认 `<runs-dir>/runs_summary.csv`）。
+* 筛选参数：`--run-name-prefix`（按 run_name 前缀过滤，可重复传）、`--since`（只保留该时点之后的 run）、`--latest-n`（过滤后只保留最新 N 条）。
 * 额外筛选列：会自动生成 `flag_short_sample`、`flag_negative_long_short`、`flag_high_turnover` 和 `score`，便于快速筛选异常/候选 run。
+* 完整参数清单见 `docs/cli.md`。
 
 常用指令：
 
@@ -194,6 +196,9 @@ csxgb grid --config config/hk.yml
 
 # 跨 run 汇总总表（研究对比）
 csxgb summarize --runs-dir out/runs --output out/runs/runs_summary.csv
+
+# 只看最近一次 grid 相关汇总（示例）
+csxgb summarize --runs-dir out/runs --run-name-prefix hk_grid --latest-n 1
 
 # 当期持仓清单（从最近一次 run 读取）
 csxgb holdings --config config/hk.yml --as-of t-1

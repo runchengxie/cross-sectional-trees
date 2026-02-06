@@ -5,6 +5,7 @@ import csv
 import json
 import logging
 import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,15 @@ import yaml
 
 RUN_DIR_PATTERN = re.compile(
     r"^(?P<run_name>.+)_(?P<timestamp>\d{8}_\d{6})_(?P<config_hash>[0-9a-fA-F]{8})$"
+)
+RUN_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
+DATETIME_PARSE_FORMATS = (
+    RUN_TIMESTAMP_FORMAT,
+    "%Y%m%d",
+    "%Y-%m-%d",
+    "%Y%m%d%H%M%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S",
 )
 
 FIELDNAMES = [
@@ -90,6 +100,55 @@ def _to_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _parse_datetime_text(value: str) -> datetime | None:
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in DATETIME_PARSE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_run_timestamp(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    return _parse_datetime_text(str(value))
+
+
+def _parse_since(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    if lowered in {"today", "now"}:
+        return today
+    if lowered in {"yesterday", "t-1"}:
+        return today - timedelta(days=1)
+    parsed = _parse_datetime_text(text)
+    if parsed is None:
+        raise SystemExit(
+            "Invalid --since value. Supported formats: "
+            "YYYYMMDD, YYYY-MM-DD, YYYYMMDD_HHMMSS, YYYY-MM-DDTHH:MM:SS"
+        )
+    return parsed
+
+
+def _parse_prefixes(values: list[str] | None) -> list[str]:
+    prefixes: list[str] = []
+    for entry in values or []:
+        for part in str(entry).split(","):
+            text = part.strip()
+            if text:
+                prefixes.append(text)
+    return list(dict.fromkeys(prefixes))
 
 
 def _parse_run_dir_name(run_dir_name: str) -> tuple[str | None, str | None, str | None]:
@@ -327,6 +386,29 @@ def add_summarize_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPars
         help="Output CSV path (default: <first-runs-dir>/runs_summary.csv)",
     )
     parser.add_argument(
+        "--run-name-prefix",
+        action="append",
+        default=None,
+        help=(
+            "Only include runs whose run_name starts with this prefix "
+            "(repeatable, supports comma-separated values)"
+        ),
+    )
+    parser.add_argument(
+        "--since",
+        default=None,
+        help=(
+            "Only include runs at/after this run timestamp. Supported: "
+            "YYYYMMDD, YYYY-MM-DD, YYYYMMDD_HHMMSS, YYYY-MM-DDTHH:MM:SS"
+        ),
+    )
+    parser.add_argument(
+        "--latest-n",
+        type=int,
+        default=None,
+        help="Keep only the latest N runs after applying filters",
+    )
+    parser.add_argument(
         "--short-sample-periods",
         type=int,
         default=24,
@@ -364,8 +446,12 @@ def run(args: argparse.Namespace) -> Path:
         level=getattr(logging, str(args.log_level).upper(), logging.INFO),
         format="%(levelname)s: %(message)s",
     )
+    if args.latest_n is not None and int(args.latest_n) <= 0:
+        raise SystemExit("--latest-n must be a positive integer.")
 
     runs_dirs = [_resolve_path(path) for path in (args.runs_dir or ["out/runs"])]
+    run_name_prefixes = _parse_prefixes(args.run_name_prefix)
+    since_dt = _parse_since(args.since)
     summary_entries = _iter_summary_files(runs_dirs)
     if not summary_entries:
         targets = ", ".join(str(path) for path in runs_dirs)
@@ -374,7 +460,29 @@ def run(args: argparse.Namespace) -> Path:
     output_path = _resolve_output_path(args, runs_dirs)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = [_extract_row(source_dir, summary_path, args) for source_dir, summary_path in summary_entries]
+    candidates: list[tuple[datetime, dict[str, Any]]] = []
+    for source_dir, summary_path in summary_entries:
+        row = _extract_row(source_dir, summary_path, args)
+        run_name = str(row.get("run_name") or "")
+        if run_name_prefixes and not any(
+            run_name.startswith(prefix) for prefix in run_name_prefixes
+        ):
+            continue
+        row_dt = _parse_run_timestamp(row.get("run_timestamp"))
+        if row_dt is None:
+            row_dt = datetime.fromtimestamp(summary_path.stat().st_mtime)
+        if since_dt is not None and row_dt < since_dt:
+            continue
+        candidates.append((row_dt, row))
+
+    if not candidates:
+        raise SystemExit("No runs matched current summarize filters.")
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    if args.latest_n is not None:
+        candidates = candidates[: int(args.latest_n)]
+    rows = [row for _, row in candidates]
+
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDNAMES)
         writer.writeheader()

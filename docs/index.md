@@ -8,6 +8,7 @@
 ## 推荐阅读顺序
 
 1. `README.md`：安装、命令入口、核心假设。
+1. `docs/cli.md`：CLI 命令与参数大全。
 1. `docs/cookbook.md`：照抄命令跑出可复现结果。
 1. `docs/config.md`：理解并修改配置参数。
 1. `docs/metrics.md`：解读 IC、回测与风险指标。

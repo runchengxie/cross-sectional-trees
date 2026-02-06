@@ -174,3 +174,76 @@ def test_summarize_runs_default_output_and_recursive_scan(tmp_path):
     assert row["run_name"] == "gamma"
     assert _as_bool(row["flag_short_sample"]) is True
     assert _as_bool(row["flag_high_turnover"]) is True
+
+
+def test_summarize_runs_filters_prefix_since_latest_n(tmp_path):
+    runs_dir = tmp_path / "runs"
+
+    def _mk(run_name: str, timestamp: str, config_hash: str) -> None:
+        run_dir = runs_dir / f"{run_name}_{timestamp}_{config_hash}"
+        summary = {
+            "run": {
+                "name": run_name,
+                "timestamp": timestamp,
+                "config_hash": config_hash,
+            },
+            "data": {"market": "hk", "provider": "rqdata"},
+            "eval": {"ic": {"mean": 0.01, "ir": 0.1}, "long_short": 0.01},
+            "backtest": {
+                "stats": {
+                    "periods": 12,
+                    "total_return": 0.1,
+                    "ann_return": 0.1,
+                    "ann_vol": 0.2,
+                    "sharpe": 0.5,
+                    "max_drawdown": -0.2,
+                    "avg_turnover": 0.6,
+                    "avg_cost_drag": 0.01,
+                }
+            },
+        }
+        config = {"market": "hk", "eval": {"top_k": 5}, "backtest": {"top_k": 5}}
+        _write_run(run_dir, summary, config)
+
+    _mk("hk_grid_base", "20260101_010101", "11111111")
+    _mk("hk_grid_base", "20260103_010101", "22222222")
+    _mk("manual_run", "20260104_010101", "33333333")
+
+    output_csv = tmp_path / "filtered.csv"
+    summarize_runs.main(
+        [
+            "--runs-dir",
+            str(runs_dir),
+            "--output",
+            str(output_csv),
+            "--run-name-prefix",
+            "hk_grid",
+            "--since",
+            "2026-01-02",
+            "--latest-n",
+            "1",
+        ]
+    )
+
+    result = pd.read_csv(output_csv)
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["run_name"] == "hk_grid_base"
+    assert row["run_timestamp"] == "20260103_010101"
+    assert int(row["config_hash"]) == 22222222
+
+
+def test_summarize_runs_latest_n_validation(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "alpha_20260101_120000_deadbeef"
+    _write_run(run_dir, {"run": {"name": "alpha", "timestamp": "20260101_120000"}}, {"market": "hk"})
+
+    with pytest.raises(SystemExit, match="--latest-n must be a positive integer."):
+        summarize_runs.main(
+            [
+                "--runs-dir",
+                str(runs_dir),
+                "--latest-n",
+                "0",
+            ]
+        )

@@ -26,9 +26,24 @@ def test_cli_parses_holdings_snapshot_grid_summarize():
     assert grid.top_k == ["5,10"]
     assert grid.cost_bps == ["10,20"]
 
-    summarize = parser.parse_args(["summarize", "--runs-dir", "out/runs"])
+    summarize = parser.parse_args(
+        [
+            "summarize",
+            "--runs-dir",
+            "out/runs",
+            "--run-name-prefix",
+            "hk_grid",
+            "--since",
+            "2026-01-01",
+            "--latest-n",
+            "3",
+        ]
+    )
     assert summarize.command == "summarize"
     assert summarize.runs_dir == ["out/runs"]
+    assert summarize.run_name_prefix == ["hk_grid"]
+    assert summarize.since == "2026-01-01"
+    assert summarize.latest_n == 3
     assert summarize.short_sample_periods == 24
 
 
