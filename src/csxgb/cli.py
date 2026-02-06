@@ -308,6 +308,46 @@ def _handle_snapshot(args) -> int:
     return 0
 
 
+def _handle_alloc(args) -> int:
+    from .project_tools import alloc
+
+    argv: list[str] = []
+    if getattr(args, "config", None):
+        argv += ["--config", args.config]
+    if getattr(args, "run_dir", None):
+        argv += ["--run-dir", args.run_dir]
+    if getattr(args, "positions_file", None):
+        argv += ["--positions-file", args.positions_file]
+    if getattr(args, "top_k", None) is not None:
+        argv += ["--top-k", str(args.top_k)]
+    if getattr(args, "as_of", None):
+        argv += ["--as-of", args.as_of]
+    if getattr(args, "source", None):
+        argv += ["--source", args.source]
+    if getattr(args, "side", None):
+        argv += ["--side", args.side]
+    if getattr(args, "top_n", None) is not None:
+        argv += ["--top-n", str(args.top_n)]
+    if getattr(args, "cash", None) is not None:
+        argv += ["--cash", str(args.cash)]
+    if getattr(args, "buffer_bps", None) is not None:
+        argv += ["--buffer-bps", str(args.buffer_bps)]
+    if getattr(args, "price_field", None):
+        argv += ["--price-field", args.price_field]
+    if getattr(args, "price_lookback_days", None) is not None:
+        argv += ["--price-lookback-days", str(args.price_lookback_days)]
+    if getattr(args, "username", None):
+        argv += ["--username", args.username]
+    if getattr(args, "password", None):
+        argv += ["--password", args.password]
+    if getattr(args, "format", None):
+        argv += ["--format", args.format]
+    if getattr(args, "out", None):
+        argv += ["--out", args.out]
+    alloc.main(argv)
+    return 0
+
+
 def _handle_init_config(args) -> int:
     filename = resolve_pipeline_filename(args.market)
     content = read_package_text("csxgb.config", filename)
@@ -435,6 +475,87 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional output path (default: stdout).",
     )
     holdings.set_defaults(func=_handle_holdings)
+
+    alloc = subparsers.add_parser(
+        "alloc",
+        help="Compute equal-weight lot sizing from latest holdings using rqdata prices.",
+    )
+    alloc.add_argument(
+        "--config",
+        help="Pipeline config path or built-in name (default: default).",
+    )
+    alloc.add_argument(
+        "--run-dir",
+        help="Explicit run directory to read (overrides --config).",
+    )
+    alloc.add_argument(
+        "--positions-file",
+        help="Explicit positions CSV path (overrides --config/--run-dir).",
+    )
+    alloc.add_argument(
+        "--top-k",
+        type=int,
+        help="Optional Top-K filter when selecting the latest run.",
+    )
+    alloc.add_argument(
+        "--as-of",
+        default="t-1",
+        help="As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1). Default: t-1.",
+    )
+    alloc.add_argument(
+        "--source",
+        default="auto",
+        choices=["auto", "backtest", "live"],
+        help="Positions source (auto/backtest/live). Default: auto.",
+    )
+    alloc.add_argument(
+        "--side",
+        default="long",
+        choices=["long", "short", "all"],
+        help="Select side for allocation (long/short/all). Default: long.",
+    )
+    alloc.add_argument(
+        "--top-n",
+        type=int,
+        default=20,
+        help="Number of names to allocate equally from sorted holdings. Default: 20.",
+    )
+    alloc.add_argument(
+        "--cash",
+        type=float,
+        default=1_000_000,
+        help="Total portfolio cash for sizing. Default: 1000000.",
+    )
+    alloc.add_argument(
+        "--buffer-bps",
+        type=float,
+        default=0.0,
+        help="Cash buffer in bps reserved from investment. Default: 0.",
+    )
+    alloc.add_argument(
+        "--price-field",
+        default="close",
+        help="Price field fetched from rqdata.get_price. Default: close.",
+    )
+    alloc.add_argument(
+        "--price-lookback-days",
+        type=int,
+        default=20,
+        help="Price lookback window in calendar days before price date. Default: 20.",
+    )
+    alloc.add_argument("--username", help="Override RQData username.")
+    alloc.add_argument("--password", help="Override RQData password.")
+    alloc.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "csv", "json"],
+        help="Output format (text/csv/json). Default: text.",
+    )
+    alloc.add_argument(
+        "--out",
+        help="Optional output path (default: stdout).",
+    )
+    alloc.set_defaults(func=_handle_alloc)
 
     snapshot = subparsers.add_parser(
         "snapshot", help="Run a live snapshot and emit latest holdings"

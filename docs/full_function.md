@@ -200,6 +200,7 @@ CLI 全量参数请以 `docs/cli.md` 和 `csxgb <cmd> --help` 为准。
 * `csxgb summarize`
 * `csxgb holdings`
 * `csxgb snapshot`
+* `csxgb alloc`
 * `csxgb init-config`
 
 数据源工具：

@@ -71,7 +71,7 @@ pip install -e .[rqdata]
 cp .env.example .env
 ```
 
-## Credentials / 环境变量
+## Credentials / 环境变量鉴权
 
 Token/账号需要你在对应数据供应商侧申请。最小必需项取决于 `data.provider`：
 
@@ -136,28 +136,40 @@ data:
 * 关键参数：`--as-of`、`--skip-run`、`--top-k`、`--format`、`--out`。
 * 隐藏但很重要的约束：如果你用 live 配置，配置解析时要求 `live.enabled=true` 时必须 `eval.save_artifacts=true`（否则无法形成 snapshot）。
 
-### 5) `csxgb rqdata info`
+### 5) `csxgb alloc`
+
+* 作用：按最新持仓做 Top-N 等权资金分配，自动换算每只股票的买入手数/股数（价格 + `round_lot` 来自 RQData）。
+* 关键参数：
+
+  * run 定位：`--config` / `--run-dir` / `--positions-file`
+  * 持仓选择：`--source auto|backtest|live`、`--side long|short|all`、`--top-n`
+  * 资金参数：`--cash`（默认 1000000）、`--buffer-bps`
+  * 行情参数：`--price-field`（默认 `close`）、`--price-lookback-days`
+  * 输出：`--format text|csv|json`、`--out`
+* 典型场景：快速看“前20/前10/前5”等权在整手约束下各买多少手、会剩多少现金。
+
+### 6) `csxgb rqdata info`
 
 * 作用：初始化 `rqdatac` 并打印登录/用户信息。
 * 账号来源优先级：CLI 显式 `--username/--password` > 配置 `rqdata.init` > 环境变量 `RQDATA_USERNAME/RQDATA_PASSWORD`。
 
-### 6) `csxgb rqdata quota`
+### 7) `csxgb rqdata quota`
 
 * 作用：同样初始化 `rqdatac`，然后查 quota 使用情况；`--pretty` 会输出人类可读信息 + 图形化显示剩余流量。
 * 依赖：RQData 相关依赖在 optional-deps 里（`rqdata` 这组）。
 
-### 7) `csxgb tushare verify-token`
+### 8) `csxgb tushare verify-token`
 
 * 作用：验证 TuShare token 是否可用（实际做法：拿 token 调 TuShare 的接口看能不能返回配额/积分信息），并逐个打印结果。
 * 读取的环境变量：`TUSHARE_TOKEN`、`TUSHARE_TOKEN_2`，以及兼容用的 `TUSHARE_API_KEY`。
 
-### 8) `csxgb universe index-components`
+### 9) `csxgb universe index-components`
 
 * 作用：从 TuShare 拉“指数成分”，写成一个 symbols 文本文件（每行一个）。
 * 鉴权：必须先设 `TUSHARE_TOKEN`（或 `TUSHARE_TOKEN_2` / legacy `TUSHARE_API_KEY`），否则直接退出。
 * 实现方式：CLI 这层用 `argparse.REMAINDER` 把剩余参数原样转发给脚本（所以脚本支持什么参数，以脚本为准）。
 
-### 9) `csxgb universe hk-connect`
+### 10) `csxgb universe hk-connect`
 
 * 作用：构建“港股通股票池（PIT）+ 流动性过滤”的 universe：用 RQData 拉可买标的，再按一段窗口的成交额等指标筛选，输出按日期的 universe 表和“最新一期 symbols”。
 * 默认输出：
@@ -167,13 +179,13 @@ data:
   * meta：`out/universe/universe_by_date.meta.yml`
 * 参数入口：`csxgb universe hk-connect --config <yaml> ...`，其余参数同样是转发给脚本。
 
-### 10) `csxgb init-config`
+### 11) `csxgb init-config`
 
 * 作用：把包内置的配置模板导出到你本地文件系统（默认写到 `./config/<template>.yml`）。
 * 参数：`--market default/cn/hk/us`、`--out`（文件或目录）、`--force`（允许覆盖）。
 * 覆盖保护：目标存在且没 `--force` 就拒绝覆盖。
 
-### 11) `csxgb summarize`
+### 12) `csxgb summarize`
 
 * 作用：跨多个历史 run 目录聚合关键指标（读取每个 run 的 `summary.json` + `config.used.yml`），输出总表 CSV。
 * 默认扫描：`out/runs`（递归）。
@@ -210,6 +222,11 @@ csxgb holdings --config config/hk_live.yml --source live
 csxgb snapshot --config config/hk_live.yml
 csxgb snapshot --config config/hk_live.yml --skip-run
 csxgb snapshot --run-dir out/live_runs/<run_dir>
+
+# 持仓等权手数换算（前20/10/5）
+csxgb alloc --config config/hk_live.yml --source live --top-n 20 --cash 1000000
+csxgb alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json
+csxgb alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
 
 # RQData 信息 / 配额
 csxgb rqdata info

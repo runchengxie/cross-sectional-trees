@@ -9,13 +9,20 @@ def test_cli_parses_run_command():
     assert callable(args.func)
 
 
-def test_cli_parses_holdings_snapshot_grid_summarize():
+def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
     parser = cli.build_parser()
 
     holdings = parser.parse_args(["holdings", "--config", "default"])
     assert holdings.command == "holdings"
     assert holdings.source == "auto"
     assert holdings.format == "text"
+
+    alloc = parser.parse_args(["alloc", "--config", "default", "--top-n", "10"])
+    assert alloc.command == "alloc"
+    assert alloc.top_n == 10
+    assert alloc.cash == 1_000_000
+    assert alloc.source == "auto"
+    assert alloc.side == "long"
 
     snapshot = parser.parse_args(["snapshot", "--config", "default", "--skip-run"])
     assert snapshot.command == "snapshot"

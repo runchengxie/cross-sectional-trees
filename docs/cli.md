@@ -118,7 +118,42 @@ csxgb snapshot --config config/hk_live.yml
 csxgb snapshot --config config/hk_live.yml --skip-run --format json
 ```
 
-## 6) `csxgb rqdata info`
+## 6) `csxgb alloc`
+
+用途：按最新持仓做 Top-N 等权资金分配，自动换算为每只股票买多少手/股（价格和 round lot 来自 RQData）。
+
+参数：
+
+* `--config <path_or_alias>`：用于定位最新 run（可选）。
+* `--run-dir <dir>`：直接指定 run 目录（优先于 `--config`）。
+* `--positions-file <csv>`：直接指定持仓文件（优先于 run 定位）。
+* `--top-k <int>`：可选 Top-K 过滤（用于定位 run）。
+* `--as-of <date_or_token>`：持仓时点（默认 `t-1`）。
+* `--source <mode>`：`auto/backtest/live`（默认 `auto`）。
+* `--side <mode>`：`long/short/all`（默认 `long`）。
+* `--top-n <int>`：从排序后的持仓中取前 N 名做等权（默认 `20`）。
+* `--cash <float>`：总资金（默认 `1000000`）。
+* `--buffer-bps <float>`：预留现金（bps，默认 `0`）。
+* `--price-field <name>`：RQData 价格字段（默认 `close`）。
+* `--price-lookback-days <int>`：回看价格窗口天数（默认 `20`）。
+* `--username/--password`：可选覆盖 RQData 账号。
+* `--format <fmt>`：`text/csv/json`（默认 `text`）。
+* `--out <path>`：输出到文件；不传则 stdout。
+
+示例：
+
+```bash
+# 最新 run 的前20等权，资金100万
+csxgb alloc --config config/hk_live.yml --source live --top-n 20 --cash 1000000
+
+# 明确指定 run，做前10等权并导出 JSON
+csxgb alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json --out out/alloc/top10.json
+
+# 直接指定 positions 文件，做前5等权
+csxgb alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
+```
+
+## 7) `csxgb rqdata info`
 
 用途：初始化并显示 RQData 登录信息。
 
@@ -128,7 +163,7 @@ csxgb snapshot --config config/hk_live.yml --skip-run --format json
 * `--username <name>`：覆盖用户名。
 * `--password <password>`：覆盖密码。
 
-## 7) `csxgb rqdata quota`
+## 8) `csxgb rqdata quota`
 
 用途：查询 RQData 配额。
 
@@ -139,7 +174,7 @@ csxgb snapshot --config config/hk_live.yml --skip-run --format json
 * `--password <password>`：覆盖密码。
 * `--pretty`：人类可读格式输出。
 
-## 8) `csxgb tushare verify-token`
+## 9) `csxgb tushare verify-token`
 
 用途：验证 TuShare token。
 
@@ -148,7 +183,7 @@ csxgb snapshot --config config/hk_live.yml --skip-run --format json
 * CLI 会将后续参数原样转发到底层脚本。
 * 推荐用 `csxgb tushare verify-token` 直接执行。
 
-## 9) `csxgb universe index-components`
+## 10) `csxgb universe index-components`
 
 用途：拉取指数成分并输出 symbols 文件。
 
@@ -162,7 +197,7 @@ csxgb snapshot --config config/hk_live.yml --skip-run --format json
 csxgb universe index-components --index-code 000300.SH --month 202501
 ```
 
-## 10) `csxgb universe hk-connect`
+## 11) `csxgb universe hk-connect`
 
 用途：构建港股通 PIT universe。
 
@@ -177,7 +212,7 @@ csxgb universe index-components --index-code 000300.SH --month 202501
 csxgb universe hk-connect --config config/universe.hk_connect.yml --mode daily
 ```
 
-## 11) `csxgb init-config`
+## 12) `csxgb init-config`
 
 用途：导出内置配置模板。
 
