@@ -1,6 +1,7 @@
 import json
 import sys
 import types
+import unicodedata
 
 import numpy as np
 import pandas as pd
@@ -73,6 +74,15 @@ def _write_positions(path, symbols: list[str], symbol_col: str = "ts_code") -> N
     )
     df[symbol_col] = symbols
     df.to_csv(path, index=False)
+
+
+def _display_width(text: str) -> int:
+    width = 0
+    for char in text:
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
+    return width
 
 
 def test_alloc_from_latest_live_holdings(tmp_path, monkeypatch, capsys):
@@ -264,3 +274,14 @@ def test_alloc_text_output_uses_chinese_labels_and_lots_after_stock_ticker(tmp_p
     lines = output.splitlines()
     header_line = next(line for line in lines if "stock_ticker" in line and "lots" in line)
     assert header_line.split()[:2] == ["stock_ticker", "lots"]
+
+
+def test_alloc_format_table_keeps_alignment_with_cjk_headers():
+    table = alloc._format_table(
+        [["00941.HK", "2", "80.4000"]],
+        ["stock_ticker", "手数", "价格"],
+    )
+    lines = table.splitlines()
+    assert len(lines) == 3
+    widths = [_display_width(line) for line in lines]
+    assert widths[0] == widths[1] == widths[2]

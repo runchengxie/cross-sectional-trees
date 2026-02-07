@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import unicodedata
 from pathlib import Path
 
 import numpy as np
@@ -188,16 +189,32 @@ def _format_date_value(value: object) -> str | None:
     return parsed.strftime("%Y-%m-%d")
 
 
+def _display_width(text: str) -> int:
+    width = 0
+    for char in text:
+        if unicodedata.combining(char):
+            continue
+        if unicodedata.east_asian_width(char) in {"F", "W"}:
+            width += 2
+            continue
+        width += 1
+    return width
+
+
+def _ljust_display(text: str, width: int) -> str:
+    return text + (" " * max(0, width - _display_width(text)))
+
+
 def _format_table(rows: list[list[str]], headers: list[str]) -> str:
-    widths = [len(header) for header in headers]
+    widths = [_display_width(header) for header in headers]
     for row in rows:
         for idx, cell in enumerate(row):
-            widths[idx] = max(widths[idx], len(cell))
-    header_line = "  ".join(header.ljust(widths[idx]) for idx, header in enumerate(headers))
+            widths[idx] = max(widths[idx], _display_width(cell))
+    header_line = "  ".join(_ljust_display(header, widths[idx]) for idx, header in enumerate(headers))
     sep_line = "  ".join("-" * widths[idx] for idx in range(len(headers)))
     lines = [header_line, sep_line]
     for row in rows:
-        lines.append("  ".join(row[idx].ljust(widths[idx]) for idx in range(len(headers))))
+        lines.append("  ".join(_ljust_display(row[idx], widths[idx]) for idx in range(len(headers))))
     return "\n".join(lines)
 
 

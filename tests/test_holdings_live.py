@@ -1,4 +1,5 @@
 import json
+import unicodedata
 
 import pandas as pd
 
@@ -22,6 +23,15 @@ def _write_positions(
     )
     df[symbol_col] = ["0001.HK"]
     df.to_csv(path, index=False)
+
+
+def _display_width(text: str) -> int:
+    width = 0
+    for char in text:
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
+    return width
 
 
 def test_holdings_live_uses_summary_path(tmp_path, capsys):
@@ -109,3 +119,14 @@ def test_holdings_accepts_stock_ticker_column(tmp_path, capsys):
     row = payload["holdings"][0]
     assert row["stock_ticker"] == "0001.HK"
     assert row["ts_code"] == "0001.HK"
+
+
+def test_holdings_format_table_keeps_alignment_with_cjk_headers():
+    table = holdings._format_table(
+        [["0001.HK", "1.0000", "0.100000"]],
+        ["stock_ticker", "权重", "信号"],
+    )
+    lines = table.splitlines()
+    assert len(lines) == 3
+    widths = [_display_width(line) for line in lines]
+    assert widths[0] == widths[1] == widths[2]
