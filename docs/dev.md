@@ -47,6 +47,24 @@ uv run pytest tests/test_metrics.py
 uv run pytest -m integration
 ```
 
+## 测试分层约定
+
+建议按以下分层维护测试，避免把“离线回归”与“端到端验证”混在一起：
+
+1. `unit`（默认日常回归）：不依赖外部账号、网络与真实行情接口。
+1. `integration`：覆盖跨模块流程（可包含较慢测试或更重的 fixture）。
+1. `slow`：显式标注高耗时用例，便于 CI 按需拆分执行。
+
+常用命令：
+
+```bash
+# 离线回归（建议本地高频执行）
+uv run pytest -m "not integration and not slow"
+
+# 仅集成测试
+uv run pytest -m integration
+```
+
 ## 提交前检查建议
 
 1. 至少跑一遍 `uv run pytest`。

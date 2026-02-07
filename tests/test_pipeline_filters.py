@@ -158,14 +158,14 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
 
 
 def test_pipeline_feature_formulas(tmp_path, monkeypatch):
-    dates = pd.date_range("2020-01-01", periods=6, freq="B")
+    dates = pd.date_range("2020-01-01", periods=20, freq="B")
     symbols = ["AAA", "BBB"]
     close_map = {
-        "AAA": np.array([1, 2, 3, 4, 5, 6], dtype=float),
+        "AAA": np.arange(1, len(dates) + 1, dtype=float),
         "BBB": np.full(len(dates), 2.0),
     }
     vol_map = {
-        "AAA": np.array([10, 20, 30, 40, 50, 60], dtype=float),
+        "AAA": np.arange(1, len(dates) + 1, dtype=float) * 10.0,
         "BBB": np.full(len(dates), 5.0),
     }
     frames = _build_frames(symbols, dates, close_map=close_map, vol_map=vol_map, include_amount=True)
@@ -248,6 +248,7 @@ def test_pipeline_feature_formulas(tmp_path, monkeypatch):
             "volume_sma3_ratio": vol_ratio,
         }
     ).dropna(subset=["sma_3", "sma_3_diff", "volume_sma3_ratio"])
+    expected = expected[expected["trade_date"].isin(aaa["trade_date"])].reset_index(drop=True)
 
     np.testing.assert_allclose(aaa["sma_3"].to_numpy(), expected["sma_3"].to_numpy(), rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(

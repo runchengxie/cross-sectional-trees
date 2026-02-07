@@ -35,6 +35,20 @@
 1. 这些键固定存在，但部分值会是 `null`/空对象（例如未启用 `final_oos`、未启用 `live`）。
 1. 消费脚本建议优先读 `summary.json` 里保存的文件路径，不要硬编码文件名。
 
+## 稳定性契约（给下游脚本）
+
+稳定 contract（版本演进时尽量保持不变）：
+
+1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/fundamentals/walk_forward`）。
+1. 持仓主键列语义：`trade_date`、`entry_date`、`ts_code`、`stock_ticker`、`weight`、`signal`、`rank`、`side`。
+1. `summary.json` 内记录的文件路径优先级高于固定文件名推断。
+
+best-effort（可能为空、缺失或未产出文件）：
+
+1. `final_oos` / `live` / `walk_forward` 子结构（取决于对应功能是否启用）。
+1. `dataset.parquet`、`eval_scored.parquet`、`backtest_*.csv` 等产物（取决于配置与数据可用性）。
+1. 任何依赖外部数据源补数/修订得到的统计值（同配置在不同日期可能变化）。
+
 ## 持仓文件
 
 ### `positions_by_rebalance.csv` / `positions_by_rebalance_live.csv`
