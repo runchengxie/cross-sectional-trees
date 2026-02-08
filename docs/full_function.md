@@ -21,7 +21,7 @@ CLI 全量参数请以 `docs/cli.md` 和 `csxgb <cmd> --help` 为准。
 3. 可选合并 `fundamentals`。
 4. 按 `label` 生成收益标签。
 5. 按 `features` 生成技术特征并做横截面变换。
-6. 训练 `XGBRegressor`，做时间序列评估与稳定性检验。
+6. 训练配置指定的模型（`xgb_regressor/xgb_ranker/ridge/elasticnet`），做时间序列评估与稳定性检验。
 7. 运行 Top-K 回测与持仓输出（可含 OOS/live）。
 8. 写入 run 目录与 `summary.json` 供复现、汇总、持仓查询。
 
@@ -126,12 +126,12 @@ CLI 全量参数请以 `docs/cli.md` 和 `csxgb <cmd> --help` 为准。
 * `volume_sma{w}_ratio`
 * `vol`
 
-### 6) Model（XGBoost）
+### 6) Model（可插拔）
 
 | 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
 | --- | --- | --- | --- | --- |
-| `model.type` | `str` | `xgb_regressor` | 当前仅回归流程 | 模型类型 |
-| `model.params` | `dict` | 内置默认参数 | 传给 `XGBRegressor` | 模型超参 |
+| `model.type` | `str` | `xgb_regressor` | `xgb_regressor/xgb_ranker/ridge/elasticnet` | 模型类型 |
+| `model.params` | `dict` | 各模型内置默认参数 | 传给对应模型构造器 | 模型超参 |
 | `model.sample_weight_mode` | `str` | `none` | `none/date_equal` | 样本权重方案 |
 
 ### 7) Eval（评估与稳健性）

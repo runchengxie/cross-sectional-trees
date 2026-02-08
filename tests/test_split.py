@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from csxgb.split import build_sample_weight, time_series_cv_ic
@@ -41,3 +42,26 @@ def test_build_sample_weight_date_equal():
     df = df.assign(weight=weights)
     sums = df.groupby("trade_date")["weight"].sum().values
     assert all(abs(value - 1.0) < 1e-12 for value in sums)
+
+
+def test_time_series_cv_supports_model_cfg():
+    dates = pd.date_range("2020-01-01", periods=8, freq="D")
+    rows = []
+    for idx, date in enumerate(dates):
+        rows.append({"trade_date": date, "ts_code": "A", "f1": 0.0, "target": 0.0 + idx * 0.01})
+        rows.append({"trade_date": date, "ts_code": "B", "f1": 1.0, "target": 1.0 + idx * 0.01})
+    df = pd.DataFrame(rows)
+
+    scores = time_series_cv_ic(
+        df,
+        features=["f1"],
+        target_col="target",
+        n_splits=3,
+        embargo_days=0,
+        purge_days=0,
+        model_cfg={"type": "ridge", "params": {"alpha": 1.0}},
+        signal_direction=1.0,
+    )
+
+    assert len(scores) == 3
+    assert all(np.isfinite(scores))

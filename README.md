@@ -1,6 +1,6 @@
 # cross-sectional-xgboost
 
-使用 TuShare / RQData / EODHD 日线数据与 XGBoost 回归进行截面因子研究与评估（支持 A/HK/US 多市场配置切换）。流程包含特征工程、时间序列切分、IC 评估、分位数组合收益、换手率估计与特征重要性输出。
+使用 TuShare / RQData / EODHD 日线数据与可切换模型（`xgb_regressor/xgb_ranker/ridge/elasticnet`）进行截面因子研究与评估（支持 A/HK/US 多市场配置切换）。流程包含特征工程、时间序列切分、IC 评估、分位数组合收益、换手率估计与特征重要性输出。
 
 项目输出以研究复现为主，核心产物包括 IC、分位数组合收益、换手成本估计与特征重要性。默认产物落盘在 `out/runs/<run_name>_<timestamp>_<hash>/`。
 

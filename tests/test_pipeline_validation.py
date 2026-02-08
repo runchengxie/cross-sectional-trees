@@ -133,3 +133,19 @@ def test_pipeline_live_requires_artifacts(tmp_path, no_client):
         match="live.enabled=true requires eval.save_artifacts=true to persist holdings.",
     ):
         pipeline.run(str(config_path))
+
+
+def test_pipeline_model_type_validation(tmp_path, no_client):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["model"]["type"] = "random_forest"
+    config_path = _write_config(tmp_path, config)
+    with pytest.raises(SystemExit, match="Unsupported model.type: random_forest"):
+        pipeline.run(str(config_path))
+
+
+def test_pipeline_model_params_validation(tmp_path, no_client):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["model"]["params"] = "oops"
+    config_path = _write_config(tmp_path, config)
+    with pytest.raises(SystemExit, match="model.params must be a mapping."):
+        pipeline.run(str(config_path))

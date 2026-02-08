@@ -1,4 +1,4 @@
-"""pipeline.py - Cross-sectional factor mining with XGBoost regression (multi-market).
+"""pipeline.py - Cross-sectional factor mining with pluggable regressors (multi-market).
 Usage:
     $ csxgb run
     $ csxgb run --config config/default.yml
@@ -13,7 +13,7 @@ import sys
 import math
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 # Workaround for pandas_ta NaN import issue
@@ -24,7 +24,6 @@ import pandas_ta as ta
 import pyarrow  # ensures parquet support
 from dotenv import load_dotenv
 import yaml
-from xgboost import XGBRegressor
 import warnings
 
 from .config_utils import resolve_pipeline_config
@@ -46,6 +45,7 @@ from .metrics import (
 )
 from .transform import apply_cross_sectional_transform
 from .split import build_sample_weight, time_series_cv_ic
+from .modeling import build_model, fit_model, resolve_model_spec, feature_importance_frame
 from .backtest import backtest_topk, summarize_period_returns
 from .portfolio import build_positions_by_rebalance
 from .rebalance import estimate_rebalance_gap, get_rebalance_dates
@@ -689,6 +689,8 @@ def run(config_ref: str | Path | None = None) -> None:
     eval_cfg = config.get("eval", {})
     backtest_cfg = config.get("backtest", {})
     live_cfg = config.get("live", {})
+    if not isinstance(model_cfg, dict):
+        sys.exit("model must be a mapping with keys: type, params, sample_weight_mode.")
     if not isinstance(live_cfg, dict):
         live_cfg = {}
 
@@ -973,19 +975,11 @@ def run(config_ref: str | Path | None = None) -> None:
     if CS_METHOD not in {"none", "zscore", "rank"}:
         sys.exit("features.cross_sectional.method must be one of: none, zscore, rank.")
 
-    XGB_PARAMS = model_cfg.get("params") or {}
-    if not XGB_PARAMS:
-        XGB_PARAMS = dict(
-            n_estimators=300,
-            learning_rate=0.05,
-            max_depth=3,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            reg_alpha=0.0,
-            reg_lambda=1.0,
-            objective="reg:squarederror",
-            random_state=42,
-        )
+    try:
+        MODEL_TYPE, MODEL_PARAMS = resolve_model_spec(model_cfg)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    MODEL_CFG = {"type": MODEL_TYPE, "params": MODEL_PARAMS}
     SAMPLE_WEIGHT_MODE = str(model_cfg.get("sample_weight_mode", "none")).strip().lower()
     if SAMPLE_WEIGHT_MODE in {"", "none", "null"}:
         SAMPLE_WEIGHT_MODE = "none"
@@ -1571,9 +1565,6 @@ def run(config_ref: str | Path | None = None) -> None:
         EMBARGO_STEPS,
     )
 
-    X_train, y_train = train_df[FEATURES], train_df[TARGET]
-    X_test, y_test = test_df[FEATURES], test_df[TARGET]
-
     # -----------------------------------------------------------------------------
     # 5. Cross-validation on dates (IC metric)
     # -----------------------------------------------------------------------------
@@ -1608,12 +1599,16 @@ def run(config_ref: str | Path | None = None) -> None:
             rng = np.random.default_rng(run_seed)
             perm_train = permute_target_within_date(train_data, TARGET, rng)
 
-            perm_model = XGBRegressor(**XGB_PARAMS)
+            perm_model = build_model(MODEL_TYPE, MODEL_PARAMS)
             perm_weights = build_sample_weight(perm_train, SAMPLE_WEIGHT_MODE)
-            if perm_weights is not None:
-                perm_model.fit(perm_train[FEATURES], perm_train[TARGET], sample_weight=perm_weights)
-            else:
-                perm_model.fit(perm_train[FEATURES], perm_train[TARGET])
+            fit_model(
+                perm_model,
+                MODEL_TYPE,
+                perm_train,
+                features=FEATURES,
+                target_col=TARGET,
+                sample_weight=perm_weights,
+            )
 
             perm_test = test_data.copy()
             perm_test["pred"] = perm_model.predict(perm_test[FEATURES])
@@ -1675,7 +1670,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 N_SPLITS,
                 EMBARGO_STEPS,
                 PURGE_STEPS,
-                XGB_PARAMS,
+                MODEL_CFG,
                 1.0,
                 sample_weight_mode=SAMPLE_WEIGHT_MODE,
             )
@@ -1690,12 +1685,16 @@ def run(config_ref: str | Path | None = None) -> None:
                     "scores": [float(score) for score in cv_scores_w],
                 }
 
-        model_w = XGBRegressor(**XGB_PARAMS)
+        model_w = build_model(MODEL_TYPE, MODEL_PARAMS)
         train_weights_w = build_sample_weight(train_df_w, SAMPLE_WEIGHT_MODE)
-        if train_weights_w is not None:
-            model_w.fit(train_df_w[FEATURES], train_df_w[TARGET], sample_weight=train_weights_w)
-        else:
-            model_w.fit(train_df_w[FEATURES], train_df_w[TARGET])
+        fit_model(
+            model_w,
+            MODEL_TYPE,
+            train_df_w,
+            features=FEATURES,
+            target_col=TARGET,
+            sample_weight=train_weights_w,
+        )
 
         train_eval = train_df_w.copy()
         train_eval["pred"] = model_w.predict(train_eval[FEATURES])
@@ -1875,7 +1874,7 @@ def run(config_ref: str | Path | None = None) -> None:
         N_SPLITS,
         EMBARGO_STEPS,
         PURGE_STEPS,
-        XGB_PARAMS,
+        MODEL_CFG,
         1.0,
         sample_weight_mode=SAMPLE_WEIGHT_MODE,
     )
@@ -1903,13 +1902,17 @@ def run(config_ref: str | Path | None = None) -> None:
     # -----------------------------------------------------------------------------
     # 6. Fit final model
     # -----------------------------------------------------------------------------
-    logger.info("Fitting XGBoost regressor ...")
-    model = XGBRegressor(**XGB_PARAMS)
+    logger.info("Fitting model (%s) ...", MODEL_TYPE)
+    model = build_model(MODEL_TYPE, MODEL_PARAMS)
     train_weights = build_sample_weight(train_df, SAMPLE_WEIGHT_MODE)
-    if train_weights is not None:
-        model.fit(X_train, y_train, sample_weight=train_weights)
-    else:
-        model.fit(X_train, y_train)
+    fit_model(
+        model,
+        MODEL_TYPE,
+        train_df,
+        features=FEATURES,
+        target_col=TARGET,
+        sample_weight=train_weights,
+    )
 
     # -----------------------------------------------------------------------------
     # 7. Evaluation (cross-sectional factor style)
@@ -1999,16 +2002,16 @@ def run(config_ref: str | Path | None = None) -> None:
             else:
                 live_model = model
                 if LIVE_TRAIN_MODE == "full":
-                    live_model = XGBRegressor(**XGB_PARAMS)
+                    live_model = build_model(MODEL_TYPE, MODEL_PARAMS)
                     live_weights = build_sample_weight(df_live_labeled, SAMPLE_WEIGHT_MODE)
-                    if live_weights is not None:
-                        live_model.fit(
-                            df_live_labeled[FEATURES],
-                            df_live_labeled[TARGET],
-                            sample_weight=live_weights,
-                        )
-                    else:
-                        live_model.fit(df_live_labeled[FEATURES], df_live_labeled[TARGET])
+                    fit_model(
+                        live_model,
+                        MODEL_TYPE,
+                        df_live_labeled,
+                        features=FEATURES,
+                        target_col=TARGET,
+                        sample_weight=live_weights,
+                    )
 
                 df_live["pred"] = live_model.predict(df_live[FEATURES])
                 live_pred_col = "pred"
@@ -2063,7 +2066,7 @@ def run(config_ref: str | Path | None = None) -> None:
 
     def evaluate_period(
         label: str,
-        model_eval: XGBRegressor,
+        model_eval: Any,
         test_df_full: pd.DataFrame,
         test_dates: np.ndarray,
         *,
@@ -2606,14 +2609,16 @@ def run(config_ref: str | Path | None = None) -> None:
             )
         else:
             logger.info("Fitting final model on all in-sample data for OOS evaluation ...")
-            final_model = XGBRegressor(**XGB_PARAMS)
+            final_model = build_model(MODEL_TYPE, MODEL_PARAMS)
             final_weights = build_sample_weight(df_model, SAMPLE_WEIGHT_MODE)
-            if final_weights is not None:
-                final_model.fit(
-                    df_model[FEATURES], df_model[TARGET], sample_weight=final_weights
-                )
-            else:
-                final_model.fit(df_model[FEATURES], df_model[TARGET])
+            fit_model(
+                final_model,
+                MODEL_TYPE,
+                df_model,
+                features=FEATURES,
+                target_col=TARGET,
+                sample_weight=final_weights,
+            )
             final_oos_eval = evaluate_period(
                 "Final OOS",
                 final_model,
@@ -2666,11 +2671,10 @@ def run(config_ref: str | Path | None = None) -> None:
 
     # Feature importance
     logger.info("Feature importance:")
-    importance_df = pd.DataFrame(
-        {"feature": FEATURES, "importance": model.feature_importances_}
-    ).sort_values("importance", ascending=False)
+    importance_df, importance_source = feature_importance_frame(model, FEATURES)
+    logger.info("Feature importance source: %s", importance_source)
     for _, row in importance_df.iterrows():
-        logger.info("  %-20s: %.4f", row["feature"], row["importance"])
+        logger.info("  %-20s: %.4f", row["feature"], float(row["importance"]))
 
     # Persist artifacts
     dataset_path: Optional[Path] = None
@@ -2884,6 +2888,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 "config_hash": run_hash,
                 "config_path": str(config_path) if config_path else None,
                 "config_source": config_source,
+                "model_type": MODEL_TYPE,
                 "output_dir": str(run_dir),
             },
             "data": {
@@ -3127,7 +3132,7 @@ def run(config_ref: str | Path | None = None) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Cross-sectional XGBoost pipeline")
+    parser = argparse.ArgumentParser(description="Cross-sectional factor pipeline")
     parser.add_argument(
         "--config",
         help="Path to YAML config or built-in name (default/cn/hk/us).",

@@ -21,10 +21,22 @@ csxgb init-config --market hk --out config/
 * `fundamentals`：Level 0 基本面数据合并（`features`/`column_map`/`ffill`/`log_market_cap`/`required`）
 * `label`：预测窗口、shift、winsorize（支持 `horizon_mode=next_rebalance`）
 * `features`：特征清单与窗口
-* `model`：XGBoost 参数，`sample_weight_mode`（`none`/`date_equal`）
+* `model`：模型配置（`type + params + sample_weight_mode`）；支持 `xgb_regressor`、`xgb_ranker`、`ridge`、`elasticnet`
 * `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`、`min_abs_ic_to_flip`、`sample_on_rebalance_dates`，以及可选的 `report_train_ic`、`save_artifacts`、`save_dataset`、`permutation_test`、`walk_forward`、`final_oos`，还可配置 `rolling`（滚动 IC/Sharpe 窗口）与 `bucket_ic`（分桶 IC）
 * `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准、`exit_mode`、`exit_price_policy` 与 `buffer_exit/buffer_entry`，可选 `execution`（cost_model / exit_policy）
 * `live`：可选“当下持仓快照”，用于在固定回测之外输出当前组合
+
+## 模型切换示例
+
+```yaml
+model:
+  type: ridge            # xgb_regressor / xgb_ranker / ridge / elasticnet
+  params:
+    alpha: 1.0
+  sample_weight_mode: date_equal
+```
+
+`xgb_ranker` 会按 `trade_date` 自动分组训练（query group），其余模型按回归流程训练。
 
 ## 数据与缓存（data）
 

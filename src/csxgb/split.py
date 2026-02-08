@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
-from xgboost import XGBRegressor
 
 from .metrics import daily_ic_series
+from .modeling import build_model, fit_model, resolve_model_spec
 
 
 def build_sample_weight(
@@ -32,11 +34,28 @@ def time_series_cv_ic(
     n_splits: int,
     embargo_days: int,
     purge_days: int,
-    model_params: dict,
-    signal_direction: float,
+    model_cfg: Mapping[str, object] | None = None,
+    signal_direction: float = 1.0,
     sample_weight_mode: str | None = None,
     date_col: str = "trade_date",
+    *,
+    model_params: Mapping[str, object] | None = None,
 ):
+    if model_cfg is not None and model_params is not None:
+        raise ValueError("Provide either model_cfg or model_params, not both.")
+    if model_params is not None:
+        resolved_type, resolved_params = resolve_model_spec(
+            {"type": "xgb_regressor", "params": dict(model_params)}
+        )
+    elif model_cfg is None:
+        resolved_type, resolved_params = resolve_model_spec({})
+    elif "type" in model_cfg or "params" in model_cfg:
+        resolved_type, resolved_params = resolve_model_spec(model_cfg)
+    else:
+        resolved_type, resolved_params = resolve_model_spec(
+            {"type": "xgb_regressor", "params": dict(model_cfg)}
+        )
+
     dates = np.array(sorted(data["trade_date"].unique()))
     tscv = TimeSeriesSplit(n_splits=n_splits)
     scores = []
@@ -52,12 +71,17 @@ def time_series_cv_ic(
         tr_df = data[data[date_col].isin(tr_dates)]
         va_df = data[data[date_col].isin(va_dates)].copy()
 
-        model = XGBRegressor(**model_params)
+        model = build_model(resolved_type, resolved_params)
         sample_weight = build_sample_weight(tr_df, sample_weight_mode, date_col=date_col)
-        if sample_weight is not None:
-            model.fit(tr_df[features], tr_df[target_col], sample_weight=sample_weight)
-        else:
-            model.fit(tr_df[features], tr_df[target_col])
+        fit_model(
+            model,
+            resolved_type,
+            tr_df,
+            features=features,
+            target_col=target_col,
+            sample_weight=sample_weight,
+            date_col=date_col,
+        )
         va_df["pred"] = model.predict(va_df[features])
         if signal_direction != 1.0:
             va_df["pred"] = va_df["pred"] * signal_direction

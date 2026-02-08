@@ -2,7 +2,7 @@
 
 ## 0. 这个项目在干什么（用一句话讲清楚）
 
-它用 XGBoost 回归在每天的股票截面上预测一个目标列 `future_return`（也就是“未来一段持有期的收益”），然后用 IC、分位数组合、换手估计、Top-K 回测来评估这堆预测到底有没有交易意义。配置里明确是回归目标 `reg:squarederror`，label 目标列是 `future_return`。
+它用配置指定的模型（`xgb_regressor/xgb_ranker/ridge/elasticnet`）在每天的股票截面上预测目标列 `future_return`（也就是“未来一段持有期的收益”），然后用 IC、分位数组合、换手估计、Top-K 回测来评估这堆预测到底有没有交易意义。
 
 项目典型产物会落到 `out/runs/<run_name>_<timestamp>_<hash>/`，包括 `summary.json`、`ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`、`feature_importance.csv` 等。
 

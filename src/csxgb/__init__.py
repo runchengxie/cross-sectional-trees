@@ -1,1 +1,1 @@
-"""Project utilities for cross-sectional xgboost pipeline."""
+"""Project utilities for cross-sectional factor pipeline."""
