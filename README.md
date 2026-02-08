@@ -263,7 +263,7 @@ csxgb universe hk-connect --mode daily
 1. 常见故障：`docs/troubleshooting.md`
 1. 开发与测试：`docs/dev.md`
 1. 功能全景与规格边界（关键参数入口）：`docs/full_function.md`
-1. 贡献说明：`CONTRIBUTING.md`
+1. 贡献说明：`docs/dev.md`
 
 `docs/index.md` 提供集中导航与起步参数清单。
 `docs/full_function.md` 聚焦流程全景、关键参数入口、边界与工时估算，不替代 `docs/config.md` 与 `docs/cli.md` 的完整参数清单。

@@ -29,6 +29,14 @@ csxgb run --config config/default.yml
 
 调试时建议先用较短日期区间，确认流程可跑通后再放大样本窗口。
 
+## 维护脚本
+
+仓库包含一个缓存迁移工具（将 range/window 日线缓存合并为 symbol 缓存）：
+
+```bash
+uv run python -m csxgb.project_tools.migrate_daily_cache --help
+```
+
 ## 测试
 
 项目使用 `pytest`，默认参数见 `pyproject.toml`（含 `--cov=csxgb`）。

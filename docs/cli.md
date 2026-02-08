@@ -85,7 +85,8 @@ csxgb summarize --runs-dir out/runs --since 2026-02-01
 * `--run-dir <dir>`：直接指定 run 目录（优先于 `--config`）。
 * `--top-k <int>`：可选 Top-K 过滤。
 * `--as-of <date_or_token>`：持仓时点（默认 `t-1`）。
-  * 支持：`YYYYMMDD`、`YYYY-MM-DD`、`today`、`t-1`。
+  * 支持：`YYYYMMDD`、`YYYY-MM-DD`、`today`、`t-1`、`last_trading_day`、`last_completed_trading_day`。
+  * 说明：`holdings/snapshot/alloc` 当前对 `last_trading_day` 两个 token 使用自然日回退并输出 warning（不接入交易日历）。
 * `--source <mode>`：`auto/backtest/live`（默认 `auto`）。
 * `--format <fmt>`：`text/csv/json`（默认 `text`）。
 * `--out <path>`：输出到文件；不传则 stdout。
@@ -116,6 +117,7 @@ csxgb holdings --run-dir out/runs/<run_dir> --format csv --out out/positions/lat
 * `--config <path_or_alias>`：配置路径。
 * `--run-dir <dir>`：直接使用已有 run。
 * `--as-of <date_or_token>`：默认 `t-1`。
+  * 支持：`YYYYMMDD`、`YYYY-MM-DD`、`today`、`t-1`、`last_trading_day`、`last_completed_trading_day`（行为同 `holdings`）。
 * `--skip-run`：跳过 run，只读取已有结果。
 * `--top-k <int>`：可选 Top-K 过滤。
 * `--format <fmt>`：`text/csv/json`（默认 `text`）。
@@ -139,6 +141,7 @@ csxgb snapshot --config config/hk_live.yml --skip-run --format json
 * `--positions-file <csv>`：直接指定持仓文件（优先于 run 定位）。
 * `--top-k <int>`：可选 Top-K 过滤（用于定位 run）。
 * `--as-of <date_or_token>`：持仓时点（默认 `t-1`）。
+  * 支持：`YYYYMMDD`、`YYYY-MM-DD`、`today`、`t-1`、`last_trading_day`、`last_completed_trading_day`（行为同 `holdings`）。
 * `--source <mode>`：`auto/backtest/live`（默认 `auto`）。
 * `--side <mode>`：`long/short/all`（默认 `long`）。
 * `--top-n <int>`：从排序后的持仓中取前 N 名做等权（默认 `20`）。

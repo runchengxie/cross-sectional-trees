@@ -1,4 +1,9 @@
+from types import SimpleNamespace
+
 from csxgb import cli
+from csxgb.project_tools import alloc as alloc_tool
+from csxgb.project_tools import holdings as holdings_tool
+from csxgb.project_tools import run_grid as grid_tool
 
 
 def test_cli_parses_run_command():
@@ -60,3 +65,134 @@ def test_cli_parses_rqdata_quota_pretty():
     assert args.command == "rqdata"
     assert args.rq_command == "quota"
     assert args.pretty is True
+
+
+def test_cli_handle_holdings_passes_through_args(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(holdings_tool, "main", lambda argv: calls.append(argv))
+
+    args = SimpleNamespace(
+        config="hk",
+        run_dir="out/runs/demo",
+        top_k=10,
+        as_of="20260131",
+        source="live",
+        format="json",
+        out="out/holdings.json",
+    )
+    assert cli._handle_holdings(args) == 0
+    assert calls == [
+        [
+            "--config",
+            "hk",
+            "--run-dir",
+            "out/runs/demo",
+            "--top-k",
+            "10",
+            "--as-of",
+            "20260131",
+            "--source",
+            "live",
+            "--format",
+            "json",
+            "--out",
+            "out/holdings.json",
+        ]
+    ]
+
+
+def test_cli_handle_alloc_passes_through_args(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(alloc_tool, "main", lambda argv: calls.append(argv))
+
+    args = SimpleNamespace(
+        config="hk",
+        run_dir="out/runs/demo",
+        positions_file="out/runs/demo/positions.csv",
+        top_k=5,
+        as_of="20260131",
+        source="live",
+        side="long",
+        top_n=20,
+        cash=1_000_000.0,
+        buffer_bps=50.0,
+        price_field="close",
+        price_lookback_days=30,
+        username="user",
+        password="pass",
+        format="json",
+        out="out/alloc.json",
+    )
+    assert cli._handle_alloc(args) == 0
+    assert calls == [
+        [
+            "--config",
+            "hk",
+            "--run-dir",
+            "out/runs/demo",
+            "--positions-file",
+            "out/runs/demo/positions.csv",
+            "--top-k",
+            "5",
+            "--as-of",
+            "20260131",
+            "--source",
+            "live",
+            "--side",
+            "long",
+            "--top-n",
+            "20",
+            "--cash",
+            "1000000.0",
+            "--buffer-bps",
+            "50.0",
+            "--price-field",
+            "close",
+            "--price-lookback-days",
+            "30",
+            "--username",
+            "user",
+            "--password",
+            "pass",
+            "--format",
+            "json",
+            "--out",
+            "out/alloc.json",
+        ]
+    ]
+
+
+def test_cli_handle_grid_passes_through_args(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(grid_tool, "main", lambda argv: calls.append(argv))
+
+    args = SimpleNamespace(
+        config="hk",
+        top_k=["5,10", "20"],
+        cost_bps=["15,25"],
+        output="out/runs/grid.csv",
+        run_name_prefix="hk_grid",
+        log_level="DEBUG",
+        args=["--extra", "1"],
+    )
+    assert cli._handle_grid(args) == 0
+    assert calls == [
+        [
+            "--config",
+            "hk",
+            "--top-k",
+            "5,10",
+            "--top-k",
+            "20",
+            "--cost-bps",
+            "15,25",
+            "--output",
+            "out/runs/grid.csv",
+            "--run-name-prefix",
+            "hk_grid",
+            "--log-level",
+            "DEBUG",
+            "--extra",
+            "1",
+        ]
+    ]

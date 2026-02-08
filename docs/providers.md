@@ -16,6 +16,8 @@
 
 说明：`last_trading_day / last_completed_trading_day` 只有在 `provider=rqdata` 且交易日历可用时才严格按交易日解析，否则会给 warning 并回退自然日。
 
+补充：`csxgb holdings/snapshot/alloc --as-of last_trading_day` 目前不接入交易日历，统一按自然日回退（会输出 warning）。
+
 ## Symbol 规则（重点是 HK）
 
 内部统一格式：

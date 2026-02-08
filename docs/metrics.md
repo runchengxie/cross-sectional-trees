@@ -167,7 +167,7 @@
 
 ### 7.2 walk-forward（滚动窗口验证）
 
-* 配置里默认 `walk_forward.enabled: true`。
+* 内置模板默认 `walk_forward.enabled: true`；如果配置中完全不写该段，代码级默认是 `false`。
 * 落盘：`walk_forward_summary.csv`，并且 summary 里也会带 `walk_forward` 结果。
 * 新增：`walk_forward_feature_importance.csv`（每窗口特征重要性）与 `walk_forward_feature_stability.csv`（跨窗口稳定性）。
 

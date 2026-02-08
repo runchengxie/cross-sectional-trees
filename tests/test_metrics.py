@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
+import pytest
 
+import csxgb.metrics as metrics_mod
 from csxgb.metrics import (
     daily_ic_series,
     summarize_ic,
@@ -135,3 +137,22 @@ def test_summarize_active_returns_basic():
     assert active.shape[0] == 2
     assert np.isclose(stats["mean"], 0.005)
     assert np.isfinite(stats["active_total_return"])
+
+
+def test_summarize_ic_without_scipy_sets_p_value_nan(monkeypatch):
+    monkeypatch.setattr(metrics_mod, "scipy_stats", None)
+    series = pd.Series([0.1, -0.1, 0.2], index=pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]))
+    stats = summarize_ic(series)
+    assert np.isnan(stats["p_value"])
+
+
+def test_summarize_ic_with_mocked_scipy(monkeypatch):
+    fake_scipy = type(
+        "FakeScipy",
+        (),
+        {"t": type("FakeT", (), {"sf": staticmethod(lambda _x, df: 0.125)})},
+    )()
+    monkeypatch.setattr(metrics_mod, "scipy_stats", fake_scipy)
+    series = pd.Series([0.1, -0.1, 0.2], index=pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]))
+    stats = summarize_ic(series)
+    assert stats["p_value"] == pytest.approx(0.25)

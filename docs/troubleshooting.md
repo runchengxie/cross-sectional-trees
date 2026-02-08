@@ -28,6 +28,8 @@ csxgb rqdata quota --pretty
 
 原因：仅 `provider=rqdata` 且交易日历可用时，`last_trading_day` 才严格按交易日解析；否则会回退自然日并给 warning。
 
+补充：`csxgb holdings/snapshot/alloc --as-of last_trading_day` 当前不读取交易日历，行为是自然日回退（同样会提示 warning）。
+
 建议：
 
 1. 需要严格交易日时使用 `provider=rqdata`。
