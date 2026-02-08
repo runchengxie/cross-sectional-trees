@@ -82,21 +82,37 @@ label:
 features:
   list:
     - sma_20
+    - sma_60
+    - sma_120
     - sma_5_diff
     - sma_10_diff
     - sma_20_diff
+    - sma_60_diff
+    - sma_120_diff
+    - rsi_7
     - rsi_14
+    - rsi_21
     - macd_hist
+    - ret_5
+    - ret_20
+    - ret_60
+    - rv_20
+    - rv_60
     - volume_sma5_ratio
+    - volume_sma20_ratio
+    - volume_sma60_ratio
+    - log_vol
     - vol
   params:
-    sma_windows: [5, 10, 20]
-    rsi: 14
+    sma_windows: [5, 10, 20, 60, 120]
+    rsi: [7, 14, 21]
     macd: [12, 26, 9]
-    volume_sma_windows: [5]
+    ret_windows: [5, 20, 60]
+    rv_windows: [20, 60]
+    volume_sma_windows: [5, 20, 60]
   cross_sectional:
     method: "zscore"
-    winsorize_pct: null
+    winsorize_pct: 0.01
 
 model:
   type: xgb_regressor

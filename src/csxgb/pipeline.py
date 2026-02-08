@@ -670,6 +670,68 @@ def parse_feature_windows(features: list[str], prefix: str, suffix: str = "") ->
     return sorted(windows)
 
 
+def _parse_window_config(raw: Any) -> set[int]:
+    windows: set[int] = set()
+    if isinstance(raw, (list, tuple, set)):
+        values = raw
+    elif raw is None:
+        values = []
+    else:
+        values = [raw]
+    for item in values:
+        try:
+            win = int(item)
+        except (TypeError, ValueError):
+            continue
+        if win > 0:
+            windows.add(win)
+    return windows
+
+
+def _summarize_walk_forward_feature_stability(
+    importance_frame: pd.DataFrame,
+    top_k: int,
+) -> pd.DataFrame:
+    if importance_frame is None or importance_frame.empty:
+        return pd.DataFrame()
+
+    data = importance_frame.copy()
+    data["importance"] = pd.to_numeric(data["importance"], errors="coerce")
+    data = data[np.isfinite(data["importance"])].copy()
+    if data.empty:
+        return pd.DataFrame()
+
+    windows_total = int(data["window"].nunique())
+    features_total = int(data["feature"].nunique())
+    top_k_effective = max(1, min(int(top_k), features_total))
+    data["rank"] = data.groupby("window")["importance"].rank(method="average", ascending=False)
+    data["is_top_k"] = data["rank"] <= top_k_effective
+    data["is_nonzero"] = data["importance"] > 0
+
+    summary = (
+        data.groupby("feature", as_index=False)
+        .agg(
+            windows_seen=("window", "nunique"),
+            importance_mean=("importance", "mean"),
+            importance_std=("importance", "std"),
+            rank_mean=("rank", "mean"),
+            rank_std=("rank", "std"),
+            top_k_hits=("is_top_k", "sum"),
+            nonzero_hits=("is_nonzero", "sum"),
+        )
+        .sort_values(["top_k_hits", "importance_mean"], ascending=[False, False])
+        .reset_index(drop=True)
+    )
+    summary["windows_total"] = windows_total
+    summary["windows_missing"] = windows_total - summary["windows_seen"]
+    summary["top_k"] = top_k_effective
+    summary["top_k_hit_rate"] = summary["top_k_hits"] / windows_total
+    summary["nonzero_hit_rate"] = summary["nonzero_hits"] / windows_total
+    summary["importance_std"] = summary["importance_std"].fillna(0.0)
+    summary["rank_std"] = summary["rank_std"].fillna(0.0)
+    return summary
+
+
 
 def run(config_ref: str | Path | None = None) -> None:
     resolved = resolve_pipeline_config(config_ref)
@@ -875,6 +937,7 @@ def run(config_ref: str | Path | None = None) -> None:
         WF_TEST_SIZE = wf_cfg.get("test_size", TEST_SIZE)
         WF_STEP_SIZE = wf_cfg.get("step_size")
         WF_ANCHOR_END = bool(wf_cfg.get("anchor_end", True))
+        WF_FEATURE_TOP_K = int(wf_cfg.get("feature_top_k", 5))
         WF_BACKTEST_ENABLED = bool(wf_cfg.get("backtest_enabled", backtest_cfg.get("enabled", True)))
         wf_perm_cfg = wf_cfg.get("permutation_test")
         if isinstance(wf_perm_cfg, dict):
@@ -895,6 +958,7 @@ def run(config_ref: str | Path | None = None) -> None:
         WF_TEST_SIZE = TEST_SIZE
         WF_STEP_SIZE = None
         WF_ANCHOR_END = True
+        WF_FEATURE_TOP_K = 5
         WF_BACKTEST_ENABLED = bool(backtest_cfg.get("enabled", True))
         WF_PERM_TEST_ENABLED = False
         WF_PERM_TEST_RUNS = PERM_TEST_RUNS
@@ -903,6 +967,8 @@ def run(config_ref: str | Path | None = None) -> None:
         WF_PERM_TEST_SEED = int(WF_PERM_TEST_SEED)
     if WF_PERM_TEST_RUNS < 1:
         WF_PERM_TEST_ENABLED = False
+    if WF_FEATURE_TOP_K < 1:
+        sys.exit("eval.walk_forward.feature_top_k must be >= 1.")
 
     final_oos_cfg = eval_cfg.get("final_oos")
     FINAL_OOS_SIZE_RAW = None
@@ -954,16 +1020,31 @@ def run(config_ref: str | Path | None = None) -> None:
     feature_list = features_cfg.get("list") or []
     FEATURES = normalize_symbol_list(feature_list) if feature_list else [
         "sma_20",
+        "sma_60",
+        "sma_120",
         "sma_5_diff",
         "sma_10_diff",
         "sma_20_diff",
+        "sma_60_diff",
+        "sma_120_diff",
+        "rsi_7",
         "rsi_14",
+        "rsi_21",
         "macd_hist",
+        "ret_5",
+        "ret_20",
+        "ret_60",
+        "rv_20",
+        "rv_60",
         "volume_sma5_ratio",
+        "volume_sma20_ratio",
+        "volume_sma60_ratio",
+        "log_vol",
         "vol",
     ]
     if FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
         FEATURES = list(dict.fromkeys(FEATURES + FUNDAMENTALS_FEATURES))
+    WF_FEATURE_TOP_K = min(WF_FEATURE_TOP_K, max(1, len(FEATURES)))
     feature_params = features_cfg.get("params", {})
     cs_cfg = features_cfg.get("cross_sectional") or {}
     CS_METHOD = str(cs_cfg.get("method", "none")).strip().lower() if isinstance(cs_cfg, dict) else "none"
@@ -1290,7 +1371,7 @@ def run(config_ref: str | Path | None = None) -> None:
         sma_windows = set(parse_feature_windows(FEATURES, "sma_"))
         sma_windows.update(parse_feature_windows(FEATURES, "sma_", "_diff"))
         if not sma_windows:
-            sma_windows = set(feature_params.get("sma_windows", []))
+            sma_windows = _parse_window_config(feature_params.get("sma_windows"))
         for win in sorted(sma_windows):
             group[f"sma_{win}"] = ta.sma(group["close"], length=win)
             if f"sma_{win}_diff" in needed:
@@ -1298,11 +1379,7 @@ def run(config_ref: str | Path | None = None) -> None:
 
         rsi_lengths = set(parse_feature_windows(FEATURES, "rsi_"))
         if not rsi_lengths:
-            rsi_cfg = feature_params.get("rsi")
-            if isinstance(rsi_cfg, list):
-                rsi_lengths.update(int(x) for x in rsi_cfg)
-            elif rsi_cfg:
-                rsi_lengths.add(int(rsi_cfg))
+            rsi_lengths = _parse_window_config(feature_params.get("rsi"))
         for length in sorted(rsi_lengths):
             group[f"rsi_{length}"] = ta.rsi(group["close"], length=length)
 
@@ -1318,11 +1395,7 @@ def run(config_ref: str | Path | None = None) -> None:
 
         volume_windows = set(parse_feature_windows(FEATURES, "volume_sma", "_ratio"))
         if not volume_windows:
-            vol_cfg = feature_params.get("volume_sma_windows", [])
-            if isinstance(vol_cfg, list):
-                volume_windows.update(int(x) for x in vol_cfg)
-            elif vol_cfg:
-                volume_windows.add(int(vol_cfg))
+            volume_windows = _parse_window_config(feature_params.get("volume_sma_windows"))
         for win in sorted(volume_windows):
             volume_sma = ta.sma(group["vol"], length=win)
             if volume_sma is None:
@@ -1330,6 +1403,24 @@ def run(config_ref: str | Path | None = None) -> None:
             group[f"volume_sma{win}"] = volume_sma
             if f"volume_sma{win}_ratio" in needed:
                 group[f"volume_sma{win}_ratio"] = group["vol"] / group[f"volume_sma{win}"]
+
+        ret_windows = set(parse_feature_windows(FEATURES, "ret_"))
+        if not ret_windows:
+            ret_windows = _parse_window_config(feature_params.get("ret_windows"))
+        for win in sorted(ret_windows):
+            group[f"ret_{win}"] = group["close"].pct_change(win)
+
+        rv_windows = set(parse_feature_windows(FEATURES, "rv_"))
+        if not rv_windows:
+            rv_windows = _parse_window_config(feature_params.get("rv_windows"))
+        if rv_windows:
+            daily_return = group["close"].pct_change()
+            daily_return = daily_return.replace([np.inf, -np.inf], np.nan)
+            for win in sorted(rv_windows):
+                group[f"rv_{win}"] = daily_return.rolling(window=win).std(ddof=0)
+
+        if "log_vol" in needed:
+            group["log_vol"] = np.log1p(group["vol"].clip(lower=0))
 
         if LABEL_SHIFT_DAYS > 0:
             shifted_price = group[PRICE_COL].shift(-LABEL_SHIFT_DAYS)
@@ -1642,6 +1733,8 @@ def run(config_ref: str | Path | None = None) -> None:
         return sampled, rebalance_dates
 
 
+    walk_forward_importance_rows: list[dict[str, Any]] = []
+
     def evaluate_window(window_meta: dict) -> dict:
         window_id = int(window_meta["window"])
         train_dates = window_meta["train_dates"]
@@ -1695,6 +1788,21 @@ def run(config_ref: str | Path | None = None) -> None:
             target_col=TARGET,
             sample_weight=train_weights_w,
         )
+        importance_df_w, importance_source_w = feature_importance_frame(model_w, FEATURES)
+        if not importance_df_w.empty:
+            for _, row in importance_df_w.iterrows():
+                walk_forward_importance_rows.append(
+                    {
+                        "window": window_id,
+                        "train_start": result["train_start"],
+                        "train_end": result["train_end"],
+                        "test_start": result["test_start"],
+                        "test_end": result["test_end"],
+                        "feature": str(row["feature"]),
+                        "importance": float(row["importance"]),
+                        "importance_source": importance_source_w,
+                    }
+                )
 
         train_eval = train_df_w.copy()
         train_eval["pred"] = model_w.predict(train_eval[FEATURES])
@@ -1863,6 +1971,11 @@ def run(config_ref: str | Path | None = None) -> None:
                 if WF_BACKTEST_ENABLED
                 else None,
                 "permutation_test": perm_stats_w,
+                "feature_importance_source": importance_source_w,
+                "feature_importance_top": [
+                    {"feature": str(item["feature"]), "importance": float(item["importance"])}
+                    for _, item in importance_df_w.head(WF_FEATURE_TOP_K).iterrows()
+                ],
             }
         )
         return result
@@ -2564,6 +2677,11 @@ def run(config_ref: str | Path | None = None) -> None:
             logger.info("Walk-forward evaluation: %s windows.", len(windows))
             for window_meta in windows:
                 walk_forward_results.append(evaluate_window(window_meta))
+    walk_forward_importance_df = pd.DataFrame(walk_forward_importance_rows)
+    walk_forward_feature_stability_df = _summarize_walk_forward_feature_stability(
+        walk_forward_importance_df,
+        WF_FEATURE_TOP_K,
+    )
 
     final_oos_eval = None
     ic_series_oos = pd.Series(dtype=float, name="ic")
@@ -2686,6 +2804,8 @@ def run(config_ref: str | Path | None = None) -> None:
         rolling_sharpe_oos_files: dict[str, str] = {}
         bucket_ic_path: Optional[Path] = None
         bucket_ic_oos_path: Optional[Path] = None
+        walk_forward_importance_path: Optional[Path] = None
+        walk_forward_feature_stability_path: Optional[Path] = None
         if SAVE_DATASET:
             dataset_path = run_dir / "dataset.parquet"
             save_parquet(dataset.as_multiindex(), dataset_path)
@@ -2693,6 +2813,12 @@ def run(config_ref: str | Path | None = None) -> None:
             eval_scored_path = run_dir / "eval_scored.parquet"
             save_parquet(eval_scored_data, eval_scored_path)
         save_frame(importance_df, run_dir / "feature_importance.csv")
+        if not walk_forward_importance_df.empty:
+            walk_forward_importance_path = run_dir / "walk_forward_feature_importance.csv"
+            save_frame(walk_forward_importance_df, walk_forward_importance_path)
+        if not walk_forward_feature_stability_df.empty:
+            walk_forward_feature_stability_path = run_dir / "walk_forward_feature_stability.csv"
+            save_frame(walk_forward_feature_stability_df, walk_forward_feature_stability_path)
         save_series(ic_series, run_dir / "ic_test.csv", value_name="ic")
         save_series(pearson_ic_series, run_dir / "ic_pearson_test.csv", value_name="ic")
         if REPORT_TRAIN_IC:
@@ -3107,6 +3233,24 @@ def run(config_ref: str | Path | None = None) -> None:
                 "test_size": WF_TEST_SIZE,
                 "step_size": WF_STEP_SIZE,
                 "anchor_end": WF_ANCHOR_END,
+                "feature_top_k": WF_FEATURE_TOP_K,
+                "feature_importance_windows": int(walk_forward_importance_df["window"].nunique())
+                if not walk_forward_importance_df.empty
+                else 0,
+                "feature_importance_file": str(walk_forward_importance_path)
+                if walk_forward_importance_path
+                else None,
+                "feature_stability_file": str(walk_forward_feature_stability_path)
+                if walk_forward_feature_stability_path
+                else None,
+                "stable_top_features": (
+                    walk_forward_feature_stability_df["feature"]
+                    .head(WF_FEATURE_TOP_K)
+                    .astype(str)
+                    .tolist()
+                )
+                if not walk_forward_feature_stability_df.empty
+                else [],
                 "results": walk_forward_results,
             },
         }

@@ -62,6 +62,7 @@ TuShare 相关可覆盖项（按需配置）：
 
 * `eval.walk_forward.backtest_enabled`：为 walk-forward 的每个窗口是否跑回测（对 live 配置常设为 false）。
 * `eval.walk_forward.permutation_test`：可在每个窗口单独做置换检验。
+* `eval.walk_forward.feature_top_k`：稳定性统计里用于计算 Top-K 命中率的 K 值（默认 5）。
 
 ## 基本面数据
 

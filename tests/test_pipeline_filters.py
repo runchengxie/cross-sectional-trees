@@ -194,8 +194,21 @@ def test_pipeline_feature_formulas(tmp_path, monkeypatch):
             "target_col": "future_return",
         },
         "features": {
-            "list": ["sma_3", "sma_3_diff", "volume_sma3_ratio", "vol"],
-            "params": {"sma_windows": [3], "volume_sma_windows": [3]},
+            "list": [
+                "sma_3",
+                "sma_3_diff",
+                "volume_sma3_ratio",
+                "ret_3",
+                "rv_3",
+                "log_vol",
+                "vol",
+            ],
+            "params": {
+                "sma_windows": [3],
+                "volume_sma_windows": [3],
+                "ret_windows": [3],
+                "rv_windows": [3],
+            },
             "cross_sectional": {"method": "none"},
         },
         "model": {
@@ -240,14 +253,20 @@ def test_pipeline_feature_formulas(tmp_path, monkeypatch):
     sma3 = close.rolling(3).mean()
     sma3_diff = sma3.pct_change()
     vol_ratio = vol / vol.rolling(3).mean()
+    ret3 = close.pct_change(3)
+    rv3 = close.pct_change().rolling(3).std(ddof=0)
+    log_vol = np.log1p(vol)
     expected = pd.DataFrame(
         {
             "trade_date": dates,
             "sma_3": sma3,
             "sma_3_diff": sma3_diff,
             "volume_sma3_ratio": vol_ratio,
+            "ret_3": ret3,
+            "rv_3": rv3,
+            "log_vol": log_vol,
         }
-    ).dropna(subset=["sma_3", "sma_3_diff", "volume_sma3_ratio"])
+    ).dropna(subset=["sma_3", "sma_3_diff", "volume_sma3_ratio", "ret_3", "rv_3", "log_vol"])
     expected = expected[expected["trade_date"].isin(aaa["trade_date"])].reset_index(drop=True)
 
     np.testing.assert_allclose(aaa["sma_3"].to_numpy(), expected["sma_3"].to_numpy(), rtol=1e-6, atol=1e-6)
@@ -260,3 +279,6 @@ def test_pipeline_feature_formulas(tmp_path, monkeypatch):
         rtol=1e-6,
         atol=1e-6,
     )
+    np.testing.assert_allclose(aaa["ret_3"].to_numpy(), expected["ret_3"].to_numpy(), rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(aaa["rv_3"].to_numpy(), expected["rv_3"].to_numpy(), rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(aaa["log_vol"].to_numpy(), expected["log_vol"].to_numpy(), rtol=1e-6, atol=1e-6)

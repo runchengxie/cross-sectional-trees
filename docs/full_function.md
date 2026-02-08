@@ -114,6 +114,8 @@ CLI 全量参数请以 `docs/cli.md` 和 `csxgb <cmd> --help` 为准。
 | `features.params.sma_windows` | `list[int]` | `[]` | - | SMA 窗口 |
 | `features.params.rsi` | `int/list` | `14` | - | RSI 窗口 |
 | `features.params.macd` | `list[int]` | `[12,26,9]` | 长度 3 | MACD 参数 |
+| `features.params.ret_windows` | `list[int]` | `[]` | - | 动量收益窗口 |
+| `features.params.rv_windows` | `list[int]` | `[]` | - | 实现波动窗口 |
 | `features.params.volume_sma_windows` | `list[int]` | `[]` | - | 量能窗口 |
 | `features.cross_sectional.method` | `str` | `none` | `none/zscore/rank` | 横截面标准化 |
 | `features.cross_sectional.winsorize_pct` | `float/null` | `null` | `0 < x < 0.5` | 横截面截尾 |
@@ -123,7 +125,10 @@ CLI 全量参数请以 `docs/cli.md` 和 `csxgb <cmd> --help` 为准。
 * `sma_{w}`、`sma_{w}_diff`
 * `rsi_{n}`
 * `macd_hist`
+* `ret_{n}`
+* `rv_{n}`
 * `volume_sma{w}_ratio`
+* `log_vol`
 * `vol`
 
 ### 6) Model（可插拔）

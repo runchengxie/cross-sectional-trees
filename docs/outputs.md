@@ -118,3 +118,5 @@ best-effort（可能为空、缺失或未产出文件）：
 1. `eval_scored.parquet`：评估样本打分明细（启用 artifact 时）。
 1. `ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`：指标时序数据。
 1. `feature_importance.csv`：模型特征重要性。
+1. `walk_forward_feature_importance.csv`：walk-forward 每个窗口的特征重要性明细。
+1. `walk_forward_feature_stability.csv`：跨窗口稳定性统计（命中率/均值/方差等）。

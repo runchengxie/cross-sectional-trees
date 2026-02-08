@@ -169,6 +169,7 @@
 
 * 配置里默认 `walk_forward.enabled: true`。
 * 落盘：`walk_forward_summary.csv`，并且 summary 里也会带 `walk_forward` 结果。
+* 新增：`walk_forward_feature_importance.csv`（每窗口特征重要性）与 `walk_forward_feature_stability.csv`（跨窗口稳定性）。
 
 怎么解读：
 
@@ -179,6 +180,7 @@
 ## 8) 特征重要性（解释模型在看啥）
 
 * 输出 `feature_importance.csv`，来自 XGBoost 的 `feature_importances_`（注意：这不是因果解释，只是模型内部的分裂贡献类权重）。
+* 如果启用 walk-forward，还会输出窗口级与稳定性统计，便于做“多窗口一致性筛选”。
 
 怎么解读：
 

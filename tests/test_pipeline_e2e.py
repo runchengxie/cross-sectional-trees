@@ -432,3 +432,126 @@ def test_pipeline_run_offline_with_xgb_ranker(tmp_path, monkeypatch):
     assert (run_dir / "summary.json").exists()
     assert (run_dir / "feature_importance.csv").exists()
     assert (run_dir / "ic_test.csv").exists()
+
+
+@pytest.mark.integration
+def test_pipeline_walk_forward_feature_stability_outputs(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=90, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    frames = _build_daily_frames(symbols, dates)
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return frames[symbol].copy()
+
+    def fake_load_basic(self, symbols=None) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", fake_load_basic)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "us",
+        "data": {
+            "provider": "tushare",
+            "start_date": "20200101",
+            "end_date": "20200530",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "next_rebalance",
+            "rebalance_frequency": "W",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5", "ret_5"],
+            "params": {"sma_windows": [5], "ret_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": False,
+            "output_dir": str(output_dir),
+            "run_name": "e2e_wf_stability",
+            "walk_forward": {
+                "enabled": True,
+                "n_windows": 2,
+                "test_size": 0.2,
+                "step_size": 0.2,
+                "backtest_enabled": False,
+                "feature_top_k": 1,
+            },
+        },
+        "backtest": {
+            "enabled": False,
+        },
+    }
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    pipeline.run(str(config_path))
+
+    run_dirs = list(Path(output_dir).glob("e2e_wf_stability_*"))
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+
+    wf_importance_path = run_dir / "walk_forward_feature_importance.csv"
+    wf_stability_path = run_dir / "walk_forward_feature_stability.csv"
+    assert wf_importance_path.exists()
+    assert wf_stability_path.exists()
+
+    wf_importance = pd.read_csv(wf_importance_path)
+    assert {"window", "feature", "importance", "importance_source"}.issubset(wf_importance.columns)
+    assert wf_importance["window"].nunique() >= 1
+
+    wf_stability = pd.read_csv(wf_stability_path)
+    assert {"feature", "importance_mean", "top_k_hit_rate", "nonzero_hit_rate"}.issubset(
+        wf_stability.columns
+    )
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    walk_forward = summary["walk_forward"]
+    assert walk_forward["feature_top_k"] == 1
+    assert walk_forward["feature_importance_windows"] >= 1
+    assert walk_forward["feature_importance_file"]
+    assert walk_forward["feature_stability_file"]
