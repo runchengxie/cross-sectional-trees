@@ -295,4 +295,4 @@ csxgb universe hk-connect --mode daily
 
 ## 常见研究流程
 
-常见研究流程已移至 `docs/cookbook.md`（见 `docs/cookbook.md`）。
+常见研究流程见 `docs/cookbook.md`。
