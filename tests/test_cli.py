@@ -42,6 +42,8 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
     sweep = parser.parse_args(
         [
             "sweep-linear",
+            "--sweep-config",
+            "config/sweeps/hk_selected__linear_a.yml",
             "--config",
             "config/hk_selected.yml",
             "--run-name-prefix",
@@ -54,15 +56,18 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
             "0.1",
             "--elasticnet-l1-ratio",
             "0.5",
+            "--no-skip-ridge",
             "--dry-run",
         ]
     )
     assert sweep.command == "sweep-linear"
+    assert sweep.sweep_config == "config/sweeps/hk_selected__linear_a.yml"
     assert sweep.run_name_prefix == "hk_sel_"
     assert sweep.tag == "exp_a"
     assert sweep.ridge_alpha == ["0.01,0.1"]
     assert sweep.elasticnet_alpha == ["0.1"]
     assert sweep.elasticnet_l1_ratio == ["0.5"]
+    assert sweep.skip_ridge is False
     assert sweep.dry_run is True
 
     summarize = parser.parse_args(
@@ -230,6 +235,7 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
     monkeypatch.setattr(sweep_tool, "main", lambda argv: calls.append(argv))
 
     args = SimpleNamespace(
+        sweep_config="config/sweeps/hk_selected__linear_a.yml",
         config="config/hk_selected.yml",
         run_name_prefix="hk_sel_",
         sweeps_dir="out/sweeps",
@@ -250,6 +256,8 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
     assert cli._handle_sweep_linear(args) == 0
     assert calls == [
         [
+            "--sweep-config",
+            "config/sweeps/hk_selected__linear_a.yml",
             "--config",
             "config/hk_selected.yml",
             "--run-name-prefix",
@@ -268,9 +276,11 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
             "0.01,0.1",
             "--elasticnet-l1-ratio",
             "0.1,0.5",
+            "--no-skip-ridge",
             "--skip-elasticnet",
             "--dry-run",
             "--continue-on-error",
+            "--no-skip-summarize",
             "--summary-output",
             "out/sweeps/exp_1/runs_summary.csv",
             "--log-level",

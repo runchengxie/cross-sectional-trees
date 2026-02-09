@@ -117,6 +117,19 @@ data:
 * 作用：做 Top-K × 交易成本(bps) 的敏感性网格。它会先跑一次 base pipeline 产出 `eval_scored.parquet`，再在同一份 scored 数据上循环组合并汇总到 CSV（不会为每个网格点重训模型）。
 * 常用参数（脚本侧定义的）：`--top-k`（可多次传、逗号分隔）、`--cost-bps`、`--output`（默认 `out/runs/grid_summary.csv`）、`--run-name-prefix`、`--log-level`。
 
+### `csml sweep-linear`
+
+* 作用：做 `ridge/elasticnet` 的模型参数网格，自动完成“生成临时配置 -> 批量 run -> summarize 导出对比表”。
+* 推荐方式：使用 sweep 配置文件，减少长命令与手滑风险。
+  * 示例配置：`config/sweeps/hk_selected__linear_a.yml`
+  * 运行：`csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml`
+* 覆盖规则：`CLI 参数 > sweep-config.yml > 内置默认值`（适合临时改 `--tag`、`--dry-run` 等）。
+* 典型产物（落在 `out/sweeps/<tag>/`）：
+  * `configs/`：本次 sweep 生成的临时配置
+  * `jobs.csv`：参数组合清单
+  * `run_results.csv`：每个组合执行状态
+  * `runs_summary.csv`：自动 `summarize` 的汇总对比表
+
 ### 3) `csml holdings`
 
 * 作用：从最近一次 run 的产物里读“当前持仓清单”，并按 `--as-of`（支持 `today/t-1/日期`）输出；支持 backtest/live 两类持仓源。
@@ -213,6 +226,12 @@ csml run --config config/hk_selected.yml
 
 # Top-K × 成本敏感性网格（使用显式模型配置）
 csml grid --config config/hk_selected__xgb_regressor.yml
+
+# 线性模型 sweep（推荐配置文件驱动）
+csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml
+
+# 在 sweep 配置基础上临时覆盖参数
+csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml --tag hk_linear_debug --dry-run
 
 # 跨 run 汇总总表（研究对比）
 csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv

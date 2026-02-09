@@ -261,6 +261,8 @@ def _handle_sweep_linear(args) -> int:
     from .project_tools import linear_sweep
 
     argv: list[str] = []
+    if getattr(args, "sweep_config", None):
+        argv += ["--sweep-config", args.sweep_config]
     if getattr(args, "config", None):
         argv += ["--config", args.config]
     if getattr(args, "run_name_prefix", None):
@@ -280,16 +282,31 @@ def _handle_sweep_linear(args) -> int:
     if getattr(args, "elasticnet_l1_ratio", None):
         for entry in args.elasticnet_l1_ratio:
             argv += ["--elasticnet-l1-ratio", entry]
-    if getattr(args, "skip_ridge", None):
+    skip_ridge = getattr(args, "skip_ridge", None)
+    if skip_ridge is True:
         argv += ["--skip-ridge"]
-    if getattr(args, "skip_elasticnet", None):
+    elif skip_ridge is False:
+        argv += ["--no-skip-ridge"]
+    skip_elasticnet = getattr(args, "skip_elasticnet", None)
+    if skip_elasticnet is True:
         argv += ["--skip-elasticnet"]
-    if getattr(args, "dry_run", None):
+    elif skip_elasticnet is False:
+        argv += ["--no-skip-elasticnet"]
+    dry_run = getattr(args, "dry_run", None)
+    if dry_run is True:
         argv += ["--dry-run"]
-    if getattr(args, "continue_on_error", None):
+    elif dry_run is False:
+        argv += ["--no-dry-run"]
+    continue_on_error = getattr(args, "continue_on_error", None)
+    if continue_on_error is True:
         argv += ["--continue-on-error"]
-    if getattr(args, "skip_summarize", None):
+    elif continue_on_error is False:
+        argv += ["--no-continue-on-error"]
+    skip_summarize = getattr(args, "skip_summarize", None)
+    if skip_summarize is True:
         argv += ["--skip-summarize"]
+    elif skip_summarize is False:
+        argv += ["--no-skip-summarize"]
     if getattr(args, "summary_output", None):
         argv += ["--summary-output", args.summary_output]
     if getattr(args, "log_level", None):

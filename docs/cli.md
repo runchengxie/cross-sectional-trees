@@ -49,6 +49,7 @@ csml grid --config config/hk.yml --top-k 5,10 --cost-bps 15,25
 
 参数：
 
+* `--sweep-config <path>`：sweep 参数 YAML（CLI 参数会覆盖 YAML）。
 * `--config <path_or_alias>`：基础配置（默认 `config/hk_selected.yml`）。
 * `--run-name-prefix <prefix>`：批量 run_name 前缀（默认 `hk_sel_`）。
 * `--sweeps-dir <dir>`：sweep 产物根目录（默认 `out/sweeps`）。
@@ -67,13 +68,13 @@ csml grid --config config/hk.yml --top-k 5,10 --cost-bps 15,25
 示例：
 
 ```bash
+csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml
+
+# 临时覆盖 tag 和 dry-run
 csml sweep-linear \
-  --config config/hk_selected.yml \
-  --run-name-prefix hk_sel_ \
-  --tag hk_linear_a \
-  --ridge-alpha 0.01,0.1,1,10,100 \
-  --elasticnet-alpha 0.01,0.1,1 \
-  --elasticnet-l1-ratio 0.1,0.5,0.9
+  --sweep-config config/sweeps/hk_selected__linear_a.yml \
+  --tag hk_linear_a_debug \
+  --dry-run
 ```
 
 ## 4) `csml summarize`

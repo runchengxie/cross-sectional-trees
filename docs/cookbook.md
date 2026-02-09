@@ -40,13 +40,16 @@ csml run --config config/hk_selected__elasticnet_a0.1_l0.5.yml
 如果希望一次性批跑并自动导出对比表，可直接用：
 
 ```bash
+csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml
+```
+
+临时覆盖少量参数时再叠加 CLI 参数（CLI 会覆盖 sweep config）：
+
+```bash
 csml sweep-linear \
-  --config config/hk_selected.yml \
-  --run-name-prefix hk_sel_ \
-  --tag hk_linear_a \
-  --ridge-alpha 0.01,0.1,1,10,100 \
-  --elasticnet-alpha 0.01,0.1,1 \
-  --elasticnet-l1-ratio 0.1,0.5,0.9
+  --sweep-config config/sweeps/hk_selected__linear_a.yml \
+  --tag hk_linear_a_debug \
+  --dry-run
 ```
 
 命令会在 `out/sweeps/<tag>/` 下生成：

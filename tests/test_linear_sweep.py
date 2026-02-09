@@ -154,3 +154,63 @@ def test_linear_sweep_stops_on_first_failure(tmp_path, monkeypatch):
     assert len(rows) == 2
     assert rows[0]["status"] == "ok"
     assert rows[1]["status"] == "failed"
+
+
+def test_linear_sweep_reads_sweep_config_and_cli_overrides(tmp_path, monkeypatch):
+    base_cfg = {
+        "model": {"type": "xgb_regressor", "params": {"random_state": 99}},
+        "eval": {"output_dir": str(tmp_path / "runs_default"), "run_name": "base"},
+    }
+    base_config_path = tmp_path / "base.yml"
+    base_config_path.write_text(yaml.safe_dump(base_cfg, sort_keys=False), encoding="utf-8")
+
+    sweep_spec = {
+        "base_config": str(base_config_path),
+        "run_name_prefix": "spec_",
+        "tag": "from_spec",
+        "sweeps_dir": str(tmp_path / "spec_sweeps"),
+        "runs_dir": str(tmp_path / "spec_runs"),
+        "grid": {
+            "ridge_alpha": [0.5],
+            "elasticnet_alpha": [0.2],
+            "elasticnet_l1_ratio": [0.6],
+        },
+        "options": {
+            "skip_ridge": True,
+            "dry_run": "false",
+            "continue_on_error": "no",
+            "skip_summarize": "true",
+            "log_level": "debug",
+        },
+    }
+    sweep_config_path = tmp_path / "sweep.yml"
+    sweep_config_path.write_text(yaml.safe_dump(sweep_spec, sort_keys=False), encoding="utf-8")
+
+    run_calls: list[str] = []
+    monkeypatch.setattr(pipeline_mod, "run", lambda cfg_path: run_calls.append(cfg_path))
+    summarize_calls: list[list[str]] = []
+    monkeypatch.setattr(summarize_tool, "main", lambda argv: summarize_calls.append(list(argv)))
+
+    linear_sweep.main(
+        [
+            "--sweep-config",
+            str(sweep_config_path),
+            "--tag",
+            "from_cli",
+            "--run-name-prefix",
+            "cli_",
+            "--no-skip-ridge",
+            "--skip-elasticnet",
+            "--dry-run",
+            "--log-level",
+            "INFO",
+        ]
+    )
+
+    assert run_calls == []
+    assert summarize_calls == []
+
+    jobs_csv = tmp_path / "spec_sweeps" / "from_cli" / "jobs.csv"
+    jobs = _read_csv(jobs_csv)
+    assert len(jobs) == 1
+    assert jobs[0]["run_name"] == "cli_ridge_a0.5"

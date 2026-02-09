@@ -1,0 +1,23 @@
+# Linear sweep spec for HK selected baseline.
+# Use with:
+#   csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml
+
+base_config: config/hk_selected.yml
+run_name_prefix: hk_sel_
+tag: hk_linear_a
+sweeps_dir: out/sweeps
+runs_dir: out/runs
+
+grid:
+  ridge_alpha: [0.01, 0.1, 1, 10, 100]
+  elasticnet_alpha: [0.01, 0.1, 1]
+  elasticnet_l1_ratio: [0.1, 0.5, 0.9]
+
+options:
+  skip_ridge: false
+  skip_elasticnet: false
+  dry_run: false
+  continue_on_error: false
+  skip_summarize: false
+  summary_output: null
+  log_level: INFO
