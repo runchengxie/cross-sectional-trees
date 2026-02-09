@@ -1,284 +1,84 @@
-# 项目功能全景与规格边界
+# 项目全量功能矩阵、难点分层与工时重估（人天）
 
 给一份配置，`csml` 会跑完整研究流水线：拉数、构池、打标签、做特征、训练、评估、回测、落盘产物、输出持仓快照。
 
 ## 文档定位
 
-为避免和其他文档重复且减少“文档漂移”，本文件定位为：
+本文件用于回答三个问题：
 
-* 全景流程说明
-* 关键参数入口索引
-* 难点、边界、非目标与工时估算
-
-完整参数字典和默认值请以 `docs/config.md` 为准。  
-CLI 全量参数请以 `docs/cli.md` 和 `csml <cmd> --help` 为准。  
-输出字段 Schema 请以 `docs/outputs.md` 为准。
-
-## 端到端流程
-
-1. 按 `market + universe` 确定股票池（静态或 PIT by-date）。
-2. 通过 `data.provider` 拉取日线，按规则补齐字段并过滤样本。
-3. 可选合并 `fundamentals`。
-4. 按 `label` 生成收益标签。
-5. 按 `features` 生成技术特征并做横截面变换。
-6. 训练配置指定的模型（`xgb_regressor/xgb_ranker/ridge/elasticnet`），做时间序列评估与稳定性检验。
-7. 运行 Top-K 回测与持仓输出（可含 OOS/live）。
-8. 写入 run 目录与 `summary.json` 供复现、汇总、持仓查询。
-
-## 模块规格（关键参数索引）
-
-### 1) Universe（股票池与样本过滤）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `universe.mode` | `str` | `auto` | `auto/pit/static` | 股票池模式 |
-| `universe.require_by_date` | `bool` | `false` | - | 强制要求 PIT 文件 |
-| `universe.by_date_file` | `path` | `null` | `pit` 模式必填 | PIT 股票池输入 |
-| `universe.symbols/symbols_file` | `list/path` | 模板内置列表 | 静态池入口 | 静态股票池 |
-| `universe.min_symbols_per_date` | `int` | `eval.n_quantiles` | 自动下限到 `n_quantiles` | 小截面日期过滤 |
-| `universe.min_listed_days` | `int` | `0` | `>=0` | 上市天数过滤 |
-| `universe.drop_st` | `bool` | `false` | CN 语义更强 | 名称含 ST 的股票过滤 |
-| `universe.drop_suspended` | `bool` | `true` | - | 启用可交易性判定 |
-| `universe.suspended_policy` | `str` | `mark` | `mark/filter` | 标记或删除停牌样本 |
-| `universe.min_turnover` | `float` | `0` | `>=0` | `amount` 成交额下限 |
-
-关键行为：
-
-* `by_date_file` 存在时会进入 PIT 逻辑；`mode=static` 但给了 `by_date_file` 也会切到 PIT 并告警。
-* `drop_suspended=true` 先计算 `is_tradable`。只有 `suspended_policy=filter` 才真正删行，不是默认就删。
-* 如果 `eval.sample_on_rebalance_dates=true`，先按再平衡日采样，再做 `min_symbols_per_date` 日期过滤。
-
-相关命令：
-
-* `csml universe hk-connect`：构建港股通 PIT 股票池（流动性过滤）。
-* `csml universe index-components`：拉指数成分，可同时产出 PIT by-date CSV。
-
-### 2) Data（数据源、缓存、符号映射）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `market` | `str` | `cn` | `cn/hk/us` | 市场口径 |
-| `data.provider` | `str` | `tushare` | `tushare/rqdata/eodhd` | 数据源 |
-| `data.start_date/start_years` | `str/num` | `start_years=5` | `start_date` 优先 | 起始时间 |
-| `data.end_date` | `str` | `today` | 支持 `today/t-1/...` | 截止时间 |
-| `data.price_col` | `str` | `close` | 列必须存在 | 标签/回测用价 |
-| `data.cache_*` | - | - | 见 `docs/config.md` | 缓存策略 |
-| `data.retry.*` | - | 见模板 | - | 重试与 token 轮换 |
-| `data.eodhd.hk_symbol_mode` | `str` | `null` | `strip_one/strip_all/pad4/pad5` | HK 符号转换 |
-
-关键行为：
-
-* provider 别名会标准化（如 `rqdatac -> rqdata`，`ts -> tushare`）。
-* HK 内部代码标准化为 `00001.HK`；RQData 会转为 `00001.XHKG`。
-* `TUSHARE_TOKEN/TUSHARE_TOKEN_2` 可轮换；RQData 支持配置和环境变量混合初始化。
-
-### 3) Fundamentals（可选基本面合并）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `fundamentals.enabled` | `bool` | `false`(代码默认) | - | 是否合并基本面 |
-| `fundamentals.source` | `str` | `provider` | `provider/file` | 数据来源 |
-| `fundamentals.required` | `bool` | `false` | - | 缺失时是否直接报错 |
-| `fundamentals.column_map` | `dict` | `{}` | - | 字段标准化 |
-| `fundamentals.features` | `list` | `[]` | - | 要并入的特征列 |
-| `fundamentals.allow_missing_features` | `bool` | `false` | - | 缺失列是否放行 |
-| `fundamentals.ffill/ffill_limit` | `bool/int` | `true/null` | - | 按 `ts_code` 前向填充 |
-| `fundamentals.log_market_cap*` | - | - | - | 市值对数特征 |
-
-关键行为：
-
-* `source=provider` 当前只支持 TuShare；其它 provider 会禁用并告警，`required=true` 则报错退出。
-* `source=file` 支持 CSV/Parquet。
-
-### 4) Label（标签）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `label.horizon_mode` | `str` | `fixed` | `fixed/next_rebalance` | 标签窗口定义 |
-| `label.horizon_days` | `int` | `5` | 通常设为正数 | `fixed` 模式持有期 |
-| `label.shift_days` | `int` | `0` | 通常设为非负数 | 入场价格位移 |
-| `label.rebalance_frequency` | `str` | 继承 `eval` | - | `next_rebalance` 频率 |
-| `label.target_col` | `str` | `future_return` | - | 标签列名 |
-| `label.winsorize_pct` | `float/null` | `null` | `0 < x < 0.5` | 标签截尾 |
-
-关键行为：
-
-* `next_rebalance` 使用“交易日 -> 下一个 rebalance 日”的映射求 `exit_price`。
-* 若再平衡点不足会回退为 `fixed` 并告警。
-
-### 5) Features（特征与横截面变换）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `features.list` | `list[str]` | 内置技术指标集合 | 不能为空 | 参与训练列 |
-| `features.params.sma_windows` | `list[int]` | `[]` | - | SMA 窗口 |
-| `features.params.rsi` | `int/list` | `14` | - | RSI 窗口 |
-| `features.params.macd` | `list[int]` | `[12,26,9]` | 长度 3 | MACD 参数 |
-| `features.params.ret_windows` | `list[int]` | `[]` | - | 动量收益窗口 |
-| `features.params.rv_windows` | `list[int]` | `[]` | - | 实现波动窗口 |
-| `features.params.volume_sma_windows` | `list[int]` | `[]` | - | 量能窗口 |
-| `features.cross_sectional.method` | `str` | `none` | `none/zscore/rank` | 横截面标准化 |
-| `features.cross_sectional.winsorize_pct` | `float/null` | `null` | `0 < x < 0.5` | 横截面截尾 |
-
-当前内置技术特征形态：
-
-* `sma_{w}`、`sma_{w}_diff`
-* `rsi_{n}`
-* `macd_hist`
-* `ret_{n}`
-* `rv_{n}`
-* `volume_sma{w}_ratio`
-* `log_vol`
-* `vol`
-
-### 6) Model（可插拔）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `model.type` | `str` | `xgb_regressor` | `xgb_regressor/xgb_ranker/ridge/elasticnet` | 模型类型 |
-| `model.params` | `dict` | 各模型内置默认参数 | 传给对应模型构造器 | 模型超参 |
-| `model.sample_weight_mode` | `str` | `none` | `none/date_equal` | 样本权重方案 |
-
-### 7) Eval（评估与稳健性）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `eval.test_size` | `float` | `0.2` | 通常使用 0~1 比例 | 训练/测试切分 |
-| `eval.n_splits` | `int` | `5` | 建议 `>=2` | 时间序列 CV 折数 |
-| `eval.n_quantiles` | `int` | `5` | 建议 `>=2` | 分位数组数 |
-| `eval.signal_direction` | `float` | `1` | 不能为 `0` | 信号方向 |
-| `eval.signal_direction_mode` | `str` | `fixed` | `fixed/train_ic/cv_ic` | 自动翻转模式 |
-| `eval.min_abs_ic_to_flip` | `float` | `0` | `>=0` | 翻转阈值 |
-| `eval.embargo_days/purge_days` | `int/null` | `null` | - | 泄漏隔离 gap |
-| `eval.sample_on_rebalance_dates` | `bool` | `false` | - | 仅在再平衡日采样 |
-| `eval.save_artifacts` | `bool` | `true` | - | 是否落盘 |
-| `eval.save_dataset` | `bool` | `false` | 需 `save_artifacts=true` | 导出数据集 |
-| `eval.permutation_test.*` | - | - | - | 置换检验 |
-| `eval.walk_forward.*` | - | - | - | 滚动窗口验证 |
-| `eval.final_oos.*` | - | - | - | 最终留出期 |
-| `eval.rolling.*` | - | - | - | 滚动 IC/Sharpe |
-| `eval.bucket_ic.*` | - | - | - | 分桶 IC |
-
-关键行为：
-
-* 训练集和测试集评估均输出，且支持 Spearman/Pearson IC。
-* `permutation_test` 是按 `trade_date` 分组打乱标签，不是全局洗牌。
-* `walk_forward` 可配置是否同时跑回测（`backtest_enabled`）。
-
-### 8) Backtest 与 Execution（回测）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `backtest.enabled` | `bool` | `true` | - | 是否跑回测 |
-| `backtest.top_k` | `int` | 继承 `eval.top_k` | - | 持仓数量 |
-| `backtest.rebalance_frequency` | `str` | 继承 `eval` | - | 调仓频率 |
-| `backtest.long_only/short_k` | `bool/int` | `true/null` | - | 多空模式 |
-| `backtest.transaction_cost_bps` | `float` | 继承 `eval` | - | 成本基线 |
-| `backtest.buffer_exit/entry` | `int` | `0/0` | - | 缓冲区降换手 |
-| `backtest.exit_mode` | `str` | `rebalance` | `rebalance/label_horizon` | 退出模式 |
-| `backtest.exit_horizon_days` | `int/null` | `null` | `label_horizon` 下生效 | 固定持有期 |
-| `backtest.exit_price_policy` | `str` | `strict` | `strict/ffill/delay` | 出场价口径 |
-| `backtest.exit_fallback_policy` | `str` | `ffill` | `ffill/none` | 延迟失败回退 |
-| `backtest.tradable_col` | `str/null` | `is_tradable` | - | 可交易列 |
-| `backtest.execution.cost_model` | `dict` | `bps` | `bps/none` | 成本模型扩展 |
-| `backtest.execution.exit_policy` | `dict` | 继承旧键 | `strict/ffill/delay` | 退出策略扩展 |
-
-关键行为：
-
-* `cost_model.name=none` 可关闭成本；`bps` 支持 `round_trip`。
-* `exit_mode=label_horizon` 与调仓频率冲突时会跳过或报错，不是无条件可用。
-
-### 9) Live（当前持仓快照）
-
-| 参数键 | 类型 | 默认值 | 约束/取值 | 作用 |
-| --- | --- | --- | --- | --- |
-| `live.enabled` | `bool` | `false` | 需 `eval.save_artifacts=true` | 是否输出 live 持仓 |
-| `live.as_of` | `str` | `t-1` | 支持日期 token | live 截止日 |
-| `live.train_mode` | `str` | `full` | `full/train` | 训练样本策略 |
-
-## CLI 总览（按命令组）
-
-研究主流程：
-
-* `csml run`
-* `csml grid`
-* `csml sweep-linear`
-* `csml summarize`
-* `csml holdings`
-* `csml snapshot`
-* `csml alloc`
-* `csml init-config`
-
-数据源工具：
-
-* `csml rqdata info`
-* `csml rqdata quota`
-* `csml tushare verify-token`
-
-股票池工具：
-
-* `csml universe index-components`
-* `csml universe hk-connect`
+1. 这个项目有哪些功能。
+2. 这些功能的关键工程难点分布在哪一层。
+3. 以人天口径看，开发/维护预算应怎么估。
 
 说明：
 
-* `universe index-components`、`universe hk-connect`、`tushare verify-token` 采用“CLI 转发参数到底层脚本”模式，参数以脚本 `--help` 为准。
-* `grid` 当前机制是“先跑一次 base pipeline 产出 `eval_scored.parquet`，再在同一份 scored 数据上循环 Top-K/成本组合”，不是每个组合都重新训练。
+* 本文是全量功能矩阵 + 难点与工时判断。
+* 参数字典与默认值仍以 `docs/config.md` 为准。
+* CLI 全量参数仍以 `docs/cli.md` 和 `csml <cmd> --help` 为准。
+* 输出字段 Schema 仍以 `docs/outputs.md` 为准。
 
-## 输出产物（关键文件）
+## 一、全量功能矩阵
+
+### 1) CLI 命令矩阵（用户可见入口）
+
+| 命令 | 能力 | 关键输入 | 关键输出/副作用 | 备注 |
+| --- | --- | --- | --- | --- |
+| `csml run` | 主流程：训练/评估/回测/持仓产物 | `--config` | `out/runs/...` 全套产物 | 研究主入口 |
+| `csml grid` | Top-K × 成本敏感性网格 | base config + grid 参数 | `grid_summary.csv` | 先跑一次 base，再复用 scored 数据 |
+| `csml sweep-linear` | Ridge/ElasticNet 参数 sweep | `--sweep-config` 或 CLI 网格参数 | `out/sweeps/<tag>/` + 自动 summarize | 已覆盖（不是 `sweep`，是 `sweep-linear`） |
+| `csml summarize` | 聚合历史 run 关键指标 | `--runs-dir`、筛选参数 | `runs_summary.csv` | 研究对比入口 |
+| `csml holdings` | 输出当前持仓 | `--config/--run-dir`、`--as-of` | text/csv/json | 支持 `auto/backtest/live` |
+| `csml snapshot` | 一键 run + holdings | `--config` 或 `--run-dir` | live/回测快照 | 适合 cron/CI |
+| `csml alloc` | 从持仓做等权手数分配 | 持仓来源 + 资金参数 | 分配表（text/csv/json） | 依赖 RQData 价格和 round lot |
+| `csml init-config` | 导出内置模板配置 | `--market`、`--out` | 本地 YAML 模板 | 支持 `--force` 覆盖 |
+| `csml rqdata info` | 检查 RQData 初始化信息 | 可选 `--config` / 账号覆盖 | 登录/用户信息 | 运维排障辅助 |
+| `csml rqdata quota` | 查询 RQData 配额 | 可选 `--pretty` | 配额信息 | 运维排障辅助 |
+| `csml tushare verify-token` | 验证 TuShare token 可用性 | token 环境变量/透传参数 | 验证结果 | 运维排障辅助 |
+| `csml universe index-components` | 拉指数成分并可生成 PIT 文件 | 脚本透传参数 | symbols/by-date 文件 | CLI 透传到底层脚本 |
+| `csml universe hk-connect` | 构建港股通 PIT universe | `--config` + 脚本透传参数 | by-date + symbols + meta | 含流动性过滤 |
+
+### 2) Pipeline 模块矩阵（`csml run` 内部能力）
+
+| 模块 | 已实现能力 | 关键参数入口 | 典型风险点 |
+| --- | --- | --- | --- |
+| Universe | `auto/pit/static` 股票池，按日期过滤、停牌/上市天数/成交额过滤 | `universe.*` | 过滤顺序改变结果；PIT 数据缺失 |
+| Data | `tushare/rqdata/eodhd`，market-aware symbol 规则，缓存与重试 | `market`、`data.*` | 多 provider 口径不一致 |
+| Fundamentals | provider/file 两路并入，列映射与缺失策略 | `fundamentals.*` | provider 能力不对齐 |
+| Label | `fixed/next_rebalance`，shift 与截尾 | `label.*` | 时序泄漏、标签口径偏差 |
+| Features | 技术特征生成 + 横截面 `none/zscore/rank` | `features.*` | 窗口与样本可用性冲突 |
+| Model | `xgb_regressor/xgb_ranker/ridge/elasticnet` | `model.*` | 模型与样本权重设定不当 |
+| Eval | train/test + CV IC，direction flip，置换检验，walk-forward，final OOS，rolling/bucket 指标 | `eval.*` | 仅看单指标导致过拟合 |
+| Backtest/Execution | Top-K、多空、成本模型、buffer、exit policy、tradable 约束 | `backtest.*` | 回测语义与真实交易偏差 |
+| Live | 产出 live 持仓文件与 `latest.json` 指针 | `live.*` | 依赖 `eval.save_artifacts=true` |
+| Reproducibility | 冻结配置、哈希 run 目录、核心产物落盘 | `eval.output_dir` 等 | 缓存/数据回补导致重跑差异 |
+
+### 3) 输出产物矩阵（run 目录）
 
 run 目录规则：
 
 * `<eval.output_dir>/<run_name>_<timestamp>_<config_hash>/`
 
-通用核心文件：
+| 类别 | 文件 | 触发条件 | 用途 |
+| --- | --- | --- | --- |
+| 核心 | `summary.json` | 默认 | 汇总关键指标，供 summarize 消费 |
+| 核心 | `config.used.yml` | 默认 | 复现实验所用配置 |
+| 核心 | `feature_importance.csv` | 模型支持时 | 解释性与特征筛选 |
+| 核心 | `eval_scored.parquet` | 可用时 | grid/summarize/二次分析 |
+| 核心 | `dataset.parquet` | `eval.save_dataset=true` | 诊断/复查输入样本 |
+| 评估 | `ic_test.csv`、`ic_pearson_test.csv` | 默认 | 核心 IC 评估 |
+| 评估 | `ic_train.csv`、`ic_pearson_train.csv` | 启用时 | 训练期对照 |
+| 评估 | `quantile_returns.csv`、`turnover_eval.csv` | 默认 | 分层收益与换手 |
+| 评估 | `permutation_test.csv` | 启用置换检验 | 抗伪发现 |
+| 评估 | `walk_forward_summary.csv` | 启用 walk-forward | 时变稳健性 |
+| 回测 | `backtest_net.csv`、`backtest_gross.csv` | `backtest.enabled=true` | 净值与成本拖累 |
+| 回测 | `backtest_turnover.csv`、`backtest_periods.csv` | `backtest.enabled=true` | 换手与周期收益 |
+| 回测 | `backtest_benchmark.csv`、`backtest_active.csv` | 配 benchmark 时 | 主动收益分析 |
+| 持仓 | `positions_by_rebalance.csv` 等 | 回测开启 | 历史调仓与当前持仓 |
+| 持仓 | `*_oos.csv` | 启用 final OOS | 留出期持仓 |
+| 持仓 | `*_live.csv` | `live.enabled=true` | live 目标持仓 |
+| 指针 | `latest.json` | `live.enabled=true` | 最新 live run 定位 |
 
-* `summary.json`
-* `config.used.yml`
-* `feature_importance.csv`
-* `eval_scored.parquet`（若可用）
-* `dataset.parquet`（`eval.save_dataset=true`）
-
-评估文件：
-
-* `ic_test.csv`
-* `ic_pearson_test.csv`
-* `ic_train.csv`、`ic_pearson_train.csv`（启用时）
-* `quantile_returns.csv`
-* `turnover_eval.csv`
-* `permutation_test.csv`（启用时）
-* `walk_forward_summary.csv`（启用时）
-
-回测文件：
-
-* `backtest_net.csv`
-* `backtest_gross.csv`
-* `backtest_turnover.csv`
-* `backtest_periods.csv`
-* 可选：`backtest_benchmark.csv`、`backtest_active.csv`
-
-持仓文件：
-
-* 回测：`positions_by_rebalance.csv`、`positions_current.csv`、`rebalance_diff.csv`
-* OOS：`positions_by_rebalance_oos.csv`、`positions_current_oos.csv`、`rebalance_diff_oos.csv`
-* Live：`positions_by_rebalance_live.csv`、`positions_current_live.csv`、`rebalance_diff_live.csv`
-
-live 最新指针：
-
-* `latest.json` 仅在 `live.enabled=true` 时写入，路径在 `eval.output_dir` 根目录下，不是固定写死到 `out/live_runs/`。
-
-## 难点（工程视角）
-
-1. 多 provider/多市场的数据一致性与符号标准化。
-2. PIT 股票池与样本过滤顺序对结果影响很大。
-3. 泄漏防控要贯穿标签、切分、评估、回测四层。
-4. 评估体系不是单指标问题，需 CV + walk-forward + permutation 组合验证。
-5. 回测细节（成本、buffer、退出策略、可交易性）决定策略可落地性。
-6. 可复现依赖配置冻结、缓存策略、产物落盘和代码版本固定。
-
-## 边界与非目标
-
-本项目当前定位是“研究 + 持仓建议快照”，明确不覆盖以下能力：
+### 4) 明确边界（当前不覆盖）
 
 * 券商/OMS 账户对接与自动下单执行。
 * 成交回执、撤单重试、盘中执行控制。
@@ -291,24 +91,73 @@ live 最新指针：
 * 交易日历 token 在部分场景可能退化为自然日逻辑（无交易日历时会给告警）。
 * 数据供应商回补/修订会导致“同配置不同时间”结果变化。
 
-## 工时估算（前提 + 三档）
+## 二、难点分层（工程 + 研究）
 
-前提假设：
+| 层级 | 难点主题 | 为什么难 | 典型失败模式 | 降险措施 |
+| --- | --- | --- | --- | --- |
+| L1 数据接入层 | 多 provider、多市场、符号标准化 | 同名字段语义不一致，符号体系不同 | 某市场可跑、跨市场失真 | 统一 symbol 规范 + provider 适配测试 |
+| L1 数据接入层 | API 配额、失败重试、token 轮换 | 第三方服务不稳定且有频率限制 | 间歇失败、批量任务中断 | 重试/退避/轮换 + 配额监控 |
+| L2 研究正确性层 | PIT universe 与过滤顺序 | 顺序不同会改变样本分布 | “能跑通但结果漂移” | 固化顺序、日志化样本数变化 |
+| L2 研究正确性层 | 标签/切分/评估泄漏防控 | 泄漏点跨多个模块 | 指标异常高，实盘失效 | purge/embargo + 时间切分单测 |
+| L2 研究正确性层 | 稳健性验证组合 | 单一指标不能代表可交易性 | 过拟合模型上线 | CV + walk-forward + permutation 联检 |
+| L3 回测语义层 | 成本、buffer、退出策略、可交易性 | 每个细节都影响收益与换手 | 回测结果过于乐观 | 参数显式化 + 默认值审计 |
+| L3 回测语义层 | `label_horizon` 与调仓频率协同 | 退出与再平衡可能冲突 | 逻辑跳过或行为不一致 | 冲突检测与报错策略 |
+| L4 可复现运维层 | 可复现依赖“数据+配置+代码”三方冻结 | 任一变化都可造成结果偏差 | 同配置重跑不一致 | `config.used.yml` + run hash + 缓存标记 |
+| L4 可复现运维层 | 研究工具链编排（grid/sweep/summarize） | 批处理链路长，局部失败常见 | 半途失败、汇总不完整 | `continue-on-error` + 状态文件落盘 |
 
-* 单人开发，具备 Python + 量化研究工程经验。
-* 数据源权限、token、配额已就绪。
-* 至少包含基础测试与文档，不含 OMS/实盘执行系统改造。
-* 市场和 provider 数量越多，工时按倍数上升。
+判断标准：
 
-三档估算：
+* L1-L2 偏“能不能做对”。
+* L3 偏“回测是否接近可执行现实”。
+* L4 偏“是否可长期维护与复现”。
 
-| 档位 | 范围定义 | 预计工时 |
+## 三、工时重估（按人天）
+
+口径说明：
+
+* 1 人天 = 8 小时。
+* 估算针对“单人开发，具备 Python + 量化研究工程经验”。
+* 默认数据权限/配额已就绪，不含 OMS/自动交易系统改造。
+
+### 1) 自下而上拆分（研究平台范围）
+
+| 工作包 | 主要内容 | 估算（人天） |
 | --- | --- | --- |
-| 基础可用版 | 单市场、单 provider、主流程可跑通、基础产物落盘 | 180-280 小时 |
-| 可复现研究版 | 多市场/多 provider、PIT 股票池、稳健评估、回归测试与文档闭环 | 280-450 小时 |
-| 可实盘运维版 | 在研究版基础上补执行接入、监控、审计、失败恢复与运维工具 | 450-800+ 小时 |
+| 基础工程骨架 | CLI、配置解析、日志、目录约定 | 4-8 |
+| 数据与 provider | 多源适配、字段标准化、缓存、重试 | 10-18 |
+| Universe 工具链 | PIT 处理、指数成分、港股通构建 | 8-14 |
+| 标签与特征 | 标签口径、技术特征、横截面变换 | 8-14 |
+| 建模与评估 | 多模型、CV/IC、稳健性检验 | 8-16 |
+| 回测与执行语义 | 成本、退出、buffer、持仓输出 | 10-20 |
+| 研究编排工具 | `grid/sweep-linear/summarize` | 8-16 |
+| 结果消费工具 | `holdings/snapshot/alloc` | 6-12 |
+| 测试与回归 | 单测、集成测试、修复迭代 | 10-20 |
+| 文档与示例 | README + docs + cookbook | 4-8 |
+| 小计 |  | 76-146 |
+| 风险缓冲 | API 波动、数据修订、需求返工（15%-25%） | 12-36 |
+| 合计 | 研究平台总量级 | 88-182 人天 |
 
-结论：
+### 2) 三档预算（更便于立项）
 
-* 仅做“研究可用”通常很难低于 200 小时。
-* 若目标是“长期可复现 + 可运维”，应按 300 小时以上预算。
+| 档位 | 范围定义 | 重估（人天） |
+| --- | --- | --- |
+| 基础可用版 | 单市场、单 provider、主流程可跑、核心产物齐全 | 30-50 |
+| 可复现研究版 | 多市场/多 provider、PIT、稳健评估、较完整测试与文档 | 60-100 |
+| 准生产运维版 | 在研究版上补监控、审计、失败恢复、稳定批处理 | 100-160 |
+
+扩展说明（不在当前项目边界内）：
+
+* 若要补齐“券商接入 + 下单 + 回执 + 执行风控”闭环，通常还需额外 60-120 人天，取决于券商/OMS 复杂度。
+
+### 3) 工时倍率因子（为什么会“比预期更长”）
+
+* 每新增 1 个市场：总工时通常增加 15%-25%。
+* 每新增 1 个 provider：总工时通常增加 20%-35%。
+* 若要求强可复现（固定数据快照、严格审计）：增加 20%-40%。
+* 若要求准实盘稳定性（定时任务、失败恢复、告警闭环）：增加 25%-50%。
+
+## 结论
+
+* `docs/full_function.md` 现版本已按“全量功能矩阵”列出 CLI 与 pipeline 能力，`sweep-linear` 已明确纳入。
+* “难点”不应只看算法本身，主要工时消耗常在数据一致性、泄漏防控、回测语义和可复现运维。
+* 以人天口径，项目级预算通常应按 60 人天以上（可复现研究目标）准备；若要长期稳定运维，应按 100 人天以上准备。
