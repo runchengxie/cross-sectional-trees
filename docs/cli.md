@@ -26,7 +26,7 @@ csml run --config hk
 
 ## 2) `csml grid`
 
-用途：Top-K × 交易成本敏感性网格，并输出 `grid_summary.csv`。
+用途：Top-K × 交易成本敏感性网格，并输出 `grid_summary.csv`。该命令先跑一次 base run，再复用其 `eval_scored.parquet` 循环 Top-K/成本组合，不会为每个网格点重训模型。
 
 参数：
 

@@ -1,126 +1,91 @@
 # Cookbook
 
-这份流程的目标是：从 0 到可复现实验，再到可落地的 live 持仓快照。
+这份 v2 流程用于做“同一研究设置下的多模型对比”，核心顺序是：
 
-## 1) 先选市场和数据源
+1. 线性基线（`ridge` / `elasticnet`）
+1. 非线性对照（`xgb_regressor` / `xgb_ranker`）
+1. `csml summarize` 跨 run 汇总比较
 
-建议先导出模板，再改参数：
+## 0) 先固定实验基准
 
-```bash
-csml init-config --market hk --out config/
-```
+开始前先统一一个原则：除了 `model` 和 `eval.run_name`，尽量不改别的参数（尤其是 `universe/label/features/eval/backtest`）。
 
-优先确认：
+本仓库已提供一组 HK 显式配置文件：
 
-1. `market`（`cn/hk/us`）
-1. `data.provider`（`tushare/rqdata/eodhd`）
-1. 对应鉴权变量已在 `.env` 设置
+1. `config/hk_selected.yml`（兼容入口，默认 `xgb_regressor`）
+1. `config/hk_selected__xgb_regressor.yml`
+1. `config/hk_selected__ridge_a1.yml`
+1. `config/hk_selected__elasticnet_a0.1_l0.5.yml`
+1. `config/hk_selected__xgb_ranker_pairwise.yml`
 
-## 2) 先决定股票池模式（static vs PIT）
+每次运行后优先看 `config.used.yml`，它是“本次 run 实际生效配置”。
 
-历史回测尽量用 PIT（按日期股票池），避免前视偏差。
+## 1) 先跑线性基线（Ridge / ElasticNet）
 
-HK 示例（先构建港股通 PIT 池）：
+`ridge` / `elasticnet` 常用来做稳定基线：参数少、共线性鲁棒、复现成本低。
 
-```bash
-csml universe hk-connect --config config/universe.hk_connect.yml
-```
-
-然后在策略配置里使用 `universe.by_date_file`，并设置：
-
-```yaml
-universe:
-  mode: pit
-  require_by_date: true
-```
-
-## 3) 跑一次基线 `run`
+先跑两条默认基线：
 
 ```bash
-csml run --config config/hk.yml
+csml run --config config/hk_selected__ridge_a1.yml
+csml run --config config/hk_selected__elasticnet_a0.1_l0.5.yml
 ```
 
-跑完先看：
+需要扩展网格时，建议先扫：
 
-1. `summary.json`（关键指标）
-1. `config.used.yml`（实际生效配置）
-1. `positions_current.csv`（最新持仓）
+1. `ridge.alpha`: `0.01, 0.1, 1, 10, 100`
+1. `elasticnet.alpha`: `0.01, 0.1, 1`
+1. `elasticnet.l1_ratio`: `0.1, 0.5, 0.9`
 
-## 4) 跑 `grid` 做 Top-K/成本敏感性
+## 2) 再跑非线性对照组（XGBRegressor / XGBRanker）
 
 ```bash
-csml grid --config config/hk.yml
-ls -lh out/runs/grid_summary.csv
+csml run --config config/hk_selected__xgb_regressor.yml
+csml run --config config/hk_selected__xgb_ranker_pairwise.yml
 ```
 
-可覆盖默认参数：
+说明：`xgb_ranker` 与回归模型不是同一个学习问题。项目会按 `trade_date` 分组（query group）训练 ranker，而不是仅仅改一个 objective。
+
+## 3) 用 summarize 汇总所有 run
 
 ```bash
-csml grid --config config/hk.yml \
-  --top-k 5,10 \
-  --cost-bps 25,40 \
-  --output out/runs/my_grid.csv \
-  --run-name-prefix hk_grid
+csml summarize \
+  --runs-dir out/runs \
+  --run-name-prefix hk_sel_ \
+  --output out/runs/hk_sel_models_summary.csv
 ```
 
-## 5) 选参并解读结果
+汇总表会聚合每个 run 的 `summary.json + config.used.yml`，并生成 `flag_*` 与 `score` 字段，方便筛选稳定策略。
 
-从 `grid_summary.csv` 选一组参数后，复制配置并修改：
+## 4) 结果怎么解读（建议顺序）
 
-1. `eval.top_k`、`backtest.top_k`
-1. `eval.transaction_cost_bps`、`backtest.transaction_cost_bps`
+1. 先看稳定性：`eval.ic`、`eval.pearson_ic`、walk-forward 指标。
+1. 再看可交易性：`eval.turnover_mean`、成本拖累、`backtest.stats`。
+1. 最后看“是否值得更复杂”：非线性模型若只在单期更高、但波动和换手更差，通常不如线性基线可用。
 
-再跑一次正式单次：
+常见情形：
+
+1. 线性和 XGB 差不多，甚至更好：优先选线性，把精力放在特征和交易假设。
+1. XGB 指标更高但不稳定：优先怀疑过拟合，重点看 walk-forward/permutation test。
+1. 收益提升但换手飙升：先调 `buffer_exit/buffer_entry` 或降低模型复杂度。
+1. `long_short` 经常翻向：多见于弱信号或噪声主导，需回看标签与特征对齐。
+
+## 5) 可选：`csml grid` 只做 Top-K/成本敏感性
+
+`csml grid` 不是模型超参网格搜索。它会先基于给定配置跑一次 base pipeline，读取 `eval_scored.parquet`，然后在同一份 scored 数据上循环 `Top-K × cost_bps` 组合，不会为每个网格点重训模型。
+
+示例：
 
 ```bash
-csml run --config config/hk_selected.yml
+csml grid --config config/hk_selected__ridge_a1.yml --top-k 5,10,20 --cost-bps 10,25,40
 ```
 
-解读优先级建议：
-
-1. `eval.ic` / `eval.pearson_ic`：信号稳定性
-1. `eval.quantile_mean` / `eval.long_short`：分位单调性
-1. `eval.turnover_mean` + 成本参数：交易可行性
-1. `backtest.stats`：收益、回撤、尾部风险
-
-指标定义详见 `docs/metrics.md`。
-
-## 6) 固化可复现实验
-
-每次正式实验都归档：
-
-1. `config.used.yml`
-1. `summary.json`
-1. `cache/`（或最少保留本次运行依赖缓存）
-
-如果需要长期复现，尽量把 `data.end_date` 写死为绝对日期。
-
-## 7) 生成 live 快照（最小链路）
-
-live 配置建议单独文件（例如 `config/hk_selected_live.yml`），关键设置：
-
-```yaml
-eval:
-  output_dir: out/live_runs
-  save_artifacts: true
-
-backtest:
-  enabled: false
-
-live:
-  enabled: true
-  as_of: t-1
-```
-
-执行方式：
+## 6) 最小可执行清单
 
 ```bash
-# 完整流程：先 run，再输出当期持仓
-csml snapshot --config config/hk_selected_live.yml
-
-# 已有最新 run，仅导出快照
-csml snapshot --config config/hk_selected_live.yml --skip-run
-
-# 直接读取 live 持仓
-csml holdings --config config/hk_selected_live.yml --source live
+csml run --config config/hk_selected__ridge_a1.yml
+csml run --config config/hk_selected__elasticnet_a0.1_l0.5.yml
+csml run --config config/hk_selected__xgb_regressor.yml
+csml run --config config/hk_selected__xgb_ranker_pairwise.yml
+csml summarize --runs-dir out/runs --run-name-prefix hk_sel_ --output out/runs/hk_sel_models_summary.csv
 ```

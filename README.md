@@ -114,7 +114,7 @@ data:
 
 ### 2) `csml grid`
 
-* 作用：做 Top-K × 交易成本(bps) 的敏感性网格，逐个组合跑 pipeline，然后把关键指标汇总到一个 CSV。
+* 作用：做 Top-K × 交易成本(bps) 的敏感性网格。它会先跑一次 base pipeline 产出 `eval_scored.parquet`，再在同一份 scored 数据上循环组合并汇总到 CSV（不会为每个网格点重训模型）。
 * 常用参数（脚本侧定义的）：`--top-k`（可多次传、逗号分隔）、`--cost-bps`、`--output`（默认 `out/runs/grid_summary.csv`）、`--run-name-prefix`、`--log-level`。
 
 ### 3) `csml holdings`
@@ -211,8 +211,8 @@ csml run --config hk
 # 或指定配置文件
 csml run --config config/hk_selected.yml
 
-# Top-K × 成本敏感性网格
-csml grid --config config/hk.yml
+# Top-K × 成本敏感性网格（使用显式模型配置）
+csml grid --config config/hk_selected__xgb_regressor.yml
 
 # 跨 run 汇总总表（研究对比）
 csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv

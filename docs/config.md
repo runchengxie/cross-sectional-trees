@@ -36,6 +36,8 @@ model:
   sample_weight_mode: date_equal
 ```
 
+若未显式设置 `model.type`，默认会使用 `xgb_regressor`。
+
 `xgb_ranker` 会按 `trade_date` 自动分组训练（query group），其余模型按回归流程训练。
 
 ## 数据与缓存（data）
