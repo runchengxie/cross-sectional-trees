@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import csxgb.metrics as metrics_mod
-from csxgb.metrics import (
+import csml.metrics as metrics_mod
+from csml.metrics import (
     daily_ic_series,
     summarize_ic,
     quantile_returns,

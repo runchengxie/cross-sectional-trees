@@ -90,7 +90,7 @@ Token/账号需要你在对应数据供应商侧申请。最小必需项取决�
 TuShare Token 验证（CLI 入口）：
 
 ```bash
-csxgb tushare verify-token
+csml tushare verify-token
 ```
 
 RQData 初始化支持配置与环境变量混用（配置优先）。示例：
@@ -106,18 +106,18 @@ data:
 
 ## CLI 命令一览
 
-### 1) `csxgb run`
+### 1) `csml run`
 
 * 作用：跑主流程 pipeline（训练/评估/回测一条龙），配置用 `--config` 指定（YAML 路径或内置模板名 `default/cn/hk/us`）。
 * 输出：会落到 `out/runs/<run_name>_<timestamp>_<hash>/`，典型产物包括 `summary.json`、`config.used.yml`、IC/回测/特征重要性、以及持仓 CSV 等。
 * 注意：数据源可能需要环境变量鉴权（例如 TuShare 的 token）。
 
-### 2) `csxgb grid`
+### 2) `csml grid`
 
 * 作用：做 Top-K × 交易成本(bps) 的敏感性网格，逐个组合跑 pipeline，然后把关键指标汇总到一个 CSV。
 * 常用参数（脚本侧定义的）：`--top-k`（可多次传、逗号分隔）、`--cost-bps`、`--output`（默认 `out/runs/grid_summary.csv`）、`--run-name-prefix`、`--log-level`。
 
-### 3) `csxgb holdings`
+### 3) `csml holdings`
 
 * 作用：从最近一次 run 的产物里读“当前持仓清单”，并按 `--as-of`（支持 `today/t-1/日期`）输出；支持 backtest/live 两类持仓源。
 * 关键参数：
@@ -127,7 +127,7 @@ data:
   * `--format text|csv|json`、`--out`（写文件或 stdout）
 * 它读的典型文件：`positions_current.csv`（回测）/ `positions_current_live.csv`（实盘）。
 
-### 4) `csxgb snapshot`
+### 4) `csml snapshot`
 
 > snapshot 在效果上等价于先后运行 run 和 holdings 两个命令，价值是流程封装 + 降低出错率，虽然看起来多余，但是设计思路包括：
 >
@@ -142,7 +142,7 @@ data:
 * 关键参数：`--as-of`、`--skip-run`、`--top-k`、`--format`、`--out`。
 * 隐藏但很重要的约束：如果你用 live 配置，配置解析时要求 `live.enabled=true` 时必须 `eval.save_artifacts=true`（否则无法形成 snapshot）。
 
-### 5) `csxgb alloc`
+### 5) `csml alloc`
 
 * 作用：按最新持仓做 Top-N 等权资金分配，自动换算每只股票的买入手数/股数（价格 + `round_lot` 来自 RQData）。
 * 关键参数：
@@ -154,29 +154,29 @@ data:
   * 输出：`--format text|csv|json`、`--out`
 * 典型场景：快速看“前20/前10/前5”等权在整手约束下各买多少手、会剩多少现金。
 
-### 6) `csxgb rqdata info`
+### 6) `csml rqdata info`
 
 * 作用：初始化 `rqdatac` 并打印登录/用户信息。
 * 账号来源优先级：CLI 显式 `--username/--password` > 配置 `rqdata.init` > 环境变量 `RQDATA_USERNAME/RQDATA_PASSWORD`。
 
-### 7) `csxgb rqdata quota`
+### 7) `csml rqdata quota`
 
 * 作用：同样初始化 `rqdatac`，然后查 quota 使用情况；`--pretty` 会输出人类可读信息 + 图形化显示剩余流量。
 * 依赖：RQData 相关依赖在 optional-deps 里（`rqdata` 这组）。
 
-### 8) `csxgb tushare verify-token`
+### 8) `csml tushare verify-token`
 
 * 作用：验证 TuShare token 是否可用（实际做法：拿 token 调 TuShare 的接口看能不能返回配额/积分信息），并逐个打印结果。
 * 读取的环境变量：`TUSHARE_TOKEN`、`TUSHARE_TOKEN_2`，以及兼容用的 `TUSHARE_API_KEY`。
 
-### 9) `csxgb universe index-components`
+### 9) `csml universe index-components`
 
 * 作用：从 TuShare 拉“指数成分”，写成一个 symbols 文本文件（每行一个）。
 * 使用 `--by-date-out` 时，PIT CSV 会输出 `trade_date`、`ts_code`、`stock_ticker`（其中 `stock_ticker` 为外部通用别名）。
 * 鉴权：必须先设 `TUSHARE_TOKEN`（或 `TUSHARE_TOKEN_2` / legacy `TUSHARE_API_KEY`），否则直接退出。
 * 实现方式：CLI 这层用 `argparse.REMAINDER` 把剩余参数原样转发给脚本（所以脚本支持什么参数，以脚本为准）。
 
-### 10) `csxgb universe hk-connect`
+### 10) `csml universe hk-connect`
 
 * 作用：构建“港股通股票池（PIT）+ 流动性过滤”的 universe：用 RQData 拉可买标的，再按一段窗口的成交额等指标筛选，输出按日期的 universe 表和“最新一期 symbols”。
 * 默认输出：
@@ -185,15 +185,15 @@ data:
   * `out/universe/hk_connect_symbols.txt`
   * meta：`out/universe/universe_by_date.meta.yml`
 * `universe_by_date.csv` 会同时包含 `ts_code` 与 `stock_ticker` 两列（值一致）。
-* 参数入口：`csxgb universe hk-connect --config <yaml> ...`，其余参数同样是转发给脚本。
+* 参数入口：`csml universe hk-connect --config <yaml> ...`，其余参数同样是转发给脚本。
 
-### 11) `csxgb init-config`
+### 11) `csml init-config`
 
 * 作用：把包内置的配置模板导出到你本地文件系统（默认写到 `./config/<template>.yml`）。
 * 参数：`--market default/cn/hk/us`、`--out`（文件或目录）、`--force`（允许覆盖）。
 * 覆盖保护：目标存在且没 `--force` 就拒绝覆盖。
 
-### 12) `csxgb summarize`
+### 12) `csml summarize`
 
 * 作用：跨多个历史 run 目录聚合关键指标（读取每个 run 的 `summary.json` + `config.used.yml`），输出总表 CSV。
 * 默认扫描：`out/runs`（递归）。
@@ -206,44 +206,44 @@ data:
 
 ```bash
 # 主流程
-csxgb run --config hk
+csml run --config hk
 
 # 或指定配置文件
-csxgb run --config config/hk_selected.yml
+csml run --config config/hk_selected.yml
 
 # Top-K × 成本敏感性网格
-csxgb grid --config config/hk.yml
+csml grid --config config/hk.yml
 
 # 跨 run 汇总总表（研究对比）
-csxgb summarize --runs-dir out/runs --output out/runs/runs_summary.csv
+csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv
 
 # 只看最近一次 grid 相关汇总（示例）
-csxgb summarize --runs-dir out/runs --run-name-prefix hk_grid --latest-n 1
+csml summarize --runs-dir out/runs --run-name-prefix hk_grid --latest-n 1
 
 # 当期持仓清单（从最近一次 run 读取）
-csxgb holdings --config config/hk.yml --as-of t-1
-csxgb holdings --config config/hk.yml --as-of 20260131 --format csv --out out/positions/20260131.csv
+csml holdings --config config/hk.yml --as-of t-1
+csml holdings --config config/hk.yml --as-of 20260131 --format csv --out out/positions/20260131.csv
 
 # 实盘快照（推荐 live 配置）
-csxgb run --config config/hk_live.yml
-csxgb holdings --config config/hk_live.yml --source live
-csxgb snapshot --config config/hk_live.yml
-csxgb snapshot --config config/hk_live.yml --skip-run
-csxgb snapshot --run-dir out/live_runs/<run_dir>
+csml run --config config/hk_live.yml
+csml holdings --config config/hk_live.yml --source live
+csml snapshot --config config/hk_live.yml
+csml snapshot --config config/hk_live.yml --skip-run
+csml snapshot --run-dir out/live_runs/<run_dir>
 
 # 持仓等权手数换算（前20/10/5）
-csxgb alloc --config config/hk_live.yml --source live --top-n 20 --cash 1000000
-csxgb alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json
-csxgb alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
+csml alloc --config config/hk_live.yml --source live --top-n 20 --cash 1000000
+csml alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json
+csml alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
 
 # RQData 信息 / 配额
-csxgb rqdata info
-csxgb rqdata quota           # JSON，含百分比与剩余量
-csxgb rqdata quota --pretty  # 人类可读 + 进度条
+csml rqdata info
+csml rqdata quota           # JSON，含百分比与剩余量
+csml rqdata quota --pretty  # 人类可读 + 进度条
 
 # 指数成分与港股通股票池
-csxgb universe index-components --index-code 000300.SH --month 202501
-csxgb universe hk-connect --mode daily
+csml universe index-components --index-code 000300.SH --month 202501
+csml universe hk-connect --mode daily
 ```
 
 ## 配置模板

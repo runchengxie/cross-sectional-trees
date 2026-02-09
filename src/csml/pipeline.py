@@ -1,8 +1,8 @@
 """pipeline.py - Cross-sectional factor mining with pluggable regressors (multi-market).
 Usage:
-    $ csxgb run
-    $ csxgb run --config config/default.yml
-    $ csxgb run --config cn
+    $ csml run
+    $ csml run --config config/default.yml
+    $ csml run --config cn
     # provider-specific auth may be required (e.g. TUSHARE_TOKEN/TUSHARE_TOKEN_2)
 """
 import argparse
@@ -52,7 +52,7 @@ from .rebalance import estimate_rebalance_gap, get_rebalance_dates
 
 warnings.filterwarnings("ignore")
 
-logger = logging.getLogger("csxgb")
+logger = logging.getLogger("csml")
 
 
 def _normalize_date_token(value: object | None, default: str) -> str:

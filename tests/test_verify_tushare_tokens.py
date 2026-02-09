@@ -3,7 +3,7 @@ import types
 import pandas as pd
 import pytest
 
-from csxgb.project_tools import verify_tushare_tokens as verify
+from csml.project_tools import verify_tushare_tokens as verify
 
 
 def test_load_local_env_reads_first_existing_file(tmp_path, monkeypatch):

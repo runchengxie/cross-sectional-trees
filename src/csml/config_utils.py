@@ -117,7 +117,7 @@ PIPELINE_ALIASES: Mapping[str, str] = {
 def resolve_pipeline_config(ref: str | Path | None) -> ResolvedConfig:
     return resolve_config(
         ref,
-        package="csxgb.config",
+        package="csml.config",
         default_name="default.yml",
         aliases=PIPELINE_ALIASES,
     )
@@ -128,6 +128,6 @@ def resolve_pipeline_filename(ref: str) -> str:
     if alias:
         return alias
     candidate = Path(ref).name
-    if _package_has_file("csxgb.config", candidate):
+    if _package_has_file("csml.config", candidate):
         return candidate
     raise SystemExit(f"Unknown built-in config name: {ref}")

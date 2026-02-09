@@ -1,7 +1,7 @@
 import pytest
 
-from csxgb.project_tools import build_hk_connect_universe as hk_universe
-from csxgb.project_tools import fetch_index_components as index_components
+from csml.project_tools import build_hk_connect_universe as hk_universe
+from csml.project_tools import fetch_index_components as index_components
 
 
 @pytest.mark.parametrize(

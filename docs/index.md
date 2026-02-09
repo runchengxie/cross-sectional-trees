@@ -24,7 +24,7 @@
 uv venv --seed
 uv sync
 cp .env.example .env
-csxgb run --config config/hk.yml
+csml run --config config/hk.yml
 ```
 
 跑完后优先看：

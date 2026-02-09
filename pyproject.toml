@@ -35,7 +35,7 @@ stats = [
 ]
 
 [project.scripts]
-csxgb = "csxgb.cli:main"
+csml = "csml.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -44,10 +44,10 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-csxgb = ["config/*.yml"]
+csml = ["config/*.yml"]
 
 [tool.pytest.ini_options]
-addopts = "-q --disable-warnings --maxfail=1 --cov=csxgb --cov-report=term-missing"
+addopts = "-q --disable-warnings --maxfail=1 --cov=csml --cov-report=term-missing"
 markers = [
   "integration: end-to-end or slower tests",
   "slow: intentionally slow tests",

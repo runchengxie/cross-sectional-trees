@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from csxgb.split import build_sample_weight, time_series_cv_ic
+from csml.split import build_sample_weight, time_series_cv_ic
 
 
 def test_time_series_cv_gap_skips_all():

@@ -1,15 +1,15 @@
 # CLI 参数大全
 
-本页汇总 `csxgb` 所有子命令及可传参数，便于直接查阅。
+本页汇总 `csml` 所有子命令及可传参数，便于直接查阅。
 
 ## 查看帮助
 
 ```bash
-csxgb --help
-csxgb <subcommand> --help
+csml --help
+csml <subcommand> --help
 ```
 
-## 1) `csxgb run`
+## 1) `csml run`
 
 用途：运行主流程（训练/评估/回测）。
 
@@ -20,11 +20,11 @@ csxgb <subcommand> --help
 示例：
 
 ```bash
-csxgb run --config config/hk.yml
-csxgb run --config hk
+csml run --config config/hk.yml
+csml run --config hk
 ```
 
-## 2) `csxgb grid`
+## 2) `csml grid`
 
 用途：Top-K × 交易成本敏感性网格，并输出 `grid_summary.csv`。
 
@@ -40,10 +40,10 @@ csxgb run --config hk
 示例：
 
 ```bash
-csxgb grid --config config/hk.yml --top-k 5,10 --cost-bps 15,25
+csml grid --config config/hk.yml --top-k 5,10 --cost-bps 15,25
 ```
 
-## 3) `csxgb summarize`
+## 3) `csml summarize`
 
 用途：跨历史 run 聚合 `summary.json` + `config.used.yml`，输出总表。
 
@@ -66,16 +66,16 @@ csxgb grid --config config/hk.yml --top-k 5,10 --cost-bps 15,25
 
 ```bash
 # 全量汇总
-csxgb summarize --runs-dir out/runs --output out/runs/runs_summary.csv
+csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv
 
 # 仅看最近一次 grid 相关结果
-csxgb summarize --runs-dir out/runs --run-name-prefix hk_grid --latest-n 1
+csml summarize --runs-dir out/runs --run-name-prefix hk_grid --latest-n 1
 
 # 仅看 2026-02-01 之后的数据
-csxgb summarize --runs-dir out/runs --since 2026-02-01
+csml summarize --runs-dir out/runs --since 2026-02-01
 ```
 
-## 4) `csxgb holdings`
+## 4) `csml holdings`
 
 用途：输出最近一次 run 的当前持仓。
 
@@ -98,11 +98,11 @@ csxgb summarize --runs-dir out/runs --since 2026-02-01
 示例：
 
 ```bash
-csxgb holdings --config config/hk.yml --as-of t-1
-csxgb holdings --run-dir out/runs/<run_dir> --format csv --out out/positions/latest.csv
+csml holdings --config config/hk.yml --as-of t-1
+csml holdings --run-dir out/runs/<run_dir> --format csv --out out/positions/latest.csv
 ```
 
-## 5) `csxgb snapshot`
+## 5) `csml snapshot`
 
 > snapshot 在效果上等价于先后运行 run 和 holdings 两个命令，价值是流程封装 + 降低出错率，虽然看起来多余，但是设计思路包括：
 >
@@ -126,11 +126,11 @@ csxgb holdings --run-dir out/runs/<run_dir> --format csv --out out/positions/lat
 示例：
 
 ```bash
-csxgb snapshot --config config/hk_live.yml
-csxgb snapshot --config config/hk_live.yml --skip-run --format json
+csml snapshot --config config/hk_live.yml
+csml snapshot --config config/hk_live.yml --skip-run --format json
 ```
 
-## 6) `csxgb alloc`
+## 6) `csml alloc`
 
 用途：按最新持仓做 Top-N 等权资金分配，自动换算为每只股票买多少手/股（价格和 round lot 来自 RQData）。
 
@@ -161,16 +161,16 @@ csxgb snapshot --config config/hk_live.yml --skip-run --format json
 
 ```bash
 # 最新 run 的前20等权，资金100万
-csxgb alloc --config config/hk_live.yml --source live --top-n 20 --cash 1000000
+csml alloc --config config/hk_live.yml --source live --top-n 20 --cash 1000000
 
 # 明确指定 run，做前10等权并导出 JSON
-csxgb alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json --out out/alloc/top10.json
+csml alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json --out out/alloc/top10.json
 
 # 直接指定 positions 文件，做前5等权
-csxgb alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
+csml alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
 ```
 
-## 7) `csxgb rqdata info`
+## 7) `csml rqdata info`
 
 用途：初始化并显示 RQData 登录信息。
 
@@ -180,7 +180,7 @@ csxgb alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv 
 * `--username <name>`：覆盖用户名。
 * `--password <password>`：覆盖密码。
 
-## 8) `csxgb rqdata quota`
+## 8) `csml rqdata quota`
 
 用途：查询 RQData 配额。
 
@@ -191,16 +191,16 @@ csxgb alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv 
 * `--password <password>`：覆盖密码。
 * `--pretty`：人类可读格式输出。
 
-## 9) `csxgb tushare verify-token`
+## 9) `csml tushare verify-token`
 
 用途：验证 TuShare token。
 
 参数：
 
 * CLI 会将后续参数原样转发到底层脚本。
-* 推荐用 `csxgb tushare verify-token` 直接执行。
+* 推荐用 `csml tushare verify-token` 直接执行。
 
-## 10) `csxgb universe index-components`
+## 10) `csml universe index-components`
 
 用途：拉取指数成分并输出 symbols 文件。
 
@@ -212,10 +212,10 @@ csxgb alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv 
 常见示例：
 
 ```bash
-csxgb universe index-components --index-code 000300.SH --month 202501
+csml universe index-components --index-code 000300.SH --month 202501
 ```
 
-## 11) `csxgb universe hk-connect`
+## 11) `csml universe hk-connect`
 
 用途：构建港股通 PIT universe。
 
@@ -228,10 +228,10 @@ csxgb universe index-components --index-code 000300.SH --month 202501
 常见示例：
 
 ```bash
-csxgb universe hk-connect --config config/universe.hk_connect.yml --mode daily
+csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 ```
 
-## 12) `csxgb init-config`
+## 12) `csml init-config`
 
 用途：导出内置配置模板。
 
@@ -244,5 +244,5 @@ csxgb universe hk-connect --config config/universe.hk_connect.yml --mode daily
 示例：
 
 ```bash
-csxgb init-config --market hk --out config/
+csml init-config --market hk --out config/
 ```

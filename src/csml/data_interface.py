@@ -27,7 +27,7 @@ def _patch_rqdatac_adjust_price_readonly(logger: logging.Logger) -> None:
     except Exception as exc:  # pragma: no cover - defensive import
         logger.debug("rqdatac adjust_price import failed: %s", exc)
         return
-    if getattr(adjust_price, "_csxgb_readonly_patch", False):
+    if getattr(adjust_price, "_csml_readonly_patch", False):
         return
 
     original = adjust_price.adjust_price_multi_df
@@ -91,9 +91,9 @@ def _patch_rqdatac_adjust_price_readonly(logger: logging.Logger) -> None:
 
     wrapped.__name__ = original.__name__
     wrapped.__doc__ = original.__doc__
-    adjust_price._csxgb_original_adjust_price_multi_df = original
+    adjust_price._csml_original_adjust_price_multi_df = original
     adjust_price.adjust_price_multi_df = wrapped
-    adjust_price._csxgb_readonly_patch = True
+    adjust_price._csml_readonly_patch = True
     logger.warning(
         "Applied rqdatac read-only adjust_price patch (DataFrame copy on demand)."
     )
@@ -104,7 +104,7 @@ class DataInterface:
     market: str
     data_cfg: Mapping
     cache_dir: Path
-    logger: logging.Logger = field(default_factory=lambda: logging.getLogger("csxgb"))
+    logger: logging.Logger = field(default_factory=lambda: logging.getLogger("csml"))
     provider: str = field(init=False)
     client: object = field(init=False, default=None)
     tushare_tokens: list[str] = field(default_factory=list)

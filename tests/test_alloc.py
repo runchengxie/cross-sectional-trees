@@ -6,7 +6,7 @@ import unicodedata
 import numpy as np
 import pandas as pd
 
-from csxgb.project_tools import alloc
+from csml.project_tools import alloc
 
 
 class _FakeInstrument:

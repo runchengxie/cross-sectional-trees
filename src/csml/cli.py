@@ -350,7 +350,7 @@ def _handle_alloc(args) -> int:
 
 def _handle_init_config(args) -> int:
     filename = resolve_pipeline_filename(args.market)
-    content = read_package_text("csxgb.config", filename)
+    content = read_package_text("csml.config", filename)
 
     if args.out:
         out_path = Path(args.out)
@@ -374,7 +374,7 @@ def _handle_init_config(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="csxgb", description="Cross-sectional XGBoost CLI")
+    parser = argparse.ArgumentParser(prog="csml", description="Cross-sectional Machine Learning CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run = subparsers.add_parser("run", help="Run the main training/eval/backtest pipeline")

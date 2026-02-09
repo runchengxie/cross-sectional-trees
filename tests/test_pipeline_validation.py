@@ -3,8 +3,8 @@ import copy
 import pytest
 import yaml
 
-from csxgb import pipeline
-from csxgb.data_interface import DataInterface
+from csml import pipeline
+from csml.data_interface import DataInterface
 
 
 def _base_config(tmp_path):

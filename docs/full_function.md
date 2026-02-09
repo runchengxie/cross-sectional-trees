@@ -1,6 +1,6 @@
 # 项目功能全景与规格边界
 
-给一份配置，`csxgb` 会跑完整研究流水线：拉数、构池、打标签、做特征、训练、评估、回测、落盘产物、输出持仓快照。
+给一份配置，`csml` 会跑完整研究流水线：拉数、构池、打标签、做特征、训练、评估、回测、落盘产物、输出持仓快照。
 
 ## 文档定位
 
@@ -11,7 +11,7 @@
 * 难点、边界、非目标与工时估算
 
 完整参数字典和默认值请以 `docs/config.md` 为准。  
-CLI 全量参数请以 `docs/cli.md` 和 `csxgb <cmd> --help` 为准。  
+CLI 全量参数请以 `docs/cli.md` 和 `csml <cmd> --help` 为准。  
 输出字段 Schema 请以 `docs/outputs.md` 为准。
 
 ## 端到端流程
@@ -50,8 +50,8 @@ CLI 全量参数请以 `docs/cli.md` 和 `csxgb <cmd> --help` 为准。
 
 相关命令：
 
-* `csxgb universe hk-connect`：构建港股通 PIT 股票池（流动性过滤）。
-* `csxgb universe index-components`：拉指数成分，可同时产出 PIT by-date CSV。
+* `csml universe hk-connect`：构建港股通 PIT 股票池（流动性过滤）。
+* `csml universe index-components`：拉指数成分，可同时产出 PIT by-date CSV。
 
 ### 2) Data（数据源、缓存、符号映射）
 
@@ -200,24 +200,24 @@ CLI 全量参数请以 `docs/cli.md` 和 `csxgb <cmd> --help` 为准。
 
 研究主流程：
 
-* `csxgb run`
-* `csxgb grid`
-* `csxgb summarize`
-* `csxgb holdings`
-* `csxgb snapshot`
-* `csxgb alloc`
-* `csxgb init-config`
+* `csml run`
+* `csml grid`
+* `csml summarize`
+* `csml holdings`
+* `csml snapshot`
+* `csml alloc`
+* `csml init-config`
 
 数据源工具：
 
-* `csxgb rqdata info`
-* `csxgb rqdata quota`
-* `csxgb tushare verify-token`
+* `csml rqdata info`
+* `csml rqdata quota`
+* `csml tushare verify-token`
 
 股票池工具：
 
-* `csxgb universe index-components`
-* `csxgb universe hk-connect`
+* `csml universe index-components`
+* `csml universe hk-connect`
 
 说明：
 

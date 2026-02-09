@@ -217,7 +217,7 @@ def main(argv: list[str] | None = None) -> None:
     from .. import pipeline
 
     logging.info("Running base pipeline once for %s combinations ...", len(combos))
-    with tempfile.TemporaryDirectory(prefix="csxgb_grid_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="csml_grid_") as tmp_dir:
         tmp_dir_path = Path(tmp_dir)
         cfg_path = tmp_dir_path / f"{base_run_name}.yml"
         with cfg_path.open("w", encoding="utf-8") as handle:

@@ -41,7 +41,7 @@
 
 ## 3) 因子/预测质量指标
 
-这些主要来自 `src/csxgb/metrics.py`，并汇总进 `summary.json -> eval`。
+这些主要来自 `src/csml/metrics.py`，并汇总进 `summary.json -> eval`。
 
 ### 3.1 日度 IC 序列（Spearman Rank IC）
 

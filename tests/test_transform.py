@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from csxgb.transform import apply_cross_sectional_transform
+from csml.transform import apply_cross_sectional_transform
 
 
 def test_cross_sectional_zscore_by_date():

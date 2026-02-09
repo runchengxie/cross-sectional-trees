@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from csxgb.backtest import backtest_topk
+from csml.backtest import backtest_topk
 
 
 def test_backtest_initial_cost_applied():

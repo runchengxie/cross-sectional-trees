@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
-from csxgb import cli
-from csxgb.project_tools import alloc as alloc_tool
-from csxgb.project_tools import holdings as holdings_tool
-from csxgb.project_tools import run_grid as grid_tool
+from csml import cli
+from csml.project_tools import alloc as alloc_tool
+from csml.project_tools import holdings as holdings_tool
+from csml.project_tools import run_grid as grid_tool
 
 
 def test_cli_parses_run_command():

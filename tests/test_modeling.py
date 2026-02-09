@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from csxgb.modeling import (
+from csml.modeling import (
     build_model,
     feature_importance_frame,
     fit_model,

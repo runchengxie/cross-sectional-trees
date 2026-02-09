@@ -17,9 +17,9 @@
 快速验证：
 
 ```bash
-csxgb tushare verify-token
-csxgb rqdata info
-csxgb rqdata quota --pretty
+csml tushare verify-token
+csml rqdata info
+csml rqdata quota --pretty
 ```
 
 ## 2. `last_trading_day` 结果看起来不对
@@ -28,7 +28,7 @@ csxgb rqdata quota --pretty
 
 原因：仅 `provider=rqdata` 且交易日历可用时，`last_trading_day` 才严格按交易日解析；否则会回退自然日并给 warning。
 
-补充：`csxgb holdings/snapshot/alloc --as-of last_trading_day` 当前不读取交易日历，行为是自然日回退（同样会提示 warning）。
+补充：`csml holdings/snapshot/alloc --as-of last_trading_day` 当前不读取交易日历，行为是自然日回退（同样会提示 warning）。
 
 建议：
 
@@ -56,7 +56,7 @@ csxgb rqdata quota --pretty
 建议：
 
 1. 结合 `signal_asof`、`entry_date`、`next_entry_date`、`holding_window` 一起看。
-1. 读取持仓时用 `csxgb holdings --as-of <date>` 明确查询时点。
+1. 读取持仓时用 `csml holdings --as-of <date>` 明确查询时点。
 
 ## 5. Live/snapshot 命令报错
 
@@ -69,7 +69,7 @@ csxgb rqdata quota --pretty
 
 1. live 配置里确保 `live.enabled=true` 且 `eval.save_artifacts=true`。
 1. 确认 `top_k`、股票池和数据窗口不是空集。
-1. 先执行 `csxgb run --config <live.yml>`，再 `csxgb holdings --source live`。
+1. 先执行 `csml run --config <live.yml>`，再 `csml holdings --source live`。
 
 ## 6. 结果每天都变，无法复现
 
@@ -97,5 +97,5 @@ csxgb rqdata quota --pretty
 建议先用内置模板起步，再逐项改动：
 
 ```bash
-csxgb init-config --market hk --out config/
+csml init-config --market hk --out config/
 ```

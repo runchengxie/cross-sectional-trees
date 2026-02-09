@@ -85,7 +85,7 @@ def normalize_date_token(value: object, label: str) -> str | None:
 def load_yaml_config(path: str | Path | None) -> dict:
     resolved = resolve_config(
         path,
-        package="csxgb.config",
+        package="csml.config",
         default_name="universe.hk_connect.yml",
     )
     return resolved.data

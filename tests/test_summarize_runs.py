@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from csxgb.project_tools import summarize_runs
+from csml.project_tools import summarize_runs
 
 
 def _write_run(run_dir, summary, config) -> None:

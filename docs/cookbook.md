@@ -7,7 +7,7 @@
 建议先导出模板，再改参数：
 
 ```bash
-csxgb init-config --market hk --out config/
+csml init-config --market hk --out config/
 ```
 
 优先确认：
@@ -23,7 +23,7 @@ csxgb init-config --market hk --out config/
 HK 示例（先构建港股通 PIT 池）：
 
 ```bash
-csxgb universe hk-connect --config config/universe.hk_connect.yml
+csml universe hk-connect --config config/universe.hk_connect.yml
 ```
 
 然后在策略配置里使用 `universe.by_date_file`，并设置：
@@ -37,7 +37,7 @@ universe:
 ## 3) 跑一次基线 `run`
 
 ```bash
-csxgb run --config config/hk.yml
+csml run --config config/hk.yml
 ```
 
 跑完先看：
@@ -49,14 +49,14 @@ csxgb run --config config/hk.yml
 ## 4) 跑 `grid` 做 Top-K/成本敏感性
 
 ```bash
-csxgb grid --config config/hk.yml
+csml grid --config config/hk.yml
 ls -lh out/runs/grid_summary.csv
 ```
 
 可覆盖默认参数：
 
 ```bash
-csxgb grid --config config/hk.yml \
+csml grid --config config/hk.yml \
   --top-k 5,10 \
   --cost-bps 25,40 \
   --output out/runs/my_grid.csv \
@@ -73,7 +73,7 @@ csxgb grid --config config/hk.yml \
 再跑一次正式单次：
 
 ```bash
-csxgb run --config config/hk_selected.yml
+csml run --config config/hk_selected.yml
 ```
 
 解读优先级建议：
@@ -116,11 +116,11 @@ live:
 
 ```bash
 # 完整流程：先 run，再输出当期持仓
-csxgb snapshot --config config/hk_selected_live.yml
+csml snapshot --config config/hk_selected_live.yml
 
 # 已有最新 run，仅导出快照
-csxgb snapshot --config config/hk_selected_live.yml --skip-run
+csml snapshot --config config/hk_selected_live.yml --skip-run
 
 # 直接读取 live 持仓
-csxgb holdings --config config/hk_selected_live.yml --source live
+csml holdings --config config/hk_selected_live.yml --source live
 ```

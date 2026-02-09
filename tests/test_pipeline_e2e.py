@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 import yaml
 
-from csxgb import pipeline
-from csxgb.data_interface import DataInterface
+from csml import pipeline
+from csml.data_interface import DataInterface
 
 
 def _build_daily_frames(symbols: list[str], dates: pd.DatetimeIndex) -> dict[str, pd.DataFrame]:

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from csxgb.pipeline import build_walk_forward_windows
+from csml.pipeline import build_walk_forward_windows
 
 
 def test_walk_forward_anchor_end_with_gap():

@@ -24,7 +24,7 @@ uv sync --extra dev --extra stats
 ## 本地运行
 
 ```bash
-csxgb run --config config/default.yml
+csml run --config config/default.yml
 ```
 
 调试时建议先用较短日期区间，确认流程可跑通后再放大样本窗口。
@@ -34,12 +34,12 @@ csxgb run --config config/default.yml
 仓库包含一个缓存迁移工具（将 range/window 日线缓存合并为 symbol 缓存）：
 
 ```bash
-uv run python -m csxgb.project_tools.migrate_daily_cache --help
+uv run python -m csml.project_tools.migrate_daily_cache --help
 ```
 
 ## 测试
 
-项目使用 `pytest`，默认参数见 `pyproject.toml`（含 `--cov=csxgb`）。
+项目使用 `pytest`，默认参数见 `pyproject.toml`（含 `--cov=csml`）。
 
 ```bash
 uv run pytest
@@ -76,7 +76,7 @@ uv run pytest -m integration
 ## 提交前检查建议
 
 1. 至少跑一遍 `uv run pytest`。
-1. 用你修改过的配置跑一次 `csxgb run --config ...`。
+1. 用你修改过的配置跑一次 `csml run --config ...`。
 1. 检查 `README.md` 与 `docs/` 是否同步更新。
 
 ## 贡献入口
