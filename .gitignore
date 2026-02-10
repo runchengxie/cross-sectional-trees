@@ -215,10 +215,8 @@ full_project_source.txt
 # Derived outputs
 /out/
 
-# Designated config
-config/hk_selected.yml
-
 # VS code settings
 .vscode
+
 # Local-only configs
 config/hk_selected_live.yml
