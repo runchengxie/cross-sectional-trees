@@ -52,3 +52,6 @@ markers = [
   "integration: end-to-end or slower tests",
   "slow: intentionally slow tests",
 ]
+
+[tool.uv.extra-build-dependencies]
+rqsdk = ["setuptools<82"]
