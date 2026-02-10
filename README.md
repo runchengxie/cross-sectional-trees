@@ -222,7 +222,7 @@ data:
 csml run --config hk
 
 # 或指定配置文件
-csml run --config config/hk_selected.yml
+csml run --config config/hk_selected__baseline.yml
 
 # Top-K × 成本敏感性网格（使用显式模型配置）
 csml grid --config config/hk_selected__xgb_regressor.yml

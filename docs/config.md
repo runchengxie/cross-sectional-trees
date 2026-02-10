@@ -13,6 +13,21 @@ csml init-config --market hk --out config/
 * 输出字段与产物说明：`docs/outputs.md`
 * 数据源差异与缓存行为：`docs/providers.md`
 
+## HK 配置角色分工（推荐）
+
+为避免研究流程里“配置命名=模型类型”造成误解，HK 相关文件建议按下面职责使用：
+
+* `config/hk_selected__baseline.yml`：通用基线配置入口（推荐用于 `sweep-linear` 的 `base_config`）。
+  * 作用：提供统一的 `data/universe/label/features/eval/backtest` 基线；`sweep-linear` 会在运行时覆盖 `model.type` 与线性模型参数。
+* `config/hk_selected__xgb_regressor.yml`：显式 XGB 回归实验配置。
+  * 作用：用于单独跑/对照非线性模型（如 `csml run --config config/hk_selected__xgb_regressor.yml`）。
+
+实践建议：
+
+* 线性模型批跑：优先用 `config/hk_selected__baseline.yml`（语义清晰，避免把 sweep 基线和某个具体模型文件耦合）。
+* 非线性对照：显式指定 `config/hk_selected__xgb_regressor.yml` 或 `config/hk_selected__xgb_ranker_pairwise.yml`。
+* 历史兼容：旧的 `config/hk_selected.yml` 已弃用；`sweep-linear` 遇到该路径且文件不存在时会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
+
 ## 关键参数
 
 * `universe`：股票池、过滤条件、最小截面规模（支持 `by_date_file` 动态池；可用 `mode/require_by_date/suspended_policy` 明确 PIT 与停牌处理）

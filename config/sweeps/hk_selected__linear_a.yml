@@ -2,7 +2,7 @@
 # Use with:
 #   csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml
 
-base_config: config/hk_selected.yml
+base_config: config/hk_selected__baseline.yml
 run_name_prefix: hk_sel_
 tag: hk_linear_a
 sweeps_dir: out/sweeps

@@ -45,7 +45,7 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
             "--sweep-config",
             "config/sweeps/hk_selected__linear_a.yml",
             "--config",
-            "config/hk_selected.yml",
+            "config/hk_selected__baseline.yml",
             "--run-name-prefix",
             "hk_sel_",
             "--tag",
@@ -236,7 +236,7 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
 
     args = SimpleNamespace(
         sweep_config="config/sweeps/hk_selected__linear_a.yml",
-        config="config/hk_selected.yml",
+        config="config/hk_selected__baseline.yml",
         run_name_prefix="hk_sel_",
         sweeps_dir="out/sweeps",
         tag="exp_1",
@@ -259,7 +259,7 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
             "--sweep-config",
             "config/sweeps/hk_selected__linear_a.yml",
             "--config",
-            "config/hk_selected.yml",
+            "config/hk_selected__baseline.yml",
             "--run-name-prefix",
             "hk_sel_",
             "--sweeps-dir",

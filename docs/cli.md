@@ -50,7 +50,8 @@ csml grid --config config/hk.yml --top-k 5,10 --cost-bps 15,25
 参数：
 
 * `--sweep-config <path>`：sweep 参数 YAML（CLI 参数会覆盖 YAML）。
-* `--config <path_or_alias>`：基础配置（默认 `config/hk_selected.yml`）。
+* `--config <path_or_alias>`：基础配置（默认 `config/hk_selected__baseline.yml`）。
+* 兼容迁移：若仍配置 `config/hk_selected.yml` 且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并提示 warning。
 * `--run-name-prefix <prefix>`：批量 run_name 前缀（默认 `hk_sel_`）。
 * `--sweeps-dir <dir>`：sweep 产物根目录（默认 `out/sweeps`）。
 * `--tag <name>`：本次实验标签（默认当前时间戳）。

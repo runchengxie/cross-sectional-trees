@@ -10,9 +10,9 @@
 
 开始前先统一一个原则：除了 `model` 和 `eval.run_name`，尽量不改别的参数（尤其是 `universe/label/features/eval/backtest`）。
 
-本仓库已提供一组 HK 显式配置文件：
+本仓库已提供一组 HK 配置文件：
 
-1. `config/hk_selected.yml`（兼容入口，默认 `xgb_regressor`）
+1. `config/hk_selected__baseline.yml`（建议作为 sweep/base 配置入口）
 1. `config/hk_selected__xgb_regressor.yml`
 1. `config/hk_selected__ridge_a1.yml`
 1. `config/hk_selected__elasticnet_a0.1_l0.5.yml`

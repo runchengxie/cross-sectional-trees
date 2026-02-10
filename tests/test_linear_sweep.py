@@ -1,5 +1,6 @@
 import csv
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -214,3 +215,51 @@ def test_linear_sweep_reads_sweep_config_and_cli_overrides(tmp_path, monkeypatch
     jobs = _read_csv(jobs_csv)
     assert len(jobs) == 1
     assert jobs[0]["run_name"] == "cli_ridge_a0.5"
+
+
+def test_linear_sweep_fallbacks_when_deprecated_base_config_missing(
+    tmp_path, monkeypatch, caplog
+):
+    sweep_spec = {
+        "base_config": "config/hk_selected.yml",
+        "run_name_prefix": "legacy_",
+        "tag": "legacy_spec",
+        "sweeps_dir": str(tmp_path / "sweeps"),
+        "grid": {
+            "ridge_alpha": [1.0],
+        },
+        "options": {
+            "skip_elasticnet": True,
+            "dry_run": True,
+            "skip_summarize": True,
+        },
+    }
+    sweep_config_path = tmp_path / "legacy_sweep.yml"
+    sweep_config_path.write_text(yaml.safe_dump(sweep_spec, sort_keys=False), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    resolved_refs: list[str] = []
+
+    def fake_resolve_pipeline_config(ref: str):
+        resolved_refs.append(ref)
+        return SimpleNamespace(
+            data={
+                "model": {
+                    "type": "xgb_regressor",
+                    "params": {"random_state": 42},
+                    "sample_weight_mode": "date_equal",
+                },
+                "eval": {
+                    "output_dir": str(tmp_path / "runs"),
+                    "run_name": "base",
+                },
+            }
+        )
+
+    monkeypatch.setattr(linear_sweep, "resolve_pipeline_config", fake_resolve_pipeline_config)
+
+    with caplog.at_level("WARNING"):
+        linear_sweep.main(["--sweep-config", str(sweep_config_path)])
+
+    assert resolved_refs == ["config/hk_selected__baseline.yml"]
+    assert "deprecated and not found; falling back" in caplog.text
