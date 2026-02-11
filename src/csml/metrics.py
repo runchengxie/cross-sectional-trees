@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .portfolio import apply_rebalance_buffer
+
 try:
     from scipy import stats as scipy_stats
 except Exception:  # pragma: no cover - optional dependency
@@ -221,30 +223,15 @@ def estimate_turnover(
         if len(day) < k:
             continue
         ranked = day.sort_values(pred_col, ascending=False)["ts_code"].tolist()
-        if prev is None or (buffer_exit <= 0 and buffer_entry <= 0):
-            holdings = set(ranked[:k])
-        else:
-            keep_limit = min(len(ranked), k + max(0, buffer_exit))
-            entry_limit = min(len(ranked), max(0, k - max(0, buffer_entry)))
-            keep_set = set(ranked[:keep_limit]) & prev
-            holdings_list: list[str] = [code for code in ranked if code in keep_set]
-            preferred = set(ranked[:entry_limit]) if entry_limit > 0 else set()
-            for code in ranked:
-                if len(holdings_list) >= k:
-                    break
-                if code in holdings_list:
-                    continue
-                if preferred and code not in preferred:
-                    continue
-                holdings_list.append(code)
-            if len(holdings_list) < k:
-                for code in ranked:
-                    if len(holdings_list) >= k:
-                        break
-                    if code in holdings_list:
-                        continue
-                    holdings_list.append(code)
-            holdings = set(holdings_list[:k])
+        holdings = set(
+            apply_rebalance_buffer(
+                ranked,
+                prev,
+                k,
+                buffer_exit,
+                buffer_entry,
+            )[:k]
+        )
         if prev is not None:
             overlap = len(holdings & prev)
             turnovers.append((pd.to_datetime(date), 1 - overlap / k))

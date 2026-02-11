@@ -115,6 +115,88 @@ def test_cli_parses_rqdata_quota_pretty():
     assert args.pretty is True
 
 
+def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
+    parser = cli.build_parser()
+
+    init_cfg = parser.parse_args(
+        ["init-config", "--market", "hk", "--out", "config/", "--force"]
+    )
+    assert init_cfg.command == "init-config"
+    assert init_cfg.market == "hk"
+    assert init_cfg.out == "config/"
+    assert init_cfg.force is True
+    assert callable(init_cfg.func)
+
+    rq_info = parser.parse_args(
+        [
+            "rqdata",
+            "info",
+            "--config",
+            "config/hk.yml",
+            "--username",
+            "user",
+            "--password",
+            "pass",
+        ]
+    )
+    assert rq_info.command == "rqdata"
+    assert rq_info.rq_command == "info"
+    assert rq_info.config == "config/hk.yml"
+    assert rq_info.username == "user"
+    assert rq_info.password == "pass"
+    assert callable(rq_info.func)
+
+    hk_connect = parser.parse_args(
+        [
+            "universe",
+            "hk-connect",
+            "--config",
+            "config/universe.hk_connect.yml",
+            "--",
+            "--mode",
+            "daily",
+            "--start-date",
+            "20250101",
+        ]
+    )
+    assert hk_connect.command == "universe"
+    assert hk_connect.uni_command == "hk-connect"
+    assert hk_connect.config == "config/universe.hk_connect.yml"
+    assert hk_connect.args == ["--", "--mode", "daily", "--start-date", "20250101"]
+    assert callable(hk_connect.func)
+
+    index_components = parser.parse_args(
+        [
+            "universe",
+            "index-components",
+            "--",
+            "--index-code",
+            "000300.SH",
+            "--month",
+            "202501",
+        ]
+    )
+    assert index_components.command == "universe"
+    assert index_components.uni_command == "index-components"
+    assert index_components.args == ["--", "--index-code", "000300.SH", "--month", "202501"]
+    assert callable(index_components.func)
+
+    verify_token = parser.parse_args(
+        [
+            "tushare",
+            "verify-token",
+            "--",
+            "--test-symbol",
+            "000001.SZ",
+            "--verbose",
+        ]
+    )
+    assert verify_token.command == "tushare"
+    assert verify_token.tushare_command == "verify-token"
+    assert verify_token.args == ["--", "--test-symbol", "000001.SZ", "--verbose"]
+    assert callable(verify_token.func)
+
+
 def test_cli_handle_holdings_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(holdings_tool, "main", lambda argv: calls.append(argv))

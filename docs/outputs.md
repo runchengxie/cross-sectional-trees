@@ -112,6 +112,84 @@ best-effort（可能为空、缺失或未产出文件）：
 1. 列顺序为：`price_col` + `features` + `label` + `is_tradable`（若存在）。
 1. 对应 schema 会写入 `summary.json -> dataset.schema`。
 
+## 研究工具输出契约
+
+下面三类文件不在单个 run 目录内，但属于研究流程中的核心对比产物。
+
+### `csml summarize`：`runs_summary.csv`
+
+默认位置：
+
+`<first-runs-dir>/runs_summary.csv`（可用 `--output` 覆盖）。
+
+来源：
+
+1. 递归扫描 `--runs-dir` 下的 `summary.json`。
+1. 对应读取同目录 `config.used.yml`。
+1. 生成 `flag_*` 与 `score` 列用于筛选/排序。
+
+列契约（当前稳定列顺序）：
+
+```text
+source_runs_dir,run_dir,run_name,run_timestamp,config_hash,summary_path,config_path,market,data_provider,data_start_date,data_end_date,data_end_date_config,data_rows,data_rows_model,data_rows_model_in_sample,data_rows_model_oos,data_dropped_dates,universe_mode,label_horizon_days,label_shift_days,eval_top_k,backtest_top_k,transaction_cost_bps,eval_rebalance_frequency,backtest_rebalance_frequency,eval_buffer_exit,eval_buffer_entry,backtest_buffer_exit,backtest_buffer_entry,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,backtest_periods,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,flag_short_sample,flag_negative_long_short,flag_high_turnover,flag_relative_end_date,score,status,error
+```
+
+`score` 计算规则：
+
+```text
+score = backtest_sharpe
+      - score_drawdown_weight * abs(backtest_max_drawdown)
+      - score_cost_weight * backtest_avg_cost_drag
+```
+
+默认权重（可由 CLI 覆盖）：
+
+1. `score_drawdown_weight = 0.5`
+1. `score_cost_weight = 10.0`
+
+补充：
+
+1. 若 `backtest_sharpe` 缺失，则 `score` 为空。
+1. 若 `backtest_max_drawdown` 或 `backtest_avg_cost_drag` 缺失，会按 0 处理惩罚项。
+
+### `csml grid`：`grid_summary.csv`
+
+默认位置：
+
+`out/runs/grid_summary.csv`（可用 `--output` 覆盖）。
+
+来源：
+
+1. 先执行一次 base pipeline（产出 `eval_scored.parquet`）。
+1. 在同一份 scored 数据上循环 `top_k × cost_bps × buffer_exit × buffer_entry`。
+1. 每行对应一个参数组合，不会为每个格点重训模型。
+
+列契约（当前稳定列顺序）：
+
+```text
+run_name,top_k,cost_bps,buffer_exit,buffer_entry,summary_path,output_dir,label_horizon_days,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,backtest_periods,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,status,error
+```
+
+### `csml sweep-linear`：`out/sweeps/<tag>/`
+
+目录结构：
+
+```text
+out/sweeps/<tag>/
+  configs/
+    ridge_*.yml
+    elasticnet_*.yml
+  jobs.csv
+  run_results.csv
+  runs_summary.csv   # 默认会自动 summarize，除非 --skip-summarize
+```
+
+其中：
+
+1. `jobs.csv` 列契约：`order,model,alpha,l1_ratio,run_name,config_path`
+1. `run_results.csv` 列契约：`order,run_name,config_path,status,error`
+1. `runs_summary.csv` 列契约与 `csml summarize` 章节一致。
+
 ## 其他常用文件
 
 1. `config.used.yml`：本次运行实际生效配置（复现实验首选）。

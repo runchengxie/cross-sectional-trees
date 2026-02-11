@@ -24,7 +24,7 @@
 | 命令 | 能力 | 关键输入 | 关键输出/副作用 | 备注 |
 | --- | --- | --- | --- | --- |
 | `csml run` | 主流程：训练/评估/回测/持仓产物 | `--config` | `out/runs/...` 全套产物 | 研究主入口 |
-| `csml grid` | Top-K × 成本敏感性网格 | base config + grid 参数 | `grid_summary.csv` | 先跑一次 base，再复用 scored 数据 |
+| `csml grid` | Top-K × 成本 × buffer（入/出）敏感性网格 | base config + grid 参数 | `grid_summary.csv` | 先跑一次 base，再复用 scored 数据；详见 [cli.md#2-csml-grid](cli.md#2-csml-grid) |
 | `csml sweep-linear` | Ridge/ElasticNet 参数 sweep | `--sweep-config` 或 CLI 网格参数 | `out/sweeps/<tag>/` + 自动 summarize | 已覆盖（不是 `sweep`，是 `sweep-linear`） |
 | `csml summarize` | 聚合历史 run 关键指标 | `--runs-dir`、筛选参数 | `runs_summary.csv` | 研究对比入口 |
 | `csml holdings` | 输出当前持仓 | `--config/--run-dir`、`--as-of` | text/csv/json | 支持 `auto/backtest/live` |

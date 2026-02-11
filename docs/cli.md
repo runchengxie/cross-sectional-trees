@@ -112,6 +112,24 @@ csml sweep-linear \
 * `--sort-by <timestamp|score>`：按时间或按 `score` 排序（默认 `timestamp`）。
 * `--log-level <level>`：日志级别（`CRITICAL/ERROR/WARNING/INFO/DEBUG`）。
 
+`score` 计算方式（用于 `--sort-by score`）：
+
+```text
+score = backtest_sharpe
+      - score_drawdown_weight * abs(backtest_max_drawdown)
+      - score_cost_weight * backtest_avg_cost_drag
+```
+
+默认权重：
+
+* `score_drawdown_weight = 0.5`
+* `score_cost_weight = 10.0`
+
+补充：
+
+* 若 `backtest_sharpe` 缺失，`score` 为空。
+* 若 `backtest_max_drawdown` 或 `backtest_avg_cost_drag` 缺失，惩罚项按 0 处理。
+
 示例：
 
 ```bash

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import unicodedata
 from pathlib import Path
 
@@ -10,48 +9,21 @@ import numpy as np
 import pandas as pd
 
 from ..config_utils import resolve_pipeline_config
+from ..date_utils import resolve_date_token
 from .symbols import ensure_symbol_columns
 
 
-def _normalize_as_of_token(value: str | None) -> str:
-    if value is None:
-        return "t-1"
-    text = str(value).strip()
-    if not text:
-        return "t-1"
-    lowered = text.lower()
-    if lowered in {"today", "t", "now"}:
-        return "today"
-    if lowered in {"t-1", "yesterday"}:
-        return "t-1"
-    if lowered in {"last_trading_day", "last_completed_trading_day"}:
-        return lowered
-    return text
-
-
 def _resolve_as_of(value: str | None) -> pd.Timestamp:
-    token = _normalize_as_of_token(value)
-    today = pd.Timestamp.now().normalize()
-    if token == "today":
-        return today
-    if token in {"last_trading_day", "last_completed_trading_day"}:
-        include_today = token == "last_trading_day"
-        print(
-            f"Warning: --as-of={token} uses calendar day fallback (no trading calendar).",
-            file=sys.stderr,
+    try:
+        return resolve_date_token(
+            value,
+            default="t-1",
+            warn_to_stderr=True,
+            warn_label="--as-of",
         )
-        return today if include_today else today - pd.Timedelta(days=1)
-    if token == "t-1":
-        return today - pd.Timedelta(days=1)
-    text = str(token).strip()
-    compact = text.replace("-", "")
-    if compact.isdigit() and len(compact) == 8:
-        parsed = pd.to_datetime(compact, format="%Y%m%d", errors="coerce")
-    else:
-        parsed = pd.to_datetime(text, errors="coerce")
-    if pd.isna(parsed):
-        raise SystemExit(f"Invalid --as-of date: {value}")
-    return parsed.normalize()
+    except SystemExit as exc:
+        # Keep CLI-facing error text stable.
+        raise SystemExit(f"Invalid --as-of date: {value}") from exc
 
 
 def _resolve_output_dir(config_path: str | None) -> tuple[Path, str]:

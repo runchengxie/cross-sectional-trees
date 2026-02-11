@@ -11,6 +11,8 @@ from typing import Any
 
 import yaml
 
+from ..date_utils import is_relative_date_token
+
 RUN_DIR_PATTERN = re.compile(
     r"^(?P<run_name>.+)_(?P<timestamp>\d{8}_\d{6})_(?P<config_hash>[0-9a-fA-F]{8})$"
 )
@@ -75,17 +77,6 @@ FIELDNAMES = [
     "error",
 ]
 
-RELATIVE_END_DATE_TOKENS = {
-    "today",
-    "now",
-    "t",
-    "t-1",
-    "yesterday",
-    "last_trading_day",
-    "last_completed_trading_day",
-}
-
-
 def _resolve_path(path_text: str | Path) -> Path:
     candidate = Path(path_text).expanduser()
     if candidate.is_absolute():
@@ -133,10 +124,10 @@ def _is_true_flag(value: Any) -> bool:
 def _is_relative_end_date(value: Any) -> bool | None:
     if value is None:
         return None
-    text = str(value).strip().lower()
+    text = str(value).strip()
     if not text:
         return None
-    return text in RELATIVE_END_DATE_TOKENS
+    return is_relative_date_token(text, default="today")
 
 
 def _parse_datetime_text(value: str) -> datetime | None:
