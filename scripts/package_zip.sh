@@ -24,6 +24,7 @@ EXCLUDES=(
   "htmlcov"
   ".venv"
   ".git"
+  "full_project_source.txt"
 )
 
 cd "$ROOT"
