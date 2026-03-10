@@ -274,6 +274,7 @@ def _handle_grid(args) -> int:
     _append_repeat_args(argv, "--cost-bps", getattr(args, "cost_bps", None))
     _append_repeat_args(argv, "--buffer-exit", getattr(args, "buffer_exit", None))
     _append_repeat_args(argv, "--buffer-entry", getattr(args, "buffer_entry", None))
+    _append_repeat_args(argv, "--weighting", getattr(args, "weighting", None))
     _append_arg(argv, "--output", getattr(args, "output", None))
     _append_arg(argv, "--run-name-prefix", getattr(args, "run_name_prefix", None))
     _append_arg(argv, "--log-level", getattr(args, "log_level", None))
@@ -336,6 +337,29 @@ def _handle_summarize(args) -> int:
     from .project_tools import summarize_runs
 
     summarize_runs.run(args)
+    return 0
+
+
+def _handle_backup_data(args) -> int:
+    from .project_tools import backup_data
+
+    argv: list[str] = []
+    _append_arg(argv, "--out-root", getattr(args, "out_root", None))
+    _append_arg(argv, "--name", getattr(args, "name", None))
+    _append_repeat_args(argv, "--config", getattr(args, "config", None))
+    _append_repeat_args(argv, "--include-path", getattr(args, "include_path", None))
+    _append_bool_switch(argv, getattr(args, "no_cache", None), true_flag="--no-cache")
+    _append_bool_switch(
+        argv,
+        getattr(args, "no_universe", None),
+        true_flag="--no-universe",
+    )
+    _append_bool_switch(
+        argv,
+        getattr(args, "skip_missing", None),
+        true_flag="--skip-missing",
+    )
+    backup_data.main(argv)
     return 0
 
 
@@ -497,6 +521,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     summarize_runs.add_summarize_args(summarize)
     summarize.set_defaults(func=_handle_summarize)
+
+    backup_data = subparsers.add_parser(
+        "backup-data",
+        help="Create a private local snapshot of caches, universe files, and configs",
+    )
+    from .project_tools import backup_data as backup_data_tool
+
+    backup_data_tool.add_backup_data_args(backup_data)
+    backup_data.set_defaults(func=_handle_backup_data)
 
     holdings = subparsers.add_parser("holdings", help="Show latest holdings from saved runs")
     holdings.add_argument(

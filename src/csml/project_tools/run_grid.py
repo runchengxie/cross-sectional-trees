@@ -47,6 +47,16 @@ def _parse_float_list(values: list[str]) -> list[float]:
     return items
 
 
+def _parse_text_list(values: list[str]) -> list[str]:
+    items: list[str] = []
+    for entry in values:
+        for part in entry.split(","):
+            text = part.strip().lower()
+            if text:
+                items.append(text)
+    return items
+
+
 def _safe_run_name(
     base: str,
     top_k: int,
@@ -55,11 +65,15 @@ def _safe_run_name(
     buffer_exit: int,
     buffer_entry: int,
     include_buffer: bool,
+    weighting: str,
+    include_weighting: bool,
 ) -> str:
     cost_text = ("%g" % cost_bps).replace(".", "p")
     run_name = f"{base}_k{top_k}_bps{cost_text}"
     if include_buffer:
         run_name = f"{run_name}_bx{int(buffer_exit)}_be{int(buffer_entry)}"
+    if include_weighting:
+        run_name = f"{run_name}_w{weighting}"
     return run_name
 
 
@@ -132,6 +146,7 @@ def _init_row(
     cost_bps: float,
     buffer_exit: int,
     buffer_entry: int,
+    weighting: str,
     run_name: str,
     summary_path: Path | None,
 ) -> dict:
@@ -141,6 +156,7 @@ def _init_row(
         "cost_bps": cost_bps,
         "buffer_exit": int(buffer_exit),
         "buffer_entry": int(buffer_entry),
+        "weighting": weighting,
         "summary_path": str(summary_path) if summary_path else None,
         "output_dir": None,
         "label_horizon_days": None,
@@ -192,6 +208,12 @@ def add_grid_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         help="Comma-separated buffer_entry values (default: use config value)",
     )
     parser.add_argument(
+        "--weighting",
+        action="append",
+        default=None,
+        help="Comma-separated backtest weighting modes: equal,signal (default: use config value)",
+    )
+    parser.add_argument(
         "--output",
         default="out/runs/grid_summary.csv",
         help="Output CSV path (default: out/runs/grid_summary.csv)",
@@ -239,25 +261,34 @@ def main(argv: list[str] | None = None) -> None:
     cost_entries = args.cost_bps or ["15,25,40"]
     buffer_exit_entries = args.buffer_exit or [str(default_buffer_exit)]
     buffer_entry_entries = args.buffer_entry or [str(default_buffer_entry)]
+    default_weighting = str(base_backtest_cfg.get("weighting", "equal")).strip().lower()
+    weighting_entries = args.weighting or [default_weighting]
     top_k_values = list(dict.fromkeys(_parse_int_list(top_k_entries)))
     cost_values = list(dict.fromkeys(_parse_float_list(cost_entries)))
     buffer_exit_values = list(dict.fromkeys(_parse_int_list(buffer_exit_entries)))
     buffer_entry_values = list(dict.fromkeys(_parse_int_list(buffer_entry_entries)))
+    weighting_values = list(dict.fromkeys(_parse_text_list(weighting_entries)))
     if any(value < 0 for value in buffer_exit_values):
         raise SystemExit("--buffer-exit values must be >= 0.")
     if any(value < 0 for value in buffer_entry_values):
         raise SystemExit("--buffer-entry values must be >= 0.")
+    if not weighting_values:
+        raise SystemExit("No valid --weighting values.")
+    if any(value not in {"equal", "signal"} for value in weighting_values):
+        raise SystemExit("--weighting values must be one of: equal, signal.")
 
     combos = [
-        (top_k, cost, buffer_exit, buffer_entry)
+        (top_k, cost, buffer_exit, buffer_entry, weighting)
         for top_k in top_k_values
         for cost in cost_values
         for buffer_exit in buffer_exit_values
         for buffer_entry in buffer_entry_values
+        for weighting in weighting_values
     ]
     if not combos:
         raise SystemExit("No valid parameter combinations.")
     include_buffer_in_name = len(buffer_exit_values) > 1 or len(buffer_entry_values) > 1
+    include_weighting_in_name = len(weighting_values) > 1 or weighting_values[0] != "equal"
 
     output_path = _resolve_output_path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -276,6 +307,7 @@ def main(argv: list[str] | None = None) -> None:
     base_run_cfg["eval"]["buffer_entry"] = int(buffer_entry_values[0])
     base_run_cfg["backtest"]["buffer_exit"] = int(buffer_exit_values[0])
     base_run_cfg["backtest"]["buffer_entry"] = int(buffer_entry_values[0])
+    base_run_cfg["backtest"]["weighting"] = weighting_values[0]
 
     from .. import pipeline
 
@@ -383,6 +415,9 @@ def main(argv: list[str] | None = None) -> None:
         _get_nested(summary, "backtest", "exit_fallback_policy")
         or backtest_cfg.get("exit_fallback_policy", "ffill")
     ).strip().lower()
+    backtest_weighting_default = str(
+        _get_nested(summary, "backtest", "weighting") or backtest_cfg.get("weighting", "equal")
+    ).strip().lower()
     tradable_col = _get_nested(summary, "backtest", "tradable_col")
     if tradable_col is None:
         tradable_col = backtest_cfg.get("tradable_col", "is_tradable")
@@ -391,7 +426,7 @@ def main(argv: list[str] | None = None) -> None:
         tradable_col = None
 
     rows: list[dict] = []
-    for top_k, cost_bps, buffer_exit, buffer_entry in combos:
+    for top_k, cost_bps, buffer_exit, buffer_entry, weighting in combos:
         run_name = _safe_run_name(
             base_label,
             top_k,
@@ -399,12 +434,15 @@ def main(argv: list[str] | None = None) -> None:
             buffer_exit=buffer_exit,
             buffer_entry=buffer_entry,
             include_buffer=include_buffer_in_name,
+            weighting=weighting,
+            include_weighting=include_weighting_in_name,
         )
         row = _init_row(
             top_k,
             cost_bps,
             buffer_exit,
             buffer_entry,
+            weighting,
             run_name,
             summary_path,
         )
@@ -450,6 +488,7 @@ def main(argv: list[str] | None = None) -> None:
                     exit_horizon_days=backtest_exit_horizon_days,
                     long_only=backtest_long_only,
                     short_k=backtest_short_k,
+                    weighting=weighting or backtest_weighting_default,
                     buffer_exit=int(buffer_exit),
                     buffer_entry=int(buffer_entry),
                     tradable_col=tradable_col,
@@ -481,6 +520,7 @@ def main(argv: list[str] | None = None) -> None:
         "cost_bps",
         "buffer_exit",
         "buffer_entry",
+        "weighting",
         "summary_path",
         "output_dir",
         "label_horizon_days",

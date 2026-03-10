@@ -56,6 +56,9 @@ csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv
 # 查询 RQData 配额
 csml rqdata quota --pretty
 
+# 做一份本地私有数据快照
+csml backup-data --name hk_frozen_20251231 --config config/hk_selected__baseline.yml
+
 # 读取当前持仓
 csml holdings --config config/hk.yml --as-of t-1
 

@@ -6,6 +6,69 @@ import numpy as np
 import pandas as pd
 
 
+def normalize_weighting_mode(weighting: str | None) -> str:
+    mode = str(weighting or "equal").strip().lower()
+    if mode not in {"equal", "signal"}:
+        raise ValueError("weighting must be one of: equal, signal.")
+    return mode
+
+
+def _equal_weights(holdings: list[str]) -> pd.Series:
+    if not holdings:
+        return pd.Series(dtype=float)
+    return pd.Series(np.repeat(1.0 / len(holdings), len(holdings)), index=holdings, dtype=float)
+
+
+def normalize_position_weights(weights: pd.Series) -> pd.Series:
+    if weights is None or weights.empty:
+        return pd.Series(dtype=float)
+    cleaned = pd.to_numeric(weights, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+    if cleaned.empty:
+        return pd.Series(dtype=float)
+    total = float(cleaned.sum())
+    if not np.isfinite(total) or total <= 0:
+        return _equal_weights(list(cleaned.index))
+    return cleaned / total
+
+
+def build_position_weights(
+    day: pd.DataFrame,
+    holdings: list[str],
+    pred_col: str,
+    *,
+    side: str,
+    weighting: str = "equal",
+) -> pd.Series:
+    mode = normalize_weighting_mode(weighting)
+    base = _equal_weights(holdings)
+    if mode == "equal" or base.empty:
+        return base
+
+    if side not in {"long", "short"}:
+        raise ValueError("side must be one of: long, short.")
+
+    signal = pd.to_numeric(
+        day.set_index("ts_code").reindex(holdings)[pred_col],
+        errors="coerce",
+    )
+    if side == "short":
+        signal = -signal
+    if signal.empty or signal.isna().all():
+        return base
+
+    signal = signal.fillna(float(signal.mean()) if signal.notna().any() else 0.0)
+    std = float(signal.std(ddof=0))
+    if not np.isfinite(std) or std <= 0:
+        return base
+
+    scaled = ((signal - float(signal.mean())) / std).clip(-5.0, 5.0)
+    raw = np.exp(scaled.to_numpy(dtype=float))
+    total = float(np.sum(raw))
+    if not np.isfinite(total) or total <= 0:
+        return base
+    return normalize_position_weights(pd.Series(raw, index=signal.index, dtype=float))
+
+
 def apply_rebalance_buffer(
     ranked_codes: list[str],
     prev_holdings: Optional[set[str]],
@@ -103,12 +166,14 @@ def build_positions_by_rebalance(
     top_k: int,
     shift_days: int,
     *,
+    weighting: str = "equal",
     buffer_exit: int = 0,
     buffer_entry: int = 0,
     long_only: bool = True,
     short_k: Optional[int] = None,
     tradable_col: Optional[str] = None,
 ) -> pd.DataFrame:
+    weighting_mode = normalize_weighting_mode(weighting)
     if data.empty or not rebalance_dates or top_k <= 0:
         return pd.DataFrame(
             columns=["rebalance_date", "entry_date", "ts_code", "weight", "signal", "rank", "side"]
@@ -161,7 +226,15 @@ def build_positions_by_rebalance(
             )
             if not holdings:
                 continue
-            weight = 1.0 / len(holdings)
+            weights = build_position_weights(
+                day,
+                holdings,
+                pred_col,
+                side="long",
+                weighting=weighting_mode,
+            )
+            if weights.empty:
+                continue
             ranked_codes = day.sort_values(pred_col, ascending=False)["ts_code"].tolist()
             rank_map = {code: idx + 1 for idx, code in enumerate(ranked_codes)}
             signal_map = day.set_index("ts_code")[pred_col].to_dict()
@@ -171,7 +244,7 @@ def build_positions_by_rebalance(
                         "rebalance_date": reb_date.strftime("%Y%m%d"),
                         "entry_date": entry_date.strftime("%Y%m%d"),
                         "ts_code": code,
-                        "weight": weight,
+                        "weight": float(weights.get(code, 0.0)),
                         "signal": float(signal_map.get(code, np.nan)),
                         "rank": int(rank_map.get(code, 0)),
                         "side": "long",
@@ -212,8 +285,22 @@ def build_positions_by_rebalance(
         if not long_holdings or not short_holdings:
             continue
 
-        long_weight = 1.0 / len(long_holdings)
-        short_weight = -1.0 / len(short_holdings)
+        long_weights = build_position_weights(
+            day,
+            long_holdings,
+            pred_col,
+            side="long",
+            weighting=weighting_mode,
+        )
+        short_weights = build_position_weights(
+            day,
+            short_holdings,
+            pred_col,
+            side="short",
+            weighting=weighting_mode,
+        )
+        if long_weights.empty or short_weights.empty:
+            continue
         long_ranked = day.sort_values(pred_col, ascending=False)["ts_code"].tolist()
         short_ranked = day.sort_values(pred_col, ascending=True)["ts_code"].tolist()
         long_rank_map = {code: idx + 1 for idx, code in enumerate(long_ranked)}
@@ -226,7 +313,7 @@ def build_positions_by_rebalance(
                     "rebalance_date": reb_date.strftime("%Y%m%d"),
                     "entry_date": entry_date.strftime("%Y%m%d"),
                     "ts_code": code,
-                    "weight": long_weight,
+                    "weight": float(long_weights.get(code, 0.0)),
                     "signal": float(signal_map.get(code, np.nan)),
                     "rank": int(long_rank_map.get(code, 0)),
                     "side": "long",
@@ -238,7 +325,7 @@ def build_positions_by_rebalance(
                     "rebalance_date": reb_date.strftime("%Y%m%d"),
                     "entry_date": entry_date.strftime("%Y%m%d"),
                     "ts_code": code,
-                    "weight": short_weight,
+                    "weight": float(-short_weights.get(code, 0.0)),
                     "signal": float(signal_map.get(code, np.nan)),
                     "rank": int(short_rank_map.get(code, 0)),
                     "side": "short",

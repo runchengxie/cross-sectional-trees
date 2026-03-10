@@ -97,6 +97,24 @@ csml sweep-linear \
 1. `run_results.csv`：每个组合执行状态
 1. `runs_summary.csv`：自动执行 `csml summarize` 的聚合结果
 
+如果线性基线已经有可用候选，但长期卡在 `flag_short_sample=true`，先不要继续盲扫更多 `alpha`。先改 `eval` 设计，再跑一轮小 sweep：
+
+```bash
+csml sweep-linear --sweep-config config/sweeps/hk_selected__eval_sample.yml
+csml sweep-linear --sweep-config config/sweeps/hk_selected__eval_sample_ffill.yml
+```
+
+这两组配置只保留当前最值得继续看的 3 个模型：
+
+1. `ridge alpha = 30`
+1. `ridge alpha = 100`
+1. `elasticnet alpha = 0.01, l1_ratio = 0.05`
+
+区别：
+
+1. `hk_selected__eval_sample.yml`：把主测试窗口拉到 `test_size=0.7`，并把 walk-forward 改成更小的多窗口切法。
+1. `hk_selected__eval_sample_ffill.yml`：在同样的样本切法下，把 `backtest.exit_price_policy` 从 `delay` 改成 `ffill`，单独检查“短样本”是不是主要来自延迟退出。
+
 ## 2) 再跑非线性对照组（XGBRegressor / XGBRanker）
 
 ```bash
@@ -132,7 +150,7 @@ csml summarize \
 
 ## 5) 可选：`csml grid` 做 Top-K/成本/buffer 形状分析
 
-`csml grid` 不是模型超参网格搜索。它会先基于给定配置跑一次 base pipeline，读取 `eval_scored.parquet`，然后在同一份 scored 数据上循环 `Top-K × cost_bps × buffer_exit × buffer_entry` 组合，不会为每个网格点重训模型。
+`csml grid` 不是模型超参网格搜索。它会先基于给定配置跑一次 base pipeline，读取 `eval_scored.parquet`，然后在同一份 scored 数据上循环 `Top-K × cost_bps × buffer_exit × buffer_entry × weighting` 组合，不会为每个网格点重训模型。
 
 示例：
 
@@ -142,7 +160,8 @@ csml grid \
   --top-k 5,10,20 \
   --cost-bps 10,25,40 \
   --buffer-exit 8,10 \
-  --buffer-entry 4,5
+  --buffer-entry 4,5 \
+  --weighting equal,signal
 ```
 
 ## 6) 最小可执行清单
@@ -153,4 +172,39 @@ csml run --config config/hk_selected__elasticnet_a0.1_l0.5.yml
 csml run --config config/hk_selected__xgb_regressor.yml
 csml run --config config/hk_selected__xgb_ranker_pairwise.yml
 csml summarize --runs-dir out/runs --run-name-prefix hk_sel_ --output out/runs/hk_sel_models_summary.csv
+```
+
+## 7) 私有数据快照
+
+当你已经拿到一轮完整缓存、PIT universe 和研究配置，建议立刻做一份私有快照，区分 `frozen` 与 `rolling`：
+
+```bash
+csml backup-data \
+  --name hk_frozen_20251231 \
+  --config config/hk_selected__baseline.yml
+
+csml backup-data \
+  --name hk_eval_bundle \
+  --config config/hk_selected__baseline_eval_sample.yml \
+  --config config/hk_selected__baseline_eval_sample_ffill.yml \
+  --include-path config/sweeps/hk_selected__eval_sample.yml \
+  --include-path config/sweeps/hk_selected__eval_sample_ffill.yml
+```
+
+建议：
+
+1. `frozen` 快照固定研究口径和窗口，只用于可比回测。
+1. `rolling` 快照随最新已完成交易日更新，用于近端验证。
+1. 两套数据尽量配不同的 `data.cache_tag`，避免缓存混用。
+1. 若仓库是公开仓库，发布到 GitHub Releases 时只上传安全包。安全包应排除 `cache/` 和其他 provider 原始数据。
+
+可以单独生成一份适合公开 release 的轻量快照：
+
+```bash
+csml backup-data \
+  --name hk_eval_bundle_public \
+  --no-cache \
+  --config config/hk_selected__baseline_eval_sample.yml \
+  --config config/hk_selected__baseline_eval_sample_ffill.yml \
+  --include-path out/runs/hk_evalb_ridge_a30_grid_summary.csv
 ```

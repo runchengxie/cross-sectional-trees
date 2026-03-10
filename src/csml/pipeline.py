@@ -1184,6 +1184,9 @@ def run(config_ref: str | Path | None = None) -> None:
     BACKTEST_LONG_ONLY = bool(backtest_cfg.get("long_only", True))
     BACKTEST_BUFFER_EXIT = int(backtest_cfg.get("buffer_exit", 0))
     BACKTEST_BUFFER_ENTRY = int(backtest_cfg.get("buffer_entry", 0))
+    BACKTEST_WEIGHTING = str(backtest_cfg.get("weighting", "equal")).strip().lower()
+    if BACKTEST_WEIGHTING not in {"equal", "signal"}:
+        sys.exit("backtest.weighting must be one of: equal, signal.")
     BACKTEST_SIGNAL_DIRECTION_RAW = backtest_cfg.get("signal_direction")
     if BACKTEST_SIGNAL_DIRECTION_RAW is not None:
         BACKTEST_SIGNAL_DIRECTION_RAW = float(BACKTEST_SIGNAL_DIRECTION_RAW)
@@ -2366,6 +2369,7 @@ def run(config_ref: str | Path | None = None) -> None:
                     rebalance_dates=live_rebalance,
                     top_k=BACKTEST_TOP_K,
                     shift_days=LABEL_SHIFT_DAYS,
+                    weighting=BACKTEST_WEIGHTING,
                     buffer_exit=BACKTEST_BUFFER_EXIT,
                     buffer_entry=BACKTEST_BUFFER_ENTRY,
                     long_only=BACKTEST_LONG_ONLY,
@@ -2667,6 +2671,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 rebalance_dates=bt_rebalance,
                 top_k=BACKTEST_TOP_K,
                 shift_days=LABEL_SHIFT_DAYS,
+                weighting=BACKTEST_WEIGHTING,
                 buffer_exit=BACKTEST_BUFFER_EXIT,
                 buffer_entry=BACKTEST_BUFFER_ENTRY,
                 long_only=BACKTEST_LONG_ONLY,
@@ -2697,6 +2702,7 @@ def run(config_ref: str | Path | None = None) -> None:
                     exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
                     long_only=BACKTEST_LONG_ONLY,
                     short_k=BACKTEST_SHORT_K,
+                    weighting=BACKTEST_WEIGHTING,
                     buffer_exit=BACKTEST_BUFFER_EXIT,
                     buffer_entry=BACKTEST_BUFFER_ENTRY,
                     tradable_col=BACKTEST_TRADABLE_COL
@@ -3362,6 +3368,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 "buffer_exit": BACKTEST_BUFFER_EXIT,
                 "buffer_entry": BACKTEST_BUFFER_ENTRY,
                 "mode": "long_only" if BACKTEST_LONG_ONLY else "long_short",
+                "weighting": BACKTEST_WEIGHTING,
                 "top_k": BACKTEST_TOP_K,
                 "short_k": BACKTEST_SHORT_K,
                 "rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,

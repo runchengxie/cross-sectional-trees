@@ -214,6 +214,7 @@ full_project_source.txt
 
 # Derived outputs
 /out/
+/data_mirror/
 
 # VS code settings
 .vscode

@@ -216,6 +216,7 @@ model:
 * `exit_mode`
 * `exit_price_policy`
 * `exit_fallback_policy`
+* `weighting`
 * `buffer_exit`
 * `buffer_entry`
 * `tradable_col`
@@ -233,6 +234,18 @@ model:
 
 * `ffill`：`delay` 向后找不到价格时，回退到到期日前最近可用价格
 * `none`：不回退
+
+### 组合权重
+
+`weighting`：
+
+* `equal`：入选持仓等权
+* `signal`：对入选持仓按信号做 softmax 权重，保留方向但让强信号权重更高
+
+建议：
+
+* 先用 `equal` 做基线，便于解释和横向比较。
+* 当 `Pearson IC`、尾部组合或回测明显优于 `Spearman IC` 时，再单独测试 `signal`。
 
 ### 新旧键优先级
 

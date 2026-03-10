@@ -41,6 +41,7 @@
 
 1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/fundamentals/walk_forward`）。
 1. 持仓主键列语义：`trade_date`、`entry_date`、`ts_code`、`stock_ticker`、`weight`、`signal`、`rank`、`side`。
+1. `weight` 的解释取决于 `backtest.weighting`：`equal` 时等权，`signal` 时为信号 softmax 后的目标权重。
 1. `summary.json` 内记录的文件路径优先级高于固定文件名推断。
 
 best-effort（可能为空、缺失或未产出文件）：
@@ -92,7 +93,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | `holding_window` | `entry_date -> next_entry_date`（最后一期为 `entry_date`） |
 | `ts_code` | 标的代码（内部标准格式） |
 | `stock_ticker` | 标的代码（外部通用别名，等价于 `ts_code`） |
-| `weight` | 目标权重（long-only 下通常等权） |
+| `weight` | 目标权重；`backtest.weighting=equal` 时等权，`signal` 时为信号 softmax 权重 |
 | `signal` | 该标的预测信号值 |
 | `rank` | 当期截面排序名次 |
 | `side` | `long` 或 `short` |
@@ -159,7 +160,7 @@ best-effort（可能为空、缺失或未产出文件）：
 列契约（当前稳定列顺序）：
 
 ```text
-source_runs_dir,run_dir,run_name,run_timestamp,config_hash,summary_path,config_path,market,data_provider,data_start_date,data_end_date,data_end_date_config,data_rows,data_rows_model,data_rows_model_in_sample,data_rows_model_oos,data_dropped_dates,universe_mode,label_horizon_days,label_shift_days,eval_top_k,backtest_top_k,transaction_cost_bps,eval_rebalance_frequency,backtest_rebalance_frequency,eval_buffer_exit,eval_buffer_entry,backtest_buffer_exit,backtest_buffer_entry,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,eval_pred_nunique,feature_importance_nonzero,backtest_periods,backtest_periods_per_year,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_skew,backtest_kurtosis_excess,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,dsr,dsr_sr0,dsr_n_trials,dsr_var_trials,flag_short_sample,flag_negative_long_short,flag_high_turnover,flag_relative_end_date,flag_constant_prediction,flag_zero_feature_importance,score,status,error
+source_runs_dir,run_dir,run_name,run_timestamp,config_hash,summary_path,config_path,market,data_provider,data_start_date,data_end_date,data_end_date_config,data_rows,data_rows_model,data_rows_model_in_sample,data_rows_model_oos,data_dropped_dates,universe_mode,label_horizon_days,label_shift_days,eval_top_k,backtest_top_k,transaction_cost_bps,eval_rebalance_frequency,backtest_rebalance_frequency,backtest_exit_price_policy,backtest_exit_fallback_policy,backtest_weighting,eval_buffer_exit,eval_buffer_entry,backtest_buffer_exit,backtest_buffer_entry,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,eval_pred_nunique,feature_importance_nonzero,backtest_periods,backtest_periods_per_year,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_skew,backtest_kurtosis_excess,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,dsr,dsr_sr0,dsr_n_trials,dsr_var_trials,flag_short_sample,flag_negative_long_short,flag_high_turnover,flag_relative_end_date,flag_constant_prediction,flag_zero_feature_importance,score,status,error
 ```
 
 `score` 计算规则：
@@ -197,13 +198,13 @@ score = backtest_sharpe
 来源：
 
 1. 先执行一次 base pipeline（产出 `eval_scored.parquet`）。
-1. 在同一份 scored 数据上循环 `top_k × cost_bps × buffer_exit × buffer_entry`。
+1. 在同一份 scored 数据上循环 `top_k × cost_bps × buffer_exit × buffer_entry × weighting`。
 1. 每行对应一个参数组合，不会为每个格点重训模型。
 
 列契约（当前稳定列顺序）：
 
 ```text
-run_name,top_k,cost_bps,buffer_exit,buffer_entry,summary_path,output_dir,label_horizon_days,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,backtest_periods,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,status,error
+run_name,top_k,cost_bps,buffer_exit,buffer_entry,weighting,summary_path,output_dir,label_horizon_days,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,backtest_periods,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,status,error
 ```
 
 ### `csml sweep-linear`：`out/sweeps/<tag>/`
@@ -225,6 +226,25 @@ out/sweeps/<tag>/
 1. `jobs.csv` 列契约：`order,model,alpha,l1_ratio,run_name,config_path`
 1. `run_results.csv` 列契约：`order,run_name,config_path,status,error`
 1. `runs_summary.csv` 列契约与 `csml summarize` 章节一致。
+
+### `csml backup-data`：`data_mirror/<name>/`
+
+目录结构：
+
+```text
+data_mirror/<name>/
+  manifest.yml
+  cache/...
+  out/universe/...
+  config/...
+```
+
+其中：
+
+1. `manifest.yml` 记录快照名、生成时间、来源路径、复制后的目标路径、`kind/file_count/total_bytes` 汇总，以及当前 git 提交信息（若可识别）。
+1. 默认会把 `cache/` 和 `out/universe/` 一起复制；额外路径由 `--config` 和 `--include-path` 决定。
+1. 这是本地私有快照工具，不会重新向 provider 拉数。
+1. 若需要公开分享，请另做一份不含 `cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、汇总 CSV 和简短说明。
 
 ## 其他常用文件
 

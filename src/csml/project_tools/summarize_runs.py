@@ -55,6 +55,9 @@ FIELDNAMES = [
     "transaction_cost_bps",
     "eval_rebalance_frequency",
     "backtest_rebalance_frequency",
+    "backtest_exit_price_policy",
+    "backtest_exit_fallback_policy",
+    "backtest_weighting",
     "eval_buffer_exit",
     "eval_buffer_entry",
     "backtest_buffer_exit",
@@ -95,6 +98,8 @@ DSR_GROUP_FIELDS = (
     "market",
     "label_horizon_days",
     "backtest_rebalance_frequency",
+    "backtest_exit_price_policy",
+    "backtest_weighting",
     "transaction_cost_bps",
     "backtest_top_k",
 )
@@ -572,6 +577,19 @@ def _extract_row(source_runs_dir: Path, summary_path: Path, args: argparse.Names
         _get_nested(summary, "backtest", "rebalance_frequency"),
         _get_nested(config, "backtest", "rebalance_frequency"),
         row["eval_rebalance_frequency"],
+    )
+    row["backtest_exit_price_policy"] = _first_non_empty(
+        _get_nested(summary, "backtest", "exit_price_policy"),
+        _get_nested(config, "backtest", "exit_price_policy"),
+    )
+    row["backtest_exit_fallback_policy"] = _first_non_empty(
+        _get_nested(summary, "backtest", "exit_fallback_policy"),
+        _get_nested(config, "backtest", "exit_fallback_policy"),
+    )
+    row["backtest_weighting"] = _first_non_empty(
+        _get_nested(summary, "backtest", "weighting"),
+        _get_nested(config, "backtest", "weighting"),
+        "equal",
     )
     row["eval_buffer_exit"] = _first_non_empty(
         _get_nested(summary, "eval", "buffer_exit"),
