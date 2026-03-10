@@ -158,6 +158,7 @@ def test_hk_quarterly_templates_align_rebalance_frequencies():
         repo_root / "config" / "hk_selected__provider_quarterly_valuation.yml",
         repo_root / "config" / "hk_selected__baseline_pit_quarterly.yml",
         repo_root / "config" / "hk_selected__pit_quarterly_hybrid.yml",
+        repo_root / "config" / "hk_selected__pit_quarterly_financial_ml.yml",
     ]
 
     payloads = [
@@ -171,7 +172,7 @@ def test_hk_quarterly_templates_align_rebalance_frequencies():
         assert payload["eval"]["rebalance_frequency"] == "Q"
         assert payload["backtest"]["rebalance_frequency"] == "Q"
 
-    provider_cfg, pit_cfg, hybrid_cfg = payloads
+    provider_cfg, pit_cfg, hybrid_cfg, financial_ml_cfg = payloads
 
     assert provider_cfg["fundamentals"]["source"] == "provider"
     assert provider_cfg["features"]["list"] == ["pe_ttm"]
@@ -183,3 +184,9 @@ def test_hk_quarterly_templates_align_rebalance_frequencies():
     assert hybrid_cfg["fundamentals"]["source"] == "file"
     assert "ret_240" in hybrid_cfg["features"]["list"]
     assert "rv_120" in hybrid_cfg["features"]["list"]
+
+    assert financial_ml_cfg["fundamentals"]["source"] == "file"
+    assert financial_ml_cfg["eval"]["sample_on_rebalance_dates"] is True
+    assert financial_ml_cfg["features"]["missing"]["method"] == "cross_sectional_median"
+    assert "delta_sales" in financial_ml_cfg["features"]["list"]
+    assert "days_since_report" in financial_ml_cfg["features"]["list"]

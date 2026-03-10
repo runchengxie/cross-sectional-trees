@@ -2,8 +2,8 @@
 base_config: config/hk_selected__baseline_eval_sample_ffill.yml
 run_name_prefix: hk_evalb_
 tag: hk_eval_sample_ffill
-sweeps_dir: out/sweeps
-runs_dir: out/runs
+sweeps_dir: artifacts/sweeps
+runs_dir: artifacts/runs
 
 grid:
   ridge_alpha: [30, 100]

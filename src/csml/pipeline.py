@@ -27,6 +27,11 @@ from dotenv import load_dotenv
 import yaml
 import warnings
 
+from .artifacts import (
+    CACHE_DIR as DEFAULT_CACHE_DIR,
+    RUNS_DIR as DEFAULT_RUNS_DIR,
+    resolve_repo_path,
+)
 from .config_utils import resolve_pipeline_config
 from .date_utils import (
     is_relative_date_token as _is_relative_date_token,
@@ -95,8 +100,10 @@ def _resolve_fundamentals_cache_dir(
 ) -> Path:
     configured = fundamentals_cfg.get("cache_dir")
     if configured:
-        return Path(str(configured)).expanduser()
-    base_dir = Path(str(data_cfg.get("cache_dir", "cache"))).expanduser()
+        return resolve_repo_path(configured)
+    base_dir = resolve_repo_path(
+        data_cfg.get("cache_dir", DEFAULT_CACHE_DIR.as_posix())
+    )
     return base_dir / "fundamentals" / normalize_market(market)
 
 
@@ -686,6 +693,28 @@ def normalize_universe_symbol(symbol: str, market: str) -> str:
     return text
 
 
+def normalize_date_like_series(series: pd.Series) -> pd.Series:
+    if series.empty:
+        return pd.to_datetime(series, errors="coerce")
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return pd.to_datetime(series, errors="coerce").dt.normalize()
+
+    text = series.astype(str).str.strip().str.replace(r"\.0+$", "", regex=True)
+    digits_mask = text.str.fullmatch(r"\d{8}")
+    parsed = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+
+    if digits_mask.any():
+        parsed.loc[digits_mask] = pd.to_datetime(
+            text.loc[digits_mask],
+            format="%Y%m%d",
+            errors="coerce",
+        )
+    if (~digits_mask).any():
+        parsed.loc[~digits_mask] = pd.to_datetime(text.loc[~digits_mask], errors="coerce")
+
+    return parsed.dt.normalize()
+
+
 def load_universe_by_date(path: Path, market: str) -> pd.DataFrame:
     if not path.exists():
         sys.exit(f"Universe-by-date file not found: {path}")
@@ -713,7 +742,7 @@ def load_universe_by_date(path: Path, market: str) -> pd.DataFrame:
     if selected_col and selected_col in df.columns:
         df = df[df[selected_col].map(coerce_bool)].copy()
 
-    df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
+    df["trade_date"] = normalize_date_like_series(df["trade_date"])
     df = df[df["trade_date"].notna()].copy()
     df["trade_date"] = df["trade_date"].dt.normalize()
     df["ts_code"] = df["ts_code"].astype(str).str.strip()
@@ -853,7 +882,9 @@ def run(config_ref: str | Path | None = None) -> None:
         live_cfg = {}
 
     load_dotenv()
-    CACHE_DIR = Path(data_cfg.get("cache_dir", "cache"))
+    CACHE_DIR = resolve_repo_path(
+        data_cfg.get("cache_dir", DEFAULT_CACHE_DIR.as_posix())
+    )
     data_interface = DataInterface(MARKET, data_cfg, cache_dir=CACHE_DIR, logger=logger)
     provider = data_interface.provider
 
@@ -903,7 +934,10 @@ def run(config_ref: str | Path | None = None) -> None:
         symbols = load_symbols_file(Path(symbols_file))
 
     if by_date_file:
-        universe_by_date = load_universe_by_date(Path(by_date_file), MARKET)
+        universe_by_date = load_universe_by_date(
+            resolve_repo_path(by_date_file),
+            MARKET,
+        )
         symbols_from_universe = sorted(universe_by_date["ts_code"].unique().tolist())
         if symbols:
             symbols = sorted(set(symbols) | set(symbols_from_universe))
@@ -1084,7 +1118,7 @@ def run(config_ref: str | Path | None = None) -> None:
 
     SAVE_ARTIFACTS = bool(eval_cfg.get("save_artifacts", True))
     SAVE_DATASET = bool(eval_cfg.get("save_dataset", False))
-    OUTPUT_DIR = eval_cfg.get("output_dir", "out/runs")
+    OUTPUT_DIR = eval_cfg.get("output_dir", DEFAULT_RUNS_DIR.as_posix())
     RUN_NAME = eval_cfg.get("run_name")
     if SAVE_DATASET and not SAVE_ARTIFACTS:
         raise SystemExit("eval.save_dataset=true requires eval.save_artifacts=true.")
@@ -1161,6 +1195,21 @@ def run(config_ref: str | Path | None = None) -> None:
             sys.exit("features.cross_sectional.winsorize_pct must be between 0 and 0.5.")
     if CS_METHOD not in {"none", "zscore", "rank"}:
         sys.exit("features.cross_sectional.method must be one of: none, zscore, rank.")
+    missing_cfg = features_cfg.get("missing")
+    if missing_cfg is None:
+        missing_cfg = {}
+    if not isinstance(missing_cfg, dict):
+        sys.exit("features.missing must be a mapping when provided.")
+    FEATURE_MISSING_METHOD = str(missing_cfg.get("method", "none")).strip().lower()
+    if FEATURE_MISSING_METHOD not in {"none", "zero", "cross_sectional_median"}:
+        sys.exit(
+            "features.missing.method must be one of: none, zero, cross_sectional_median."
+        )
+    FEATURE_MISSING_FEATURES = normalize_symbol_list(missing_cfg.get("features"))
+    FEATURE_MISSING_ADD_INDICATORS = bool(missing_cfg.get("add_indicators", False))
+    FEATURE_MISSING_SUFFIX = str(missing_cfg.get("indicator_suffix", "_missing")).strip()
+    if FEATURE_MISSING_ADD_INDICATORS and not FEATURE_MISSING_SUFFIX:
+        sys.exit("features.missing.indicator_suffix cannot be empty.")
 
     try:
         MODEL_TYPE, MODEL_PARAMS = resolve_model_spec(model_cfg)
@@ -1246,6 +1295,48 @@ def run(config_ref: str | Path | None = None) -> None:
     if SAVE_ARTIFACTS:
         run_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Artifacts will be saved to %s", run_dir)
+
+    fundamentals_cols: list[str] = []
+    fund_cache_dir: Optional[Path] = None
+    fundamentals_file_path: Optional[Path] = None
+    if FUNDAMENTALS_ENABLED:
+        if FUNDAMENTALS_SOURCE == "provider" and not fundamentals_provider_supported(
+            FUNDAMENTALS_PROVIDER, MARKET
+        ):
+            message = (
+                "Fundamentals provider mode currently supports Tushare and "
+                "RQData market=hk; use source=file instead."
+            )
+            if FUNDAMENTALS_REQUIRED:
+                sys.exit(message)
+            logger.warning("%s Fundamentals disabled.", message)
+            FUNDAMENTALS_ENABLED = False
+        if FUNDAMENTALS_SOURCE == "provider" and FUNDAMENTALS_PROVIDER == "tushare":
+            endpoint_name = fundamentals_cfg.get("endpoint") or data_cfg.get("fundamentals_endpoint")
+            if not endpoint_name:
+                message = "fundamentals.endpoint is required for provider mode."
+                if FUNDAMENTALS_REQUIRED:
+                    sys.exit(message)
+                logger.warning("%s Fundamentals disabled.", message)
+                FUNDAMENTALS_ENABLED = False
+        if FUNDAMENTALS_SOURCE == "file" and not FUNDAMENTALS_FILE:
+            message = "fundamentals.file is required when fundamentals.source=file."
+            if FUNDAMENTALS_REQUIRED:
+                sys.exit(message)
+            logger.warning("%s Fundamentals disabled.", message)
+            FUNDAMENTALS_ENABLED = False
+        if FUNDAMENTALS_SOURCE == "file" and FUNDAMENTALS_ENABLED:
+            fundamentals_file_path = resolve_repo_path(FUNDAMENTALS_FILE)
+            if not fundamentals_file_path.exists():
+                message = f"Fundamentals file not found: {fundamentals_file_path}"
+                if FUNDAMENTALS_REQUIRED:
+                    sys.exit(message)
+                logger.warning("%s Fundamentals disabled.", message)
+                FUNDAMENTALS_ENABLED = False
+
+    if not FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
+        FEATURES = [feat for feat in FEATURES if feat not in FUNDAMENTALS_FEATURES]
+
     # -----------------------------------------------------------------------------
     # 2. Data download
     # -----------------------------------------------------------------------------
@@ -1320,53 +1411,14 @@ def run(config_ref: str | Path | None = None) -> None:
     if MIN_TURNOVER > 0 and "amount" in df.columns:
         df = df[df["amount"] >= MIN_TURNOVER].copy()
 
-    fundamentals_cols: list[str] = []
-    if FUNDAMENTALS_ENABLED:
-        if FUNDAMENTALS_SOURCE == "provider" and not fundamentals_provider_supported(
-            FUNDAMENTALS_PROVIDER, MARKET
-        ):
-            message = (
-                "Fundamentals provider mode currently supports Tushare and "
-                "RQData market=hk; use source=file instead."
-            )
-            if FUNDAMENTALS_REQUIRED:
-                sys.exit(message)
-            logger.warning("%s Fundamentals disabled.", message)
-            FUNDAMENTALS_ENABLED = False
-        if FUNDAMENTALS_SOURCE == "provider" and FUNDAMENTALS_PROVIDER == "tushare":
-            endpoint_name = fundamentals_cfg.get("endpoint") or data_cfg.get("fundamentals_endpoint")
-            if not endpoint_name:
-                message = "fundamentals.endpoint is required for provider mode."
-                if FUNDAMENTALS_REQUIRED:
-                    sys.exit(message)
-                logger.warning("%s Fundamentals disabled.", message)
-                FUNDAMENTALS_ENABLED = False
-        if FUNDAMENTALS_SOURCE == "file" and not FUNDAMENTALS_FILE:
-            message = "fundamentals.file is required when fundamentals.source=file."
-            if FUNDAMENTALS_REQUIRED:
-                sys.exit(message)
-            logger.warning("%s Fundamentals disabled.", message)
-            FUNDAMENTALS_ENABLED = False
-
-    if not FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
-        FEATURES = [feat for feat in FEATURES if feat not in FUNDAMENTALS_FEATURES]
-
-    fund_cache_dir: Optional[Path] = None
     if FUNDAMENTALS_ENABLED:
         fundamentals_frames = []
         if FUNDAMENTALS_SOURCE == "file":
-            fund_path = Path(FUNDAMENTALS_FILE)
-            if not fund_path.exists():
-                message = f"Fundamentals file not found: {fund_path}"
-                if FUNDAMENTALS_REQUIRED:
-                    sys.exit(message)
-                logger.warning("%s Fundamentals disabled.", message)
-                FUNDAMENTALS_ENABLED = False
+            fund_path = fundamentals_file_path or Path(FUNDAMENTALS_FILE).expanduser()
+            if fund_path.suffix.lower() in {".parquet", ".pq"}:
+                fundamentals_frames.append(pd.read_parquet(fund_path))
             else:
-                if fund_path.suffix.lower() in {".parquet", ".pq"}:
-                    fundamentals_frames.append(pd.read_parquet(fund_path))
-                else:
-                    fundamentals_frames.append(pd.read_csv(fund_path))
+                fundamentals_frames.append(pd.read_csv(fund_path))
         else:
             fund_cache_dir = _resolve_fundamentals_cache_dir(data_cfg, fundamentals_cfg, MARKET)
             fund_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -1413,7 +1465,41 @@ def run(config_ref: str | Path | None = None) -> None:
             fund_df = fund_df[fund_df["trade_date"].notna()].copy()
             fund_df["trade_date"] = fund_df["trade_date"].dt.normalize()
             fund_df["ts_code"] = fund_df["ts_code"].astype(str).str.strip()
-            fund_df = fund_df.drop_duplicates(subset=["trade_date", "ts_code"])
+            fund_df = fund_df.drop_duplicates(subset=["trade_date", "ts_code"]).copy()
+            fund_df = fund_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+            requested_feature_names = set(FEATURES)
+            if (
+                "sales" in requested_feature_names
+                or "delta_sales" in requested_feature_names
+                or "profit_margin" in requested_feature_names
+                or "operating_margin" in requested_feature_names
+                or "cfo_margin" in requested_feature_names
+            ):
+                revenue = (
+                    pd.to_numeric(fund_df["revenue"], errors="coerce")
+                    if "revenue" in fund_df.columns
+                    else pd.Series(np.nan, index=fund_df.index, dtype=float)
+                )
+                operating_revenue = (
+                    pd.to_numeric(fund_df["operating_revenue"], errors="coerce")
+                    if "operating_revenue" in fund_df.columns
+                    else pd.Series(np.nan, index=fund_df.index, dtype=float)
+                )
+                fund_df["sales"] = revenue.combine_first(operating_revenue)
+            if "days_since_report" in requested_feature_names:
+                fund_df["report_trade_date"] = fund_df["trade_date"]
+            delta_base_features = sorted(
+                {
+                    feat.removeprefix("delta_")
+                    for feat in requested_feature_names
+                    if feat.startswith("delta_")
+                }
+            )
+            for base_feature in delta_base_features:
+                if base_feature not in fund_df.columns:
+                    continue
+                base_series = pd.to_numeric(fund_df[base_feature], errors="coerce")
+                fund_df[f"delta_{base_feature}"] = base_series.groupby(fund_df["ts_code"]).diff()
             fundamentals_cols = [
                 col for col in fund_df.columns if col not in {"trade_date", "ts_code"}
             ]
@@ -1423,6 +1509,9 @@ def run(config_ref: str | Path | None = None) -> None:
                 df[fundamentals_cols] = df.groupby("ts_code")[fundamentals_cols].ffill(
                     limit=FUNDAMENTALS_FFILL_LIMIT
                 )
+            if "days_since_report" in FEATURES and "report_trade_date" in df.columns:
+                report_trade_date = pd.to_datetime(df["report_trade_date"], errors="coerce")
+                df["days_since_report"] = (df["trade_date"] - report_trade_date).dt.days
             if FUNDAMENTALS_LOG_MCAP and FUNDAMENTALS_MCAP_COL in df.columns:
                 df[FUNDAMENTALS_LOG_MCAP_COL] = np.where(
                     df[FUNDAMENTALS_MCAP_COL] > 0,
@@ -1550,7 +1639,36 @@ def run(config_ref: str | Path | None = None) -> None:
         if "log_vol" in needed:
             group["log_vol"] = np.log1p(group["vol"].clip(lower=0))
 
-        _safe_ratio("net_profit", "revenue", "profit_margin")
+        if (
+            "sales" in needed
+            or "profit_margin" in needed
+            or "operating_margin" in needed
+            or "cfo_margin" in needed
+        ):
+            revenue = (
+                pd.to_numeric(group["revenue"], errors="coerce")
+                if "revenue" in group.columns
+                else pd.Series(np.nan, index=group.index, dtype=float)
+            )
+            operating_revenue = (
+                pd.to_numeric(group["operating_revenue"], errors="coerce")
+                if "operating_revenue" in group.columns
+                else pd.Series(np.nan, index=group.index, dtype=float)
+            )
+            group["sales"] = revenue.combine_first(operating_revenue)
+
+        _safe_ratio("net_profit", "sales", "profit_margin")
+        _safe_ratio("operating_profit", "sales", "operating_margin")
+        _safe_ratio(
+            "cash_flow_from_operating_activities",
+            "sales",
+            "cfo_margin",
+        )
+        _safe_ratio(
+            "cash_flow_from_operating_activities",
+            "net_profit",
+            "cfo_to_profit",
+        )
         _safe_ratio("revenue", "total_assets", "asset_turnover")
         _safe_ratio("net_profit", "total_assets", "roa")
         _safe_ratio("total_liabilities", "total_assets", "leverage")
@@ -1613,20 +1731,55 @@ def run(config_ref: str | Path | None = None) -> None:
         if bucket_cols:
             eval_extra_df = df[["trade_date", "ts_code"] + bucket_cols].copy()
 
+    missing_fill_features = FEATURE_MISSING_FEATURES or FEATURES
+    missing_fill_features = [
+        feature for feature in missing_fill_features if feature in FEATURES and feature in df.columns
+    ]
+    if FEATURE_MISSING_ADD_INDICATORS and missing_fill_features:
+        indicator_features = []
+        for feature in missing_fill_features:
+            indicator_name = f"{feature}{FEATURE_MISSING_SUFFIX}"
+            if indicator_name in df.columns and indicator_name not in FEATURES:
+                sys.exit(
+                    "features.missing.indicator_suffix collides with an existing column: "
+                    f"{indicator_name}"
+                )
+            if indicator_name not in df.columns:
+                df[indicator_name] = df[feature].isna().astype(np.int8)
+            indicator_features.append(indicator_name)
+        FEATURES = list(dict.fromkeys(FEATURES + indicator_features))
+
     cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + meta_cols + [TARGET]
     cols = list(dict.fromkeys(cols))
     df = df[cols].copy()
 
+    if universe_by_date is not None:
+        before_rows = len(df)
+        df = apply_universe_by_date(df, universe_by_date)
+        after_rows = len(df)
+        logger.info("Applied universe-by-date filter: %s -> %s rows", before_rows, after_rows)
+        if df.empty:
+            sys.exit("Universe-by-date filter removed all rows.")
+
+    if FEATURE_MISSING_METHOD != "none" and missing_fill_features:
+        for feature in missing_fill_features:
+            df[feature] = pd.to_numeric(df[feature], errors="coerce")
+        if FEATURE_MISSING_METHOD == "zero":
+            df[missing_fill_features] = df[missing_fill_features].fillna(0.0)
+        elif FEATURE_MISSING_METHOD == "cross_sectional_median":
+            by_date_median = df.groupby("trade_date")[missing_fill_features].transform("median")
+            df[missing_fill_features] = df[missing_fill_features].fillna(by_date_median)
+        remaining_missing = int(df[missing_fill_features].isna().sum().sum())
+        logger.info(
+            "Applied feature missing fill: method=%s, features=%s, add_indicators=%s, remaining_nans=%s.",
+            FEATURE_MISSING_METHOD,
+            len(missing_fill_features),
+            FEATURE_MISSING_ADD_INDICATORS,
+            remaining_missing,
+        )
+
     required_cols = [PRICE_COL] + FEATURES
     df_features = df.dropna(subset=required_cols).reset_index(drop=True)
-
-    if universe_by_date is not None:
-        before_rows = len(df_features)
-        df_features = apply_universe_by_date(df_features, universe_by_date)
-        after_rows = len(df_features)
-        logger.info("Applied universe-by-date filter: %s -> %s rows", before_rows, after_rows)
-        if df_features.empty:
-            sys.exit("Universe-by-date filter removed all rows.")
 
     if WINSORIZE_PCT:
         def _winsorize(group: pd.DataFrame) -> pd.DataFrame:

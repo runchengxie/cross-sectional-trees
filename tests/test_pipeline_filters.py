@@ -288,7 +288,7 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
     repo_root.mkdir()
     monkeypatch.chdir(repo_root)
 
-    asset_dir = repo_root / "data_assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
     data_dir = asset_dir / "data"
     data_dir.mkdir(parents=True)
     (asset_dir / "manifest.yml").write_text(
@@ -343,7 +343,7 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
         }
     ).to_parquet(data_dir / "00011.HK.parquet", index=False)
 
-    fundamentals_path = repo_root / "out" / "pit_fundamentals.parquet"
+    fundamentals_path = repo_root / "artifacts" / "assets" / "fundamentals" / "pit_fundamentals.parquet"
     assert (
         rqdata_assets.build_hk_pit_fundamentals_file(
             type(
@@ -595,6 +595,320 @@ def test_pipeline_hk_file_fundamentals_derived_slow_features(tmp_path, monkeypat
     for column, expected_value in expected.items():
         assert on_00005[column].iloc[0] == pytest.approx(expected_value)
         assert after_00005[column].iloc[0] == pytest.approx(expected_value)
+
+
+def test_pipeline_hk_file_fundamentals_missing_fill_with_indicators(tmp_path, monkeypatch):
+    dates = pd.date_range("2025-03-10", periods=25, freq="B")
+    symbols = ["00005.HK", "00011.HK", "00016.HK"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    basic_df = pd.DataFrame(
+        {"ts_code": symbols, "name": ["HSBC", "Hang Seng", "Sun Hung Kai"], "list_date": ["20000101"] * 3}
+    )
+
+    fundamentals_path = tmp_path / "pit_fundamentals.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(["2025-03-20", "2025-03-20", "2025-03-20"]),
+            "ts_code": symbols,
+            "revenue": [100.0, 200.0, 300.0],
+            "net_profit": [10.0, 20.0, np.nan],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20250310",
+            "end_date": "20250415",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "file",
+            "file": str(fundamentals_path),
+            "column_map": {},
+            "features": ["revenue", "net_profit"],
+            "auto_add_features": False,
+            "allow_missing_features": True,
+            "ffill": True,
+            "required": True,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["profit_margin"],
+            "cross_sectional": {"method": "none"},
+            "missing": {
+                "method": "cross_sectional_median",
+                "features": ["profit_margin"],
+                "add_indicators": True,
+            },
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "hk-file-fundamentals-missing-fill",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
+    dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
+    dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
+
+    filled_row = dataset[
+        (dataset["ts_code"] == "00016.HK") & (dataset["trade_date"] == "2025-03-20")
+    ]
+    observed_row = dataset[
+        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-20")
+    ]
+
+    assert filled_row["profit_margin"].iloc[0] == pytest.approx(0.10)
+    assert filled_row["profit_margin_missing"].iloc[0] == pytest.approx(1.0)
+    assert observed_row["profit_margin_missing"].iloc[0] == pytest.approx(0.0)
+
+
+def test_pipeline_hk_file_fundamentals_supports_sales_delta_and_report_age(tmp_path, monkeypatch):
+    dates = pd.date_range("2025-03-10", periods=35, freq="B")
+    symbols = ["00005.HK", "00011.HK"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    basic_df = pd.DataFrame(
+        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+    )
+
+    fundamentals_path = tmp_path / "pit_fundamentals.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2025-03-20", "2025-04-10", "2025-03-20", "2025-04-10"]
+            ),
+            "ts_code": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
+            "revenue": [100.0, 130.0, 200.0, 220.0],
+            "operating_revenue": [np.nan, np.nan, np.nan, np.nan],
+            "net_profit": [10.0, 13.0, 20.0, 22.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20250310",
+            "end_date": "20250430",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 2,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "file",
+            "file": str(fundamentals_path),
+            "column_map": {},
+            "features": ["revenue", "operating_revenue", "net_profit"],
+            "auto_add_features": False,
+            "allow_missing_features": True,
+            "ffill": True,
+            "required": True,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sales", "delta_sales", "days_since_report"],
+            "cross_sectional": {"method": "none"},
+            "missing": {"method": "zero", "features": ["delta_sales"]},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "hk-file-fundamentals-delta-sales",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
+    dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
+    dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
+
+    report_row = dataset[
+        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
+    ]
+    after_report_row = dataset[
+        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-11")
+    ]
+
+    assert report_row["sales"].iloc[0] == pytest.approx(130.0)
+    assert report_row["delta_sales"].iloc[0] == pytest.approx(30.0)
+    assert report_row["days_since_report"].iloc[0] == pytest.approx(0.0)
+    assert after_report_row["days_since_report"].iloc[0] == pytest.approx(1.0)
+
+
+def test_pipeline_hk_file_fundamentals_missing_file_fails_before_daily_fetch(tmp_path, monkeypatch):
+    fetch_calls = {"count": 0}
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        fetch_calls["count"] += 1
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", lambda self, symbols=None: pd.DataFrame())
+
+    missing_path = tmp_path / "missing_pit_fundamentals.parquet"
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20250310",
+            "end_date": "20250515",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": ["00005.HK", "00011.HK"],
+            "min_symbols_per_date": 2,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "file",
+            "file": str(missing_path),
+            "column_map": {},
+            "features": ["revenue", "net_profit"],
+            "auto_add_features": True,
+            "ffill": True,
+            "required": True,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["vol"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": False,
+            "output_dir": str(output_dir),
+            "run_name": "hk-file-fundamentals-missing",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match=f"Fundamentals file not found: {missing_path}"):
+        pipeline.run(str(config_path))
+
+    assert fetch_calls["count"] == 0
 
 
 def test_pipeline_feature_formulas(tmp_path, monkeypatch):

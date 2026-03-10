@@ -11,12 +11,13 @@ from typing import Any
 
 import yaml
 
+from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, SWEEPS_DIR as DEFAULT_SWEEPS_DIR_PATH
 from ..config_utils import resolve_pipeline_config
 
 DEFAULT_BASE_CONFIG = "config/hk_selected__baseline.yml"
 DEPRECATED_BASE_CONFIG = "config/hk_selected.yml"
 DEFAULT_RUN_NAME_PREFIX = "hk_sel_"
-DEFAULT_SWEEPS_DIR = "out/sweeps"
+DEFAULT_SWEEPS_DIR = DEFAULT_SWEEPS_DIR_PATH.as_posix()
 DEFAULT_RIDGE_ALPHA = [0.01, 0.1, 1, 10, 100]
 DEFAULT_ELASTICNET_ALPHA = [0.01, 0.1, 1]
 DEFAULT_ELASTICNET_L1_RATIO = [0.1, 0.5, 0.9]
@@ -497,7 +498,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     runs_dir_text = runs_dir_override
     if runs_dir_text is None:
-        runs_dir_text = str(base_eval.get("output_dir", "out/runs"))
+        runs_dir_text = str(base_eval.get("output_dir", DEFAULT_RUNS_DIR.as_posix()))
     runs_dir = _resolve_path(runs_dir_text)
 
     sweep_tag = (str(tag) if tag is not None else _default_tag()).strip()

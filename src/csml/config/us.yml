@@ -3,7 +3,7 @@ market: us
 data:
   start_years: 5
   end_date: "today"
-  cache_dir: "cache"
+  cache_dir: "artifacts/cache"
   cache_tag: null
   cache_mode: "symbol"
   cache_refresh_days: 10
@@ -26,7 +26,7 @@ data:
 fundamentals:
   enabled: true
   source: "file"
-  file: "out/fundamentals/us_fundamentals_daily.csv"
+  file: "artifacts/assets/fundamentals/us_fundamentals_daily.csv"
   endpoint: null
   fields: null
   symbol_param: "ts_code"
@@ -146,7 +146,7 @@ eval:
   report_train_ic: true
   save_artifacts: true
   save_dataset: false
-  output_dir: "out/runs"
+  output_dir: "artifacts/runs"
   run_name: null
   permutation_test:
     enabled: false

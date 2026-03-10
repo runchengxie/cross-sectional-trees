@@ -11,6 +11,13 @@ from typing import Iterable
 
 import yaml
 
+from ..artifacts import (
+    CACHE_DIR as DEFAULT_CACHE_DIR,
+    SNAPSHOTS_DIR as DEFAULT_SNAPSHOTS_DIR,
+    UNIVERSE_DIR as DEFAULT_UNIVERSE_DIR,
+    default_path_text,
+)
+
 
 @dataclass(frozen=True)
 class SnapshotEntry:
@@ -132,8 +139,11 @@ def _git_metadata(repo_root: Path) -> dict | None:
 def add_backup_data_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--out-root",
-        default="data_mirror",
-        help="Snapshot root directory. Default: data_mirror",
+        default=default_path_text(DEFAULT_SNAPSHOTS_DIR),
+        help=(
+            "Snapshot root directory. "
+            f"Default: {default_path_text(DEFAULT_SNAPSHOTS_DIR)}"
+        ),
     )
     parser.add_argument(
         "--name",
@@ -155,12 +165,12 @@ def add_backup_data_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Do not include cache/.",
+        help=f"Do not include {default_path_text(DEFAULT_CACHE_DIR)}/.",
     )
     parser.add_argument(
         "--no-universe",
         action="store_true",
-        help="Do not include out/universe/.",
+        help=f"Do not include {default_path_text(DEFAULT_UNIVERSE_DIR)}/.",
     )
     parser.add_argument(
         "--skip-missing",
@@ -186,9 +196,9 @@ def main(argv: list[str] | None = None) -> int:
 
     requested: list[Path] = []
     if not args.no_cache:
-        requested.append(repo_root / "cache")
+        requested.append(_resolve_path(DEFAULT_CACHE_DIR))
     if not args.no_universe:
-        requested.append(repo_root / "out" / "universe")
+        requested.append(_resolve_path(DEFAULT_UNIVERSE_DIR))
     requested.extend(_resolve_path(item) for item in (args.config or []))
     requested.extend(_resolve_path(item) for item in (args.include_path or []))
 

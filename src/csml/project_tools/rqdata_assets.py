@@ -9,11 +9,14 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+from ..artifacts import (
+    RQDATA_ASSETS_DIR as DEFAULT_RQDATA_ASSETS_DIR,
+)
 from ..config_utils import resolve_pipeline_config
 from ..data_providers import _to_rqdata_symbol
 from .backup_data import _git_metadata
 
-DEFAULT_OUT_ROOT = "data_assets/rqdata"
+DEFAULT_OUT_ROOT = DEFAULT_RQDATA_ASSETS_DIR.as_posix()
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_PIPELINE_FUNDAMENTALS_NAME = "pipeline_fundamentals.parquet"
 PIT_METADATA_COLUMNS = (
@@ -115,7 +118,23 @@ def _load_symbols_from_by_date(path_text: str | Path) -> list[str]:
         df = df[df[selected_col].map(_coerce_bool)].copy()
 
     df = df.rename(columns={date_col: "trade_date", symbol_col: "ts_code"})
-    df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
+    trade_date_text = (
+        df["trade_date"].astype(str).str.strip().str.replace(r"\.0+$", "", regex=True)
+    )
+    digits_mask = trade_date_text.str.fullmatch(r"\d{8}")
+    parsed = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    if digits_mask.any():
+        parsed.loc[digits_mask] = pd.to_datetime(
+            trade_date_text.loc[digits_mask],
+            format="%Y%m%d",
+            errors="coerce",
+        )
+    if (~digits_mask).any():
+        parsed.loc[~digits_mask] = pd.to_datetime(
+            trade_date_text.loc[~digits_mask],
+            errors="coerce",
+        )
+    df["trade_date"] = parsed
     df = df[df["trade_date"].notna()].copy()
     df["ts_code"] = df["ts_code"].astype(str).str.strip()
     df["ts_code"] = df["ts_code"].map(_normalize_hk_symbol)

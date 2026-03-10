@@ -215,6 +215,8 @@ full_project_source.txt
 # Derived outputs
 /out/
 /data_mirror/
+/data_assets/
+/artifacts/
 
 # VS code settings
 .vscode

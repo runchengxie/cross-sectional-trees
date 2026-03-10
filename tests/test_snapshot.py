@@ -59,10 +59,10 @@ def test_snapshot_run_dir_mode_skips_pipeline(monkeypatch):
     )
     monkeypatch.setattr(snapshot.holdings, "main", lambda argv: calls["holdings"].append(argv))
 
-    snapshot.main(["--run-dir", "out/runs/demo", "--format", "csv"])
+    snapshot.main(["--run-dir", "artifacts/runs/demo", "--format", "csv"])
 
     assert calls["holdings"] == [
-        ["--source", "live", "--as-of", "t-1", "--run-dir", "out/runs/demo", "--format", "csv"]
+        ["--source", "live", "--as-of", "t-1", "--run-dir", "artifacts/runs/demo", "--format", "csv"]
     ]
 
 

@@ -11,6 +11,11 @@ import pandas as pd
 from dotenv import load_dotenv
 import yaml
 
+from ..artifacts import (
+    HK_CONNECT_SYMBOLS_FILE,
+    UNIVERSE_BY_DATE_FILE,
+    UNIVERSE_META_FILE,
+)
 from ..config_utils import resolve_config
 
 DEFAULTS = {
@@ -23,11 +28,11 @@ DEFAULTS = {
     "min_window_days": 30,
     "top_quantile": 0.8,
     "min_turnover": 0.0,
-    "out": "out/universe/universe_by_date.csv",
-    "latest_out": "out/universe/hk_connect_symbols.txt",
+    "out": UNIVERSE_BY_DATE_FILE.as_posix(),
+    "latest_out": HK_CONNECT_SYMBOLS_FILE.as_posix(),
     "append_date": True,
     "write_meta": True,
-    "meta_out": "out/universe/universe_by_date.meta.yml",
+    "meta_out": UNIVERSE_META_FILE.as_posix(),
     "rqdata_user": None,
     "rqdata_pass": None,
 }

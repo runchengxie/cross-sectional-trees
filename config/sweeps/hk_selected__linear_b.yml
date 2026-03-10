@@ -10,8 +10,8 @@
 base_config: config/hk_selected__baseline.yml
 run_name_prefix: hk_sel_
 tag: hk_linear_b
-sweeps_dir: out/sweeps
-runs_dir: out/runs
+sweeps_dir: artifacts/sweeps
+runs_dir: artifacts/runs
 
 grid:
   ridge_alpha: [30, 100, 300, 1000]

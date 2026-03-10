@@ -1,13 +1,13 @@
 ## HK baseline using local PIT fundamentals file built from RQData assets
 ## Prepare the file first:
 ## 1) csml rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest ...
-## 2) csml rqdata build-hk-pit-fundamentals --asset-dir data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest ...
+## 2) csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest ...
 market: hk
 data:
   provider: rqdata
   start_date: '20150101'
   end_date: '20251231'
-  cache_dir: cache
+  cache_dir: artifacts/cache
   cache_tag: null
   cache_mode: symbol
   cache_refresh_days: 10
@@ -41,7 +41,7 @@ data:
 fundamentals:
   enabled: true
   source: file
-  file: data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+  file: artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
   column_map: {}
   features:
   - revenue
@@ -62,7 +62,7 @@ universe:
   require_by_date: true
   symbols: []
   symbols_file: null
-  by_date_file: out/universe/universe_by_date.csv
+  by_date_file: artifacts/assets/universe/universe_by_date.csv
   min_symbols_per_date: 5
   min_listed_days: 60
   min_turnover: 10000000
@@ -132,7 +132,7 @@ eval:
   report_train_ic: true
   save_artifacts: true
   save_dataset: false
-  output_dir: out/runs
+  output_dir: artifacts/runs
   run_name: hk_sel_xgb_reg_pit_file
   permutation_test:
     enabled: true

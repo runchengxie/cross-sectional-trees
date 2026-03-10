@@ -24,7 +24,7 @@ def test_linear_sweep_generates_configs_runs_and_summarizes(tmp_path, monkeypatc
             "sample_weight_mode": "date_equal",
         },
         "eval": {
-            "output_dir": "out/runs",
+            "output_dir": "artifacts/runs",
             "run_name": "base",
         },
     }

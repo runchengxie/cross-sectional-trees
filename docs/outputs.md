@@ -6,13 +6,27 @@
 
 默认每次运行会写到：
 
-`out/runs/<run_name>_<timestamp>_<config_hash>/`
+`artifacts/runs/<run_name>_<timestamp>_<config_hash>/`
 
-`live` 推荐单独目录，例如 `out/live_runs/...`。
+`live` 推荐单独目录，例如 `artifacts/live_runs/...`。
+
+当前默认根目录结构：
+
+```text
+artifacts/
+  cache/
+  assets/
+    rqdata/
+    universe/
+  runs/
+  live_runs/
+  sweeps/
+  snapshots/
+```
 
 另有一类独立于 run 目录的 provider 资产镜像：
 
-`data_assets/rqdata/hk/<dataset>/<snapshot>/`
+`artifacts/assets/rqdata/hk/<dataset>/<snapshot>/`
 
 当前 `dataset` 包括：
 
@@ -27,7 +41,7 @@
 目录结构：
 
 ```text
-data_assets/rqdata/hk/<dataset>/<snapshot>/
+artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
   manifest.yml
   fields.txt
   symbols.txt
@@ -52,13 +66,13 @@ data_assets/rqdata/hk/<dataset>/<snapshot>/
 补充：
 
 * `manifest.yml` 的 `status` 会记录本次镜像是否完整完成。
-* 这类镜像目录供下游项目复用，不属于 `cache/` 的 query cache。
+* 这类镜像目录供下游项目复用，不属于 `artifacts/cache/` 的 query cache。
 
 ## PIT fundamentals 平面文件
 
 默认路径：
 
-`data_assets/rqdata/hk/pit_financials/<snapshot>/pipeline_fundamentals.parquet`
+`artifacts/assets/rqdata/hk/pit_financials/<snapshot>/pipeline_fundamentals.parquet`
 
 这类文件由 `csml rqdata build-hk-pit-fundamentals` 生成，也可以通过 `--out` 写到其他位置。
 
@@ -261,7 +275,7 @@ score = backtest_sharpe
 
 默认位置：
 
-`out/runs/grid_summary.csv`（可用 `--output` 覆盖）。
+`artifacts/runs/grid_summary.csv`（可用 `--output` 覆盖）。
 
 来源：
 
@@ -275,12 +289,12 @@ score = backtest_sharpe
 run_name,top_k,cost_bps,buffer_exit,buffer_entry,weighting,summary_path,output_dir,label_horizon_days,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,backtest_periods,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,status,error
 ```
 
-### `csml sweep-linear`：`out/sweeps/<tag>/`
+### `csml sweep-linear`：`artifacts/sweeps/<tag>/`
 
 目录结构：
 
 ```text
-out/sweeps/<tag>/
+artifacts/sweeps/<tag>/
   configs/
     ridge_*.yml
     elasticnet_*.yml
@@ -295,24 +309,45 @@ out/sweeps/<tag>/
 1. `run_results.csv` 列契约：`order,run_name,config_path,status,error`
 1. `runs_summary.csv` 列契约与 `csml summarize` 章节一致。
 
-### `csml backup-data`：`data_mirror/<name>/`
+### `csml backup-data`：`artifacts/snapshots/<name>/`
 
 目录结构：
 
 ```text
-data_mirror/<name>/
+artifacts/snapshots/<name>/
   manifest.yml
-  cache/...
-  out/universe/...
+  artifacts/cache/...
+  artifacts/assets/universe/...
   config/...
 ```
 
 其中：
 
 1. `manifest.yml` 记录快照名、生成时间、来源路径、复制后的目标路径、`kind/file_count/total_bytes` 汇总，以及当前 git 提交信息（若可识别）。
-1. 默认会把 `cache/` 和 `out/universe/` 一起复制；额外路径由 `--config` 和 `--include-path` 决定。
+1. 默认会把 `artifacts/cache/` 和 `artifacts/assets/universe/` 一起复制；额外路径由 `--config` 和 `--include-path` 决定。
 1. 这是本地私有快照工具，不会重新向 provider 拉数。
-1. 若需要公开分享，请另做一份不含 `cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、汇总 CSV 和简短说明。
+1. 若需要公开分享，请另做一份不含 `artifacts/cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、汇总 CSV 和简短说明。
+
+### 旧目录迁移
+
+当前仓库默认只使用 `artifacts/` 布局。
+
+如果本地还保留旧目录，可执行：
+
+```bash
+csml migrate-artifacts
+```
+
+默认会把这些目录搬到新布局：
+
+* `cache/` -> `artifacts/cache/`
+* `out/fundamentals/` -> `artifacts/assets/fundamentals/`
+* `data_assets/rqdata/` -> `artifacts/assets/rqdata/`
+* `out/universe/` -> `artifacts/assets/universe/`
+* `out/runs/` -> `artifacts/runs/`
+* `out/live_runs/` -> `artifacts/live_runs/`
+* `out/sweeps/` -> `artifacts/sweeps/`
+* `data_mirror/` -> `artifacts/snapshots/`
 
 ## 其他常用文件
 

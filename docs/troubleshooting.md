@@ -99,7 +99,7 @@ csml rqdata quota --pretty
 
 先看：
 
-1. `out/runs` 下是否真的存在 `summary.json`
+1. `artifacts/runs` 下是否真的存在 `summary.json`
 2. 先去掉全部 `--exclude-flag-*` 看全量结果
 3. `summary.json -> backtest.stats.periods`
 4. `summary.json -> backtest.stats.avg_turnover`
@@ -107,7 +107,7 @@ csml rqdata quota --pretty
 
 建议：
 
-* 先执行 `csml summarize --runs-dir out/runs --sort-by score`
+* 先执行 `csml summarize --runs-dir artifacts/runs --sort-by score`
 * 确认哪些 `flag_*` 为 `true` 后，再逐步加回排除参数
 * 若空结果来自短样本，优先重跑更长样本；只在明确知道原因时下调 `--short-sample-periods`
 
@@ -180,7 +180,7 @@ csml rqdata quota --pretty
 
 1. 固定 `start_date` 和 `end_date`
 2. 固定 `data.cache_tag`
-3. 归档 `cache/`、`config.used.yml`、`summary.json` 和 git commit
+3. 归档 `artifacts/cache/`、`config.used.yml`、`summary.json` 和 git commit
 
 相关文档：
 
@@ -259,3 +259,22 @@ csml init-config --market hk --out config/
 
 * `docs/providers.md`
 * `docs/dev.md`
+
+## 11. 升级后提示找不到 `artifacts/...`，但本地数据还在旧目录
+
+常见原因：
+
+* 本地还保留旧布局的 `cache/`、`out/`、`data_assets/` 或 `data_mirror/`
+* 仓库配置已经切到 `artifacts/`，但旧数据还没迁过去
+
+处理：
+
+```bash
+csml migrate-artifacts
+```
+
+补充：
+
+* 这个命令默认执行移动，不会重新拉取 provider 数据。
+* 如果你想先看影响范围，可先执行 `csml migrate-artifacts --dry-run`。
+* 如果需要保留旧目录副本，可执行 `csml migrate-artifacts --copy`。

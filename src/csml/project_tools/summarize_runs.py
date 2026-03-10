@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR
 from ..date_utils import is_relative_date_token
 from ..sharpe_stats import annualized_sharpe_to_periodic, deflated_sharpe_ratio
 
@@ -641,7 +642,11 @@ def _extract_row(source_runs_dir: Path, summary_path: Path, args: argparse.Names
 def _resolve_output_path(args: argparse.Namespace, runs_dirs: list[Path]) -> Path:
     if args.output:
         return _resolve_path(args.output)
-    default_root = runs_dirs[0] if runs_dirs else _resolve_path("out/runs")
+    default_root = (
+        runs_dirs[0]
+        if runs_dirs
+        else _resolve_path(DEFAULT_RUNS_DIR)
+    )
     return default_root / "runs_summary.csv"
 
 
@@ -652,7 +657,7 @@ def add_summarize_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPars
         default=None,
         help=(
             "Root directory to scan recursively for run folders (repeatable). "
-            "Default: out/runs"
+            f"Default: {DEFAULT_RUNS_DIR.as_posix()}"
         ),
     )
     parser.add_argument(
@@ -750,7 +755,10 @@ def run(args: argparse.Namespace) -> Path:
     if args.latest_n is not None and int(args.latest_n) <= 0:
         raise SystemExit("--latest-n must be a positive integer.")
 
-    runs_dirs = [_resolve_path(path) for path in (args.runs_dir or ["out/runs"])]
+    runs_dirs = [
+        _resolve_path(path)
+        for path in (args.runs_dir or [DEFAULT_RUNS_DIR.as_posix()])
+    ]
     run_name_prefixes = _parse_prefixes(args.run_name_prefix)
     since_dt = _parse_since(args.since)
     summary_entries = _iter_summary_files(runs_dirs)
