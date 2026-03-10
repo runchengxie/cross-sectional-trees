@@ -18,6 +18,10 @@
 
 补充：`rqdata` 的基本面 provider 模式当前只覆盖 `market=hk`。默认走 `rqdatac.get_factor`。其他市场仍建议使用 `fundamentals.source=file`。
 
+补充：`RQData market=hk` 的行情覆盖范围大于仓库里的默认 `hk-connect` 研究股票池。仓库当前提供的是港股通 PIT universe 模板；如果你想研究更广的港股普通股池，需要单独准备 `universe.by_date_file` 或新的 universe builder。
+
+补充：港股 ETF、杠杆/反向产品或其他非普通股产品，常见情况是能取到日线，但拿不到 `market_cap / pe_ttm / pb` 这类 provider 基本面字段。pipeline 会跳过这些 symbol，并给 warning。
+
 补充：`csml holdings/snapshot/alloc --as-of last_trading_day` 在能识别到 `provider=rqdata` + `market` 上下文时同样按交易日解析；缺少上下文时回退自然日（会输出 warning）。
 
 ## Symbol 规则（重点是 HK）
@@ -55,6 +59,7 @@ provider 侧转换：
 1. 命中缓存后触发末端刷新（`cache_refresh_days > 0`）。
 1. 使用相对日期（`today/t-1`）导致样本窗口每日漂移。
 1. 改动了 universe 或长历史窗口后，最好配一个新的 `cache_tag`，避免把旧研究缓存和新研究混用。
+1. 同时维护 `frozen` 和 `rolling` 两套研究时，建议给两套数据使用不同的 `cache_tag`。
 
 ## 速率限制与重试
 
