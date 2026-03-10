@@ -438,7 +438,7 @@ def test_pipeline_run_offline_with_xgb_ranker(tmp_path, monkeypatch):
                 "objective": "rank:pairwise",
                 "random_state": 7,
             },
-            "sample_weight_mode": "none",
+            "sample_weight_mode": "date_equal",
         },
         "eval": {
             "test_size": 0.2,
