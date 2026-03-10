@@ -399,6 +399,7 @@ csml rqdata list-hk-financial-fields --contains profit --out out/hk_profit_field
 ```bash
 csml rqdata mirror-hk-pit-financials \
   --config config/hk_selected__baseline.yml \
+  --name hk_selected_pit_2011_2025_latest \
   --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
   --start-quarter 2011q1 \
   --end-quarter 2025q4 \
@@ -454,8 +455,8 @@ csml rqdata mirror-hk-financial-details \
 
 ```bash
 csml rqdata build-hk-pit-fundamentals \
-  --asset-dir data_assets/rqdata/hk/pit_financials/pit_demo \
-  --out data_assets/rqdata/hk/pit_financials/pit_demo/pipeline_fundamentals.parquet
+  --asset-dir data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --out data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 ```
 
 ## 15) `csml tushare verify-token`

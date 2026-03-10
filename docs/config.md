@@ -31,12 +31,14 @@ csml init-config --market hk --out config/
 HK 相关配置建议按职责使用：
 
 * `config/hk_selected__baseline.yml`：通用基线配置。适合 `sweep-linear` 和线性模型批跑。
+* `config/hk_selected__baseline_pit_file.yml`：读取本地 PIT fundamentals 文件的 HK 基线配置。
 * `config/hk_selected__xgb_regressor.yml`：显式 XGB 回归实验配置。
 * `config/hk_selected__xgb_ranker_pairwise.yml`：显式 XGB 排序实验配置。
 
 实践建议：
 
 * 线性模型批跑时，优先用 `config/hk_selected__baseline.yml` 作为基础配置。
+* 如果你已经执行过 `csml rqdata build-hk-pit-fundamentals`，并希望研究直接读取本地财报文件，可切到 `config/hk_selected__baseline_pit_file.yml`。
 * 非线性对照时，显式指定对应的 XGB 配置文件。
 * HK selected 基线现在默认覆盖 `2015-01-01` 到 `2025-12-31`，配合 PIT universe 做 10y+ 回测。
 * 旧的 `config/hk_selected.yml` 已弃用。若 `sweep-linear` 遇到该路径且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
