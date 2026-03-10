@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 import yaml
 
 from csml import pipeline
@@ -457,6 +458,143 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
     assert after_00005["revenue"].eq(100.0).all()
     assert before_00011["revenue"].isna().all()
     assert on_00011["revenue"].eq(220.0).all()
+
+
+def test_pipeline_hk_file_fundamentals_derived_slow_features(tmp_path, monkeypatch):
+    dates = pd.date_range("2025-03-10", periods=40, freq="B")
+    symbols = ["00005.HK", "00011.HK"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    basic_df = pd.DataFrame(
+        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+    )
+
+    fundamentals_path = tmp_path / "pit_fundamentals.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(["2025-03-20", "2025-03-20"]),
+            "ts_code": ["00005.HK", "00011.HK"],
+            "revenue": [100.0, 220.0],
+            "net_profit": [10.0, 22.0],
+            "total_assets": [200.0, 440.0],
+            "total_liabilities": [80.0, 176.0],
+            "cash_flow_from_operating_activities": [16.0, 18.0],
+            "accounts_receivable": [20.0, 44.0],
+            "inventory": [15.0, 33.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20250310",
+            "end_date": "20250515",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 2,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "file",
+            "file": str(fundamentals_path),
+            "column_map": {},
+            "features": [
+                "profit_margin",
+                "asset_turnover",
+                "roa",
+                "leverage",
+                "cfo_to_assets",
+                "accrual_ratio",
+                "receivables_to_revenue",
+                "inventory_to_revenue",
+            ],
+            "auto_add_features": True,
+            "ffill": True,
+            "required": True,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["profit_margin"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "hk-file-fundamentals-derived",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
+    dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
+    dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
+
+    before_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-19")]
+    on_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-20")]
+    after_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-21")]
+
+    derived_cols = [
+        "profit_margin",
+        "asset_turnover",
+        "roa",
+        "leverage",
+        "cfo_to_assets",
+        "accrual_ratio",
+        "receivables_to_revenue",
+        "inventory_to_revenue",
+    ]
+    assert before_00005[derived_cols].isna().all().all()
+
+    expected = {
+        "profit_margin": 0.10,
+        "asset_turnover": 0.50,
+        "roa": 0.05,
+        "leverage": 0.40,
+        "cfo_to_assets": 0.08,
+        "accrual_ratio": -0.03,
+        "receivables_to_revenue": 0.20,
+        "inventory_to_revenue": 0.15,
+    }
+    for column, expected_value in expected.items():
+        assert on_00005[column].iloc[0] == pytest.approx(expected_value)
+        assert after_00005[column].iloc[0] == pytest.approx(expected_value)
 
 
 def test_pipeline_feature_formulas(tmp_path, monkeypatch):

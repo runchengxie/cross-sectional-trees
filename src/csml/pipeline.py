@@ -1481,6 +1481,21 @@ def run(config_ref: str | Path | None = None) -> None:
         group = group.sort_values("trade_date").copy()
         needed = set(FEATURES)
 
+        def _safe_ratio(
+            numerator_col: str,
+            denominator_col: str,
+            out_col: str,
+        ) -> None:
+            if out_col not in needed:
+                return
+            if numerator_col not in group.columns or denominator_col not in group.columns:
+                return
+            numerator = pd.to_numeric(group[numerator_col], errors="coerce")
+            denominator = pd.to_numeric(group[denominator_col], errors="coerce")
+            valid_denominator = denominator.where(denominator.notna() & (denominator != 0))
+            ratio = numerator / valid_denominator
+            group[out_col] = ratio.replace([np.inf, -np.inf], np.nan)
+
         sma_windows = set(parse_feature_windows(FEATURES, "sma_"))
         sma_windows.update(parse_feature_windows(FEATURES, "sma_", "_diff"))
         if not sma_windows:
@@ -1534,6 +1549,30 @@ def run(config_ref: str | Path | None = None) -> None:
 
         if "log_vol" in needed:
             group["log_vol"] = np.log1p(group["vol"].clip(lower=0))
+
+        _safe_ratio("net_profit", "revenue", "profit_margin")
+        _safe_ratio("revenue", "total_assets", "asset_turnover")
+        _safe_ratio("net_profit", "total_assets", "roa")
+        _safe_ratio("total_liabilities", "total_assets", "leverage")
+        _safe_ratio(
+            "cash_flow_from_operating_activities",
+            "total_assets",
+            "cfo_to_assets",
+        )
+        if "accrual_ratio" in needed:
+            if (
+                "net_profit" in group.columns
+                and "cash_flow_from_operating_activities" in group.columns
+                and "total_assets" in group.columns
+            ):
+                net_profit = pd.to_numeric(group["net_profit"], errors="coerce")
+                cfo = pd.to_numeric(group["cash_flow_from_operating_activities"], errors="coerce")
+                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
+                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
+                accrual = (net_profit - cfo) / valid_assets
+                group["accrual_ratio"] = accrual.replace([np.inf, -np.inf], np.nan)
+        _safe_ratio("accounts_receivable", "revenue", "receivables_to_revenue")
+        _safe_ratio("inventory", "revenue", "inventory_to_revenue")
 
         if LABEL_SHIFT_DAYS > 0:
             shifted_price = group[PRICE_COL].shift(-LABEL_SHIFT_DAYS)

@@ -32,6 +32,9 @@ HK 相关配置建议按职责使用：
 
 * `config/hk_selected__baseline.yml`：通用基线配置。适合 `sweep-linear` 和线性模型批跑。
 * `config/hk_selected__baseline_pit_file.yml`：读取本地 PIT fundamentals 文件的 HK 基线配置。
+* `config/hk_selected__provider_quarterly_valuation.yml`：直接读取 provider 基本面字段的季度估值对照配置。适合先做最小验证。
+* `config/hk_selected__baseline_pit_quarterly.yml`：季度调仓的 HK PIT 财报基线配置。
+* `config/hk_selected__pit_quarterly_hybrid.yml`：季度调仓的 HK PIT 财报 + 慢技术面混合配置。
 * `config/hk_selected__xgb_regressor.yml`：显式 XGB 回归实验配置。
 * `config/hk_selected__xgb_ranker_pairwise.yml`：显式 XGB 排序实验配置。
 
@@ -39,6 +42,9 @@ HK 相关配置建议按职责使用：
 
 * 线性模型批跑时，优先用 `config/hk_selected__baseline.yml` 作为基础配置。
 * 如果你已经执行过 `csml rqdata build-hk-pit-fundamentals`，并希望研究直接读取本地财报文件，可切到 `config/hk_selected__baseline_pit_file.yml`。
+* 如果你想先确认“季度低频 + 估值字段”有没有方向，可先跑 `config/hk_selected__provider_quarterly_valuation.yml`。
+* 如果你要研究低频财报 alpha，先用 `config/hk_selected__baseline_pit_quarterly.yml`。它把标签、评估和回测一起切到季度口径。
+* 如果你要把慢财报信号和价格趋势一起看，再切到 `config/hk_selected__pit_quarterly_hybrid.yml`。
 * 非线性对照时，显式指定对应的 XGB 配置文件。
 * HK selected 基线现在默认覆盖 `2015-01-01` 到 `2025-12-31`，配合 PIT universe 做 10y+ 回测。
 * 旧的 `config/hk_selected.yml` 已弃用。若 `sweep-linear` 遇到该路径且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
@@ -282,6 +288,12 @@ model:
 * HK 常用映射可直接写成：`market_cap -> hk_total_market_val`、`pe_ttm -> pe_ratio_ttm`、`pb -> pb_ratio_ttm`
 * 缺文件时默认 warning 并跳过，可用 `required=true` 改成报错
 * 如果文件来自 `csml rqdata build-hk-pit-fundamentals`，默认 `trade_date=info_date`。常见接法是保留 `fundamentals.ffill=true`，让披露后的交易日沿用最近一版财报值
+
+季度 PIT 研究时，建议再注意三件事：
+
+* 标签、评估和回测的 `rebalance_frequency` 一起改成 `Q`。这样口径一致，结果更容易解释。
+* 优先使用 `source=file` + PIT fundamentals 文件。季度财报研究更依赖披露时点，直接读本地 PIT 文件更稳妥。
+* 先跑原始财报字段，再跑派生比率。常见慢因子包括 `profit_margin`、`asset_turnover`、`roa`、`leverage`、`cfo_to_assets`、`accrual_ratio`、`receivables_to_revenue`、`inventory_to_revenue`。
 
 ## `live`
 
