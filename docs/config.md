@@ -1,154 +1,273 @@
 # 配置参考
 
-内置模板位于 `src/csml/config/*.yml`，导出后的配置默认放在 `config/`。`--config` 支持内置别名（`default/cn/hk/us`）或文件路径。
-
-模板导出示例：
+内置模板位于 `src/csml/config/*.yml`。导出后的配置默认放在 `config/`。
 
 ```bash
 csml init-config --market hk --out config/
 ```
 
-补充文档：
+相关文档：
 
-* 输出字段与产物说明：`docs/outputs.md`
-* 数据源差异与缓存行为：`docs/providers.md`
+* CLI 用法：`docs/cli.md`
+* 数据源差异：`docs/providers.md`
+* 输出文件与字段：`docs/outputs.md`
+* 常见报错：`docs/troubleshooting.md`
 
-## HK 配置角色分工（推荐）
+## 开始前先决定这几件事
 
-为避免研究流程里“配置命名=模型类型”造成误解，HK 相关文件建议按下面职责使用：
+第一次改配置时，优先看这些键：
 
-* `config/hk_selected__baseline.yml`：通用基线配置入口（推荐用于 `sweep-linear` 的 `base_config`）。
-  * 作用：提供统一的 `data/universe/label/features/eval/backtest` 基线；`sweep-linear` 会在运行时覆盖 `model.type` 与线性模型参数。
+* `data.provider`：先确定数据源。
+* `data.start_date` / `data.end_date`：复现实验优先用绝对日期。
+* `universe.mode` + `universe.by_date_file`：长历史回测优先 PIT。
+* `model.type`：先确定是线性基线还是 XGB 对照。
+* `eval.top_k` / `backtest.top_k`：决定选股数量。
+* `eval.transaction_cost_bps` / `backtest.transaction_cost_bps`：先把成本假设设清楚。
+* `label.shift_days`：会直接影响“当前持仓”的解释。
+* `live.enabled`：如果需要当前持仓快照，再开启 live。
+
+## HK 配置角色分工
+
+HK 相关配置建议按职责使用：
+
+* `config/hk_selected__baseline.yml`：通用基线配置。适合 `sweep-linear` 和线性模型批跑。
 * `config/hk_selected__xgb_regressor.yml`：显式 XGB 回归实验配置。
-  * 作用：用于单独跑/对照非线性模型（如 `csml run --config config/hk_selected__xgb_regressor.yml`）。
+* `config/hk_selected__xgb_ranker_pairwise.yml`：显式 XGB 排序实验配置。
 
 实践建议：
 
-* 线性模型批跑：优先用 `config/hk_selected__baseline.yml`（语义清晰，避免把 sweep 基线和某个具体模型文件耦合）。
-* 非线性对照：显式指定 `config/hk_selected__xgb_regressor.yml` 或 `config/hk_selected__xgb_ranker_pairwise.yml`。
-* 历史兼容：旧的 `config/hk_selected.yml` 已弃用；`sweep-linear` 遇到该路径且文件不存在时会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
+* 线性模型批跑时，优先用 `config/hk_selected__baseline.yml` 作为基础配置。
+* 非线性对照时，显式指定对应的 XGB 配置文件。
+* 旧的 `config/hk_selected.yml` 已弃用。若 `sweep-linear` 遇到该路径且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
 
-## 关键参数
+## 顶层配置块
 
-* `universe`：股票池、过滤条件、最小截面规模（支持 `by_date_file` 动态池；可用 `mode/require_by_date/suspended_policy` 明确 PIT 与停牌处理）
+常见顶层键：
+
 * `market`：`cn` / `hk` / `us`
-* `data`：`provider`、`rqdata` / `eodhd` 或 `daily_endpoint` / `basic_endpoint` / `column_map`（字段映射为 `trade_date/ts_code/close/vol/amount`）、`cache_tag`、`retry`
-* `fundamentals`：Level 0 基本面数据合并（`features`/`column_map`/`ffill`/`log_market_cap`/`required`）
-* `label`：预测窗口、shift、winsorize（支持 `horizon_mode=next_rebalance`）
-* `features`：特征清单与窗口
-* `model`：模型配置（`type + params + sample_weight_mode`）；支持 `xgb_regressor`、`xgb_ranker`、`ridge`、`elasticnet`
-* `eval`：切分、分位数、换手成本、embargo/purge、`signal_direction_mode`、`min_abs_ic_to_flip`、`sample_on_rebalance_dates`，以及可选的 `report_train_ic`、`save_artifacts`、`save_dataset`、`permutation_test`、`walk_forward`、`final_oos`，还可配置 `rolling`（滚动 IC/Sharpe 窗口）与 `bucket_ic`（分桶 IC）
-* `backtest`：再平衡频率、Top-K、成本、`long_only/short_k`、基准、`exit_mode`、`exit_price_policy` 与 `buffer_exit/buffer_entry`，可选 `execution`（cost_model / exit_policy）
-* `live`：可选“当下持仓快照”，用于在固定回测之外输出当前组合
+* `data`：数据源、日期区间、缓存、重试
+* `universe`：股票池、过滤条件、PIT 文件
+* `fundamentals`：基本面数据源、列映射、缺失处理
+* `label`：预测窗口、shift、截尾方式
+* `features`：特征列表与窗口
+* `model`：模型类型、参数、样本权重
+* `eval`：切分、IC、换手、稳健性检验和可选产物
+* `backtest`：调仓频率、Top-K、成本、退出规则
+* `live`：当前持仓快照
 
-## 模型切换示例
+## 模型切换
 
 ```yaml
 model:
-  type: ridge            # xgb_regressor / xgb_ranker / ridge / elasticnet
+  type: ridge
   params:
     alpha: 1.0
   sample_weight_mode: date_equal
 ```
 
-若未显式设置 `model.type`，默认会使用 `xgb_regressor`。
+支持的模型：
 
-`xgb_ranker` 会按 `trade_date` 自动分组训练（query group），其余模型按回归流程训练。
+* `xgb_regressor`
+* `xgb_ranker`
+* `ridge`
+* `elasticnet`
 
-## 数据与缓存（data）
+补充：
 
-常用键：
+* 未显式设置 `model.type` 时，默认使用 `xgb_regressor`。
+* `xgb_ranker` 会按 `trade_date` 自动分组训练，其余模型走回归流程。
 
-* `start_date` / `start_years`：若同时配置，`start_date` 优先生效；`start_years` 会从 `end_date` 往前回推。
-* `end_date`：支持 `today` / `t-1` / `last_trading_day` / `last_completed_trading_day` / `YYYYMMDD`。
-* `price_col`：价格列名（用于标签与回测）。
-* `cache_dir`：缓存目录。
-* `cache_tag` / `cache_version`：缓存命名空间（同一数据源下隔离不同版本）。
-* `cache_mode` / `daily_cache_mode`：`symbol`（每个 symbol 一个缓存）或 `range/window`（按时间区间缓存）。
-* `cache_refresh_days`：命中缓存时刷新最近 N 天的范围（仅 `symbol` 模式有意义）。
-* `cache_refresh_on_hit`：命中缓存时是否也触发刷新。
+## `data`
 
-TuShare 相关可覆盖项（按需配置）：
+高频键：
 
-* `daily_endpoint` / `basic_endpoint`：覆盖默认接口。
-* `daily_fields` / `basic_fields`：覆盖字段列表。
-* `daily_params` / `basic_params`：额外参数（与上面字段合并）。
-* `daily_symbol_param` / `daily_start_param` / `daily_end_param`：覆盖接口参数名。
+* `provider`：`tushare` / `rqdata` / `eodhd`
+* `start_date` / `start_years`：两者同时存在时，`start_date` 优先生效
+* `end_date`
+* `price_col`
+* `cache_dir`
+* `cache_tag` / `cache_version`
+* `cache_mode` / `daily_cache_mode`
+* `cache_refresh_days`
+* `cache_refresh_on_hit`
+* `retry`
 
-## 回测执行细节（backtest）
+### 日期 token
 
-关键键：
+`end_date` 支持：
 
-* `exit_price_policy`：`strict` / `ffill` / `delay`。
-  * `strict`：到期日没价格（或不可交易）则该持仓本期不计算退出。
-  * `ffill`：用到期日前最近可用价格退出。
-  * `delay`：向后找最近可用价格退出（可能导致该期退出日后移）。
-* `exit_fallback_policy`：`ffill` / `none`（主要给 `delay` 使用）。
-  * `ffill`：`delay` 向后找不到可用价时，回退到到期日前最近可用价。
-  * `none`：`delay` 向后找不到可用价时，不做回退（该持仓本期不计算退出）。
-* `tradable_col`：回测可交易性列名，默认 `is_tradable`。
-  * 若列存在：入场与退出都会受该列约束（`False` 视为不可交易）。
-  * 若列不存在：回测退化为只看价格列可用性。
-  * 当 `exit_price_policy=delay` 时，summary 的回测统计会额外给出 `avg_exit_lag_days/max_exit_lag_days/periods_with_delayed_exit`。
+* `today`
+* `t-1`
+* `last_trading_day`
+* `last_completed_trading_day`
+* `YYYYMMDD`
 
-与 `universe.suspended_policy` 的闭环：
+补充：
 
-* `universe.suspended_policy=mark`：保留样本并标记 `is_tradable`（推荐与 `backtest.tradable_col=is_tradable` 配合）。
-* `universe.suspended_policy=filter`：前置过滤停牌样本，回测阶段通常更少触发不可交易分支。
+* `last_trading_day` 和 `last_completed_trading_day` 是否严格按交易日解析，取决于 provider 和命令上下文。
+* 做自动化任务或复现实验时，优先使用绝对日期。
+* provider 差异见 `docs/providers.md`，命令侧行为见 `docs/cli.md`。
 
-优先级说明：
+### 缓存
 
-* 旧键：`backtest.exit_price_policy` / `backtest.exit_fallback_policy`
-* 新键：`backtest.execution.exit_policy.price` / `backtest.execution.exit_policy.fallback`
-* 若两者同时存在，`backtest.execution.exit_policy.*` 最终生效（旧键作为默认值/兼容入口）。
+`cache_mode` / `daily_cache_mode` 支持：
 
-## 切分泄漏防护（eval）
+* `symbol`：按单票缓存
+* `range` / `window`：按时间区间缓存
 
-关键键：
+常见建议：
 
-* `eval.purge_days`
-* `eval.embargo_days`
+* 需要隔离实验版本时，设置 `data.cache_tag`
+* 想减少“同配置结果漂移”时，固定绝对日期并保留缓存目录
 
-默认行为：
+### TuShare 覆盖项
 
-* `eval.purge_days` 未配置时，会自动取 `label.horizon_days_effective + label.shift_days`（其中 `horizon_days_effective` 在 `horizon_mode=next_rebalance` 下会按重平衡间隔估算）。
-* `eval.embargo_days` 未配置时默认 `0`。
+按需可配：
+
+* `daily_endpoint` / `basic_endpoint`
+* `daily_fields` / `basic_fields`
+* `daily_params` / `basic_params`
+* `daily_symbol_param` / `daily_start_param` / `daily_end_param`
+
+## `universe`
+
+高频关注点：
+
+* `mode`：`auto` / `pit` / `static`
+* `by_date_file`
+* `require_by_date`
+* `min_symbols_per_date`
+* `suspended_policy`
 
 建议：
 
-* 若需要显式覆盖，通常建议 `purge_days >= shift_days + horizon_days_effective`。
-* 当 `sample_on_rebalance_dates=true` 时，系统会把 `purge/embargo` 从“天数”换算为“重平衡步数”。
-* 若你显式设置了过小的 `purge_days`（小于 `shift_days + horizon_days_effective`），运行日志会提示潜在标签泄漏风险。
+* 长历史回测优先 `pit + by_date_file`
+* 静态 `symbols/symbols_file` 适合当期研究，不适合严谨历史回测
 
-## 日期 token 一致性说明
+## `label`
 
-`today/t-1/last_trading_day/last_completed_trading_day` 在不同命令的解析能力不同：
+高频键：
 
-* `csml run`：当 `provider=rqdata` 且交易日历可用时，`last_trading_day` 走严格交易日；否则回退自然日并 warning。
-* `csml holdings/snapshot/alloc --as-of`：当能从 run summary 或 `--config` 识别出 `provider=rqdata` + `market` 时，也会按交易日解析；缺少上下文时回退自然日并 warning。
-* `csml universe hk-connect`：`today` / `t-1` / `last_trading_day` / `last_completed_trading_day` 由 RQData 交易日历解析；其余工具脚本请以各自帮助文档为准。
+* `target_col`
+* `horizon_days`
+* `horizon_mode`
+* `rebalance_frequency`
+* `shift_days`
+* `winsorize`
 
-做自动化或复现实验时，建议直接使用绝对日期（`YYYYMMDD`）。
+补充：
 
-## Walk-forward 细节
+* `shift_days` 会影响信号日和入场日的对应关系。
+* 如果你看到“当月持仓”和预期不一致，先回看 `shift_days`。
 
-* `eval.walk_forward.backtest_enabled`：为 walk-forward 的每个窗口是否跑回测（对 live 配置常设为 false）。
-* `eval.walk_forward.permutation_test`：可在每个窗口单独做置换检验。
-* `eval.walk_forward.feature_top_k`：稳定性统计里用于计算 Top-K 命中率的 K 值（默认 5）。
+## `eval`
 
-## 基本面数据
+高频键：
 
-* 默认 `fundamentals.enabled=true`（CN/Default 走 TuShare `daily_basic`，HK/US 默认走本地文件）；如无数据可先设为 `false`。
-* `fundamentals.source=provider` 走数据源接口（目前仅支持 TuShare）；`source=file` 则读取本地 CSV/Parquet。缺文件会警告并跳过（可用 `fundamentals.required=true` 强制报错）。
-* 使用 `fundamentals.column_map` 映射字段，再通过 `ffill` 做按股票时间向前填充。
+* `top_k`
+* `transaction_cost_bps`
+* `purge_days`
+* `embargo_days`
+* `signal_direction_mode`
+* `min_abs_ic_to_flip`
+* `sample_on_rebalance_dates`
+* `report_train_ic`
+* `save_artifacts`
+* `save_dataset`
+* `permutation_test`
+* `walk_forward`
+* `final_oos`
+* `rolling`
+* `bucket_ic`
 
-## Live 模式
+### 泄漏防护
 
-`live` 用于在同一套配置下生成“当前持仓快照”。建议搭配单独的 live 配置文件与输出目录，避免和回测产物混在一起。
+默认行为：
+
+* `eval.purge_days` 未配置时，会自动取 `label.horizon_days_effective + label.shift_days`
+* `eval.embargo_days` 未配置时默认 `0`
+
+建议：
+
+* 显式覆盖时，通常保持 `purge_days >= shift_days + horizon_days_effective`
+* `sample_on_rebalance_dates=true` 时，系统会把 `purge/embargo` 从天数换算为重平衡步数
+
+### 可选评估能力
+
+* `permutation_test`：做置换检验
+* `walk_forward`：做滚动窗口验证
+* `final_oos`：保留最终留出期
+* `rolling`：输出滚动 IC / Sharpe
+* `bucket_ic`：输出分桶 IC
+
+## `backtest`
+
+高频键：
+
+* `enabled`
+* `rebalance_frequency`
+* `top_k`
+* `transaction_cost_bps`
+* `long_only`
+* `short_k`
+* `benchmark_symbol`
+* `exit_mode`
+* `exit_price_policy`
+* `exit_fallback_policy`
+* `buffer_exit`
+* `buffer_entry`
+* `tradable_col`
+* `execution`
+
+### 退出价格
+
+`exit_price_policy`：
+
+* `strict`：到期日没有价格或不可交易时，本期不计算退出
+* `ffill`：用到期日前最近可用价格退出
+* `delay`：向后找最近可用价格退出
+
+`exit_fallback_policy`：
+
+* `ffill`：`delay` 向后找不到价格时，回退到到期日前最近可用价格
+* `none`：不回退
+
+### 新旧键优先级
+
+* 旧键：`backtest.exit_price_policy` / `backtest.exit_fallback_policy`
+* 新键：`backtest.execution.exit_policy.price` / `backtest.execution.exit_policy.fallback`
+* 两者同时存在时，新键最终生效
+
+### 与停牌处理的关系
+
+* `universe.suspended_policy=mark`：保留样本并标记 `is_tradable`
+* `universe.suspended_policy=filter`：前置过滤停牌样本
+
+## `fundamentals`
+
+高频键：
+
+* `enabled`
+* `source`
+* `features`
+* `column_map`
+* `ffill`
+* `log_market_cap`
+* `required`
+
+补充：
+
+* `source=provider` 目前只支持 TuShare
+* `source=file` 读取本地 CSV 或 Parquet
+* 缺文件时默认 warning 并跳过，可用 `required=true` 改成报错
+
+## `live`
+
+`live` 用于在同一套配置下生成当前持仓快照。建议单独使用 live 配置文件和独立输出目录。
 
 ```yaml
 data:
-  end_date: "t-1"   # 支持 today / t-1 / YYYYMMDD / last_trading_day
+  end_date: "t-1"
 
 eval:
   output_dir: "out/live_runs"
@@ -160,34 +279,26 @@ backtest:
 live:
   enabled: true
   as_of: "t-1"
-  train_mode: "full"   # full=用全部可用标签训练; train=复用回测训练集模型
+  train_mode: "full"
 ```
 
-说明：
+开启 live 时，通常还需要：
 
-* `last_trading_day` / `last_completed_trading_day` 需要交易日历支持（`provider=rqdata`），否则会退回到自然日并给出警告。
-* Live 产物固定写入 `positions_by_rebalance_live.csv` 与 `positions_current_live.csv`（live-only 不再生成普通文件）；持仓文件会包含 `signal_asof/next_entry_date/holding_window` 辅助字段。
-* `csml holdings --source live` 会优先读取 summary 中的 live 文件路径。
-* 一键快照：`csml snapshot --config config/hk_live.yml`（内部先 run 再输出 holdings），可用 `--skip-run` / `--run-dir` 只读已有结果。
+* `eval.save_artifacts=true`
+* 单独的 `eval.output_dir`
+* 明确的 `live.as_of`
 
-## 最终 OOS 留出期
+命令入口见 `docs/cli.md`，输出文件见 `docs/outputs.md`。
 
-当需要在 walk-forward/CV 之外保留一段“最终验收期”，可使用 `eval.final_oos`。该留出期不会参与任何训练/调参，仅用于最后评估。
+## 可选输出
 
-```yaml
-eval:
-  final_oos:
-    enabled: true
-    size: 0.1   # 支持比例(0-1)或绝对日期数量
-```
+### `dataset.parquet`
 
-## Dataset 输出（可选）
+设置 `eval.save_dataset=true` 且 `eval.save_artifacts=true` 后，会额外输出 `dataset.parquet`。
 
-设置 `eval.save_dataset=true`（需同时 `eval.save_artifacts=true`）会在 run_dir 额外写出 `dataset.parquet`。Schema 固定为 `(trade_date, ts_code)` 索引，对应列为 `price_col` + `features` + `label` + `is_tradable`（如存在），便于后续接 Qlib 或其他框架。
+### `backtest.execution`
 
-## 执行假设模块（可选）
-
-`backtest.execution` 可覆盖成本与退出规则，未配置时仍使用 `transaction_cost_bps` 与 `exit_*` 旧键：
+如需显式配置执行成本和退出规则，可使用：
 
 ```yaml
 backtest:
@@ -199,29 +310,4 @@ backtest:
     exit_policy:
       price: delay
       fallback: ffill
-```
-
-## 补充指标配置（可选）
-
-```yaml
-eval:
-  rolling:
-    enabled: true
-    windows_months: [6, 12]   # 6M/12M 滚动 IC 与 Sharpe
-  bucket_ic:
-    enabled: true
-    method: spearman          # spearman / pearson
-    min_count: 0              # 分桶样本不足时可跳过
-    schemes:
-      - name: industry
-        column: industry_code
-        type: category
-      - name: market_cap
-        column: log_mcap
-        type: quantile
-        n_bins: 3
-      - name: liquidity
-        column: amount
-        type: quantile
-        n_bins: 3
 ```
