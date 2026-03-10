@@ -110,6 +110,33 @@ def build_model_from_config(model_cfg: Mapping[str, Any] | None) -> tuple[Any, s
     return build_model(model_type, model_params), model_type, model_params
 
 
+def _ranker_group_weights(
+    train_data: pd.DataFrame,
+    train_sorted: pd.DataFrame,
+    sample_weight: Sequence[float] | np.ndarray,
+    *,
+    date_col: str,
+    n_groups: int,
+) -> np.ndarray:
+    weight_values = np.asarray(sample_weight, dtype=float).reshape(-1)
+    if weight_values.size == len(train_data):
+        weight_series = pd.Series(weight_values, index=train_data.index, dtype=float)
+        # XGBoost rankers expect one weight per query group, not one per row.
+        weight_frame = pd.DataFrame(
+            {
+                date_col: train_sorted[date_col].to_numpy(),
+                "_weight": weight_series.loc[train_sorted.index].to_numpy(),
+            }
+        )
+        return weight_frame.groupby(date_col, sort=False)["_weight"].sum().to_numpy()
+    if weight_values.size == n_groups:
+        return weight_values
+    raise ValueError(
+        "xgb_ranker sample_weight must match either the number of training rows "
+        f"({len(train_data)}) or the number of date groups ({n_groups})."
+    )
+
+
 def fit_model(
     model: Any,
     model_type: str,
@@ -122,16 +149,21 @@ def fit_model(
 ) -> Any:
     model_key = normalize_model_type(model_type)
     if model_key == "xgb_ranker":
-        train_sorted = train_data.sort_values(date_col)
+        train_sorted = train_data.sort_values(date_col, kind="mergesort")
         groups = train_sorted.groupby(date_col, sort=False)[date_col].size().tolist()
         if not groups:
             raise ValueError("xgb_ranker requires non-empty grouped training data.")
         x_train = train_sorted[list(features)]
         y_train = train_sorted[target_col]
         if sample_weight is not None:
-            weight_series = pd.Series(np.asarray(sample_weight, dtype=float), index=train_data.index)
-            sorted_weight = weight_series.loc[train_sorted.index].to_numpy()
-            model.fit(x_train, y_train, group=groups, sample_weight=sorted_weight)
+            group_weight = _ranker_group_weights(
+                train_data,
+                train_sorted,
+                sample_weight,
+                date_col=date_col,
+                n_groups=len(groups),
+            )
+            model.fit(x_train, y_train, group=groups, sample_weight=group_weight)
         else:
             model.fit(x_train, y_train, group=groups)
         return model

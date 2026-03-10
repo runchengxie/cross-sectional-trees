@@ -83,3 +83,38 @@ def test_fit_model_supports_ranker_groups():
     fit_model(model, "xgb_ranker", frame, features=["f1"], target_col="target")
     preds = model.predict(frame[["f1"]])
     assert preds.shape[0] == len(frame)
+
+
+def test_fit_model_supports_ranker_row_weights():
+    frame = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                [
+                    "2020-01-01",
+                    "2020-01-01",
+                    "2020-01-02",
+                    "2020-01-02",
+                    "2020-01-03",
+                    "2020-01-03",
+                ]
+            ),
+            "ts_code": ["A", "B", "A", "B", "A", "B"],
+            "f1": [0.1, 0.9, 0.2, 0.8, 0.3, 0.7],
+            "target": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+        }
+    )
+
+    model = build_model(
+        "xgb_ranker",
+        {"n_estimators": 3, "max_depth": 1, "learning_rate": 0.1, "objective": "rank:pairwise"},
+    )
+    fit_model(
+        model,
+        "xgb_ranker",
+        frame,
+        features=["f1"],
+        target_col="target",
+        sample_weight=np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5]),
+    )
+    preds = model.predict(frame[["f1"]])
+    assert preds.shape[0] == len(frame)
