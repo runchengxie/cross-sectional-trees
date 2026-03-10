@@ -1,0 +1,20 @@
+# Full HK Connect PIT universe for asset mirroring.
+# Membership starts on 2014-11-17 because southbound trading begins then.
+# Financial history can still be mirrored from earlier quarters for these symbols.
+hk_connect_universe:
+  mode: backtest
+  start_date: 20141117
+  end_date: 20251231
+  rebalance_frequency: "M"
+  lookback_days: 60
+  min_window_days: 30
+  top_quantile: 0
+  min_turnover: 0
+  out: "artifacts/assets/universe/hk_connect_full_by_date.csv"
+  latest_out: "artifacts/assets/universe/hk_connect_full_symbols.txt"
+  append_date: true
+  write_meta: true
+  meta_out: "artifacts/assets/universe/hk_connect_full_by_date.meta.yml"
+  rqdata:
+    username: null
+    password: null

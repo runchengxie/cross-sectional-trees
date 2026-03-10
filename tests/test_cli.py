@@ -170,6 +170,8 @@ def test_cli_parses_rqdata_asset_commands():
             "mirror-hk-pit-financials",
             "--config",
             "config/hk.yml",
+            "--field-profile",
+            "full",
             "--fields-file",
             "config/rqdata_assets/hk_financial_fields_starter.txt",
             "--start-quarter",
@@ -187,6 +189,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit.command == "rqdata"
     assert pit.rq_command == "mirror-hk-pit-financials"
     assert pit.config == "config/hk.yml"
+    assert pit.field_profile == ["full"]
     assert pit.fields_file == ["config/rqdata_assets/hk_financial_fields_starter.txt"]
     assert pit.start_quarter == "2011q1"
     assert pit.end_quarter == "2025q4"
@@ -222,6 +225,8 @@ def test_cli_parses_rqdata_asset_commands():
             "build-hk-pit-fundamentals",
             "--asset-dir",
             "artifacts/assets/rqdata/hk/pit_financials/pit_demo",
+            "--field-profile",
+            "starter",
             "--field",
             "revenue",
             "--field",
@@ -237,6 +242,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit_fundamentals.command == "rqdata"
     assert pit_fundamentals.rq_command == "build-hk-pit-fundamentals"
     assert pit_fundamentals.asset_dir == "artifacts/assets/rqdata/hk/pit_financials/pit_demo"
+    assert pit_fundamentals.field_profile == ["starter"]
     assert pit_fundamentals.field == ["revenue", "net_profit"]
     assert pit_fundamentals.out == "artifacts/assets/fundamentals/pit_fundamentals.parquet"
     assert pit_fundamentals.keep_meta is True

@@ -1,13 +1,11 @@
-## HK quarterly PIT financial ML baseline.
-## This template is aimed at low-frequency fundamental signals:
-## use quarterly labels/backtest, detailed report items, symmetric report growth,
-## and cross-sectional fill instead of dropping the whole date because one
-## financial field is missing.
+## HK quarterly PIT financial linear baseline.
+## This template keeps the same quarterly financial feature set as
+## hk_selected__pit_quarterly_financial_ml.yml but switches to ridge
+## for a stricter linear benchmark and easier coefficient-based attribution.
 ##
-## The current HK starter PIT asset has much better coverage on income/cash-flow
-## lines than on balance-sheet detail, so the default feature list stays on the
-## denser subset. Debt / asset-structure ratios are still supported in pipeline
-## if you mirror a richer field set later.
+## The default feature list follows the denser income/cash-flow subset in the
+## current HK starter PIT asset. If you mirror richer balance-sheet coverage,
+## you can extend this template with debt / asset-structure ratios.
 ##
 ## Prepare the file first:
 ## 1) csml rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest ...
@@ -123,16 +121,10 @@ features:
     - cfo_to_profit
     - days_since_report
 model:
-  type: xgb_regressor
+  type: ridge
   params:
-    n_estimators: 300
-    learning_rate: 0.03
-    max_depth: 3
-    subsample: 0.8
-    colsample_bytree: 0.7
-    reg_alpha: 0.0
-    reg_lambda: 1.0
-    objective: reg:squarederror
+    alpha: 10.0
+    fit_intercept: true
     random_state: 42
   sample_weight_mode: date_equal
 eval:
@@ -154,7 +146,7 @@ eval:
   save_artifacts: true
   save_dataset: false
   output_dir: artifacts/runs
-  run_name: hk_sel_xgb_pit_q_finml
+  run_name: hk_sel_ridge_pit_q_finml
   permutation_test:
     enabled: true
     n_runs: 10

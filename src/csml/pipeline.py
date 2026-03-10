@@ -1471,6 +1471,7 @@ def run(config_ref: str | Path | None = None) -> None:
             if (
                 "sales" in requested_feature_names
                 or "delta_sales" in requested_feature_names
+                or "growth_sales" in requested_feature_names
                 or "profit_margin" in requested_feature_names
                 or "operating_margin" in requested_feature_names
                 or "cfo_margin" in requested_feature_names
@@ -1486,6 +1487,26 @@ def run(config_ref: str | Path | None = None) -> None:
                     else pd.Series(np.nan, index=fund_df.index, dtype=float)
                 )
                 fund_df["sales"] = revenue.combine_first(operating_revenue)
+            if (
+                "debt" in requested_feature_names
+                or "delta_debt" in requested_feature_names
+                or "growth_debt" in requested_feature_names
+                or "debt_to_assets" in requested_feature_names
+                or "debt_to_equity" in requested_feature_names
+                or "net_debt_to_assets" in requested_feature_names
+            ):
+                short_term_debt = (
+                    pd.to_numeric(fund_df["short_term_debt"], errors="coerce")
+                    if "short_term_debt" in fund_df.columns
+                    else pd.Series(np.nan, index=fund_df.index, dtype=float)
+                )
+                long_term_loans = (
+                    pd.to_numeric(fund_df["long_term_loans"], errors="coerce")
+                    if "long_term_loans" in fund_df.columns
+                    else pd.Series(np.nan, index=fund_df.index, dtype=float)
+                )
+                debt = short_term_debt.fillna(0.0) + long_term_loans.fillna(0.0)
+                fund_df["debt"] = debt.where(~(short_term_debt.isna() & long_term_loans.isna()))
             if "days_since_report" in requested_feature_names:
                 fund_df["report_trade_date"] = fund_df["trade_date"]
             delta_base_features = sorted(
@@ -1500,6 +1521,23 @@ def run(config_ref: str | Path | None = None) -> None:
                     continue
                 base_series = pd.to_numeric(fund_df[base_feature], errors="coerce")
                 fund_df[f"delta_{base_feature}"] = base_series.groupby(fund_df["ts_code"]).diff()
+            growth_base_features = sorted(
+                {
+                    feat.removeprefix("growth_")
+                    for feat in requested_feature_names
+                    if feat.startswith("growth_")
+                }
+            )
+            for base_feature in growth_base_features:
+                if base_feature not in fund_df.columns:
+                    continue
+                current = pd.to_numeric(fund_df[base_feature], errors="coerce")
+                previous = current.groupby(fund_df["ts_code"]).shift()
+                scale = ((current.abs() + previous.abs()) / 2.0).where(
+                    lambda values: values.notna() & (values != 0)
+                )
+                growth = (current - previous) / scale
+                fund_df[f"growth_{base_feature}"] = growth.replace([np.inf, -np.inf], np.nan)
             fundamentals_cols = [
                 col for col in fund_df.columns if col not in {"trade_date", "ts_code"}
             ]
@@ -1656,6 +1694,24 @@ def run(config_ref: str | Path | None = None) -> None:
                 else pd.Series(np.nan, index=group.index, dtype=float)
             )
             group["sales"] = revenue.combine_first(operating_revenue)
+        if (
+            "debt" in needed
+            or "debt_to_assets" in needed
+            or "debt_to_equity" in needed
+            or "net_debt_to_assets" in needed
+        ):
+            short_term_debt = (
+                pd.to_numeric(group["short_term_debt"], errors="coerce")
+                if "short_term_debt" in group.columns
+                else pd.Series(np.nan, index=group.index, dtype=float)
+            )
+            long_term_loans = (
+                pd.to_numeric(group["long_term_loans"], errors="coerce")
+                if "long_term_loans" in group.columns
+                else pd.Series(np.nan, index=group.index, dtype=float)
+            )
+            debt = short_term_debt.fillna(0.0) + long_term_loans.fillna(0.0)
+            group["debt"] = debt.where(~(short_term_debt.isna() & long_term_loans.isna()))
 
         _safe_ratio("net_profit", "sales", "profit_margin")
         _safe_ratio("operating_profit", "sales", "operating_margin")
@@ -1677,6 +1733,10 @@ def run(config_ref: str | Path | None = None) -> None:
             "total_assets",
             "cfo_to_assets",
         )
+        _safe_ratio("debt", "total_assets", "debt_to_assets")
+        _safe_ratio("debt", "total_equity", "debt_to_equity")
+        _safe_ratio("cash_and_equivalents", "total_assets", "cash_to_assets")
+        _safe_ratio("goodwill", "total_assets", "goodwill_to_assets")
         if "accrual_ratio" in needed:
             if (
                 "net_profit" in group.columns
@@ -1691,6 +1751,30 @@ def run(config_ref: str | Path | None = None) -> None:
                 group["accrual_ratio"] = accrual.replace([np.inf, -np.inf], np.nan)
         _safe_ratio("accounts_receivable", "revenue", "receivables_to_revenue")
         _safe_ratio("inventory", "revenue", "inventory_to_revenue")
+        if "working_capital_to_assets" in needed:
+            if (
+                "accounts_receivable" in group.columns
+                and "inventory" in group.columns
+                and "accounts_payable" in group.columns
+                and "total_assets" in group.columns
+            ):
+                receivables = pd.to_numeric(group["accounts_receivable"], errors="coerce")
+                inventory = pd.to_numeric(group["inventory"], errors="coerce")
+                payables = pd.to_numeric(group["accounts_payable"], errors="coerce")
+                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
+                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
+                working_capital = receivables + inventory - payables
+                ratio = working_capital / valid_assets
+                group["working_capital_to_assets"] = ratio.replace([np.inf, -np.inf], np.nan)
+        if "net_debt_to_assets" in needed:
+            if "debt" in group.columns and "cash_and_equivalents" in group.columns and "total_assets" in group.columns:
+                debt = pd.to_numeric(group["debt"], errors="coerce")
+                cash_and_equivalents = pd.to_numeric(group["cash_and_equivalents"], errors="coerce")
+                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
+                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
+                net_debt = debt - cash_and_equivalents
+                ratio = net_debt / valid_assets
+                group["net_debt_to_assets"] = ratio.replace([np.inf, -np.inf], np.nan)
 
         if LABEL_SHIFT_DAYS > 0:
             shifted_price = group[PRICE_COL].shift(-LABEL_SHIFT_DAYS)

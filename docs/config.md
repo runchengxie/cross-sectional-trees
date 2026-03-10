@@ -34,7 +34,9 @@ HK 相关配置建议按职责使用：
 * `config/hk_selected__baseline_pit_file.yml`：读取本地 PIT fundamentals 文件的 HK 基线配置。
 * `config/hk_selected__provider_quarterly_valuation.yml`：直接读取 provider 基本面字段的季度估值对照配置。适合先做最小验证。
 * `config/hk_selected__baseline_pit_quarterly.yml`：季度调仓的 HK PIT 财报基线配置。
-* `config/hk_selected__pit_quarterly_financial_ml.yml`：季度调仓的 HK PIT 财务 ML 基线。用财报主项、报告级变化量和横截面缺失填补。
+* `config/hk_selected__pit_quarterly_financial_ml.yml`：季度调仓的 HK PIT 财务 ML 基线。默认用高覆盖财报主项、报告级增长和横截面缺失填补。
+* `config/hk_selected__pit_quarterly_financial_linear.yml`：和财务 ML 基线同口径的季度 ridge 对照配置。适合看线性方向和系数归因。
+* `config/hk_connect__pit_quarterly_financial_ml.yml`：港股通更宽股票池的季度 PIT 财务 ML 基线。默认接 `hk_connect_full` 这套 universe 和财务资产路径。
 * `config/hk_selected__pit_quarterly_hybrid.yml`：季度调仓的 HK PIT 财报 + 慢技术面混合配置。
 * `config/hk_selected__xgb_regressor.yml`：显式 XGB 回归实验配置。
 * `config/hk_selected__xgb_ranker_pairwise.yml`：显式 XGB 排序实验配置。
@@ -45,11 +47,14 @@ HK 相关配置建议按职责使用：
 * 如果你已经执行过 `csml rqdata build-hk-pit-fundamentals`，并希望研究直接读取本地财报文件，可切到 `config/hk_selected__baseline_pit_file.yml`。
 * 如果你想先确认“季度低频 + 估值字段”有没有方向，可先跑 `config/hk_selected__provider_quarterly_valuation.yml`。
 * 如果你要研究低频财报 alpha，先用 `config/hk_selected__baseline_pit_quarterly.yml`。它把标签、评估和回测一起切到季度口径。
-* 如果你要直接研究“财务主项 + 变化量 + 缺失标记”这条路线，优先用 `config/hk_selected__pit_quarterly_financial_ml.yml`。
+* 如果你要直接研究“高覆盖财报主项 + 增长 + 缺失标记”这条路线，优先用 `config/hk_selected__pit_quarterly_financial_ml.yml`。
+* 如果你要先看线性版本，再判断非线性模型是否真的提供增量，可先跑 `config/hk_selected__pit_quarterly_financial_linear.yml`。
+* 如果你先准备了一份更完整的港股通历史财务归档，再想在更宽股票池上重跑季度财务 ML，可切到 `config/hk_connect__pit_quarterly_financial_ml.yml`。
 * 如果你要把慢财报信号和价格趋势一起看，再切到 `config/hk_selected__pit_quarterly_hybrid.yml`。
 * 非线性对照时，显式指定对应的 XGB 配置文件。
 * HK selected 基线现在默认覆盖 `2015-01-01` 到 `2025-12-31`，配合 PIT universe 做 10y+ 回测。
 * 旧的 `config/hk_selected.yml` 已弃用。若 `sweep-linear` 遇到该路径且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
+* `config/universe.hk_connect_full.yml` 用于生成更完整的港股通历史股票池文件。它把 `top_quantile` 设成 `0`，保留全部港股通候选。
 
 ## 顶层配置块
 
@@ -291,13 +296,14 @@ model:
 * 缺文件时默认 warning 并跳过，可用 `required=true` 改成报错
 * 如果文件来自 `csml rqdata build-hk-pit-fundamentals`，默认 `trade_date=info_date`。常见接法是保留 `fundamentals.ffill=true`，让披露后的交易日沿用最近一版财报值
 * 如果 `features.list` 里写了 `delta_<field>`，pipeline 会先在财报披露日上计算相邻报告的变化量，再沿用 `fundamentals.ffill`
+* 如果 `features.list` 里写了 `growth_<field>`，pipeline 会在财报披露日上计算对称增长率：`(当前值 - 上期值) / ((|当前值| + |上期值|) / 2)`，再沿用 `fundamentals.ffill`
 * 如果 `features.list` 里写了 `days_since_report`，pipeline 会按最新披露日计算财报新鲜度
 
 季度 PIT 研究时，建议再注意三件事：
 
 * 标签、评估和回测的 `rebalance_frequency` 一起改成 `Q`。这样口径一致，结果更容易解释。
 * 优先使用 `source=file` + PIT fundamentals 文件。季度财报研究更依赖披露时点，直接读本地 PIT 文件更稳妥。
-* 先用覆盖率高的主项和变化量，再扩展到更稀疏的资产负债表比率。常见起点包括 `sales`、`net_profit`、`basic_earnings_per_share`、`cash_flow_from_operating_activities`、`delta_*`、`profit_margin`、`cfo_margin`、`days_since_report`。
+* 先用覆盖率高的主项和增长，再决定要不要加更稀疏的资产负债结构比率。常见起点包括 `sales`、`operating_profit`、`net_profit`、`basic_earnings_per_share`、`cash_flow_from_operating_activities`、`growth_*`、`profit_margin`、`cfo_margin`、`cfo_to_profit` 和 `days_since_report`。如果你镜像了覆盖更完整的 PIT 字段，再扩展到 `debt_to_equity`、`cash_to_assets`、`working_capital_to_assets` 这类结构比率。
 
 ## `features.missing`
 
