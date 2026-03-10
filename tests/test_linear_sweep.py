@@ -280,3 +280,22 @@ def test_repo_quarterly_pit_sweep_spec_points_to_existing_base_config():
     assert payload["grid"]["ridge_alpha"] == [0.01, 0.1, 1, 10, 100]
     assert payload["grid"]["elasticnet_alpha"] == [0.003, 0.01, 0.03, 0.1]
     assert payload["grid"]["elasticnet_l1_ratio"] == [0.02, 0.05, 0.1, 0.2]
+
+
+def test_repo_financial_quarterly_sweep_spec_points_to_existing_base_config():
+    repo_root = Path(__file__).resolve().parents[1]
+    sweep_spec_path = (
+        repo_root / "config" / "sweeps" / "hk_selected__pit_quarterly_financial_linear.yml"
+    )
+
+    payload = yaml.safe_load(sweep_spec_path.read_text(encoding="utf-8"))
+    base_config_ref = payload["base_config"]
+    resolved_base = repo_root / base_config_ref
+
+    assert base_config_ref == "config/hk_selected__pit_quarterly_financial_ml.yml"
+    assert resolved_base.exists()
+    assert payload["run_name_prefix"] == "hk_finmlq_"
+    assert payload["tag"] == "hk_pit_quarterly_financial_linear"
+    assert payload["grid"]["ridge_alpha"] == [0.3, 1, 3, 10, 30]
+    assert payload["grid"]["elasticnet_alpha"] == [0.003, 0.01, 0.03, 0.1]
+    assert payload["grid"]["elasticnet_l1_ratio"] == [0.05, 0.1, 0.2, 0.4]

@@ -28,6 +28,25 @@ PIT_METADATA_COLUMNS = (
     "rice_create_tm",
     "order_book_id",
 )
+STARTER_HK_FINANCIAL_FIELDS = (
+    "revenue",
+    "operating_revenue",
+    "operating_profit",
+    "net_profit",
+    "basic_earnings_per_share",
+    "dividend_per_share",
+    "total_assets",
+    "total_liabilities",
+    "total_equity",
+    "cash_and_equivalents",
+    "cash_flow_from_operating_activities",
+    "inventory",
+    "accounts_receivable",
+    "accounts_payable",
+    "short_term_debt",
+    "long_term_loans",
+    "goodwill",
+)
 
 
 @dataclass(frozen=True)
@@ -142,29 +161,47 @@ def _load_symbols_from_by_date(path_text: str | Path) -> list[str]:
     return df["ts_code"].drop_duplicates().tolist()
 
 
-def _dedupe_preserve_order(values: Iterable[str]) -> list[str]:
+def _dedupe_preserve_order(values: Iterable[str], *, strip: bool = True) -> list[str]:
     deduped: list[str] = []
     seen: set[str] = set()
     for value in values:
-        text = str(value or "").strip()
-        if not text or text in seen:
+        text = str(value or "")
+        normalized = text.strip() if strip else text
+        if not normalized or normalized in seen:
             continue
-        deduped.append(text)
-        seen.add(text)
+        deduped.append(normalized if strip else text)
+        seen.add(normalized)
     return deduped
+
+
+def _load_field_profile(profile_name: str) -> list[str]:
+    profile = str(profile_name or "").strip().lower()
+    if profile == "starter":
+        return list(STARTER_HK_FINANCIAL_FIELDS)
+    if profile == "full":
+        return _load_hk_financial_fields()
+    raise SystemExit(f"Unsupported --field-profile: {profile_name}")
 
 
 def _resolve_fields(args) -> tuple[list[str], dict]:
     fields: list[str] = []
+    field_profiles = [
+        str(item).strip().lower()
+        for item in (getattr(args, "field_profile", None) or [])
+        if str(item).strip()
+    ]
+    for profile_name in field_profiles:
+        fields.extend(_load_field_profile(profile_name))
     if getattr(args, "field", None):
-        fields.extend(str(item) for item in args.field)
+        fields.extend(str(item).strip() for item in args.field if str(item).strip())
     for path_text in getattr(args, "fields_file", None) or []:
         fields.extend(_load_text_list(path_text, label="Fields file"))
-    fields = _dedupe_preserve_order(fields)
+    fields = _dedupe_preserve_order(fields, strip=False)
     if not fields:
         raise SystemExit("Provide at least one --field or --fields-file.")
     metadata = {
         "count": len(fields),
+        "field_profile": field_profiles,
         "fields_file": [str(_resolve_path(path_text)) for path_text in (args.fields_file or [])],
     }
     return fields, metadata
@@ -401,6 +438,7 @@ def _build_manifest(
             "statements": statements,
             "fields_count": len(fields),
             "fields": list(fields),
+            "field_profile": list(field_metadata.get("field_profile") or []),
             "fields_file": list(field_metadata.get("fields_file") or []),
         },
         "symbol_source": dict(symbol_metadata),
@@ -803,6 +841,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
         "query": {
             "fields_count": len(fields),
             "fields": list(fields),
+            "field_profile": list(field_metadata.get("field_profile") or []),
             "fields_file": list(field_metadata.get("fields_file") or []),
             "field_source": field_metadata.get("source"),
             "keep_meta": keep_meta,
@@ -865,6 +904,13 @@ def add_hk_financial_mirror_args(parser: argparse.ArgumentParser) -> None:
         help="Return latest or all statements for each quarter. Default: latest.",
     )
     parser.add_argument(
+        "--field-profile",
+        action="append",
+        choices=["starter", "full"],
+        default=[],
+        help="Bundled HK financial field set. starter=repo baseline, full=all fields exposed by local rqdatac metadata.",
+    )
+    parser.add_argument(
         "--field",
         action="append",
         default=[],
@@ -917,6 +963,13 @@ def add_hk_pit_fundamentals_build_args(parser: argparse.ArgumentParser) -> None:
         "--asset-dir",
         required=True,
         help="Path to a mirror-hk-pit-financials output directory.",
+    )
+    parser.add_argument(
+        "--field-profile",
+        action="append",
+        choices=["starter", "full"],
+        default=[],
+        help="Bundled HK financial field set. starter=repo baseline, full=all fields exposed by local rqdatac metadata.",
     )
     parser.add_argument(
         "--field",

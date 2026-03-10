@@ -64,6 +64,18 @@ def test_resolve_as_of_date_respects_last_trading_variants(monkeypatch):
     assert calls == [True, False]
 
 
+def test_select_liquid_symbols_keeps_all_when_top_quantile_zero():
+    liq = pd.Series(
+        [10.0, 30.0, 20.0],
+        index=["00005.XHKG", "00700.XHKG", "00001.XHKG"],
+    )
+
+    selected = hk_universe.select_liquid_symbols(liq, 0.0)
+
+    assert selected.index.tolist() == ["00700.XHKG", "00001.XHKG", "00005.XHKG"]
+    assert selected.tolist() == [30.0, 20.0, 10.0]
+
+
 def test_month_bounds_handles_leap_year():
     assert index_components.month_bounds("202402") == ("20240201", "20240229")
 

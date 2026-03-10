@@ -274,6 +274,15 @@ def prepare_turnover_table(
     return turnover.sort_index()
 
 
+def select_liquid_symbols(liq: pd.Series, top_quantile: float) -> pd.Series:
+    if liq.empty:
+        return liq
+    if top_quantile <= 0:
+        return liq.sort_values(ascending=False)
+    threshold = liq.quantile(top_quantile)
+    return liq[liq >= threshold].sort_values(ascending=False)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build HK Connect universe (PIT + liquidity).")
     parser.add_argument(
@@ -290,7 +299,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--top-quantile",
         type=float,
-        help="Liquidity quantile threshold; 0.8 keeps top 20 percent by turnover",
+        help="Liquidity quantile threshold; 0 keeps all eligible symbols, 0.8 keeps top 20 percent by turnover",
     )
     parser.add_argument(
         "--min-turnover",
@@ -408,8 +417,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("start-date must be <= end-date.")
 
     top_quantile = float(settings.get("top_quantile"))
-    if not 0 < top_quantile < 1:
-        raise SystemExit("top-quantile must be between 0 and 1.")
+    if not 0 <= top_quantile < 1:
+        raise SystemExit("top-quantile must be between 0 and 1, or exactly 0 for full coverage.")
 
     lookback_days = int(settings.get("lookback_days"))
     min_window_days = int(settings.get("min_window_days"))
@@ -508,8 +517,7 @@ def main(argv: list[str] | None = None) -> None:
         if liq.empty:
             continue
 
-        threshold = liq.quantile(top_quantile)
-        selected = liq[liq >= threshold].sort_values(ascending=False)
+        selected = select_liquid_symbols(liq, top_quantile)
         for order_book_id, metric in selected.items():
             ts_code = normalize_hk_symbol(order_book_id)
             results.append(

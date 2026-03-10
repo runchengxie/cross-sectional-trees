@@ -163,6 +163,27 @@ def test_list_hk_financial_fields_filters_and_writes_file(tmp_path, monkeypatch,
     assert "Wrote 1 HK financial fields" in capsys.readouterr().out
 
 
+def test_resolve_fields_supports_field_profile(monkeypatch):
+    monkeypatch.setattr(
+        rqdata_assets,
+        "_load_hk_financial_fields",
+        lambda: ["revenue", "net_profit", "income_tax", "goodwill_and_intangible_assets "],
+    )
+
+    fields, metadata = rqdata_assets._resolve_fields(
+        SimpleNamespace(
+            field_profile=["starter", "full"],
+            field=["revenue"],
+            fields_file=[],
+        )
+    )
+
+    assert fields[:3] == ["revenue", "operating_revenue", "operating_profit"]
+    assert "income_tax" in fields
+    assert "goodwill_and_intangible_assets " in fields
+    assert metadata["field_profile"] == ["starter", "full"]
+
+
 def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     (repo_root / "config").mkdir(parents=True)

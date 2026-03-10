@@ -159,6 +159,8 @@ def test_hk_quarterly_templates_align_rebalance_frequencies():
         repo_root / "config" / "hk_selected__baseline_pit_quarterly.yml",
         repo_root / "config" / "hk_selected__pit_quarterly_hybrid.yml",
         repo_root / "config" / "hk_selected__pit_quarterly_financial_ml.yml",
+        repo_root / "config" / "hk_selected__pit_quarterly_financial_linear.yml",
+        repo_root / "config" / "hk_connect__pit_quarterly_financial_ml.yml",
     ]
 
     payloads = [
@@ -172,7 +174,7 @@ def test_hk_quarterly_templates_align_rebalance_frequencies():
         assert payload["eval"]["rebalance_frequency"] == "Q"
         assert payload["backtest"]["rebalance_frequency"] == "Q"
 
-    provider_cfg, pit_cfg, hybrid_cfg, financial_ml_cfg = payloads
+    provider_cfg, pit_cfg, hybrid_cfg, financial_ml_cfg, financial_linear_cfg, hk_connect_ml_cfg = payloads
 
     assert provider_cfg["fundamentals"]["source"] == "provider"
     assert provider_cfg["features"]["list"] == ["pe_ttm"]
@@ -188,5 +190,15 @@ def test_hk_quarterly_templates_align_rebalance_frequencies():
     assert financial_ml_cfg["fundamentals"]["source"] == "file"
     assert financial_ml_cfg["eval"]["sample_on_rebalance_dates"] is True
     assert financial_ml_cfg["features"]["missing"]["method"] == "cross_sectional_median"
-    assert "delta_sales" in financial_ml_cfg["features"]["list"]
+    assert "growth_sales" in financial_ml_cfg["features"]["list"]
     assert "days_since_report" in financial_ml_cfg["features"]["list"]
+
+    assert financial_linear_cfg["fundamentals"]["source"] == "file"
+    assert financial_linear_cfg["model"]["type"] == "ridge"
+    assert financial_linear_cfg["eval"]["sample_on_rebalance_dates"] is True
+    assert "growth_net_profit" in financial_linear_cfg["features"]["list"]
+
+    assert hk_connect_ml_cfg["fundamentals"]["source"] == "file"
+    assert hk_connect_ml_cfg["universe"]["by_date_file"].endswith("hk_connect_full_by_date.csv")
+    assert hk_connect_ml_cfg["eval"]["sample_on_rebalance_dates"] is True
+    assert "growth_sales" in hk_connect_ml_cfg["features"]["list"]

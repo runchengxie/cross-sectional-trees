@@ -22,9 +22,11 @@
 
 补充：如果你已经有 `pit_financials` 资产目录，可以继续执行 `csml rqdata build-hk-pit-fundamentals`。这条命令会生成一个平面 fundamentals 文件，默认把 `trade_date` 写成 `info_date`，可直接接到 `fundamentals.source=file`。
 
-补充：字段名可以先用 `csml rqdata list-hk-financial-fields` 导出，再整理成 `--fields-file`。
+补充：字段名可以先用 `csml rqdata list-hk-financial-fields` 导出，再整理成 `--fields-file`。如果你只是想快速准备一份更完整的财务归档，也可以直接用 `--field-profile full`。
 
 补充：`RQData market=hk` 的行情覆盖范围大于仓库里的默认 `hk-connect` 研究股票池。仓库当前提供的是港股通 PIT universe 模板；如果你想研究更广的港股普通股池，需要单独准备 `universe.by_date_file` 或新的 universe builder。
+
+补充：如果你的目标是“港股通历史股票池 + 更完整的 PIT 财务归档”，优先用 `config/universe.hk_connect_full.yml` 生成 `artifacts/assets/universe/hk_connect_full_by_date.csv`，再执行财报镜像命令。这个模板把 `top_quantile` 设成 `0`，表示保留全部港股通候选。
 
 补充：港股 ETF、杠杆/反向产品或其他非普通股产品，常见情况是能取到日线，但拿不到 `market_cap / pe_ttm / pb` 这类 provider 基本面字段。pipeline 会跳过这些 symbol，并给 warning。
 

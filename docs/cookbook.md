@@ -134,6 +134,9 @@ csml rqdata build-hk-pit-fundamentals \
 1. `config/hk_selected__baseline_pit_file.yml`
 1. `config/hk_selected__provider_quarterly_valuation.yml`
 1. `config/hk_selected__baseline_pit_quarterly.yml`
+1. `config/hk_selected__pit_quarterly_financial_ml.yml`
+1. `config/hk_selected__pit_quarterly_financial_linear.yml`
+1. `config/hk_connect__pit_quarterly_financial_ml.yml`
 1. `config/hk_selected__pit_quarterly_hybrid.yml`
 1. `config/hk_selected__xgb_regressor.yml`
 1. `config/hk_selected__ridge_a1.yml`
@@ -146,23 +149,28 @@ csml rqdata build-hk-pit-fundamentals \
 1. 已经生成本地 PIT fundamentals 文件时，改用 `config/hk_selected__baseline_pit_file.yml`。
 1. 想先做无需本地 PIT 文件的季度低频验证时，先跑 `config/hk_selected__provider_quarterly_valuation.yml`。
 1. 要验证低频财报 alpha 时，优先从 `config/hk_selected__baseline_pit_quarterly.yml` 开始。
+1. 要直接研究“高覆盖财报主项 + 报告级增长 + 缺失标记”时，优先跑 `config/hk_selected__pit_quarterly_financial_ml.yml`。
+1. 要先看线性版本，再决定 XGB 是否有增量，优先跑 `config/hk_selected__pit_quarterly_financial_linear.yml`。
+1. 要把港股通历史股票池放宽，并先归档一份更完整的财务资产，再跑季度财务 ML，优先用 `config/hk_connect__pit_quarterly_financial_ml.yml`。
 1. 要验证“财报 + 慢价格信号”的混合口径时，再跑 `config/hk_selected__pit_quarterly_hybrid.yml`。
 1. 非线性对照时，显式使用 `config/hk_selected__xgb_regressor.yml` 或 `config/hk_selected__xgb_ranker_pairwise.yml`。
 
 当前仓库内置的 `config/hk_selected__baseline.yml` 把样本窗口写成 `2015-01-01` 到 `2025-12-31`。这只是模板默认值。你要研究更新的时间区间时，先改配置，再比较结果。
 
-### 2.2.1 季度低频两条路线怎么选
+### 2.2.1 季度低频三条路线怎么选
 
 | 路线 | 配置 | 是否需要先准备本地 PIT 文件 | 更适合回答的问题 |
 | --- | --- | --- | --- |
 | provider 季度估值对照 | `config/hk_selected__provider_quarterly_valuation.yml` | 否 | 先确认低频调仓 + 估值字段本身有没有方向 |
 | PIT 财报季度基线 | `config/hk_selected__baseline_pit_quarterly.yml` | 是 | 认真验证财报披露节奏对齐后，慢基本面有没有 alpha |
+| PIT 财务 ML / 线性对照 | `config/hk_selected__pit_quarterly_financial_ml.yml` / `config/hk_selected__pit_quarterly_financial_linear.yml` | 是 | 验证高覆盖财报主项、报告级增长和利润/现金流质量比率，比较树模型与线性模型 |
 
 补充：
 
 1. 这里说的“准备本地 PIT 文件”，指的是运行仓库内置命令把 RQData PIT 资产整理成 `pipeline_fundamentals.parquet`，不是手工清洗表格。
 1. provider 季度估值对照适合先排查“是不是频率更低就会好一些”。这一步更省事，但不替代完整财报研究。
 1. PIT 财报季度基线适合认真研究财报 alpha。当前 pipeline 已内置 `profit_margin`、`asset_turnover`、`roa`、`leverage`、`cfo_to_assets`、`accrual_ratio`、`receivables_to_revenue`、`inventory_to_revenue` 这类慢因子派生。
+1. 财务 ML / 线性对照路线默认聚焦覆盖更高的利润表和现金流字段。它会先用 `sales`、`operating_profit`、`net_profit`、`basic_earnings_per_share`、`cash_flow_from_operating_activities`、`growth_*`、`profit_margin`、`cfo_margin`、`cfo_to_profit`。如果你镜像了覆盖更完整的 PIT 资产，再扩展 `debt_to_equity`、`cash_to_assets`、`working_capital_to_assets` 这类结构比率。
 1. 如果纯 PIT 基线已有方向，再跑 `config/hk_selected__pit_quarterly_hybrid.yml`，判断慢价格和流动性特征是否真的带来增益。
 
 ### 2.2.2 什么时候切到季度 PIT 口径
@@ -281,8 +289,9 @@ csml sweep-linear --sweep-config config/sweeps/hk_selected__eval_sample_ffill.ym
 1. 先跑季度 provider 估值对照，确认低频口径本身有没有方向。
 1. 再确认本地 PIT fundamentals 文件已经准备好。没有就先执行资产镜像和 build 命令。
 1. 再跑季度 PIT 基线，确认财报文件和季度口径都工作正常。
-1. 再跑季度财务 ML 基线，确认“主项 + 变化量 + 缺失标记”这条线是否优于纯财报比率。
-1. 再跑季度 PIT 线性 sweep，看慢因子有没有稳定方向。
+1. 再跑季度财务 ML 基线，确认“高覆盖主项 + 增长 + 盈利/现金流质量比率 + 缺失标记”这条线是否优于纯财报比率。
+1. 再跑同口径的季度线性基线，确认方向是否在线性模型里也成立。
+1. 再跑季度 PIT 财务线性 sweep，看慢因子方向是否稳定。
 1. 最后再跑财报 + 慢技术面的混合配置，判断是否值得加复杂度。
 
 这里要特别注意：
@@ -316,19 +325,23 @@ csml run --config config/hk_selected__baseline_pit_quarterly.yml
 # 4) 再跑季度财务 ML 基线
 csml run --config config/hk_selected__pit_quarterly_financial_ml.yml
 
-# 5) 再跑季度 PIT 线性 sweep
-csml sweep-linear --sweep-config config/sweeps/hk_selected__pit_quarterly_linear.yml
+# 5) 再跑同口径的季度线性基线
+csml run --config config/hk_selected__pit_quarterly_financial_linear.yml
 
-# 6) 最后跑财报 + 慢技术面的混合配置
+# 6) 再跑季度 PIT 财务线性 sweep
+csml sweep-linear --sweep-config config/sweeps/hk_selected__pit_quarterly_financial_linear.yml
+
+# 7) 最后跑财报 + 慢技术面的混合配置
 csml run --config config/hk_selected__pit_quarterly_hybrid.yml
 ```
 
-上面真正对应研究判断的是 5 个问题，其中第 2 步是数据准备：
+上面真正对应研究判断的是 6 个问题，其中第 2 步是数据准备：
 
 1. 低频估值字段本身有没有方向。
 1. PIT 财报 + 季度调仓本身有没有可解释的信号。
-1. 财务主项、变化量和缺失标记是否比纯财报比率更稳。
-1. 线性模型下，慢因子方向是否稳定。
+1. 高覆盖财报主项、增长、盈利/现金流质量比率和缺失标记是否比纯财报比率更稳。
+1. 同口径在线性模型里是否还能保留方向。
+1. 线性参数网格下，慢因子方向是否稳定。
 1. 加入慢技术面后，结果是否明显改善。
 
 看结果时，建议先读：
@@ -339,6 +352,43 @@ csml run --config config/hk_selected__pit_quarterly_hybrid.yml
 1. `summary.json -> backtest.stats`
 
 如果季度 PIT 路线的 `IC` 仍然不高，但 `long_short`、`Top-K` 胜率和净回测开始同步改善，这条线就值得继续扩展。
+
+### 2.4.2 要做港股通全量历史财务归档时
+
+如果你准备把“港股通历史股票池 + 港股 PIT 财务字段”先完整镜像下来，再跑季度财务 ML，建议按这条流程走：
+
+```bash
+# 1) 先生成更完整的港股通历史股票池
+csml universe hk-connect --config config/universe.hk_connect_full.yml
+
+# 2) 再拉全字段 PIT 财务归档
+csml rqdata mirror-hk-pit-financials \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --field-profile full \
+  --name hk_connect_full_2010_2025_full_latest \
+  --start-quarter 2010q1 \
+  --end-quarter 2025q4 \
+  --date 20260310
+
+# 3) 用较窄的字段集生成研究文件
+csml rqdata build-hk-pit-fundamentals \
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2010_2025_full_latest \
+  --field revenue \
+  --field operating_revenue \
+  --field operating_profit \
+  --field net_profit \
+  --field basic_earnings_per_share \
+  --field cash_flow_from_operating_activities \
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2010_2025_full_latest/pipeline_fundamentals.parquet
+
+# 4) 跑更宽股票池的季度财务 ML 基线
+csml run --config config/hk_connect__pit_quarterly_financial_ml.yml
+```
+
+这里有两个关键点：
+
+1. 港股通 membership 从 2014-11-17 开始统计。财务镜像仍然可以从 `2010q1` 开始拉，这样上市较早的港股会保留更长的财报历史。
+1. 全字段镜像适合归档。真正跑季度财务 ML 时，先缩回覆盖更高的一组字段，结果通常更稳，也更省存储和内存。
 
 ### 2.5 再跑非线性对照组
 

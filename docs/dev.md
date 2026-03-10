@@ -80,6 +80,7 @@ uv run pytest \
   tests/test_pipeline_filters.py \
   tests/test_fundamentals_providers.py \
   tests/test_rqdata_assets.py \
+  tests/test_universe_tools.py \
   tests/test_cli.py \
   tests/test_linear_sweep.py \
   tests/test_data_providers_cache.py \
@@ -88,12 +89,13 @@ uv run pytest \
 
 ### 季度 provider / PIT 路线要看哪些测试
 
-如果你改的是 `config/hk_selected__provider_quarterly_valuation.yml`、`config/hk_selected__baseline_pit_quarterly.yml`、`config/hk_selected__pit_quarterly_financial_ml.yml`、`config/hk_selected__pit_quarterly_hybrid.yml` 或它们依赖的 pipeline 行为，建议至少理解这几组测试：
+如果你改的是 `config/hk_selected__provider_quarterly_valuation.yml`、`config/hk_selected__baseline_pit_quarterly.yml`、`config/hk_selected__pit_quarterly_financial_ml.yml`、`config/hk_selected__pit_quarterly_financial_linear.yml`、`config/hk_selected__pit_quarterly_hybrid.yml` 或它们依赖的 pipeline 行为，建议至少理解这几组测试：
 
 1. `tests/test_pipeline_validation.py`：配置模板烟雾检查，确认季度模板的 `label/eval/backtest.rebalance_frequency` 一致，`fundamentals.source` 没写反。
 1. `tests/test_pipeline_filters.py`：provider/file 两路基本面并入、PIT 文件读取、披露日后的 `ffill`，以及慢财报派生因子是否按披露节奏生效。
 1. `tests/test_fundamentals_providers.py`：HK + RQData provider 基本面抓取、标准化和缓存键行为。
 1. `tests/test_rqdata_assets.py`：`mirror-hk-pit-financials` 和 `build-hk-pit-fundamentals` 这条 PIT 资产预处理链路。
+1. `tests/test_universe_tools.py`：港股通 universe 构建脚本的日期 token、输出路径和流动性筛选边界。
 1. `tests/test_cli.py`：PIT 资产命令和 `sweep-linear` 命令参数解析。
 1. `tests/test_linear_sweep.py`：季度 PIT 线性 sweep 配置是否能被正确读取，生成的 jobs 和 base config 是否匹配。
 1. `tests/test_data_providers_cache.py`：RQData 日线缓存、上市日裁剪和空区间处理，避免低频研究被脏缓存干扰。

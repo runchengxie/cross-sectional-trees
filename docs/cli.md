@@ -407,6 +407,7 @@ csml rqdata list-hk-financial-fields --contains profit --out artifacts/exports/h
 * `--end-quarter <YYYYqN>`
 * `--date <YYYYMMDD>`
 * `--statements <latest|all>`
+* `--field-profile <starter|full>`
 * `--field <name>` 或 `--fields-file <path>`
 * `--symbol <code>` / `--symbols-file <path>` / `--by-date-file <path>`
 * `--batch-size <n>`
@@ -418,6 +419,8 @@ csml rqdata list-hk-financial-fields --contains profit --out artifacts/exports/h
 * 默认输出到 `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/`。
 * 目录里会写 `manifest.yml`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`。
 * 仓库内置了一份 starter 字段文件：`config/rqdata_assets/hk_financial_fields_starter.txt`。
+* `--field-profile starter` 等价于仓库内置的 starter 字段集。
+* `--field-profile full` 会读取本地安装的 `rqdatac` 元数据，把港股财务接口当前支持的全部字段都拉进来。
 * 为了复现，建议显式传 `--date`，例如 `20260310`。
 
 示例：
@@ -428,6 +431,20 @@ csml rqdata mirror-hk-pit-financials \
   --name hk_selected_pit_2011_2025_latest \
   --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
   --start-quarter 2011q1 \
+  --end-quarter 2025q4 \
+  --date 20260310
+```
+
+如果你要准备“港股通全量历史股票池 + 全字段财务归档”，建议这样跑：
+
+```bash
+csml universe hk-connect --config config/universe.hk_connect_full.yml
+
+csml rqdata mirror-hk-pit-financials \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --field-profile full \
+  --name hk_connect_full_2010_2025_full_latest \
+  --start-quarter 2010q1 \
   --end-quarter 2025q4 \
   --date 20260310
 ```
@@ -464,6 +481,7 @@ csml rqdata mirror-hk-financial-details \
 关键参数：
 
 * `--asset-dir <path>`：`mirror-hk-pit-financials` 的输出目录
+* `--field-profile <starter|full>`：可选。和镜像命令共用字段 profile
 * `--field <name>` 或 `--fields-file <path>`：可选。默认沿用资产目录 `manifest.yml` 里的字段列表
 * `--out <path>`：可选。默认写到 `<asset-dir>/pipeline_fundamentals.parquet`
 * `--keep-meta`
@@ -474,6 +492,7 @@ csml rqdata mirror-hk-financial-details \
 
 * 输出文件至少包含 `trade_date`、`ts_code` 和选中的财报字段。
 * 默认把 `trade_date` 写成财报披露日，也就是 `info_date`。
+* 如果镜像资产用了 `--field-profile full`，这里可以改用 `--field-profile starter`、`--fields-file` 或少量 `--field`，先生成一份更窄的研究文件。
 * 后续在 pipeline 里通常配合 `fundamentals.ffill=true` 使用，这样披露后的交易日会延续最近一版财报值。
 * 命令会额外写一份 sidecar manifest：`<out>.manifest.yml`。
 
@@ -521,6 +540,8 @@ csml universe index-components --index-code 000300.SH --month 202501
 补充：
 
 * by-date CSV 会同时包含 `ts_code` 和 `stock_ticker`。
+* `top_quantile=0` 表示保留全部港股通候选。这个口径适合做全量资产镜像。
+* 仓库提供了 `config/universe.hk_connect_full.yml`，用于生成更完整的历史港股通股票池文件。
 
 示例：
 
