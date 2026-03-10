@@ -76,4 +76,4 @@ csml snapshot --config config/hk_live.yml
 
 ## 说明
 
-`README` 只保留项目总览和最短路径。CLI 参数、配置细节、输出字段和故障排查统一放在 `docs/` 中维护。
+`README` 为项目总览和最短路径。详细信息如CLI 参数、配置细节、输出字段和故障排查统一放在 `docs/` 中维护。
