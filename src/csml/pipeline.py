@@ -33,7 +33,11 @@ from .date_utils import (
     resolve_date_token as _resolve_date_token,
 )
 from .data_interface import DataInterface
-from .data_providers import normalize_market
+from .data_providers import (
+    fundamentals_provider_supported,
+    normalize_market,
+    resolve_provider,
+)
 from .dataset import DatasetSchema, build_dataset
 from .execution import build_execution_model, describe_execution_model, BpsCostModel
 from .metrics import (
@@ -1101,6 +1105,11 @@ def run(config_ref: str | Path | None = None) -> None:
     FUNDAMENTALS_MCAP_COL = str(fundamentals_cfg.get("market_cap_col", "market_cap")).strip()
     FUNDAMENTALS_LOG_MCAP_COL = str(fundamentals_cfg.get("log_market_cap_col", "log_mcap")).strip()
     FUNDAMENTALS_REQUIRED = bool(fundamentals_cfg.get("required", False))
+    FUNDAMENTALS_PROVIDER = (
+        resolve_provider({"provider": fundamentals_cfg.get("provider")})
+        if fundamentals_cfg.get("provider")
+        else provider
+    )
 
     feature_list = features_cfg.get("list") or []
     FEATURES = normalize_symbol_list(feature_list) if feature_list else [
@@ -1298,13 +1307,18 @@ def run(config_ref: str | Path | None = None) -> None:
 
     fundamentals_cols: list[str] = []
     if FUNDAMENTALS_ENABLED:
-        if FUNDAMENTALS_SOURCE == "provider" and provider != "tushare":
-            message = "Fundamentals provider mode currently supports only Tushare; use source=file instead."
+        if FUNDAMENTALS_SOURCE == "provider" and not fundamentals_provider_supported(
+            FUNDAMENTALS_PROVIDER, MARKET
+        ):
+            message = (
+                "Fundamentals provider mode currently supports Tushare and "
+                "RQData market=hk; use source=file instead."
+            )
             if FUNDAMENTALS_REQUIRED:
                 sys.exit(message)
             logger.warning("%s Fundamentals disabled.", message)
             FUNDAMENTALS_ENABLED = False
-        if FUNDAMENTALS_SOURCE == "provider":
+        if FUNDAMENTALS_SOURCE == "provider" and FUNDAMENTALS_PROVIDER == "tushare":
             endpoint_name = fundamentals_cfg.get("endpoint") or data_cfg.get("fundamentals_endpoint")
             if not endpoint_name:
                 message = "fundamentals.endpoint is required for provider mode."

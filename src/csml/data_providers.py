@@ -44,6 +44,12 @@ FUNDAMENTAL_COLUMN_CANDIDATES = {
 
 FUNDAMENTAL_REQUIRED_COLUMNS = ("trade_date", "ts_code")
 
+DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS = {
+    "market_cap": "hk_total_market_val",
+    "pe_ttm": "pe_ratio_ttm",
+    "pb": "pb_ratio_ttm",
+}
+
 DEFAULT_COLUMN_MAPS = {
     "cn": {
         "trade_date": "trade_date",
@@ -95,6 +101,12 @@ def resolve_provider(data_cfg: Optional[Mapping]) -> str:
     if value in {"eodhd", "eod"}:
         return "eodhd"
     return value or "tushare"
+
+
+def fundamentals_provider_supported(provider: str, market: str) -> bool:
+    provider = resolve_provider({"provider": provider})
+    market = normalize_market(market)
+    return provider == "tushare" or (provider == "rqdata" and market == "hk")
 
 
 def _hk_to_rqdata_symbol(symbol: str) -> str:
@@ -170,6 +182,20 @@ def _prepare_rqdata_daily_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
     return df
 
 
+def _prepare_rqdata_fundamentals_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    if isinstance(df, pd.Series):
+        df = df.to_frame(name=str(df.name or "value"))
+    df = df.copy()
+    if isinstance(df.index, pd.MultiIndex):
+        date_index = pd.to_datetime(df.index.get_level_values(-1), errors="coerce")
+    else:
+        date_index = pd.to_datetime(df.index, errors="coerce")
+    df = df.reset_index(drop=True)
+    df["trade_date"] = date_index.strftime("%Y%m%d")
+    df["ts_code"] = symbol
+    return df[df["trade_date"].notna()].copy()
+
+
 def _rqdata_default_fields(rq_cfg: Optional[Mapping]) -> Optional[list[str]]:
     if isinstance(rq_cfg, Mapping) and "fields" in rq_cfg:
         fields = rq_cfg.get("fields")
@@ -183,6 +209,59 @@ def _rqdata_skip_suspended(market: str, rq_cfg: Optional[Mapping]) -> Optional[b
     if isinstance(rq_cfg, Mapping) and "skip_suspended" in rq_cfg:
         return bool(rq_cfg.get("skip_suspended"))
     return True if normalize_market(market) == "hk" else None
+
+
+def _rqdata_fundamental_fields(fundamentals_cfg: Mapping) -> list[str]:
+    explicit_fields = fundamentals_cfg.get("fields")
+    if explicit_fields is not None:
+        if isinstance(explicit_fields, str):
+            text = explicit_fields.strip()
+            if text and text not in {"all", "*"}:
+                return [text]
+        else:
+            normalized = [str(field).strip() for field in explicit_fields if str(field).strip()]
+            if normalized:
+                return normalized
+
+    column_map = fundamentals_cfg.get("column_map")
+    if isinstance(column_map, Mapping):
+        inferred_fields: list[str] = []
+        for standard in DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS:
+            source = column_map.get(standard)
+            if source:
+                inferred_fields.append(str(source))
+        if inferred_fields:
+            return inferred_fields
+
+    return list(DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS.values())
+
+
+def _fundamentals_cache_file(
+    cache_dir: Path,
+    market: str,
+    provider: str,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    tag: Optional[str],
+    fundamentals_cfg: Mapping,
+) -> Path:
+    prefix = f"{market}_{provider}"
+    if tag:
+        prefix = f"{prefix}_{tag}"
+    cache_payload = {
+        "endpoint": fundamentals_cfg.get("endpoint"),
+        "fields": fundamentals_cfg.get("fields"),
+        "params": fundamentals_cfg.get("params") or {},
+        "column_map": fundamentals_cfg.get("column_map") or {},
+    }
+    cache_digest = hashlib.md5(
+        json.dumps(cache_payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    return (
+        cache_dir
+        / f"{prefix}_fundamentals_{symbol}_{start_date}_{end_date}_{cache_digest}.parquet"
+    )
 
 
 def _fetch_daily_rqdata(
@@ -822,16 +901,55 @@ def fetch_fundamentals(
         or fundamentals_cfg.get("cache_version")
         or _cache_tag(data_cfg)
     )
-    prefix = f"{market}_{provider}"
-    if tag:
-        prefix = f"{prefix}_{tag}"
-    cache_file = cache_dir / f"{prefix}_fundamentals_{symbol}_{start_date}_{end_date}.parquet"
+    cache_file = _fundamentals_cache_file(
+        cache_dir,
+        market,
+        provider,
+        symbol,
+        start_date,
+        end_date,
+        tag,
+        fundamentals_cfg,
+    )
     if cache_file.exists():
         return pd.read_parquet(cache_file)
 
+    if provider == "rqdata":
+        if market != "hk":
+            raise ValueError(
+                "RQData fundamentals provider currently supports only market='hk'."
+            )
+        if client is None:
+            import rqdatac as client
+
+        endpoint_name = str(fundamentals_cfg.get("endpoint") or "get_factor").strip()
+        if endpoint_name != "get_factor":
+            raise ValueError(
+                "RQData fundamentals provider currently supports only endpoint='get_factor'."
+            )
+        rq_cfg = data_cfg.get("rqdata") if isinstance(data_cfg, Mapping) else None
+        rq_market = (
+            normalize_market(rq_cfg.get("market"))
+            if isinstance(rq_cfg, Mapping) and rq_cfg.get("market")
+            else market
+        )
+        factor_fields = _rqdata_fundamental_fields(fundamentals_cfg)
+        params = dict(fundamentals_cfg.get("params") or {})
+        params["market"] = rq_market
+        rq_symbol = _to_rqdata_symbol(rq_market, symbol)
+        df = client.get_factor(rq_symbol, factor_fields, start_date, end_date, **params)
+        if df is None or df.empty:
+            return df
+        column_map = fundamentals_cfg.get("column_map") or {}
+        df = _prepare_rqdata_fundamentals_frame(df, symbol)
+        df = _standardize_fundamentals_frame(df, column_map, symbol)
+        df = df.copy(deep=True)
+        df.to_parquet(cache_file)
+        return df
+
     if provider != "tushare":
         raise ValueError(
-            "Fundamentals provider not supported (use fundamentals.source=file or provider=tushare)."
+            "Fundamentals provider not supported (use fundamentals.source=file, provider=tushare, or provider=rqdata with market=hk)."
         )
     endpoint_name = fundamentals_cfg.get("endpoint") or data_cfg.get("fundamentals_endpoint")
     if not endpoint_name:
