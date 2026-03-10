@@ -79,8 +79,8 @@ csml backup-data --name hk_frozen_20251231 --config config/hk_selected__baseline
 # 读取当前持仓
 csml holdings --config config/hk.yml --as-of t-1
 
-# 一键生成 live 快照
-csml snapshot --config config/hk_live.yml
+# 一键生成 live 快照（需先准备单独的 live 配置）
+csml snapshot --config config/hk_live.local.yml
 ```
 
 完整命令和参数说明见 `docs/cli.md`。
@@ -103,17 +103,17 @@ csml snapshot --config config/hk_live.yml
 * 保留 `cache/`、`config.used.yml`、`summary.json` 和 git commit。
 * 多数据源切换时，同时记录 `data.provider` 与 provider 专属参数。
 
-## 私有 Release 恢复
+## 私有备份建议
 
-如果你已经把一轮研究打成私有 release，恢复时按这个最短清单走：
+仓库内置的是本地快照工具 `csml backup-data`。它会把缓存、universe 文件和配置复制到 `data_mirror/<name>/`，不会自动生成 release 资产或恢复脚本。
 
-1. 下载 `csml-data-snapshot-*.tar.gz`、`csml-source-snapshot-*.tar.gz`、`csml-research-summaries-*.tar.gz`、`SHA256SUMS.txt`。
-1. 先执行 `sha256sum -c SHA256SUMS.txt`。
-1. 在空目录解压源码快照，再把数据快照解到仓库根目录。
-1. 如需看研究结论，再解压 `csml-research-summaries-*.tar.gz`。
-1. 执行 `uv sync --extra dev`。如果要继续跑 `RQData`，再加 `--extra rqdata`。
+如果你要长期保存一轮研究，建议至少保留：
 
-更完整的恢复步骤见 `docs/cookbook.md`。
+1. `data_mirror/<name>/manifest.yml`
+1. 对应 run 的 `summary.json` 和 `config.used.yml`
+1. 需要复跑时使用的配置文件
+
+如需另外打包源码或快照目录，做法见 `docs/cookbook.md`。
 
 ## 说明
 

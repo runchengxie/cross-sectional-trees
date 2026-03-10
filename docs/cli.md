@@ -236,12 +236,13 @@ csml holdings --run-dir out/runs/<run_dir> --format csv --out out/positions/late
 * 默认会先执行一次 `run`，再读取 live 持仓。
 * `--config` 和 `--run-dir` 至少要提供一个。
 * live 配置要求 `live.enabled=true` 且 `eval.save_artifacts=true`。
+* 仓库里没有内置的 `config/hk_live.yml`。通常做法是从 `csml init-config --market hk` 导出的模板另存一份 live 配置。
 
 示例：
 
 ```bash
-csml snapshot --config config/hk_live.yml
-csml snapshot --config config/hk_live.yml --skip-run --format json
+csml snapshot --config config/hk_live.local.yml
+csml snapshot --config config/hk_live.local.yml --skip-run --format json
 ```
 
 ## 7) `csml alloc`
@@ -275,7 +276,7 @@ csml snapshot --config config/hk_live.yml --skip-run --format json
 示例：
 
 ```bash
-csml alloc --config config/hk_live.yml --source live --top-n 20 --cash 1000000
+csml alloc --config config/hk_live.local.yml --source live --top-n 20 --cash 1000000
 
 csml alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json --out out/alloc/top10.json
 
