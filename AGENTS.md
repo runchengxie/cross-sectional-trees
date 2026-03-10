@@ -61,8 +61,11 @@ uv sync --extra dev --extra rqdata
 * `config.used.yml` 是每次 run 的实际生效配置，应优先用于复现。
 * 研究对比时，优先保持 `universe`、`label`、`features`、`eval`、`backtest` 不变，只替换模型相关参数。
 * HK 线性模型批跑优先使用 `config/hk_selected__baseline.yml` 作为基线配置。
+* HK 默认研究模板使用港股通 PIT universe；这只是仓库内置研究口径，不等于 provider 的港股覆盖边界。
 * 输出目录默认是 `out/runs/<run_name>_<timestamp>_<hash>/`。
 * 看结果时，先读 `summary.json`、`config.used.yml` 和持仓文件。
+* 线性模型汇总时，优先排除或单独标记 `flag_constant_prediction=true`、`flag_zero_feature_importance=true` 的退化 run。
+* 并行维护 `frozen` 与 `rolling` 数据窗口时，优先用不同的 `data.cache_tag` 隔离缓存。
 
 ## 编辑与验证
 
@@ -71,6 +74,7 @@ uv sync --extra dev --extra rqdata
 * 不要提交 `out/`、缓存文件或临时实验产物，除非任务明确要求。
 * 文档改动至少检查交叉引用和路径是否仍然有效。
 * 代码改动后，运行与改动范围匹配的测试。
+* HK + RQData 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/test_pipeline_filters.py`、`tests/test_fundamentals_providers.py`、`tests/test_data_providers_cache.py`。
 
 ## 说明
 

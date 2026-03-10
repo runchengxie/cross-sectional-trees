@@ -43,6 +43,9 @@ uv run pytest
 # 只跑某个测试文件
 uv run pytest tests/test_metrics.py
 
+# 日常快回归
+uv run pytest -m "not integration and not slow"
+
 # 跑集成测试
 uv run pytest -m integration
 
@@ -66,6 +69,17 @@ uv run pytest -m "not integration and not slow"
 
 # 仅集成测试
 uv run pytest -m integration
+```
+
+最近几轮和 HK + RQData 相关的高频回归，建议至少覆盖这组：
+
+```bash
+uv run pytest \
+  tests/test_summarize_runs.py \
+  tests/test_pipeline_filters.py \
+  tests/test_fundamentals_providers.py \
+  tests/test_data_providers_cache.py \
+  -q
 ```
 
 ## 提交前检查建议

@@ -139,6 +139,7 @@ class _FakeRQDailyClient:
 def test_fetch_daily_rqdata_clamps_start_date_to_listing_date(tmp_path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
+    data_providers._RQDATA_LISTED_DATE_CACHE.clear()
     client = _FakeRQDailyClient("2015-03-20")
 
     result = data_providers.fetch_daily(
@@ -169,3 +170,27 @@ def test_fetch_daily_rqdata_clamps_start_date_to_listing_date(tmp_path):
         )
     ]
     assert result["trade_date"].tolist() == ["20150320", "20150323"]
+
+
+def test_fetch_daily_rqdata_returns_empty_when_symbol_lists_after_requested_range(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    data_providers._RQDATA_LISTED_DATE_CACHE.clear()
+    client = _FakeRQDailyClient("2016-01-05")
+
+    result = data_providers.fetch_daily(
+        "hk",
+        "01468.HK",
+        "20150101",
+        "20151231",
+        cache_dir,
+        client=client,
+        data_cfg={
+            "provider": "rqdata",
+            "cache_mode": "range",
+            "rqdata": {"market": "hk", "skip_suspended": True},
+        },
+    )
+
+    assert client.price_calls == []
+    assert result.empty

@@ -210,3 +210,52 @@ csml init-config --market hk --out config/
 
 * `docs/config.md`
 * `docs/cli.md`
+
+## 9. HK 基本面有 warning，部分 symbol 没有 `market_cap / pe_ttm / pb`
+
+常见原因：
+
+* 股票池里混入了 ETF、杠杆/反向产品或其他非普通股产品
+* 当前配置使用了 `fundamentals.source=provider`
+* `RQData` 对这些 symbol 不提供对应的估值类字段
+
+先看：
+
+1. `summary.json -> fundamentals`
+2. 日志里的缺失 symbol 列表
+3. `universe_by_date.csv` 里对应 symbol 的类型来源
+
+建议：
+
+* 若只是少量 ETF / 产品代码缺失，可继续运行；这些 symbol 会被跳过
+* 若缺失比例很高，先检查股票池定义，再确认是否应改用 `fundamentals.source=file`
+* 做港股普通股研究时，尽量把股票池限制在普通股 universe
+
+相关文档：
+
+* `docs/providers.md`
+* `docs/config.md`
+
+## 10. RQData 长历史抓取报 `invalid date range`
+
+常见原因：
+
+* 请求起始日早于个股上市日
+* 你在仓库外部写了自定义取数脚本，直接把固定长窗口传给 `rqdatac.get_price`
+
+先看：
+
+1. 报错 symbol 的 `listed_date`
+2. 请求区间的 `start_date / end_date`
+3. 当前仓库版本是否已经包含上市日裁剪逻辑
+
+建议：
+
+* 仓库内主流程会先按 `listed_date` 裁剪左端区间，再发请求
+* 自定义脚本也应先查 `instruments(...).listed_date`
+* 若个股上市日晚于整个请求区间，直接返回空表即可，不必继续请求 provider
+
+相关文档：
+
+* `docs/providers.md`
+* `docs/dev.md`

@@ -23,6 +23,12 @@ cp .env.example .env
 csml run --config config/hk.yml
 ```
 
+如果你准备用 `RQData`：
+
+```bash
+uv sync --extra rqdata
+```
+
 最小鉴权取决于 `data.provider`：
 
 * `tushare`：`TUSHARE_TOKEN`
@@ -46,6 +52,9 @@ csml init-config --market hk --out config/
 
 # 跨历史 run 汇总
 csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv
+
+# 查询 RQData 配额
+csml rqdata quota --pretty
 
 # 读取当前持仓
 csml holdings --config config/hk.yml --as-of t-1
