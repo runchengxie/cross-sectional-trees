@@ -1,0 +1,28 @@
+# Narrow follow-up sweep for HK selected baseline.
+# Goal:
+# - keep the current baseline/data assumptions unchanged
+# - search around the only ridge region that still looks viable
+# - weaken ElasticNet regularization to avoid intercept-only collapse
+#
+# Use with:
+#   csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_b.yml
+
+base_config: config/hk_selected__baseline.yml
+run_name_prefix: hk_sel_
+tag: hk_linear_b
+sweeps_dir: out/sweeps
+runs_dir: out/runs
+
+grid:
+  ridge_alpha: [30, 100, 300, 1000]
+  elasticnet_alpha: [0.001, 0.003, 0.01, 0.03]
+  elasticnet_l1_ratio: [0.02, 0.05, 0.1, 0.2]
+
+options:
+  skip_ridge: false
+  skip_elasticnet: false
+  dry_run: false
+  continue_on_error: false
+  skip_summarize: false
+  summary_output: null
+  log_level: INFO

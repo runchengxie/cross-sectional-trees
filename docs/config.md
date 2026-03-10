@@ -257,8 +257,10 @@ model:
 
 补充：
 
-* `source=provider` 目前只支持 TuShare
+* `source=provider` 支持 TuShare，也支持 `market=hk` + `provider=rqdata`
 * `source=file` 读取本地 CSV 或 Parquet
+* `provider=rqdata` 时，默认走 `rqdatac.get_factor`
+* HK 常用映射可直接写成：`market_cap -> hk_total_market_val`、`pe_ttm -> pe_ratio_ttm`、`pb -> pb_ratio_ttm`
 * 缺文件时默认 warning 并跳过，可用 `required=true` 改成报错
 
 ## `live`

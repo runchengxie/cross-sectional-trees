@@ -12,9 +12,11 @@
 | 日线接口 | TuShare endpoint（可配） | `rqdatac.get_price` | EODHD HTTP API |
 | 基础信息（name/list_date） | TuShare basic endpoint | `rqdatac.instruments/all_instruments` | `exchange-symbol-list` |
 | `last_trading_day` 严格交易日 | 否（回退自然日） | 是（可用交易日历时） | 否（回退自然日） |
-| 基本面 `fundamentals.source=provider` | 支持 | 不支持 | 不支持 |
+| 基本面 `fundamentals.source=provider` | 支持 | HK 支持（`get_factor`） | 不支持 |
 
 说明：`last_trading_day / last_completed_trading_day` 只有在 `provider=rqdata` 且交易日历可用时才严格按交易日解析，否则会给 warning 并回退自然日。
+
+补充：`rqdata` 的基本面 provider 模式当前只覆盖 `market=hk`。默认走 `rqdatac.get_factor`。其他市场仍建议使用 `fundamentals.source=file`。
 
 补充：`csml holdings/snapshot/alloc --as-of last_trading_day` 在能识别到 `provider=rqdata` + `market` 上下文时同样按交易日解析；缺少上下文时回退自然日（会输出 warning）。
 
