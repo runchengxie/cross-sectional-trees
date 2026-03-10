@@ -171,6 +171,10 @@ score = backtest_sharpe
       - score_cost_weight * backtest_avg_cost_drag
 ```
 
+补充：
+
+* 若 run 被识别成 `constant prediction` 或 `zero feature importance`，`score` 和 `dsr` 会留空，避免退化模型排到前面。
+
 示例：
 
 ```bash

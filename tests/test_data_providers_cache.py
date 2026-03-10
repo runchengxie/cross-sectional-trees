@@ -109,3 +109,63 @@ def test_fetch_daily_symbol_cache_refresh_on_hit_triggers_tail_refresh(tmp_path,
         "20200104",
         "20200105",
     ]
+
+
+class _FakeRQInstrument:
+    def __init__(self, listed_date: str):
+        self.listed_date = listed_date
+
+
+class _FakeRQDailyClient:
+    def __init__(self, listed_date: str):
+        self.listed_date = listed_date
+        self.price_calls: list[tuple[str, str, str, str, dict]] = []
+
+    def instruments(self, order_book_id, market=None):
+        return _FakeRQInstrument(self.listed_date)
+
+    def get_price(self, order_book_id, start_date, end_date, frequency, **kwargs):
+        self.price_calls.append((order_book_id, start_date, end_date, frequency, kwargs))
+        return pd.DataFrame(
+            {
+                "close": [10.0, 11.0],
+                "volume": [100.0, 110.0],
+                "total_turnover": [1000.0, 1100.0],
+            },
+            index=pd.to_datetime(["2015-03-20", "2015-03-23"]),
+        )
+
+
+def test_fetch_daily_rqdata_clamps_start_date_to_listing_date(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    client = _FakeRQDailyClient("2015-03-20")
+
+    result = data_providers.fetch_daily(
+        "hk",
+        "01468.HK",
+        "20150101",
+        "20151231",
+        cache_dir,
+        client=client,
+        data_cfg={
+            "provider": "rqdata",
+            "cache_mode": "range",
+            "rqdata": {"market": "hk", "skip_suspended": True},
+        },
+    )
+
+    assert client.price_calls == [
+        (
+            "01468.XHKG",
+            "20150320",
+            "20151231",
+            "1d",
+            {
+                "fields": ["close", "volume", "total_turnover"],
+                "skip_suspended": True,
+                "market": "hk",
+            },
+        )
+    ]
+    assert result["trade_date"].tolist() == ["20150320", "20150323"]

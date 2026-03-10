@@ -2,7 +2,7 @@
 # backtest: fixed end_date; daily: end_date defaults to T-1
 hk_connect_universe:
   mode: backtest
-  start_date: 20200101
+  start_date: 20150101
   end_date: 20251231  # backtest fixed end date; daily mode defaults to T-1 unless --end-date provided
   rebalance_frequency: "M"
   lookback_days: 60

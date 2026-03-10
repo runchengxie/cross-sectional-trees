@@ -38,6 +38,7 @@ HK 相关配置建议按职责使用：
 
 * 线性模型批跑时，优先用 `config/hk_selected__baseline.yml` 作为基础配置。
 * 非线性对照时，显式指定对应的 XGB 配置文件。
+* HK selected 基线现在默认覆盖 `2015-01-01` 到 `2025-12-31`，配合 PIT universe 做 10y+ 回测。
 * 旧的 `config/hk_selected.yml` 已弃用。若 `sweep-linear` 遇到该路径且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
 
 ## 顶层配置块
@@ -119,6 +120,7 @@ model:
 
 * 需要隔离实验版本时，设置 `data.cache_tag`
 * 想减少“同配置结果漂移”时，固定绝对日期并保留缓存目录
+* HK 这类日频研究，几百只股票跑 10-15 年通常仍是几十 MB 级别，优先继续用 Parquet 缓存，不必先上数据库
 
 ### TuShare 覆盖项
 
@@ -254,12 +256,14 @@ model:
 * `ffill`
 * `log_market_cap`
 * `required`
+* `cache_dir`
 
 补充：
 
 * `source=provider` 支持 TuShare，也支持 `market=hk` + `provider=rqdata`
 * `source=file` 读取本地 CSV 或 Parquet
 * `provider=rqdata` 时，默认走 `rqdatac.get_factor`
+* 未显式设置 `fundamentals.cache_dir` 时，provider 基本面默认缓存到 `data.cache_dir/fundamentals/<market>/`
 * HK 常用映射可直接写成：`market_cap -> hk_total_market_val`、`pe_ttm -> pe_ratio_ttm`、`pb -> pb_ratio_ttm`
 * 缺文件时默认 warning 并跳过，可用 `required=true` 改成报错
 

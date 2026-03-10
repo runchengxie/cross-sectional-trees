@@ -83,6 +83,7 @@ COLUMN_CANDIDATES = {
 }
 
 REQUIRED_DAILY_COLUMNS = ("trade_date", "close", "vol")
+_RQDATA_LISTED_DATE_CACHE: dict[tuple[str, str], pd.Timestamp | None] = {}
 
 
 def normalize_market(market: Optional[str]) -> str:
@@ -211,6 +212,28 @@ def _rqdata_skip_suspended(market: str, rq_cfg: Optional[Mapping]) -> Optional[b
     return True if normalize_market(market) == "hk" else None
 
 
+def _rqdata_listed_date(client, market: str, rq_symbol: str) -> pd.Timestamp | None:
+    key = (normalize_market(market), str(rq_symbol))
+    if key in _RQDATA_LISTED_DATE_CACHE:
+        return _RQDATA_LISTED_DATE_CACHE[key]
+
+    instrument = None
+    try:
+        instrument = client.instruments(rq_symbol, market=market)
+    except TypeError:
+        instrument = client.instruments(rq_symbol)
+    except Exception:
+        instrument = None
+    if isinstance(instrument, list):
+        instrument = instrument[0] if instrument else None
+
+    listed_date = getattr(instrument, "listed_date", None) or getattr(instrument, "listed_at", None)
+    parsed = pd.to_datetime(listed_date, errors="coerce")
+    normalized = None if pd.isna(parsed) else parsed.normalize()
+    _RQDATA_LISTED_DATE_CACHE[key] = normalized
+    return normalized
+
+
 def _rqdata_fundamental_fields(fundamentals_cfg: Mapping) -> list[str]:
     explicit_fields = fundamentals_cfg.get("fields")
     if explicit_fields is not None:
@@ -295,7 +318,19 @@ def _fetch_daily_rqdata(
     kwargs["market"] = rq_market
 
     rq_symbol = _to_rqdata_symbol(rq_market, symbol)
-    df = client.get_price(rq_symbol, start_date, end_date, frequency, **kwargs)
+    effective_start = str(start_date).strip()
+    effective_end = str(end_date).strip()
+    if skip_suspended:
+        listed_date = _rqdata_listed_date(client, rq_market, rq_symbol)
+        start_ts = pd.to_datetime(effective_start, errors="coerce")
+        end_ts = pd.to_datetime(effective_end, errors="coerce")
+        if listed_date is not None and not pd.isna(start_ts) and not pd.isna(end_ts):
+            if listed_date > end_ts.normalize():
+                return pd.DataFrame()
+            if listed_date > start_ts.normalize():
+                effective_start = listed_date.strftime("%Y%m%d")
+
+    df = client.get_price(rq_symbol, effective_start, effective_end, frequency, **kwargs)
     if df is None or df.empty:
         return df
     return _prepare_rqdata_daily_frame(df, symbol)

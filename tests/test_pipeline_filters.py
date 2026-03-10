@@ -165,7 +165,10 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
         {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
     )
 
+    seen_cache_dirs = {}
+
     def fake_fetch_fundamentals(self, symbol: str, start_date: str, end_date: str, fundamentals_cfg, *, cache_dir=None):
+        seen_cache_dirs[symbol] = str(cache_dir) if cache_dir is not None else None
         return pd.DataFrame(
             {
                 "trade_date": [d.strftime("%Y%m%d") for d in dates],
@@ -259,6 +262,15 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["fundamentals"]["enabled"] is True
     assert summary["fundamentals"]["source"] == "provider"
+    assert summary["fundamentals"]["provider"] == "rqdata"
+    assert summary["fundamentals"]["cache_dir"] == str(tmp_path / "cache" / "fundamentals" / "hk")
+    assert summary["eval"]["feature_importance_file"]
+    assert summary["eval"]["feature_importance_nonzero"] >= 0
+    assert summary["eval"]["pred_nunique"] >= 1
+    assert summary["eval"]["constant_prediction"] == (summary["eval"]["pred_nunique"] <= 1)
+    assert summary["eval"]["zero_feature_importance"] == (
+        summary["eval"]["feature_importance_nonzero"] == 0
+    )
 
     dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
     assert {"market_cap", "pe_ttm", "pb", "log_mcap"}.issubset(dataset.columns)
@@ -266,6 +278,7 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
     assert dataset["pe_ttm"].notna().all()
     assert dataset["pb"].notna().all()
     assert dataset["log_mcap"].notna().all()
+    assert set(seen_cache_dirs.values()) == {str(tmp_path / "cache" / "fundamentals" / "hk")}
 
 
 def test_pipeline_feature_formulas(tmp_path, monkeypatch):

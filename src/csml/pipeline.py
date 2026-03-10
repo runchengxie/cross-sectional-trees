@@ -88,6 +88,18 @@ def _warn_if_purge_too_small(
     )
 
 
+def _resolve_fundamentals_cache_dir(
+    data_cfg: Mapping[str, Any],
+    fundamentals_cfg: Mapping[str, Any],
+    market: str,
+) -> Path:
+    configured = fundamentals_cfg.get("cache_dir")
+    if configured:
+        return Path(str(configured)).expanduser()
+    base_dir = Path(str(data_cfg.get("cache_dir", "cache"))).expanduser()
+    return base_dir / "fundamentals" / normalize_market(market)
+
+
 def _warn_if_delay_exit_lag(
     *,
     label_prefix: str,
@@ -1336,6 +1348,7 @@ def run(config_ref: str | Path | None = None) -> None:
     if not FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
         FEATURES = [feat for feat in FEATURES if feat not in FUNDAMENTALS_FEATURES]
 
+    fund_cache_dir: Optional[Path] = None
     if FUNDAMENTALS_ENABLED:
         fundamentals_frames = []
         if FUNDAMENTALS_SOURCE == "file":
@@ -1352,10 +1365,8 @@ def run(config_ref: str | Path | None = None) -> None:
                 else:
                     fundamentals_frames.append(pd.read_csv(fund_path))
         else:
-            fund_cache_dir = Path(
-                fundamentals_cfg.get("cache_dir", data_cfg.get("cache_dir", "cache"))
-            )
-            fund_cache_dir.mkdir(exist_ok=True)
+            fund_cache_dir = _resolve_fundamentals_cache_dir(data_cfg, fundamentals_cfg, MARKET)
+            fund_cache_dir.mkdir(parents=True, exist_ok=True)
 
             def fetch_fundamentals_with_retry(symbol: str) -> pd.DataFrame:
                 return data_interface.fetch_fundamentals(
@@ -3007,9 +3018,23 @@ def run(config_ref: str | Path | None = None) -> None:
     for _, row in importance_df.iterrows():
         logger.info("  %-20s: %.4f", row["feature"], float(row["importance"]))
 
+    pred_nunique: Optional[int] = None
+    constant_prediction: Optional[bool] = None
+    if eval_scored_data is not None and not eval_scored_data.empty and "pred" in eval_scored_data.columns:
+        pred_nunique = int(eval_scored_data["pred"].nunique(dropna=True))
+        constant_prediction = pred_nunique <= 1
+
+    feature_importance_nonzero: Optional[int] = None
+    zero_feature_importance: Optional[bool] = None
+    if not importance_df.empty and "importance" in importance_df.columns:
+        importance_values = pd.to_numeric(importance_df["importance"], errors="coerce").fillna(0.0)
+        feature_importance_nonzero = int((importance_values.abs() > 0.0).sum())
+        zero_feature_importance = feature_importance_nonzero == 0
+
     # Persist artifacts
     dataset_path: Optional[Path] = None
     eval_scored_path: Optional[Path] = None
+    feature_importance_path: Optional[Path] = None
     if SAVE_ARTIFACTS:
         rolling_ic_files: dict[str, str] = {}
         rolling_sharpe_files: dict[str, str] = {}
@@ -3025,7 +3050,8 @@ def run(config_ref: str | Path | None = None) -> None:
         if eval_scored_data is not None and not eval_scored_data.empty:
             eval_scored_path = run_dir / "eval_scored.parquet"
             save_parquet(eval_scored_data, eval_scored_path)
-        save_frame(importance_df, run_dir / "feature_importance.csv")
+        feature_importance_path = run_dir / "feature_importance.csv"
+        save_frame(importance_df, feature_importance_path)
         if not walk_forward_importance_df.empty:
             walk_forward_importance_path = run_dir / "walk_forward_feature_importance.csv"
             save_frame(walk_forward_importance_df, walk_forward_importance_path)
@@ -3317,6 +3343,14 @@ def run(config_ref: str | Path | None = None) -> None:
                 "scored_pred_col": "pred",
                 "scored_signal_col": "signal_eval",
                 "scored_signal_backtest_col": "signal_backtest",
+                "pred_nunique": pred_nunique,
+                "constant_prediction": constant_prediction,
+                "feature_importance_file": str(feature_importance_path)
+                if feature_importance_path
+                else None,
+                "feature_importance_source": importance_source,
+                "feature_importance_nonzero": feature_importance_nonzero,
+                "zero_feature_importance": zero_feature_importance,
                 "permutation_test": perm_stats,
             },
             "backtest": {
@@ -3435,7 +3469,9 @@ def run(config_ref: str | Path | None = None) -> None:
             "fundamentals": {
                 "enabled": FUNDAMENTALS_ENABLED,
                 "source": FUNDAMENTALS_SOURCE if FUNDAMENTALS_ENABLED else None,
+                "provider": FUNDAMENTALS_PROVIDER if FUNDAMENTALS_ENABLED else None,
                 "file": str(FUNDAMENTALS_FILE) if FUNDAMENTALS_FILE else None,
+                "cache_dir": str(fund_cache_dir) if fund_cache_dir else None,
                 "features": FUNDAMENTALS_FEATURES,
                 "log_market_cap": FUNDAMENTALS_LOG_MCAP,
                 "market_cap_col": FUNDAMENTALS_MCAP_COL,

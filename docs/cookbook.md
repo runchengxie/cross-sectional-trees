@@ -20,6 +20,8 @@
 
 每次运行后优先看 `config.used.yml`，它是“本次 run 实际生效配置”。
 
+HK selected 这组基线现在默认使用 `2015-01-01` 到 `2025-12-31`，并假定 `out/universe/universe_by_date.csv` 也是对应的长历史 PIT universe。
+
 ## 0.5) 先过能不能信的门槛
 
 建议先做这三个检查，再看夏普：
@@ -27,6 +29,7 @@
 1. 样本长度：`backtest_periods >= 24`（`summarize` 默认短样本阈值就是 24）。
 1. 交易可实现性：`backtest_avg_turnover <= 0.7`（默认高换手阈值 0.7）。
 1. 数据稳定性：`data.end_date` 优先固定绝对日期，避免 `today/t-1` 引入复现漂移。
+1. 模型退化：优先剔除 `flag_constant_prediction=true` 或 `flag_zero_feature_importance=true` 的 run。
 
 先看全量汇总，再决定是否加严格过滤：
 
@@ -112,7 +115,7 @@ csml summarize \
   --output out/runs/hk_sel_models_summary.csv
 ```
 
-汇总表会聚合每个 run 的 `summary.json + config.used.yml`，并生成 `flag_*` 与 `score` 字段，方便筛选稳定策略。
+汇总表会聚合每个 run 的 `summary.json + config.used.yml`，并生成 `flag_*` 与 `score` 字段，方便筛选稳定策略。若模型退化成常数预测或全零重要度，`score/dsr` 会自动留空。
 
 ## 4) 结果怎么解读（建议顺序）
 

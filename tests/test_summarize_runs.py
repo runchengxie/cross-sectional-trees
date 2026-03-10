@@ -145,6 +145,103 @@ def test_summarize_runs_collects_metrics_and_flags(tmp_path):
     assert _as_bool(row_b["flag_negative_long_short"]) is True
 
 
+def test_summarize_runs_flags_degenerate_models_and_drops_score(tmp_path):
+    runs_dir = tmp_path / "runs"
+
+    deg_run = runs_dir / "degenerate_20260105_120000_deadbeef"
+    deg_summary = {
+        "run": {
+            "name": "degenerate",
+            "timestamp": "20260105_120000",
+            "config_hash": "deadbeef",
+        },
+        "data": {"market": "hk", "provider": "rqdata"},
+        "eval": {
+            "ic": {"mean": None, "ir": None},
+            "long_short": 0.01,
+            "scored_file": str(deg_run / "eval_scored.parquet"),
+        },
+        "backtest": {
+            "enabled": True,
+            "stats": {
+                "periods": 36,
+                "periods_per_year": 12.0,
+                "total_return": 0.2,
+                "ann_return": 0.1,
+                "ann_vol": 0.2,
+                "sharpe": 1.2,
+                "max_drawdown": -0.1,
+                "avg_turnover": 0.2,
+                "avg_cost_drag": 0.01,
+            },
+        },
+    }
+    deg_config = {"market": "hk", "model": {"type": "elasticnet"}}
+    _write_run(deg_run, deg_summary, deg_config)
+    pd.DataFrame({"pred": [1.0, 1.0, 1.0]}).to_parquet(deg_run / "eval_scored.parquet")
+    pd.DataFrame(
+        {"feature": ["f1", "f2"], "importance": [0.0, 0.0]}
+    ).to_csv(deg_run / "feature_importance.csv", index=False)
+
+    ok_run = runs_dir / "healthy_20260106_120000_abcd1234"
+    ok_summary = {
+        "run": {
+            "name": "healthy",
+            "timestamp": "20260106_120000",
+            "config_hash": "abcd1234",
+        },
+        "data": {"market": "hk", "provider": "rqdata"},
+        "eval": {
+            "ic": {"mean": 0.02, "ir": 0.3},
+            "long_short": 0.02,
+            "scored_file": str(ok_run / "eval_scored.parquet"),
+        },
+        "backtest": {
+            "enabled": True,
+            "stats": {
+                "periods": 36,
+                "periods_per_year": 12.0,
+                "total_return": 0.15,
+                "ann_return": 0.08,
+                "ann_vol": 0.15,
+                "sharpe": 0.8,
+                "max_drawdown": -0.08,
+                "avg_turnover": 0.2,
+                "avg_cost_drag": 0.005,
+            },
+        },
+    }
+    ok_config = {"market": "hk", "model": {"type": "ridge"}}
+    _write_run(ok_run, ok_summary, ok_config)
+    pd.DataFrame({"pred": [1.0, 2.0, 3.0]}).to_parquet(ok_run / "eval_scored.parquet")
+    pd.DataFrame(
+        {"feature": ["f1", "f2"], "importance": [0.3, 0.1]}
+    ).to_csv(ok_run / "feature_importance.csv", index=False)
+
+    output_csv = tmp_path / "runs_summary.csv"
+    summarize_runs.main(
+        [
+            "--runs-dir",
+            str(runs_dir),
+            "--output",
+            str(output_csv),
+            "--sort-by",
+            "score",
+        ]
+    )
+
+    result = pd.read_csv(output_csv)
+    assert result.iloc[0]["run_name"] == "healthy"
+
+    deg_row = result[result["run_name"] == "degenerate"].iloc[0]
+    assert int(deg_row["eval_pred_nunique"]) == 1
+    assert int(deg_row["feature_importance_nonzero"]) == 0
+    assert _as_bool(deg_row["flag_constant_prediction"]) is True
+    assert _as_bool(deg_row["flag_zero_feature_importance"]) is True
+    assert pd.isna(deg_row["score"])
+    assert pd.isna(deg_row["dsr"])
+
+
 def test_summarize_runs_default_output_and_recursive_scan(tmp_path):
     runs_dir = tmp_path / "nested_runs"
     run_dir = runs_dir / "batch_a" / "gamma_20260103_140000_1234abcd"
