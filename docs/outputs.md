@@ -112,7 +112,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 ## 调仓差异文件
 
-`rebalance_diff.csv`（以及 `_live` / `_oos` 版本）展示“最新一期 vs 上一期”的变化：
+`rebalance_diff.csv`（以及 `_live` / `_oos` 版本）展示最新一期 vs 上一期的变化：
 
 | 列名 | 说明 |
 | --- | --- |
