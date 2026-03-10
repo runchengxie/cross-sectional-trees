@@ -5,8 +5,8 @@
 base_config: config/hk_selected__baseline_pit_quarterly.yml
 run_name_prefix: hk_pitq_
 tag: hk_pit_quarterly_linear
-sweeps_dir: out/sweeps
-runs_dir: out/runs
+sweeps_dir: artifacts/sweeps
+runs_dir: artifacts/runs
 
 grid:
   ridge_alpha: [0.01, 0.1, 1, 10, 100]

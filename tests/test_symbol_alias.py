@@ -27,6 +27,24 @@ def test_load_universe_by_date_accepts_stock_ticker_column(tmp_path):
     assert out.iloc[0]["ts_code"] == "AAA"
 
 
+def test_load_universe_by_date_parses_integer_yyyymmdd_dates(tmp_path):
+    path = tmp_path / "universe.csv"
+    pd.DataFrame(
+        {
+            "rebalance_date": [20200102, 20200102, 20200131],
+            "stock_ticker": ["00005.HK", "00005.HK", "00011.HK"],
+            "selected": [1, 1, 1],
+        }
+    ).to_csv(path, index=False)
+
+    out = pipeline.load_universe_by_date(path, market="hk")
+    assert out["trade_date"].tolist() == [
+        pd.Timestamp("2020-01-02"),
+        pd.Timestamp("2020-01-31"),
+    ]
+    assert out["ts_code"].tolist() == ["00005.HK", "00011.HK"]
+
+
 def test_annotate_positions_window_adds_stock_ticker_alias():
     frame = pd.DataFrame(
         {

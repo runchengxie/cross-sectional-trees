@@ -18,7 +18,7 @@
 
 补充：`rqdata` 的基本面 provider 模式当前只覆盖 `market=hk`。pipeline 默认走 `rqdatac.get_factor`。其他市场仍建议使用 `fundamentals.source=file`。
 
-补充：如果你要下载更完整的港股财报资产，使用 `csml rqdata mirror-hk-pit-financials` 或 `csml rqdata mirror-hk-financial-details`。这两条命令会把数据写到 `data_assets/rqdata/`，不走 pipeline 的 provider 基本面缓存。
+补充：如果你要下载更完整的港股财报资产，使用 `csml rqdata mirror-hk-pit-financials` 或 `csml rqdata mirror-hk-financial-details`。这两条命令会把数据写到 `artifacts/assets/rqdata/`，不走 pipeline 的 provider 基本面缓存。
 
 补充：如果你已经有 `pit_financials` 资产目录，可以继续执行 `csml rqdata build-hk-pit-fundamentals`。这条命令会生成一个平面 fundamentals 文件，默认把 `trade_date` 写成 `info_date`，可直接接到 `fundamentals.source=file`。
 
@@ -89,6 +89,6 @@ data:
 
 1. 固定 `data.start_date/end_date` 为绝对日期。
 1. 固定 `data.provider` 与 provider 专属参数。
-1. 保留 `cache/`、`config.used.yml`、`summary.json`。
+1. 保留 `artifacts/cache/`、`config.used.yml`、`summary.json`。
 1. 使用 `data.cache_tag` 隔离关键实验版本。
 1. 10-15 年、几百只股票、日频 + 少量基本面通常还不需要数据库；先把 Parquet 缓存和 PIT universe 管好。

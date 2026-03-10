@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, resolve_repo_path
 from ..config_utils import resolve_pipeline_config
 from ..date_utils import resolve_date_token
 from .symbols import ensure_symbol_columns
@@ -93,11 +94,9 @@ def _resolve_output_dir(config_path: str | None) -> tuple[Path, str]:
     cfg = resolved.data
     eval_cfg = cfg.get("eval") if isinstance(cfg, dict) else None
     eval_cfg = eval_cfg if isinstance(eval_cfg, dict) else {}
-    output_dir = eval_cfg.get("output_dir", "out/runs")
+    output_dir = eval_cfg.get("output_dir", DEFAULT_RUNS_DIR.as_posix())
     run_name = eval_cfg.get("run_name") or resolved.label
-    output_path = Path(output_dir).expanduser()
-    if not output_path.is_absolute():
-        output_path = (Path.cwd() / output_path).resolve()
+    output_path = resolve_repo_path(output_dir)
     return output_path, str(run_name)
 
 

@@ -8,10 +8,13 @@ from csml.project_tools import backup_data
 def test_backup_data_copies_selected_paths_and_writes_manifest(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
-    (repo_root / "cache").mkdir()
-    (repo_root / "cache" / "prices.parquet").write_text("cache-data", encoding="utf-8")
-    (repo_root / "out" / "universe").mkdir(parents=True)
-    (repo_root / "out" / "universe" / "universe_by_date.csv").write_text(
+    (repo_root / "artifacts" / "cache").mkdir(parents=True)
+    (repo_root / "artifacts" / "cache" / "prices.parquet").write_text(
+        "cache-data",
+        encoding="utf-8",
+    )
+    (repo_root / "artifacts" / "assets" / "universe").mkdir(parents=True)
+    (repo_root / "artifacts" / "assets" / "universe" / "universe_by_date.csv").write_text(
         "trade_date,ts_code\n20250131,00005.HK\n",
         encoding="utf-8",
     )
@@ -34,7 +37,7 @@ def test_backup_data_copies_selected_paths_and_writes_manifest(tmp_path, monkeyp
         backup_data.main(
             [
                 "--out-root",
-                "data_mirror",
+                "artifacts/snapshots",
                 "--name",
                 "hk_frozen",
                 "--config",
@@ -44,9 +47,9 @@ def test_backup_data_copies_selected_paths_and_writes_manifest(tmp_path, monkeyp
         == 0
     )
 
-    snapshot_dir = repo_root / "data_mirror" / "hk_frozen"
-    assert (snapshot_dir / "cache" / "prices.parquet").exists()
-    assert (snapshot_dir / "out" / "universe" / "universe_by_date.csv").exists()
+    snapshot_dir = repo_root / "artifacts/snapshots" / "hk_frozen"
+    assert (snapshot_dir / "artifacts" / "cache" / "prices.parquet").exists()
+    assert (snapshot_dir / "artifacts" / "assets" / "universe" / "universe_by_date.csv").exists()
     assert (snapshot_dir / "config" / "hk.yml").exists()
 
     manifest = yaml.safe_load((snapshot_dir / "manifest.yml").read_text(encoding="utf-8"))
@@ -60,8 +63,11 @@ def test_backup_data_copies_selected_paths_and_writes_manifest(tmp_path, monkeyp
 def test_backup_data_skip_missing_allows_partial_snapshot(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
-    (repo_root / "cache").mkdir()
-    (repo_root / "cache" / "prices.parquet").write_text("cache-data", encoding="utf-8")
+    (repo_root / "artifacts" / "cache").mkdir(parents=True)
+    (repo_root / "artifacts" / "cache" / "prices.parquet").write_text(
+        "cache-data",
+        encoding="utf-8",
+    )
 
     monkeypatch.chdir(repo_root)
 
@@ -69,7 +75,7 @@ def test_backup_data_skip_missing_allows_partial_snapshot(tmp_path, monkeypatch)
         backup_data.main(
             [
                 "--out-root",
-                "data_mirror",
+                "artifacts/snapshots",
                 "--name",
                 "partial",
                 "--no-universe",
@@ -81,7 +87,7 @@ def test_backup_data_skip_missing_allows_partial_snapshot(tmp_path, monkeypatch)
         == 0
     )
 
-    snapshot_dir = repo_root / "data_mirror" / "partial"
-    assert (snapshot_dir / "cache" / "prices.parquet").exists()
+    snapshot_dir = repo_root / "artifacts/snapshots" / "partial"
+    assert (snapshot_dir / "artifacts" / "cache" / "prices.parquet").exists()
     manifest = yaml.safe_load((snapshot_dir / "manifest.yml").read_text(encoding="utf-8"))
     assert manifest["totals"]["paths"] == 1

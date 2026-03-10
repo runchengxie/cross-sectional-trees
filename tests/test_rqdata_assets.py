@@ -166,7 +166,7 @@ def test_list_hk_financial_fields_filters_and_writes_file(tmp_path, monkeypatch,
 def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     (repo_root / "config").mkdir(parents=True)
-    (repo_root / "out" / "universe").mkdir(parents=True)
+    (repo_root / "artifacts" / "assets" / "universe").mkdir(parents=True)
     (repo_root / "config" / "hk_assets.yml").write_text(
         "\n".join(
             [
@@ -175,7 +175,7 @@ def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_p
                 "  mode: pit",
                 "  symbols: []",
                 "  symbols_file: null",
-                "  by_date_file: out/universe/universe_by_date.csv",
+                "  by_date_file: artifacts/assets/universe/universe_by_date.csv",
             ]
         )
         + "\n",
@@ -185,7 +185,7 @@ def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_p
         "revenue\nnet_profit\n",
         encoding="utf-8",
     )
-    (repo_root / "out" / "universe" / "universe_by_date.csv").write_text(
+    (repo_root / "artifacts" / "assets" / "universe" / "universe_by_date.csv").write_text(
         "\n".join(
             [
                 "trade_date,ts_code,selected",
@@ -216,7 +216,7 @@ def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_p
         by_date_file=None,
         limit=None,
         batch_size=1,
-        out_root="data_assets/rqdata",
+        out_root="artifacts/assets/rqdata",
         name="pit_demo",
     )
 
@@ -243,7 +243,7 @@ def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_p
         },
     ]
 
-    output_dir = repo_root / "data_assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
     assert (output_dir / "fields.txt").read_text(encoding="utf-8") == "revenue\nnet_profit\n"
     assert (output_dir / "symbols.txt").read_text(encoding="utf-8") == "00005.HK\n00011.HK\n"
 
@@ -286,7 +286,7 @@ def test_mirror_hk_financial_details_tracks_missing_symbols(tmp_path, monkeypatc
         by_date_file=None,
         limit=None,
         batch_size=20,
-        out_root="data_assets/rqdata",
+        out_root="artifacts/assets/rqdata",
         name="details_demo",
     )
 
@@ -304,7 +304,7 @@ def test_mirror_hk_financial_details_tracks_missing_symbols(tmp_path, monkeypatc
         }
     ]
 
-    output_dir = repo_root / "data_assets" / "rqdata" / "hk" / "financial_details" / "details_demo"
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "financial_details" / "details_demo"
     detail = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
     assert detail["ts_code"].tolist() == ["00005.HK", "00005.HK"]
     assert detail["field"].tolist() == ["revenue", "revenue"]
@@ -319,7 +319,7 @@ def test_mirror_hk_financial_details_tracks_missing_symbols(tmp_path, monkeypatc
 
 def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
-    asset_dir = repo_root / "data_assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
     data_dir = asset_dir / "data"
     data_dir.mkdir(parents=True)
     monkeypatch.chdir(repo_root)
@@ -376,7 +376,7 @@ def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, m
         }
     ).to_parquet(data_dir / "00011.HK.parquet", index=False)
 
-    out_path = repo_root / "out" / "pit_fundamentals.parquet"
+    out_path = repo_root / "artifacts" / "assets" / "fundamentals" / "pit_fundamentals.parquet"
     args = SimpleNamespace(
         asset_dir=str(asset_dir),
         field=[],
@@ -397,7 +397,13 @@ def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, m
     assert fundamentals["net_profit"].tolist() == [11.0, 12.0, 22.0]
 
     output_manifest = yaml.safe_load(
-        (repo_root / "out" / "pit_fundamentals.manifest.yml").read_text(encoding="utf-8")
+        (
+            repo_root
+            / "artifacts"
+            / "assets"
+            / "fundamentals"
+            / "pit_fundamentals.manifest.yml"
+        ).read_text(encoding="utf-8")
     )
     assert output_manifest["dataset"] == "pit_fundamentals_file"
     assert output_manifest["query"]["fields"] == ["revenue", "net_profit"]

@@ -64,8 +64,8 @@ csml <subcommand> --help
 
 典型输出：
 
-* `out/runs/<run_name>_<timestamp>_<hash>/summary.json`
-* `out/runs/<run_name>_<timestamp>_<hash>/config.used.yml`
+* `artifacts/runs/<run_name>_<timestamp>_<hash>/summary.json`
+* `artifacts/runs/<run_name>_<timestamp>_<hash>/config.used.yml`
 
 示例：
 
@@ -86,7 +86,7 @@ csml run --config hk
 * `--buffer-exit <values>`：可重复传，支持逗号分隔。
 * `--buffer-entry <values>`：可重复传，支持逗号分隔。
 * `--weighting <values>`：可重复传，支持 `equal,signal`。
-* `--output <csv_path>`：输出 CSV，默认 `out/runs/grid_summary.csv`。
+* `--output <csv_path>`：输出 CSV，默认 `artifacts/runs/grid_summary.csv`。
 * `--run-name-prefix <prefix>`
 * `--log-level <level>`
 
@@ -130,7 +130,7 @@ csml grid \
 补充：
 
 * 若仍写 `config/hk_selected.yml` 且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
-* 输出目录默认在 `out/sweeps/<tag>/`。
+* 输出目录默认在 `artifacts/sweeps/<tag>/`。
 
 示例：
 
@@ -149,7 +149,7 @@ csml sweep-linear \
 
 关键参数：
 
-* `--runs-dir <dir>`：扫描目录，可重复传，默认 `out/runs`
+* `--runs-dir <dir>`：扫描目录，可重复传，默认 `artifacts/runs`
 * `--output <csv_path>`：默认 `<first-runs-dir>/runs_summary.csv`
 * `--run-name-prefix <prefix>`：可重复传，支持逗号分隔
 * `--since <datetime>`：支持 `YYYYMMDD`、`YYYY-MM-DD`、`YYYYMMDD_HHMMSS`、`YYYY-MM-DDTHH:MM:SS`，也支持 `today`、`now`、`yesterday`、`t-1`
@@ -180,12 +180,12 @@ score = backtest_sharpe
 示例：
 
 ```bash
-csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv
+csml summarize --runs-dir artifacts/runs --output artifacts/runs/runs_summary.csv
 
-csml summarize --runs-dir out/runs --run-name-prefix hk_grid --latest-n 1
+csml summarize --runs-dir artifacts/runs --run-name-prefix hk_grid --latest-n 1
 
 csml summarize \
-  --runs-dir out/runs \
+  --runs-dir artifacts/runs \
   --exclude-flag-short-sample \
   --exclude-flag-high-turnover \
   --exclude-flag-relative-end-date \
@@ -214,7 +214,7 @@ csml summarize \
 
 ```bash
 csml holdings --config config/hk.yml --as-of t-1
-csml holdings --run-dir out/runs/<run_dir> --format csv --out out/positions/latest.csv
+csml holdings --run-dir artifacts/runs/<run_dir> --format csv --out artifacts/exports/positions/latest.csv
 ```
 
 ## 6) `csml snapshot`
@@ -278,31 +278,31 @@ csml snapshot --config config/hk_live.local.yml --skip-run --format json
 ```bash
 csml alloc --config config/hk_live.local.yml --source live --top-n 20 --cash 1000000
 
-csml alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json --out out/alloc/top10.json
+csml alloc --run-dir artifacts/runs/<run_dir> --source live --top-n 10 --format json --out artifacts/exports/alloc/top10.json
 
-csml alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
+csml alloc --positions-file artifacts/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
 ```
 
 ## 8) `csml backup-data`
 
-用途：把当前本地缓存、PIT universe 和指定配置文件做一次私有快照，写到 `data_mirror/<name>/`。
+用途：把当前本地缓存、PIT universe 和指定配置文件做一次私有快照，写到 `artifacts/snapshots/<name>/`。
 
 关键参数：
 
-* `--out-root <dir>`：快照根目录，默认 `data_mirror`
+* `--out-root <dir>`：快照根目录，默认 `artifacts/snapshots`
 * `--name <snapshot_name>`：快照目录名；不传时自动用时间戳
 * `--config <path>`：附带归档的配置文件，可重复传
 * `--include-path <path>`：额外归档的文件或目录，可重复传
-* `--no-cache`：不包含 `cache/`
-* `--no-universe`：不包含 `out/universe/`
+* `--no-cache`：不包含 `artifacts/cache/`
+* `--no-universe`：不包含 `artifacts/assets/universe/`
 * `--skip-missing`：缺失路径时跳过，不中断
 
 补充：
 
 * 这个命令只复制本地文件，不会联网或重新下载 provider 数据。
-* 默认包含 `cache/` 和 `out/universe/`。
+* 默认包含 `artifacts/cache/` 和 `artifacts/assets/universe/`。
 * 快照目录里会生成 `manifest.yml`，记录来源路径、文件数、字节数和当前 git 信息（若仓库可识别）。
-* 这份快照默认按私有备份设计。若仓库是公开仓库，不要把 `cache/` 或其他 provider 原始数据直接上传到 GitHub Releases。
+* 这份快照默认按私有备份设计。若仓库是公开仓库，不要把 `artifacts/cache/` 或其他 provider 原始数据直接上传到 GitHub Releases。
 * 公开 release 更适合上传 `manifest.yml`、研究配置、`config.used.yml`、汇总 CSV 和说明文件。完整快照保留在本地磁盘、NAS 或对象存储。
 
 示例：
@@ -324,10 +324,35 @@ csml backup-data \
   --no-cache \
   --config config/hk_selected__baseline_eval_sample.yml \
   --config config/hk_selected__baseline_eval_sample_ffill.yml \
-  --include-path out/runs/hk_evalb_ridge_a30_grid_summary.csv
+  --include-path artifacts/runs/hk_evalb_ridge_a30_grid_summary.csv
 ```
 
-## 9) `csml rqdata info`
+## 9) `csml migrate-artifacts`
+
+用途：把旧布局的 `cache/`、`out/`、`data_assets/`、`data_mirror/` 迁移到 `artifacts/`。
+
+关键参数：
+
+* `--copy`：复制到新布局，保留旧目录
+* `--force`：目标文件冲突时覆盖
+* `--dry-run`：只显示将要迁移的路径，不执行修改
+
+补充：
+
+* 默认执行移动，不会重新下载 provider 数据。
+* 会处理这些目录：`cache/`、`out/fundamentals/`、`data_assets/rqdata/`、`out/universe/`、`out/runs/`、`out/live_runs/`、`out/sweeps/`、`data_mirror/`。
+
+示例：
+
+```bash
+csml migrate-artifacts --dry-run
+
+csml migrate-artifacts
+
+csml migrate-artifacts --copy
+```
+
+## 10) `csml rqdata info`
 
 用途：初始化并显示 RQData 登录信息。
 
@@ -337,7 +362,7 @@ csml backup-data \
 * `--username <name>`
 * `--password <password>`
 
-## 10) `csml rqdata quota`
+## 11) `csml rqdata quota`
 
 用途：查询 RQData 配额。
 
@@ -348,7 +373,7 @@ csml backup-data \
 * `--password <password>`
 * `--pretty`
 
-## 11) `csml rqdata list-hk-financial-fields`
+## 12) `csml rqdata list-hk-financial-fields`
 
 用途：列出港股财报镜像接口支持的字段名，便于准备 `--fields-file`。
 
@@ -366,10 +391,10 @@ csml backup-data \
 示例：
 
 ```bash
-csml rqdata list-hk-financial-fields --contains profit --out out/hk_profit_fields.txt
+csml rqdata list-hk-financial-fields --contains profit --out artifacts/exports/hk_profit_fields.txt
 ```
 
-## 12) `csml rqdata mirror-hk-pit-financials`
+## 13) `csml rqdata mirror-hk-pit-financials`
 
 用途：按港股 symbol 集合拉取 PIT 三大表财报数据，输出项目无关的 `parquet + manifest` 资产目录。
 
@@ -390,7 +415,7 @@ csml rqdata list-hk-financial-fields --contains profit --out out/hk_profit_field
 
 补充：
 
-* 默认输出到 `data_assets/rqdata/hk/pit_financials/<snapshot>/`。
+* 默认输出到 `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/`。
 * 目录里会写 `manifest.yml`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`。
 * 仓库内置了一份 starter 字段文件：`config/rqdata_assets/hk_financial_fields_starter.txt`。
 * 为了复现，建议显式传 `--date`，例如 `20260310`。
@@ -407,7 +432,7 @@ csml rqdata mirror-hk-pit-financials \
   --date 20260310
 ```
 
-## 13) `csml rqdata mirror-hk-financial-details`
+## 14) `csml rqdata mirror-hk-financial-details`
 
 用途：拉取港股原始财报细分项目，输出项目无关的 `parquet + manifest` 资产目录。
 
@@ -418,7 +443,7 @@ csml rqdata mirror-hk-pit-financials \
 
 补充：
 
-* 默认输出到 `data_assets/rqdata/hk/financial_details/<snapshot>/`。
+* 默认输出到 `artifacts/assets/rqdata/hk/financial_details/<snapshot>/`。
 * 这类数据通常比 PIT 宽表更大。第一次建议先用 `--statements latest`，并限制字段范围。
 
 示例：
@@ -432,7 +457,7 @@ csml rqdata mirror-hk-financial-details \
   --date 20260310
 ```
 
-## 14) `csml rqdata build-hk-pit-fundamentals`
+## 15) `csml rqdata build-hk-pit-fundamentals`
 
 用途：把 `mirror-hk-pit-financials` 生成的资产目录整理成 pipeline 可直接读取的 `fundamentals.source=file` 文件。
 
@@ -456,11 +481,11 @@ csml rqdata mirror-hk-financial-details \
 
 ```bash
 csml rqdata build-hk-pit-fundamentals \
-  --asset-dir data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
-  --out data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 ```
 
-## 15) `csml tushare verify-token`
+## 16) `csml tushare verify-token`
 
 用途：验证 TuShare token 是否可用。
 
@@ -469,7 +494,7 @@ csml rqdata build-hk-pit-fundamentals \
 * 推荐直接执行 `csml tushare verify-token`。
 * 额外参数会转发到底层脚本。
 
-## 16) `csml universe index-components`
+## 17) `csml universe index-components`
 
 用途：拉取指数成分并输出 symbols 文件，必要时生成 PIT 文件。
 
@@ -484,7 +509,7 @@ csml rqdata build-hk-pit-fundamentals \
 csml universe index-components --index-code 000300.SH --month 202501
 ```
 
-## 17) `csml universe hk-connect`
+## 18) `csml universe hk-connect`
 
 用途：构建港股通 PIT universe。
 
@@ -503,7 +528,7 @@ csml universe index-components --index-code 000300.SH --month 202501
 csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 ```
 
-## 18) `csml init-config`
+## 19) `csml init-config`
 
 用途：导出内置配置模板。
 

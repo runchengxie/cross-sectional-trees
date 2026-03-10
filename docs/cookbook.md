@@ -56,8 +56,8 @@ csml run --config config/hk.yml
 
 ```bash
 csml summarize \
-  --runs-dir out/runs \
-  --output out/runs/runs_summary.csv
+  --runs-dir artifacts/runs \
+  --output artifacts/runs/runs_summary.csv
 ```
 
 如果筛选后输出 `No runs matched current summarize filters.`，先去掉全部 `--exclude-flag-*` 看全量结果，再检查 `flag_*` 列。
@@ -73,7 +73,7 @@ data:
   end_date: "t-1"
 
 eval:
-  output_dir: "out/live_runs"
+  output_dir: "artifacts/live_runs"
   save_artifacts: true
 
 backtest:
@@ -105,7 +105,7 @@ csml snapshot --config config/hk_live.local.yml --skip-run --format json
 这套配方默认你已经具备下面这些条件：
 
 1. 已安装 `RQData` 依赖：`uv sync --extra dev --extra rqdata`
-1. 已准备 `out/universe/universe_by_date.csv`
+1. 已准备 `artifacts/assets/universe/universe_by_date.csv`
 1. 已确认研究使用的是 HK selected 这组配置
 
 如果你要直接读取本地 PIT fundamentals 文件，还需要先准备资产目录，再执行：
@@ -120,8 +120,8 @@ csml rqdata mirror-hk-pit-financials \
   --date 20260310
 
 csml rqdata build-hk-pit-fundamentals \
-  --asset-dir data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
-  --out data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 ```
 
 ### 2.2 先固定实验基准
@@ -194,7 +194,7 @@ csml rqdata build-hk-pit-fundamentals \
 
 ```bash
 csml summarize \
-  --runs-dir out/runs \
+  --runs-dir artifacts/runs \
   --sort-by score
 ```
 
@@ -202,7 +202,7 @@ csml summarize \
 
 ```bash
 csml summarize \
-  --runs-dir out/runs \
+  --runs-dir artifacts/runs \
   --exclude-flag-short-sample \
   --exclude-flag-high-turnover \
   --exclude-flag-relative-end-date \
@@ -249,7 +249,7 @@ csml sweep-linear \
   --dry-run
 ```
 
-命令会在 `out/sweeps/<tag>/` 下生成：
+命令会在 `artifacts/sweeps/<tag>/` 下生成：
 
 1. `configs/`：本次 sweep 的临时配置文件
 1. `jobs.csv`：参数组合清单
@@ -279,23 +279,55 @@ csml sweep-linear --sweep-config config/sweeps/hk_selected__eval_sample_ffill.ym
 建议按这个顺序跑：
 
 1. 先跑季度 provider 估值对照，确认低频口径本身有没有方向。
+1. 再确认本地 PIT fundamentals 文件已经准备好。没有就先执行资产镜像和 build 命令。
 1. 再跑季度 PIT 基线，确认财报文件和季度口径都工作正常。
+1. 再跑季度财务 ML 基线，确认“主项 + 变化量 + 缺失标记”这条线是否优于纯财报比率。
 1. 再跑季度 PIT 线性 sweep，看慢因子有没有稳定方向。
 1. 最后再跑财报 + 慢技术面的混合配置，判断是否值得加复杂度。
+
+这里要特别注意：
+
+1. `config/hk_selected__baseline_pit_quarterly.yml` 默认读取 `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet`。
+1. 如果你还没准备这个文件，直接跑 PIT 基线会在拉完日线后报 `Fundamentals file not found`。
+1. 如果你已经有 PIT 文件，但输出路径不同，先改配置里的 `fundamentals.file`，再继续跑。
 
 建议命令：
 
 ```bash
+# 1) 先跑无需本地 PIT 文件的季度估值对照
 csml run --config config/hk_selected__provider_quarterly_valuation.yml
+
+# 2) 如果还没有本地 PIT fundamentals 文件，先准备它
+csml rqdata mirror-hk-pit-financials \
+  --config config/hk_selected__baseline.yml \
+  --name hk_selected_pit_2011_2025_latest \
+  --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
+  --start-quarter 2011q1 \
+  --end-quarter 2025q4 \
+  --date 20260310
+
+csml rqdata build-hk-pit-fundamentals \
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+
+# 3) 再跑季度 PIT 基线
 csml run --config config/hk_selected__baseline_pit_quarterly.yml
+
+# 4) 再跑季度财务 ML 基线
+csml run --config config/hk_selected__pit_quarterly_financial_ml.yml
+
+# 5) 再跑季度 PIT 线性 sweep
 csml sweep-linear --sweep-config config/sweeps/hk_selected__pit_quarterly_linear.yml
+
+# 6) 最后跑财报 + 慢技术面的混合配置
 csml run --config config/hk_selected__pit_quarterly_hybrid.yml
 ```
 
-这四步分别回答四个问题：
+上面真正对应研究判断的是 5 个问题，其中第 2 步是数据准备：
 
 1. 低频估值字段本身有没有方向。
 1. PIT 财报 + 季度调仓本身有没有可解释的信号。
+1. 财务主项、变化量和缺失标记是否比纯财报比率更稳。
 1. 线性模型下，慢因子方向是否稳定。
 1. 加入慢技术面后，结果是否明显改善。
 
@@ -321,9 +353,9 @@ csml run --config config/hk_selected__xgb_ranker_pairwise.yml
 
 ```bash
 csml summarize \
-  --runs-dir out/runs \
+  --runs-dir artifacts/runs \
   --run-name-prefix hk_sel_ \
-  --output out/runs/hk_sel_models_summary.csv
+  --output artifacts/runs/hk_sel_models_summary.csv
 ```
 
 汇总表会聚合每个 run 的 `summary.json` 和 `config.used.yml`，并生成 `flag_*`、`score`、`dsr` 字段。退化模型的 `score` 和 `dsr` 会留空。
@@ -366,12 +398,12 @@ csml run --config config/hk_selected__ridge_a1.yml
 csml run --config config/hk_selected__elasticnet_a0.1_l0.5.yml
 csml run --config config/hk_selected__xgb_regressor.yml
 csml run --config config/hk_selected__xgb_ranker_pairwise.yml
-csml summarize --runs-dir out/runs --run-name-prefix hk_sel_ --output out/runs/hk_sel_models_summary.csv
+csml summarize --runs-dir artifacts/runs --run-name-prefix hk_sel_ --output artifacts/runs/hk_sel_models_summary.csv
 ```
 
 ## 3) 私有快照与分享
 
-`csml backup-data` 只做本地快照。它会把当前 `cache/`、`out/universe/`、指定配置文件和额外路径复制到 `data_mirror/<name>/`。这个命令不会联网，也不会自动生成压缩包。
+`csml backup-data` 只做本地快照。它会把当前 `artifacts/cache/`、`artifacts/assets/universe/`、指定配置文件和额外路径复制到 `artifacts/snapshots/<name>/`。这个命令不会联网，也不会自动生成压缩包。
 
 示例：
 
@@ -393,13 +425,13 @@ csml backup-data \
 1. `frozen` 快照固定研究口径和窗口，只用于可比回测。
 1. `rolling` 快照随最新已完成交易日更新，用于近端验证。
 1. 两套数据尽量用不同的 `data.cache_tag`。
-1. 如果仓库是公开仓库，不要把 `cache/` 或 provider 原始数据直接上传到公开 release。
+1. 如果仓库是公开仓库，不要把 `artifacts/cache/` 或 provider 原始数据直接上传到公开 release。
 
 如果你想把源码和快照目录另存成压缩包，可以分别处理：
 
 ```bash
 ./scripts/package_zip.sh --name csml-source-snapshot --out-dir release/
-tar -czf release/csml-data-snapshot-hk_frozen_20251231.tar.gz data_mirror/hk_frozen_20251231
+tar -czf release/csml-data-snapshot-hk_frozen_20251231.tar.gz artifacts/snapshots/hk_frozen_20251231
 ```
 
-恢复时，先解压快照目录，再查看 `manifest.yml`。按需把里面的 `cache/`、`out/universe/`、`config/` 拷回工作区。当前仓库没有单独的“私有 release 自动恢复”命令。
+恢复时，先解压快照目录，再查看 `manifest.yml`。按需把里面的 `artifacts/cache/`、`artifacts/assets/universe/`、`config/` 拷回工作区。当前仓库没有单独的“私有 release 自动恢复”命令。

@@ -2,7 +2,21 @@
 
 使用 TuShare / RQData / EODHD 日线数据做截面因子研究与评估。项目支持 `xgb_regressor`、`xgb_ranker`、`ridge`、`elasticnet`，输出 IC、分位数组合收益、回测结果、换手估计和持仓快照。
 
-默认产物写入 `out/runs/<run_name>_<timestamp>_<hash>/`。
+默认产物写入 `artifacts/runs/<run_name>_<timestamp>_<hash>/`。
+
+当前默认目录布局：
+
+```text
+artifacts/
+  cache/
+  assets/
+    rqdata/
+    universe/
+  runs/
+  live_runs/
+  sweeps/
+  snapshots/
+```
 
 ## 适用范围
 
@@ -51,7 +65,7 @@ csml run --config config/hk.yml
 csml init-config --market hk --out config/
 
 # 跨历史 run 汇总
-csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv
+csml summarize --runs-dir artifacts/runs --output artifacts/runs/runs_summary.csv
 
 # 查询 RQData 配额
 csml rqdata quota --pretty
@@ -67,8 +81,8 @@ csml rqdata mirror-hk-pit-financials \
 
 # 把 PIT 资产转成 pipeline 可直接读取的 fundamentals 文件
 csml rqdata build-hk-pit-fundamentals \
-  --asset-dir data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
-  --out data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 
 # 用本地 PIT fundamentals 跑 HK 基线
 csml run --config config/hk_selected__baseline_pit_file.yml
@@ -100,16 +114,17 @@ csml snapshot --config config/hk_live.local.yml
 ## 复现建议
 
 * 固定 `data.start_date/end_date`，避免 `today`、`t-1`、`now`。
-* 保留 `cache/`、`config.used.yml`、`summary.json` 和 git commit。
+* 保留 `artifacts/cache/`、`config.used.yml`、`summary.json` 和 git commit。
 * 多数据源切换时，同时记录 `data.provider` 与 provider 专属参数。
 
 ## 私有备份建议
 
-仓库内置的是本地快照工具 `csml backup-data`。它会把缓存、universe 文件和配置复制到 `data_mirror/<name>/`，不会自动生成 release 资产或恢复脚本。
+仓库内置的是本地快照工具 `csml backup-data`。它会把缓存、universe 文件和配置复制到 `artifacts/snapshots/<name>/`，不会自动生成 release 资产或恢复脚本。
+如果本地还保留旧布局的 `cache/`、`out/`、`data_assets/` 或 `data_mirror/`，先执行 `csml migrate-artifacts` 再继续后续命令。
 
 如果你要长期保存一轮研究，建议至少保留：
 
-1. `data_mirror/<name>/manifest.yml`
+1. `artifacts/snapshots/<name>/manifest.yml`
 1. 对应 run 的 `summary.json` 和 `config.used.yml`
 1. 需要复跑时使用的配置文件
 

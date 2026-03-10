@@ -93,7 +93,7 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
         [
             "summarize",
             "--runs-dir",
-            "out/runs",
+            "artifacts/runs",
             "--run-name-prefix",
             "hk_grid",
             "--since",
@@ -103,7 +103,7 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
         ]
     )
     assert summarize.command == "summarize"
-    assert summarize.runs_dir == ["out/runs"]
+    assert summarize.runs_dir == ["artifacts/runs"]
     assert summarize.run_name_prefix == ["hk_grid"]
     assert summarize.since == "2026-01-01"
     assert summarize.latest_n == 3
@@ -113,22 +113,28 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
         [
             "backup-data",
             "--out-root",
-            "data_mirror",
+            "artifacts/snapshots",
             "--name",
             "hk_frozen",
             "--config",
             "config/hk.yml",
             "--include-path",
-            "out/universe",
+            "artifacts/assets/universe",
             "--skip-missing",
         ]
     )
     assert backup.command == "backup-data"
-    assert backup.out_root == "data_mirror"
+    assert backup.out_root == "artifacts/snapshots"
     assert backup.name == "hk_frozen"
     assert backup.config == ["config/hk.yml"]
-    assert backup.include_path == ["out/universe"]
+    assert backup.include_path == ["artifacts/assets/universe"]
     assert backup.skip_missing is True
+
+    migrate = parser.parse_args(["migrate-artifacts", "--copy", "--dry-run"])
+    assert migrate.command == "migrate-artifacts"
+    assert migrate.copy is True
+    assert migrate.dry_run is True
+    assert callable(migrate.func)
 
 
 def test_cli_parses_rqdata_quota_pretty():
@@ -143,12 +149,19 @@ def test_cli_parses_rqdata_asset_commands():
     parser = cli.build_parser()
 
     list_fields = parser.parse_args(
-        ["rqdata", "list-hk-financial-fields", "--contains", "profit", "--out", "out/hk_fields.txt"]
+        [
+            "rqdata",
+            "list-hk-financial-fields",
+            "--contains",
+            "profit",
+            "--out",
+            "artifacts/exports/hk_fields.txt",
+        ]
     )
     assert list_fields.command == "rqdata"
     assert list_fields.rq_command == "list-hk-financial-fields"
     assert list_fields.contains == ["profit"]
-    assert list_fields.out == "out/hk_fields.txt"
+    assert list_fields.out == "artifacts/exports/hk_fields.txt"
     assert callable(list_fields.func)
 
     pit = parser.parse_args(
@@ -208,13 +221,13 @@ def test_cli_parses_rqdata_asset_commands():
             "rqdata",
             "build-hk-pit-fundamentals",
             "--asset-dir",
-            "data_assets/rqdata/hk/pit_financials/pit_demo",
+            "artifacts/assets/rqdata/hk/pit_financials/pit_demo",
             "--field",
             "revenue",
             "--field",
             "net_profit",
             "--out",
-            "out/pit_fundamentals.parquet",
+            "artifacts/assets/fundamentals/pit_fundamentals.parquet",
             "--keep-meta",
             "--duplicate-policy",
             "error",
@@ -223,9 +236,9 @@ def test_cli_parses_rqdata_asset_commands():
     )
     assert pit_fundamentals.command == "rqdata"
     assert pit_fundamentals.rq_command == "build-hk-pit-fundamentals"
-    assert pit_fundamentals.asset_dir == "data_assets/rqdata/hk/pit_financials/pit_demo"
+    assert pit_fundamentals.asset_dir == "artifacts/assets/rqdata/hk/pit_financials/pit_demo"
     assert pit_fundamentals.field == ["revenue", "net_profit"]
-    assert pit_fundamentals.out == "out/pit_fundamentals.parquet"
+    assert pit_fundamentals.out == "artifacts/assets/fundamentals/pit_fundamentals.parquet"
     assert pit_fundamentals.keep_meta is True
     assert pit_fundamentals.duplicate_policy == "error"
     assert pit_fundamentals.force is True
@@ -320,12 +333,12 @@ def test_cli_handle_holdings_passes_through_args(monkeypatch):
 
     args = SimpleNamespace(
         config="hk",
-        run_dir="out/runs/demo",
+        run_dir="artifacts/runs/demo",
         top_k=10,
         as_of="20260131",
         source="live",
         format="json",
-        out="out/holdings.json",
+        out="artifacts/exports/holdings.json",
     )
     assert cli._handle_holdings(args) == 0
     assert calls == [
@@ -333,7 +346,7 @@ def test_cli_handle_holdings_passes_through_args(monkeypatch):
             "--config",
             "hk",
             "--run-dir",
-            "out/runs/demo",
+            "artifacts/runs/demo",
             "--top-k",
             "10",
             "--as-of",
@@ -343,7 +356,7 @@ def test_cli_handle_holdings_passes_through_args(monkeypatch):
             "--format",
             "json",
             "--out",
-            "out/holdings.json",
+            "artifacts/exports/holdings.json",
         ]
     ]
 
@@ -354,8 +367,8 @@ def test_cli_handle_alloc_passes_through_args(monkeypatch):
 
     args = SimpleNamespace(
         config="hk",
-        run_dir="out/runs/demo",
-        positions_file="out/runs/demo/positions.csv",
+        run_dir="artifacts/runs/demo",
+        positions_file="artifacts/runs/demo/positions.csv",
         top_k=5,
         as_of="20260131",
         source="live",
@@ -368,7 +381,7 @@ def test_cli_handle_alloc_passes_through_args(monkeypatch):
         username="user",
         password="pass",
         format="json",
-        out="out/alloc.json",
+        out="artifacts/exports/alloc.json",
     )
     assert cli._handle_alloc(args) == 0
     assert calls == [
@@ -376,9 +389,9 @@ def test_cli_handle_alloc_passes_through_args(monkeypatch):
             "--config",
             "hk",
             "--run-dir",
-            "out/runs/demo",
+            "artifacts/runs/demo",
             "--positions-file",
-            "out/runs/demo/positions.csv",
+            "artifacts/runs/demo/positions.csv",
             "--top-k",
             "5",
             "--as-of",
@@ -404,7 +417,7 @@ def test_cli_handle_alloc_passes_through_args(monkeypatch):
             "--format",
             "json",
             "--out",
-            "out/alloc.json",
+            "artifacts/exports/alloc.json",
         ]
     ]
 
@@ -419,7 +432,7 @@ def test_cli_handle_grid_passes_through_args(monkeypatch):
         cost_bps=["15,25"],
         buffer_exit=["6,8"],
         buffer_entry=["3"],
-        output="out/runs/grid.csv",
+        output="artifacts/runs/grid.csv",
         run_name_prefix="hk_grid",
         log_level="DEBUG",
         args=["--extra", "1"],
@@ -440,7 +453,7 @@ def test_cli_handle_grid_passes_through_args(monkeypatch):
             "--buffer-entry",
             "3",
             "--output",
-            "out/runs/grid.csv",
+            "artifacts/runs/grid.csv",
             "--run-name-prefix",
             "hk_grid",
             "--log-level",
@@ -459,9 +472,9 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
         sweep_config="config/sweeps/hk_selected__linear_a.yml",
         config="config/hk_selected__baseline.yml",
         run_name_prefix="hk_sel_",
-        sweeps_dir="out/sweeps",
+        sweeps_dir="artifacts/sweeps",
         tag="exp_1",
-        runs_dir="out/runs",
+        runs_dir="artifacts/runs",
         ridge_alpha=["0.01,0.1", "1"],
         elasticnet_alpha=["0.01,0.1"],
         elasticnet_l1_ratio=["0.1,0.5"],
@@ -470,7 +483,7 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
         dry_run=True,
         continue_on_error=True,
         skip_summarize=False,
-        summary_output="out/sweeps/exp_1/runs_summary.csv",
+        summary_output="artifacts/sweeps/exp_1/runs_summary.csv",
         log_level="DEBUG",
         args=None,
     )
@@ -484,11 +497,11 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
             "--run-name-prefix",
             "hk_sel_",
             "--sweeps-dir",
-            "out/sweeps",
+            "artifacts/sweeps",
             "--tag",
             "exp_1",
             "--runs-dir",
-            "out/runs",
+            "artifacts/runs",
             "--ridge-alpha",
             "0.01,0.1",
             "--ridge-alpha",
@@ -503,7 +516,7 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
             "--continue-on-error",
             "--no-skip-summarize",
             "--summary-output",
-            "out/sweeps/exp_1/runs_summary.csv",
+            "artifacts/sweeps/exp_1/runs_summary.csv",
             "--log-level",
             "DEBUG",
         ]

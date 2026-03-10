@@ -5,7 +5,7 @@ data:
   provider: rqdata
   start_date: '20150101'
   end_date: '20251231'
-  cache_dir: cache
+  cache_dir: artifacts/cache
   cache_tag: null
   cache_mode: symbol
   cache_refresh_days: 10
@@ -73,7 +73,7 @@ universe:
   require_by_date: true
   symbols: []
   symbols_file: null
-  by_date_file: out/universe/universe_by_date.csv
+  by_date_file: artifacts/assets/universe/universe_by_date.csv
   min_symbols_per_date: 5
   min_listed_days: 60
   min_turnover: 10000000
@@ -117,7 +117,7 @@ eval:
   report_train_ic: true
   save_artifacts: true
   save_dataset: false
-  output_dir: out/runs
+  output_dir: artifacts/runs
   run_name: hk_sel_provider_q_valuation_ridge
   permutation_test:
     enabled: false

@@ -27,13 +27,13 @@ def test_normalize_date_token_rejects_invalid_date():
 
 
 def test_format_output_path_appends_date_tag():
-    out = hk_universe.format_output_path("out/universe/universe_by_date.csv", "20260131", append_date=True)
-    assert str(out) == "out/universe/universe_by_date_20260131.csv"
+    out = hk_universe.format_output_path("artifacts/assets/universe/universe_by_date.csv", "20260131", append_date=True)
+    assert str(out) == "artifacts/assets/universe/universe_by_date_20260131.csv"
 
 
 def test_format_output_path_supports_template():
-    out = hk_universe.format_output_path("out/universe/{as_of}/symbols.txt", "20260131", append_date=True)
-    assert str(out) == "out/universe/20260131/symbols.txt"
+    out = hk_universe.format_output_path("artifacts/assets/universe/{as_of}/symbols.txt", "20260131", append_date=True)
+    assert str(out) == "artifacts/assets/universe/20260131/symbols.txt"
 
 
 def test_extract_universe_config_normalizes_nested_keys():

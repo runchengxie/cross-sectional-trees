@@ -12,6 +12,7 @@ from typing import Optional
 import pandas as pd
 import yaml
 
+from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR
 from ..backtest import backtest_topk
 from ..config_utils import resolve_pipeline_config
 from ..metrics import daily_ic_series, estimate_turnover, quantile_returns, summarize_ic
@@ -215,8 +216,11 @@ def add_grid_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output",
-        default="out/runs/grid_summary.csv",
-        help="Output CSV path (default: out/runs/grid_summary.csv)",
+        default=(DEFAULT_RUNS_DIR / "grid_summary.csv").as_posix(),
+        help=(
+            "Output CSV path "
+            f"(default: {(DEFAULT_RUNS_DIR / 'grid_summary.csv').as_posix()})"
+        ),
     )
     parser.add_argument(
         "--run-name-prefix",
@@ -319,7 +323,9 @@ def main(argv: list[str] | None = None) -> None:
             yaml.safe_dump(base_run_cfg, handle, sort_keys=False)
         pipeline.run(str(cfg_path))
 
-    output_dir = _resolve_output_path(str(base_run_cfg.get("eval", {}).get("output_dir", "out/runs")))
+    output_dir = _resolve_output_path(
+        str(base_run_cfg.get("eval", {}).get("output_dir", DEFAULT_RUNS_DIR.as_posix()))
+    )
     summary_path = _find_latest_summary(output_dir, base_run_name)
     if summary_path is None or not summary_path.exists():
         raise SystemExit(f"Base run summary not found for run_name={base_run_name}.")
