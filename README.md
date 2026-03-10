@@ -86,6 +86,18 @@ csml snapshot --config config/hk_live.yml
 * 保留 `cache/`、`config.used.yml`、`summary.json` 和 git commit。
 * 多数据源切换时，同时记录 `data.provider` 与 provider 专属参数。
 
+## 私有 Release 恢复
+
+如果你已经把一轮研究打成私有 release，恢复时按这个最短清单走：
+
+1. 下载 `csml-data-snapshot-*.tar.gz`、`csml-source-snapshot-*.tar.gz`、`csml-research-summaries-*.tar.gz`、`SHA256SUMS.txt`。
+1. 先执行 `sha256sum -c SHA256SUMS.txt`。
+1. 在空目录解压源码快照，再把数据快照解到仓库根目录。
+1. 如需看研究结论，再解压 `csml-research-summaries-*.tar.gz`。
+1. 执行 `uv sync --extra dev`。如果要继续跑 `RQData`，再加 `--extra rqdata`。
+
+更完整的恢复步骤见 `docs/cookbook.md`。
+
 ## 说明
 
 `README` 为项目总览和最短路径。详细信息如CLI 参数、配置细节、输出字段和故障排查统一放在 `docs/` 中维护。
