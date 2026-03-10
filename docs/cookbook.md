@@ -28,7 +28,15 @@
 1. 交易可实现性：`backtest_avg_turnover <= 0.7`（默认高换手阈值 0.7）。
 1. 数据稳定性：`data.end_date` 优先固定绝对日期，避免 `today/t-1` 引入复现漂移。
 
-可直接用下面命令筛出先过门槛的 run：
+先看全量汇总，再决定是否加严格过滤：
+
+```bash
+csml summarize \
+  --runs-dir out/runs \
+  --sort-by score
+```
+
+确认这批 run 已经满足上面三条门槛后，再加排除参数：
 
 ```bash
 csml summarize \
@@ -38,6 +46,14 @@ csml summarize \
   --exclude-flag-relative-end-date \
   --sort-by score
 ```
+
+如果输出 `No runs matched current summarize filters.`，说明当前 run 在筛选后一个都没剩。常见情况是：
+
+1. `backtest_periods < 24`，被 `--exclude-flag-short-sample` 全部排掉。
+1. `backtest_avg_turnover > 0.7`，被 `--exclude-flag-high-turnover` 继续排掉。
+1. 历史 run 的 `config.used.yml` 和你当前参考的模板不是同一版，实际门槛没有达到预期。
+
+这时先去掉 `--exclude-flag-*` 看全量结果，再根据 `flag_*` 字段决定是重跑、更换样本窗口，还是下调阈值。
 
 ## 1) 先跑线性基线（Ridge / ElasticNet）
 
