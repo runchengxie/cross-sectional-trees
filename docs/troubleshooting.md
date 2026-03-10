@@ -88,7 +88,36 @@ csml rqdata quota --pretty
 * `docs/config.md`
 * `docs/outputs.md`
 
-## 4. 当前持仓”与预期不一致
+## 4. `summarize` 提示 `No runs matched current summarize filters.`
+
+常见原因：
+
+* `--exclude-flag-short-sample` 排掉了所有短样本 run
+* `--exclude-flag-high-turnover`、`--exclude-flag-relative-end-date` 继续把候选 run 排空
+* `--run-name-prefix`、`--since` 或 `--latest-n` 设得太严
+* 历史 run 使用的是旧配置，实际门槛和你当前参考的模板不一致
+
+先看：
+
+1. `out/runs` 下是否真的存在 `summary.json`
+2. 先去掉全部 `--exclude-flag-*` 看全量结果
+3. `summary.json -> backtest.stats.periods`
+4. `summary.json -> backtest.stats.avg_turnover`
+5. `config.used.yml -> data.end_date`
+
+建议：
+
+* 先执行 `csml summarize --runs-dir out/runs --sort-by score`
+* 确认哪些 `flag_*` 为 `true` 后，再逐步加回排除参数
+* 若空结果来自短样本，优先重跑更长样本；只在明确知道原因时下调 `--short-sample-periods`
+
+相关文档：
+
+* `docs/cli.md`
+* `docs/cookbook.md`
+* `docs/outputs.md`
+
+## 5. 当前持仓与预期不一致
 
 常见原因：
 
@@ -113,7 +142,7 @@ csml rqdata quota --pretty
 * `docs/outputs.md`
 * `docs/cli.md`
 
-## 5. live / snapshot 命令报错
+## 6. live / snapshot 命令报错
 
 常见报错：
 
@@ -139,7 +168,7 @@ csml rqdata quota --pretty
 * `docs/cli.md`
 * `docs/outputs.md`
 
-## 6. 结果每天都变，无法复现
+## 7. 结果每天都变，无法复现
 
 常见原因：
 
@@ -158,7 +187,7 @@ csml rqdata quota --pretty
 * `docs/config.md`
 * `docs/providers.md`
 
-## 7. 参数校验失败
+## 8. 参数校验失败
 
 高频错误：
 
