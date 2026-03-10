@@ -1,4 +1,5 @@
 import copy
+from pathlib import Path
 
 import pytest
 import yaml
@@ -149,3 +150,36 @@ def test_pipeline_model_params_validation(tmp_path, no_client):
     config_path = _write_config(tmp_path, config)
     with pytest.raises(SystemExit, match="model.params must be a mapping."):
         pipeline.run(str(config_path))
+
+
+def test_hk_quarterly_templates_align_rebalance_frequencies():
+    repo_root = Path(__file__).resolve().parents[1]
+    config_paths = [
+        repo_root / "config" / "hk_selected__provider_quarterly_valuation.yml",
+        repo_root / "config" / "hk_selected__baseline_pit_quarterly.yml",
+        repo_root / "config" / "hk_selected__pit_quarterly_hybrid.yml",
+    ]
+
+    payloads = [
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in config_paths
+    ]
+
+    for payload in payloads:
+        assert payload["market"] == "hk"
+        assert payload["label"]["rebalance_frequency"] == "Q"
+        assert payload["eval"]["rebalance_frequency"] == "Q"
+        assert payload["backtest"]["rebalance_frequency"] == "Q"
+
+    provider_cfg, pit_cfg, hybrid_cfg = payloads
+
+    assert provider_cfg["fundamentals"]["source"] == "provider"
+    assert provider_cfg["features"]["list"] == ["pe_ttm"]
+
+    assert pit_cfg["fundamentals"]["source"] == "file"
+    assert "profit_margin" in pit_cfg["fundamentals"]["features"]
+    assert "accrual_ratio" in pit_cfg["fundamentals"]["features"]
+
+    assert hybrid_cfg["fundamentals"]["source"] == "file"
+    assert "ret_240" in hybrid_cfg["features"]["list"]
+    assert "rv_120" in hybrid_cfg["features"]["list"]

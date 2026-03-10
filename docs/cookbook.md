@@ -132,6 +132,9 @@ csml rqdata build-hk-pit-fundamentals \
 
 1. `config/hk_selected__baseline.yml`
 1. `config/hk_selected__baseline_pit_file.yml`
+1. `config/hk_selected__provider_quarterly_valuation.yml`
+1. `config/hk_selected__baseline_pit_quarterly.yml`
+1. `config/hk_selected__pit_quarterly_hybrid.yml`
 1. `config/hk_selected__xgb_regressor.yml`
 1. `config/hk_selected__ridge_a1.yml`
 1. `config/hk_selected__elasticnet_a0.1_l0.5.yml`
@@ -141,9 +144,42 @@ csml rqdata build-hk-pit-fundamentals \
 
 1. 线性模型批跑时，优先以 `config/hk_selected__baseline.yml` 为 base 配置。
 1. 已经生成本地 PIT fundamentals 文件时，改用 `config/hk_selected__baseline_pit_file.yml`。
+1. 想先做无需本地 PIT 文件的季度低频验证时，先跑 `config/hk_selected__provider_quarterly_valuation.yml`。
+1. 要验证低频财报 alpha 时，优先从 `config/hk_selected__baseline_pit_quarterly.yml` 开始。
+1. 要验证“财报 + 慢价格信号”的混合口径时，再跑 `config/hk_selected__pit_quarterly_hybrid.yml`。
 1. 非线性对照时，显式使用 `config/hk_selected__xgb_regressor.yml` 或 `config/hk_selected__xgb_ranker_pairwise.yml`。
 
 当前仓库内置的 `config/hk_selected__baseline.yml` 把样本窗口写成 `2015-01-01` 到 `2025-12-31`。这只是模板默认值。你要研究更新的时间区间时，先改配置，再比较结果。
+
+### 2.2.1 季度低频两条路线怎么选
+
+| 路线 | 配置 | 是否需要先准备本地 PIT 文件 | 更适合回答的问题 |
+| --- | --- | --- | --- |
+| provider 季度估值对照 | `config/hk_selected__provider_quarterly_valuation.yml` | 否 | 先确认低频调仓 + 估值字段本身有没有方向 |
+| PIT 财报季度基线 | `config/hk_selected__baseline_pit_quarterly.yml` | 是 | 认真验证财报披露节奏对齐后，慢基本面有没有 alpha |
+
+补充：
+
+1. 这里说的“准备本地 PIT 文件”，指的是运行仓库内置命令把 RQData PIT 资产整理成 `pipeline_fundamentals.parquet`，不是手工清洗表格。
+1. provider 季度估值对照适合先排查“是不是频率更低就会好一些”。这一步更省事，但不替代完整财报研究。
+1. PIT 财报季度基线适合认真研究财报 alpha。当前 pipeline 已内置 `profit_margin`、`asset_turnover`、`roa`、`leverage`、`cfo_to_assets`、`accrual_ratio`、`receivables_to_revenue`、`inventory_to_revenue` 这类慢因子派生。
+1. 如果纯 PIT 基线已有方向，再跑 `config/hk_selected__pit_quarterly_hybrid.yml`，判断慢价格和流动性特征是否真的带来增益。
+
+### 2.2.2 什么时候切到季度 PIT 口径
+
+满足下面这些条件时，优先考虑季度 PIT 口径：
+
+1. 你关心的是财报驱动的慢因子，不是短周期技术信号。
+1. 你希望标签窗口和财报更新节奏更接近。
+1. 你更在意 `long_short`、`Top-K` 胜率、walk-forward 和净回测的一致性。
+
+这条路线的核心是先把频率对齐：
+
+1. `label.rebalance_frequency=Q`
+1. `eval.rebalance_frequency=Q`
+1. `backtest.rebalance_frequency=Q`
+
+如果只改回测频率，不改标签和评估频率，结果通常很难解释。
 
 ### 2.3 先过可信性门槛
 
@@ -237,6 +273,40 @@ csml sweep-linear --sweep-config config/sweeps/hk_selected__eval_sample_ffill.ym
 
 1. `hk_selected__eval_sample.yml` 把主测试窗口改成 `test_size=0.7`，并把 walk-forward 调成更小的多窗口切法。
 1. `hk_selected__eval_sample_ffill.yml` 在同样的样本切法下，把 `backtest.exit_price_policy` 从 `delay` 改成 `ffill`。
+
+### 2.4.1 季度 PIT 财报路线怎么起步
+
+建议按这个顺序跑：
+
+1. 先跑季度 provider 估值对照，确认低频口径本身有没有方向。
+1. 再跑季度 PIT 基线，确认财报文件和季度口径都工作正常。
+1. 再跑季度 PIT 线性 sweep，看慢因子有没有稳定方向。
+1. 最后再跑财报 + 慢技术面的混合配置，判断是否值得加复杂度。
+
+建议命令：
+
+```bash
+csml run --config config/hk_selected__provider_quarterly_valuation.yml
+csml run --config config/hk_selected__baseline_pit_quarterly.yml
+csml sweep-linear --sweep-config config/sweeps/hk_selected__pit_quarterly_linear.yml
+csml run --config config/hk_selected__pit_quarterly_hybrid.yml
+```
+
+这四步分别回答四个问题：
+
+1. 低频估值字段本身有没有方向。
+1. PIT 财报 + 季度调仓本身有没有可解释的信号。
+1. 线性模型下，慢因子方向是否稳定。
+1. 加入慢技术面后，结果是否明显改善。
+
+看结果时，建议先读：
+
+1. `summary.json -> eval.long_short`
+1. `summary.json -> eval.topk_positive_ratio`
+1. `summary.json -> walk_forward`
+1. `summary.json -> backtest.stats`
+
+如果季度 PIT 路线的 `IC` 仍然不高，但 `long_short`、`Top-K` 胜率和净回测开始同步改善，这条线就值得继续扩展。
 
 ### 2.5 再跑非线性对照组
 
