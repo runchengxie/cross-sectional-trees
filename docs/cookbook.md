@@ -208,3 +208,42 @@ csml backup-data \
   --config config/hk_selected__baseline_eval_sample_ffill.yml \
   --include-path out/runs/hk_evalb_ridge_a30_grid_summary.csv
 ```
+
+## 8) 私有 Release 恢复
+
+如果你已经把一轮研究上传成私有 release，建议至少保留这 4 个资产：
+
+1. `csml-data-snapshot-*.tar.gz`
+1. `csml-source-snapshot-*.tar.gz`
+1. `csml-research-summaries-*.tar.gz`
+1. `SHA256SUMS.txt`
+
+当前这轮示例 release 是 `backup-hk-20260310`：
+
+```bash
+mkdir -p restore/backup-hk-20260310
+cd restore/backup-hk-20260310
+
+gh release download backup-hk-20260310 \
+  --repo runchengxie/cross-sectional-machine-learning \
+  --pattern 'csml-*.tar.gz' \
+  --pattern 'SHA256SUMS.txt' \
+  --pattern 'RESTORE.md' \
+  --pattern 'research_summary_paths.txt' \
+  --pattern 'source_paths.txt'
+
+sha256sum -c SHA256SUMS.txt
+mkdir repo
+tar -xzf csml-source-snapshot-20260310.tar.gz -C repo
+cd repo
+tar -xzf ../csml-data-snapshot-hk_eval_bundle_20260310.tar.gz
+tar -xzf ../csml-research-summaries-20260310.tar.gz
+uv sync --extra dev --extra rqdata
+```
+
+补充说明：
+
+1. `csml-source-snapshot-*.tar.gz` 保存的是当时本地工作树状态，适合直接恢复代码。
+1. `csml-data-snapshot-*.tar.gz` 里包含 `cache/`、`out/universe/`、配置和 `manifest.yml`。
+1. `csml-research-summaries-*.tar.gz` 只保留结果摘要，不包含完整 `out/runs/` 大目录。
+1. 若只想继续研究，不需要完整回看历史派生产物，这 3 个 tar 包已经够用。
