@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import yaml
 
 from ..date_utils import is_relative_date_token
@@ -62,6 +63,8 @@ FIELDNAMES = [
     "eval_ic_ir",
     "eval_long_short",
     "eval_turnover_mean",
+    "eval_pred_nunique",
+    "feature_importance_nonzero",
     "backtest_periods",
     "backtest_periods_per_year",
     "backtest_total_return",
@@ -81,6 +84,8 @@ FIELDNAMES = [
     "flag_negative_long_short",
     "flag_high_turnover",
     "flag_relative_end_date",
+    "flag_constant_prediction",
+    "flag_zero_feature_importance",
     "score",
     "status",
     "error",
@@ -206,6 +211,107 @@ def _parse_run_dir_name(run_dir_name: str) -> tuple[str | None, str | None, str 
     return match.group("run_name"), match.group("timestamp"), match.group("config_hash")
 
 
+def _resolve_artifact_path(
+    run_dir: Path,
+    *,
+    path_value: Any = None,
+    default_name: str | None = None,
+) -> Path | None:
+    candidates: list[Path] = []
+    if path_value is not None:
+        text = str(path_value).strip()
+        if text:
+            raw = Path(text).expanduser()
+            if raw.is_absolute():
+                candidates.append(raw)
+            else:
+                candidates.append((run_dir / raw).resolve())
+                candidates.append((Path.cwd() / raw).resolve())
+    if default_name:
+        candidates.append((run_dir / default_name).resolve())
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _load_eval_pred_nunique(run_dir: Path, summary: dict[str, Any]) -> int | None:
+    pred_nunique = _to_float(_get_nested(summary, "eval", "pred_nunique"))
+    if pred_nunique is not None:
+        return int(pred_nunique)
+
+    scored_path = _resolve_artifact_path(
+        run_dir,
+        path_value=_get_nested(summary, "eval", "scored_file"),
+        default_name="eval_scored.parquet",
+    )
+    if scored_path is None:
+        return None
+    try:
+        scored = pd.read_parquet(scored_path, columns=["pred"])
+    except Exception as exc:
+        logging.debug("Unable to read scored artifact %s: %s", scored_path, exc)
+        return None
+    if "pred" not in scored.columns:
+        return None
+    return int(scored["pred"].nunique(dropna=True))
+
+
+def _load_feature_importance_nonzero(run_dir: Path, summary: dict[str, Any]) -> int | None:
+    nonzero = _to_float(_get_nested(summary, "eval", "feature_importance_nonzero"))
+    if nonzero is not None:
+        return int(nonzero)
+
+    importance_path = _resolve_artifact_path(
+        run_dir,
+        path_value=_get_nested(summary, "eval", "feature_importance_file"),
+        default_name="feature_importance.csv",
+    )
+    if importance_path is None:
+        return None
+    try:
+        importance = pd.read_csv(importance_path, usecols=["importance"])
+    except Exception as exc:
+        logging.debug("Unable to read feature importance artifact %s: %s", importance_path, exc)
+        return None
+    if "importance" not in importance.columns:
+        return None
+    values = pd.to_numeric(importance["importance"], errors="coerce").fillna(0.0)
+    return int((values.abs() > 0.0).sum())
+
+
+def _populate_eval_diagnostics(
+    row: dict[str, Any],
+    summary: dict[str, Any],
+    run_dir: Path,
+) -> None:
+    pred_nunique = _load_eval_pred_nunique(run_dir, summary)
+    if pred_nunique is not None:
+        row["eval_pred_nunique"] = pred_nunique
+
+    constant_prediction = _first_non_empty(
+        _get_nested(summary, "eval", "constant_prediction"),
+        None if pred_nunique is None else pred_nunique <= 1,
+    )
+    if constant_prediction is not None:
+        row["flag_constant_prediction"] = bool(constant_prediction)
+
+    feature_importance_nonzero = _load_feature_importance_nonzero(run_dir, summary)
+    if feature_importance_nonzero is not None:
+        row["feature_importance_nonzero"] = feature_importance_nonzero
+
+    zero_feature_importance = _first_non_empty(
+        _get_nested(summary, "eval", "zero_feature_importance"),
+        None if feature_importance_nonzero is None else feature_importance_nonzero <= 0,
+    )
+    if zero_feature_importance is not None:
+        row["flag_zero_feature_importance"] = bool(zero_feature_importance)
+
+
 def _iter_summary_files(runs_dirs: list[Path]) -> list[tuple[Path, Path]]:
     entries: list[tuple[Path, Path]] = []
     seen: set[Path] = set()
@@ -280,6 +386,12 @@ def _apply_flags_and_score(row: dict[str, Any], args: argparse.Namespace) -> Non
     if end_date_relative is not None:
         row["flag_relative_end_date"] = end_date_relative
 
+    if _is_true_flag(row.get("flag_constant_prediction")) or _is_true_flag(
+        row.get("flag_zero_feature_importance")
+    ):
+        row["score"] = None
+        return
+
     sharpe = _to_float(row.get("backtest_sharpe"))
     if sharpe is None:
         return
@@ -334,6 +446,10 @@ def _compute_grouped_dsr(rows: list[dict[str, Any]]) -> None:
             row["dsr_n_trials"] = n_trials
             row["dsr_var_trials"] = var_trials if np.isfinite(var_trials) else None
             if _is_true_flag(row.get("flag_short_sample")):
+                continue
+            if _is_true_flag(row.get("flag_constant_prediction")) or _is_true_flag(
+                row.get("flag_zero_feature_importance")
+            ):
                 continue
 
             periods = _to_float(row.get("backtest_periods"))
@@ -480,6 +596,7 @@ def _extract_row(source_runs_dir: Path, summary_path: Path, args: argparse.Names
     row["eval_ic_ir"] = _get_nested(summary, "eval", "ic", "ir")
     row["eval_long_short"] = _get_nested(summary, "eval", "long_short")
     row["eval_turnover_mean"] = _get_nested(summary, "eval", "turnover_mean")
+    _populate_eval_diagnostics(row, summary, run_dir)
 
     backtest_stats = _get_nested(summary, "backtest", "stats")
     if isinstance(backtest_stats, dict):

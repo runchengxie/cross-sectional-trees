@@ -40,18 +40,21 @@ provider 侧转换：
 * `data.cache_refresh_days`
 * `data.cache_refresh_on_hit`
 * `data.cache_tag`（或 `cache_version`）
+* `fundamentals.cache_dir`
 
 行为差异：
 
 1. `symbol` 模式（默认）：单票一个缓存文件，会按 `cache_refresh_days` 增量刷新末端区间。
 1. `range/window` 模式：按请求时间窗口缓存，不做末端刷新合并。
 1. 不同 `cache_tag` 会形成独立命名空间，适合隔离实验版本。
+1. provider 基本面默认落到 `data.cache_dir/fundamentals/<market>/`，避免和日线缓存混在一起。
 
 结果变化常见来源：
 
 1. provider 回补历史数据。
 1. 命中缓存后触发末端刷新（`cache_refresh_days > 0`）。
 1. 使用相对日期（`today/t-1`）导致样本窗口每日漂移。
+1. 改动了 universe 或长历史窗口后，最好配一个新的 `cache_tag`，避免把旧研究缓存和新研究混用。
 
 ## 速率限制与重试
 
@@ -77,3 +80,4 @@ data:
 1. 固定 `data.provider` 与 provider 专属参数。
 1. 保留 `cache/`、`config.used.yml`、`summary.json`。
 1. 使用 `data.cache_tag` 隔离关键实验版本。
+1. 10-15 年、几百只股票、日频 + 少量基本面通常还不需要数据库；先把 Parquet 缓存和 PIT universe 管好。

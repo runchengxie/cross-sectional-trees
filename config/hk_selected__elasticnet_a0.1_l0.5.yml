@@ -2,7 +2,7 @@
 market: hk
 data:
   provider: rqdata
-  start_date: '20200101'
+  start_date: '20150101'
   end_date: '20251231'
   cache_dir: cache
   cache_tag: null
