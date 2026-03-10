@@ -23,7 +23,7 @@ csml init-config --market hk --out config/
 * `model.type`：先确定是线性基线还是 XGB 对照。
 * `eval.top_k` / `backtest.top_k`：决定选股数量。
 * `eval.transaction_cost_bps` / `backtest.transaction_cost_bps`：先把成本假设设清楚。
-* `label.shift_days`：会直接影响“当前持仓”的解释。
+* `label.shift_days`：会直接影响当前持仓的解释。
 * `live.enabled`：如果需要当前持仓快照，再开启 live。
 
 ## HK 配置角色分工
