@@ -10,6 +10,74 @@
 
 `live` 推荐单独目录，例如 `out/live_runs/...`。
 
+另有一类独立于 run 目录的 provider 资产镜像：
+
+`data_assets/rqdata/hk/<dataset>/<snapshot>/`
+
+当前 `dataset` 包括：
+
+* `pit_financials`
+* `financial_details`
+
+这类目录由 `csml rqdata mirror-hk-pit-financials` 和 `csml rqdata mirror-hk-financial-details` 生成。
+如果你继续执行 `csml rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
+
+## RQData 资产镜像目录
+
+目录结构：
+
+```text
+data_assets/rqdata/hk/<dataset>/<snapshot>/
+  manifest.yml
+  fields.txt
+  symbols.txt
+  data/
+    00005.HK.parquet
+    00011.HK.parquet
+    ...
+```
+
+文件说明：
+
+* `manifest.yml`：查询参数、字段列表、symbol 来源、文件统计、缺失 symbol 和 git 元数据。
+* `fields.txt`：本次拉取的字段名清单。
+* `symbols.txt`：本次拉取的 symbol 清单。
+* `data/<ts_code>.parquet`：按 symbol 分开的原始镜像文件。
+
+字段约定：
+
+* `pit_financials` 保留 `rqdatac.get_pit_financials_ex` 的字段名，并额外写入 `ts_code`、`order_book_id`。
+* `financial_details` 保留 `rqdatac.hk.get_detailed_financial_items` 的字段名，并额外写入 `ts_code`、`order_book_id`。
+
+补充：
+
+* `manifest.yml` 的 `status` 会记录本次镜像是否完整完成。
+* 这类镜像目录供下游项目复用，不属于 `cache/` 的 query cache。
+
+## PIT fundamentals 平面文件
+
+默认路径：
+
+`data_assets/rqdata/hk/pit_financials/<snapshot>/pipeline_fundamentals.parquet`
+
+这类文件由 `csml rqdata build-hk-pit-fundamentals` 生成，也可以通过 `--out` 写到其他位置。
+
+配套文件：
+
+* `pipeline_fundamentals.manifest.yml`：来源资产目录、字段选择、去重策略和输出统计。
+
+字段约定：
+
+* 固定列：`trade_date`、`ts_code`
+* 值列：你在命令里选中的 PIT 财报字段；如果没显式传字段，默认沿用源资产 `manifest.yml` 里的字段列表
+* `trade_date` 默认等于原始 PIT 行的 `info_date`
+* 传 `--keep-meta` 时，会额外保留 `quarter`、`info_date`、`fiscal_year`、`standard`、`if_adjusted`、`rice_create_tm`、`order_book_id`
+
+使用建议：
+
+* 这类文件可直接接 `fundamentals.source=file`
+* 如果你希望披露后的交易日持续使用最近一版财报值，保留 `fundamentals.ffill=true`
+
 ## `summary.json` 顶层结构
 
 `summary.json` 顶层字段（固定键）：

@@ -241,6 +241,32 @@ def _handle_rqdata_quota(args) -> int:
     return 0
 
 
+def _handle_rqdata_list_hk_financial_fields(args) -> int:
+    from .project_tools import rqdata_assets
+
+    return rqdata_assets.list_hk_financial_fields(args)
+
+
+def _handle_rqdata_mirror_hk_pit_financials(args) -> int:
+    from .project_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_pit_financials(args, rqdatac)
+
+
+def _handle_rqdata_mirror_hk_financial_details(args) -> int:
+    from .project_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_financial_details(args, rqdatac)
+
+
+def _handle_rqdata_build_hk_pit_fundamentals(args) -> int:
+    from .project_tools import rqdata_assets
+
+    return rqdata_assets.build_hk_pit_fundamentals_file(args)
+
+
 def _handle_universe_hk_connect(args) -> int:
     from .project_tools import build_hk_connect_universe
 
@@ -477,6 +503,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show human-friendly output with percent and progress bar",
     )
     rq_quota.set_defaults(func=_handle_rqdata_quota)
+
+    from .project_tools import rqdata_assets
+
+    rq_list_fields = rq_sub.add_parser(
+        "list-hk-financial-fields",
+        help="List supported HK financial field names for PIT/details APIs",
+    )
+    rqdata_assets.add_list_hk_financial_fields_args(rq_list_fields)
+    rq_list_fields.set_defaults(func=_handle_rqdata_list_hk_financial_fields)
+
+    rq_pit = rq_sub.add_parser(
+        "mirror-hk-pit-financials",
+        help="Mirror HK PIT financial statements into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_financial_mirror_args(rq_pit)
+    rq_pit.set_defaults(func=_handle_rqdata_mirror_hk_pit_financials)
+
+    rq_details = rq_sub.add_parser(
+        "mirror-hk-financial-details",
+        help="Mirror HK raw financial detail items into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_financial_mirror_args(rq_details)
+    rq_details.set_defaults(func=_handle_rqdata_mirror_hk_financial_details)
+
+    rq_pit_fundamentals = rq_sub.add_parser(
+        "build-hk-pit-fundamentals",
+        help="Build a pipeline-readable fundamentals file from an HK PIT mirror asset",
+    )
+    rqdata_assets.add_hk_pit_fundamentals_build_args(rq_pit_fundamentals)
+    rq_pit_fundamentals.set_defaults(func=_handle_rqdata_build_hk_pit_fundamentals)
 
     universe = subparsers.add_parser("universe", help="Universe construction helpers")
     uni_sub = universe.add_subparsers(dest="uni_command", required=True)

@@ -78,6 +78,8 @@ uv run pytest \
   tests/test_summarize_runs.py \
   tests/test_pipeline_filters.py \
   tests/test_fundamentals_providers.py \
+  tests/test_rqdata_assets.py \
+  tests/test_cli.py \
   tests/test_data_providers_cache.py \
   -q
 ```

@@ -279,6 +279,7 @@ model:
 * 未显式设置 `fundamentals.cache_dir` 时，provider 基本面默认缓存到 `data.cache_dir/fundamentals/<market>/`
 * HK 常用映射可直接写成：`market_cap -> hk_total_market_val`、`pe_ttm -> pe_ratio_ttm`、`pb -> pb_ratio_ttm`
 * 缺文件时默认 warning 并跳过，可用 `required=true` 改成报错
+* 如果文件来自 `csml rqdata build-hk-pit-fundamentals`，默认 `trade_date=info_date`。常见接法是保留 `fundamentals.ffill=true`，让披露后的交易日沿用最近一版财报值
 
 ## `live`
 

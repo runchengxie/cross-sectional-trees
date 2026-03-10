@@ -12,11 +12,17 @@
 | 日线接口 | TuShare endpoint（可配） | `rqdatac.get_price` | EODHD HTTP API |
 | 基础信息（name/list_date） | TuShare basic endpoint | `rqdatac.instruments/all_instruments` | `exchange-symbol-list` |
 | `last_trading_day` 严格交易日 | 否（回退自然日） | 是（可用交易日历时） | 否（回退自然日） |
-| 基本面 `fundamentals.source=provider` | 支持 | HK 支持（`get_factor`） | 不支持 |
+| 基本面 `fundamentals.source=provider` | 支持 | HK 支持（pipeline 当前走 `get_factor`） | 不支持 |
 
 说明：`last_trading_day / last_completed_trading_day` 只有在 `provider=rqdata` 且交易日历可用时才严格按交易日解析，否则会给 warning 并回退自然日。
 
-补充：`rqdata` 的基本面 provider 模式当前只覆盖 `market=hk`。默认走 `rqdatac.get_factor`。其他市场仍建议使用 `fundamentals.source=file`。
+补充：`rqdata` 的基本面 provider 模式当前只覆盖 `market=hk`。pipeline 默认走 `rqdatac.get_factor`。其他市场仍建议使用 `fundamentals.source=file`。
+
+补充：如果你要下载更完整的港股财报资产，使用 `csml rqdata mirror-hk-pit-financials` 或 `csml rqdata mirror-hk-financial-details`。这两条命令会把数据写到 `data_assets/rqdata/`，不走 pipeline 的 provider 基本面缓存。
+
+补充：如果你已经有 `pit_financials` 资产目录，可以继续执行 `csml rqdata build-hk-pit-fundamentals`。这条命令会生成一个平面 fundamentals 文件，默认把 `trade_date` 写成 `info_date`，可直接接到 `fundamentals.source=file`。
+
+补充：字段名可以先用 `csml rqdata list-hk-financial-fields` 导出，再整理成 `--fields-file`。
 
 补充：`RQData market=hk` 的行情覆盖范围大于仓库里的默认 `hk-connect` 研究股票池。仓库当前提供的是港股通 PIT universe 模板；如果你想研究更广的港股普通股池，需要单独准备 `universe.by_date_file` 或新的 universe builder。
 

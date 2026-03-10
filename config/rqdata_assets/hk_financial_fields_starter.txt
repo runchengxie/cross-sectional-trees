@@ -1,0 +1,19 @@
+# Starter field set for HK PIT financial mirrors.
+# These names are accepted by the HK financial APIs documented by RQData.
+revenue
+operating_revenue
+operating_profit
+net_profit
+basic_earnings_per_share
+dividend_per_share
+total_assets
+total_liabilities
+total_equity
+cash_and_equivalents
+cash_flow_from_operating_activities
+inventory
+accounts_receivable
+accounts_payable
+short_term_debt
+long_term_loans
+goodwill

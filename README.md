@@ -56,6 +56,19 @@ csml summarize --runs-dir out/runs --output out/runs/runs_summary.csv
 # 查询 RQData 配额
 csml rqdata quota --pretty
 
+# 镜像港股 PIT 财报资产
+csml rqdata mirror-hk-pit-financials \
+  --config config/hk_selected__baseline.yml \
+  --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
+  --start-quarter 2011q1 \
+  --end-quarter 2025q4 \
+  --date 20260310
+
+# 把 PIT 资产转成 pipeline 可直接读取的 fundamentals 文件
+csml rqdata build-hk-pit-fundamentals \
+  --asset-dir data_assets/rqdata/hk/pit_financials/pit_demo \
+  --out data_assets/rqdata/hk/pit_financials/pit_demo/pipeline_fundamentals.parquet
+
 # 做一份本地私有数据快照
 csml backup-data --name hk_frozen_20251231 --config config/hk_selected__baseline.yml
 
