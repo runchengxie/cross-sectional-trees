@@ -13,6 +13,7 @@
 本仓库已提供一组 HK 配置文件：
 
 1. `config/hk_selected__baseline.yml`（建议作为 sweep/base 配置入口）
+1. `config/hk_selected__baseline_pit_file.yml`
 1. `config/hk_selected__xgb_regressor.yml`
 1. `config/hk_selected__ridge_a1.yml`
 1. `config/hk_selected__elasticnet_a0.1_l0.5.yml`
@@ -21,6 +22,10 @@
 每次运行后优先看 `config.used.yml`，它是“本次 run 实际生效配置”。
 
 HK selected 这组基线现在默认使用 `2015-01-01` 到 `2025-12-31`，并假定 `out/universe/universe_by_date.csv` 也是对应的长历史 PIT universe。
+
+如果你已经把港股 PIT 财报镜像整理成了本地 fundamentals 文件，可以直接切到 `config/hk_selected__baseline_pit_file.yml`。默认路径是：
+
+`data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet`
 
 ## 0.5) 先过能不能信的门槛
 
