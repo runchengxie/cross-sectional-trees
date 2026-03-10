@@ -47,6 +47,8 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
             "6",
             "--buffer-entry",
             "3",
+            "--weighting",
+            "equal,signal",
         ]
     )
     assert grid.command == "grid"
@@ -54,6 +56,7 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
     assert grid.cost_bps == ["10,20"]
     assert grid.buffer_exit == ["6"]
     assert grid.buffer_entry == ["3"]
+    assert grid.weighting == ["equal,signal"]
 
     sweep = parser.parse_args(
         [
@@ -105,6 +108,27 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
     assert summarize.since == "2026-01-01"
     assert summarize.latest_n == 3
     assert summarize.short_sample_periods == 24
+
+    backup = parser.parse_args(
+        [
+            "backup-data",
+            "--out-root",
+            "data_mirror",
+            "--name",
+            "hk_frozen",
+            "--config",
+            "config/hk.yml",
+            "--include-path",
+            "out/universe",
+            "--skip-missing",
+        ]
+    )
+    assert backup.command == "backup-data"
+    assert backup.out_root == "data_mirror"
+    assert backup.name == "hk_frozen"
+    assert backup.config == ["config/hk.yml"]
+    assert backup.include_path == ["out/universe"]
+    assert backup.skip_missing is True
 
 
 def test_cli_parses_rqdata_quota_pretty():

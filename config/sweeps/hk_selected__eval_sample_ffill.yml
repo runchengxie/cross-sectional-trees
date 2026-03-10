@@ -1,0 +1,20 @@
+# HK eval follow-up sweep: same sample design, but backtest exits use ffill.
+base_config: config/hk_selected__baseline_eval_sample_ffill.yml
+run_name_prefix: hk_evalb_
+tag: hk_eval_sample_ffill
+sweeps_dir: out/sweeps
+runs_dir: out/runs
+
+grid:
+  ridge_alpha: [30, 100]
+  elasticnet_alpha: [0.01]
+  elasticnet_l1_ratio: [0.05]
+
+options:
+  skip_ridge: false
+  skip_elasticnet: false
+  dry_run: false
+  continue_on_error: false
+  skip_summarize: false
+  summary_output: null
+  log_level: INFO

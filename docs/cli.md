@@ -76,7 +76,7 @@ csml run --config hk
 
 ## 2) `csml grid`
 
-用途：在同一份 `eval_scored.parquet` 上做 `Top-K × 成本 × buffer` 敏感性分析，不会为每个组合重训模型。
+用途：在同一份 `eval_scored.parquet` 上做 `Top-K × 成本 × buffer × weighting` 敏感性分析，不会为每个组合重训模型。
 
 关键参数：
 
@@ -85,6 +85,7 @@ csml run --config hk
 * `--cost-bps <values>`：可重复传，支持逗号分隔。
 * `--buffer-exit <values>`：可重复传，支持逗号分隔。
 * `--buffer-entry <values>`：可重复传，支持逗号分隔。
+* `--weighting <values>`：可重复传，支持 `equal,signal`。
 * `--output <csv_path>`：输出 CSV，默认 `out/runs/grid_summary.csv`。
 * `--run-name-prefix <prefix>`
 * `--log-level <level>`
@@ -99,7 +100,8 @@ csml grid \
   --top-k 10,20 \
   --cost-bps 15,25,40 \
   --buffer-exit 8,10 \
-  --buffer-entry 4,5
+  --buffer-entry 4,5 \
+  --weighting equal,signal
 ```
 
 ## 3) `csml sweep-linear`
@@ -280,7 +282,51 @@ csml alloc --run-dir out/runs/<run_dir> --source live --top-n 10 --format json -
 csml alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv --top-n 5
 ```
 
-## 8) `csml rqdata info`
+## 8) `csml backup-data`
+
+用途：把当前本地缓存、PIT universe 和指定配置文件做一次私有快照，写到 `data_mirror/<name>/`。
+
+关键参数：
+
+* `--out-root <dir>`：快照根目录，默认 `data_mirror`
+* `--name <snapshot_name>`：快照目录名；不传时自动用时间戳
+* `--config <path>`：附带归档的配置文件，可重复传
+* `--include-path <path>`：额外归档的文件或目录，可重复传
+* `--no-cache`：不包含 `cache/`
+* `--no-universe`：不包含 `out/universe/`
+* `--skip-missing`：缺失路径时跳过，不中断
+
+补充：
+
+* 这个命令只复制本地文件，不会联网或重新下载 provider 数据。
+* 默认包含 `cache/` 和 `out/universe/`。
+* 快照目录里会生成 `manifest.yml`，记录来源路径、文件数、字节数和当前 git 信息（若仓库可识别）。
+* 这份快照默认按私有备份设计。若仓库是公开仓库，不要把 `cache/` 或其他 provider 原始数据直接上传到 GitHub Releases。
+* 公开 release 更适合上传 `manifest.yml`、研究配置、`config.used.yml`、汇总 CSV 和说明文件。完整快照保留在本地磁盘、NAS 或对象存储。
+
+示例：
+
+```bash
+csml backup-data \
+  --name hk_frozen_20251231 \
+  --config config/hk_selected__baseline.yml
+
+csml backup-data \
+  --name hk_eval_bundle \
+  --config config/hk_selected__baseline_eval_sample.yml \
+  --config config/hk_selected__baseline_eval_sample_ffill.yml \
+  --include-path config/sweeps/hk_selected__eval_sample.yml \
+  --include-path config/sweeps/hk_selected__eval_sample_ffill.yml
+
+csml backup-data \
+  --name hk_eval_bundle_public \
+  --no-cache \
+  --config config/hk_selected__baseline_eval_sample.yml \
+  --config config/hk_selected__baseline_eval_sample_ffill.yml \
+  --include-path out/runs/hk_evalb_ridge_a30_grid_summary.csv
+```
+
+## 9) `csml rqdata info`
 
 用途：初始化并显示 RQData 登录信息。
 
@@ -290,7 +336,7 @@ csml alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv -
 * `--username <name>`
 * `--password <password>`
 
-## 9) `csml rqdata quota`
+## 10) `csml rqdata quota`
 
 用途：查询 RQData 配额。
 
@@ -301,7 +347,7 @@ csml alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv -
 * `--password <password>`
 * `--pretty`
 
-## 10) `csml tushare verify-token`
+## 11) `csml tushare verify-token`
 
 用途：验证 TuShare token 是否可用。
 
@@ -310,7 +356,7 @@ csml alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv -
 * 推荐直接执行 `csml tushare verify-token`。
 * 额外参数会转发到底层脚本。
 
-## 11) `csml universe index-components`
+## 12) `csml universe index-components`
 
 用途：拉取指数成分并输出 symbols 文件，必要时生成 PIT 文件。
 
@@ -325,7 +371,7 @@ csml alloc --positions-file out/runs/<run_dir>/positions_by_rebalance_live.csv -
 csml universe index-components --index-code 000300.SH --month 202501
 ```
 
-## 12) `csml universe hk-connect`
+## 13) `csml universe hk-connect`
 
 用途：构建港股通 PIT universe。
 
@@ -344,7 +390,7 @@ csml universe index-components --index-code 000300.SH --month 202501
 csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 ```
 
-## 13) `csml init-config`
+## 14) `csml init-config`
 
 用途：导出内置配置模板。
 

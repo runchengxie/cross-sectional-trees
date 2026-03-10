@@ -5,7 +5,12 @@ from typing import Literal, Optional
 import numpy as np
 import pandas as pd
 
-from .portfolio import select_holdings
+from .portfolio import (
+    build_position_weights,
+    normalize_position_weights,
+    normalize_weighting_mode,
+    select_holdings,
+)
 from .execution import BpsCostModel, ExecutionModel, ExitPolicy
 
 
@@ -224,6 +229,7 @@ def backtest_topk(
     exit_horizon_days: Optional[int] = None,
     long_only: bool = True,
     short_k: Optional[int] = None,
+    weighting: Literal["equal", "signal"] = "equal",
     buffer_exit: int = 0,
     buffer_entry: int = 0,
     tradable_col: Optional[str] = None,
@@ -241,6 +247,7 @@ def backtest_topk(
     else:
         exit_policy = execution.exit_policy
         cost_model = execution.cost_model
+    weighting_mode = normalize_weighting_mode(weighting)
     trade_dates = sorted(data["trade_date"].unique())
     if len(trade_dates) < 2:
         return None
@@ -257,47 +264,54 @@ def backtest_topk(
     costs = []
     period_info = []
     prev_holdings = None
+    prev_weights = None
     prev_entry_date = None
     prev_entry_prices = None
     prev_short_holdings = None
+    prev_short_weights = None
     prev_short_entry_date = None
     prev_short_entry_prices = None
     prev_exit_idx = None
 
     def _compute_turnover(
-        prev_set: Optional[set],
+        prev_weights: Optional[pd.Series],
         prev_prices: Optional[pd.Series],
         prev_date: Optional[pd.Timestamp],
-        current_holdings: list[str],
+        target_weights: pd.Series,
         entry_date: pd.Timestamp,
     ) -> float:
-        if prev_set is None:
-            return 1.0
+        if target_weights is None or target_weights.empty:
+            return 0.0
+        if prev_weights is None or prev_weights.empty:
+            return float(target_weights.abs().sum())
         drift_turnover = np.nan
         if prev_prices is not None and prev_date is not None:
-            prev_holdings_list = list(prev_set)
-            prev_prices = prev_prices.reindex(prev_holdings_list)
+            prev_weights_clean = normalize_position_weights(prev_weights)
+            prev_prices = prev_prices.reindex(prev_weights_clean.index)
             prev_prices = prev_prices[prev_prices.notna()]
-            if not prev_prices.empty and prev_date in price_table.index:
+            if not prev_prices.empty and entry_date in price_table.index:
+                prev_weights_clean = prev_weights_clean.reindex(prev_prices.index).dropna()
                 current_prices = price_table.loc[entry_date, prev_prices.index]
                 valid_prev = current_prices.notna()
                 prev_prices = prev_prices[valid_prev]
                 current_prices = current_prices[valid_prev]
-                if not prev_prices.empty:
-                    prev_weights = np.repeat(1.0 / len(prev_prices), len(prev_prices))
-                    drift = prev_weights * (current_prices / prev_prices).to_numpy()
-                    drift_sum = drift.sum()
+                prev_weights_clean = prev_weights_clean.reindex(prev_prices.index).dropna()
+                if not prev_prices.empty and not prev_weights_clean.empty:
+                    drift = prev_weights_clean * (current_prices / prev_prices)
+                    drift_sum = float(drift.sum())
                     if drift_sum > 0:
-                        drift_weights = pd.Series(drift / drift_sum, index=prev_prices.index)
-                        target_weights = pd.Series(1.0 / len(current_holdings), index=current_holdings)
+                        drift_weights = normalize_position_weights(drift)
                         all_ids = drift_weights.index.union(target_weights.index)
                         drift_aligned = drift_weights.reindex(all_ids).fillna(0.0)
                         target_aligned = target_weights.reindex(all_ids).fillna(0.0)
                         drift_turnover = 0.5 * float(np.abs(target_aligned - drift_aligned).sum())
         if np.isfinite(drift_turnover):
             return drift_turnover
-        overlap = len(set(current_holdings) & prev_set)
-        return 1 - overlap / len(current_holdings)
+        prev_clean = normalize_position_weights(prev_weights)
+        all_ids = prev_clean.index.union(target_weights.index)
+        prev_aligned = prev_clean.reindex(all_ids).fillna(0.0)
+        target_aligned = target_weights.reindex(all_ids).fillna(0.0)
+        return 0.5 * float(np.abs(target_aligned - prev_aligned).sum())
 
     def _resolve_exit_prices(
         holdings: list[str],
@@ -366,23 +380,34 @@ def backtest_topk(
             )
             if not holdings:
                 continue
+            target_weights = build_position_weights(
+                day,
+                holdings,
+                pred_col,
+                side="long",
+                weighting=weighting_mode,
+            )
             exit_prices, period_exit_idx = _resolve_exit_prices(holdings, exit_idx)
             if exit_prices.empty:
                 continue
             entry_prices = entry_prices.reindex(exit_prices.index)
-            holdings = list(exit_prices.index)
+            target_weights = normalize_position_weights(target_weights.reindex(exit_prices.index))
+            holdings = list(target_weights.index)
             k = len(holdings)
             if k == 0:
                 continue
             exit_idx = period_exit_idx
             exit_date = trade_dates[exit_idx]
+            entry_prices = entry_prices.reindex(holdings)
+            exit_prices = exit_prices.reindex(holdings)
             period_returns = (exit_prices / entry_prices) - 1.0
-            gross = period_returns.mean()
-            turnover = _compute_turnover(prev_holdings, prev_entry_prices, prev_entry_date, holdings, entry_date)
-            cost = cost_model.cost(turnover, is_initial=prev_holdings is None, side="long")
+            gross = float((period_returns * target_weights.reindex(period_returns.index)).sum())
+            turnover = _compute_turnover(prev_weights, prev_entry_prices, prev_entry_date, target_weights, entry_date)
+            cost = cost_model.cost(turnover, is_initial=prev_weights is None, side="long")
             net = gross - cost
 
             prev_holdings = set(holdings)
+            prev_weights = target_weights
             prev_entry_date = entry_date
             prev_entry_prices = entry_prices
         else:
@@ -417,6 +442,20 @@ def backtest_topk(
             )
             if not long_holdings or not short_holdings:
                 continue
+            long_weights = build_position_weights(
+                day,
+                long_holdings,
+                pred_col,
+                side="long",
+                weighting=weighting_mode,
+            )
+            short_weights = build_position_weights(
+                day,
+                short_holdings,
+                pred_col,
+                side="short",
+                weighting=weighting_mode,
+            )
 
             long_exit, period_exit_idx_long = _resolve_exit_prices(long_holdings, exit_idx)
             short_exit, period_exit_idx_short = _resolve_exit_prices(short_holdings, exit_idx)
@@ -424,39 +463,51 @@ def backtest_topk(
                 continue
             long_entry = long_entry.reindex(long_exit.index)
             short_entry = short_entry.reindex(short_exit.index)
-            long_holdings = list(long_exit.index)
-            short_holdings = list(short_exit.index)
+            long_weights = normalize_position_weights(long_weights.reindex(long_exit.index))
+            short_weights = normalize_position_weights(short_weights.reindex(short_exit.index))
+            long_holdings = list(long_weights.index)
+            short_holdings = list(short_weights.index)
             if not long_holdings or not short_holdings:
                 continue
             exit_idx = max(exit_idx, period_exit_idx_long, period_exit_idx_short)
             exit_date = trade_dates[exit_idx]
+            long_entry = long_entry.reindex(long_holdings)
+            short_entry = short_entry.reindex(short_holdings)
+            long_exit = long_exit.reindex(long_holdings)
+            short_exit = short_exit.reindex(short_holdings)
 
             long_returns = (long_exit / long_entry) - 1.0
             short_returns = (short_exit / short_entry) - 1.0
-            long_gross = long_returns.mean()
-            short_gross = -short_returns.mean()
+            long_gross = float((long_returns * long_weights.reindex(long_returns.index)).sum())
+            short_gross = -float((short_returns * short_weights.reindex(short_returns.index)).sum())
             gross = long_gross + short_gross
 
             turnover_long = _compute_turnover(
-                prev_holdings, prev_entry_prices, prev_entry_date, long_holdings, entry_date
+                prev_weights, prev_entry_prices, prev_entry_date, long_weights, entry_date
             )
             turnover_short = _compute_turnover(
-                prev_short_holdings,
+                prev_short_weights,
                 prev_short_entry_prices,
                 prev_short_entry_date,
-                short_holdings,
+                short_weights,
                 entry_date,
             )
-            cost_long = cost_model.cost(turnover_long, is_initial=prev_holdings is None, side="long")
-            cost_short = cost_model.cost(turnover_short, is_initial=prev_short_holdings is None, side="short")
+            cost_long = cost_model.cost(turnover_long, is_initial=prev_weights is None, side="long")
+            cost_short = cost_model.cost(
+                turnover_short,
+                is_initial=prev_short_weights is None,
+                side="short",
+            )
             cost = cost_long + cost_short
             net = gross - cost
             turnover = turnover_long + turnover_short
 
             prev_holdings = set(long_holdings)
+            prev_weights = long_weights
             prev_entry_date = entry_date
             prev_entry_prices = long_entry
             prev_short_holdings = set(short_holdings)
+            prev_short_weights = short_weights
             prev_short_entry_date = entry_date
             prev_short_entry_prices = short_entry
 
@@ -494,6 +545,7 @@ def backtest_topk(
             "avg_turnover": avg_turnover,
             "avg_cost_drag": avg_cost,
             "mode": "long_only" if long_only else "long_short",
+            "weighting": weighting_mode,
             "long_k": int(top_k),
             "short_k": int(short_k) if (not long_only and short_k is not None) else None,
         }

@@ -62,6 +62,9 @@ def test_summarize_runs_collects_metrics_and_flags(tmp_path):
             "top_k": 5,
             "transaction_cost_bps": 15.0,
             "rebalance_frequency": "M",
+            "exit_price_policy": "ffill",
+            "exit_fallback_policy": "ffill",
+            "weighting": "signal",
             "buffer_exit": 2,
             "buffer_entry": 1,
             "stats": {
@@ -85,7 +88,15 @@ def test_summarize_runs_collects_metrics_and_flags(tmp_path):
         "universe": {"mode": "pit"},
         "label": {"horizon_days": 20, "shift_days": 1},
         "eval": {"top_k": 5, "transaction_cost_bps": 15.0, "buffer_exit": 2, "buffer_entry": 1},
-        "backtest": {"enabled": True, "top_k": 5, "buffer_exit": 2, "buffer_entry": 1},
+        "backtest": {
+            "enabled": True,
+            "top_k": 5,
+            "exit_price_policy": "ffill",
+            "exit_fallback_policy": "ffill",
+            "weighting": "signal",
+            "buffer_exit": 2,
+            "buffer_entry": 1,
+        },
     }
     _write_run(run_a, summary_a, config_a)
 
@@ -127,6 +138,9 @@ def test_summarize_runs_collects_metrics_and_flags(tmp_path):
     assert row_a["status"] == "ok"
     assert row_a["market"] == "hk"
     assert int(row_a["backtest_top_k"]) == 5
+    assert row_a["backtest_exit_price_policy"] == "ffill"
+    assert row_a["backtest_exit_fallback_policy"] == "ffill"
+    assert row_a["backtest_weighting"] == "signal"
     assert _as_bool(row_a["flag_short_sample"]) is False
     assert _as_bool(row_a["flag_negative_long_short"]) is False
     assert _as_bool(row_a["flag_high_turnover"]) is False

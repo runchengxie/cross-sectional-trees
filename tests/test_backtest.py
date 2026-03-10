@@ -146,6 +146,40 @@ def test_backtest_long_short_basic():
     assert np.isclose(turnover_series.iloc[0], 2.0)
 
 
+def test_backtest_signal_weighting_uses_signal_magnitude():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
+            ),
+            "ts_code": ["A", "B", "A", "B"],
+            "pred": [3.0, 1.0, 3.0, 1.0],
+            "close": [100.0, 100.0, 120.0, 100.0],
+        }
+    )
+    rebalance_dates = [pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")]
+    result = backtest_topk(
+        df,
+        pred_col="pred",
+        price_col="close",
+        rebalance_dates=rebalance_dates,
+        top_k=2,
+        shift_days=0,
+        cost_bps=0,
+        trading_days_per_year=252,
+        exit_mode="rebalance",
+        weighting="signal",
+    )
+    stats, net_series, gross_series, turnover_series, _ = result
+    raw = np.exp(np.array([1.0, -1.0]))
+    expected_weights = raw / raw.sum()
+    expected_gross = expected_weights[0] * 0.20 + expected_weights[1] * 0.0
+    assert stats["weighting"] == "signal"
+    assert np.isclose(gross_series.iloc[0], expected_gross)
+    assert np.isclose(net_series.iloc[0], expected_gross)
+    assert np.isclose(turnover_series.iloc[0], 1.0)
+
+
 def test_backtest_exit_delay_uses_next_available_price():
     df = pd.DataFrame(
         {
