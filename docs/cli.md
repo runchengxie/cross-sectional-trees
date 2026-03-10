@@ -347,7 +347,118 @@ csml backup-data \
 * `--password <password>`
 * `--pretty`
 
-## 11) `csml tushare verify-token`
+## 11) `csml rqdata list-hk-financial-fields`
+
+用途：列出港股财报镜像接口支持的字段名，便于准备 `--fields-file`。
+
+关键参数：
+
+* `--contains <token>`，按字段名子串过滤，可重复传
+* `--limit <n>`
+* `--out <path>`
+
+补充：
+
+* 该命令不拉取远端数据。
+* 字段列表来自本地安装的 `rqdatac` / `rqdatac-hk` 元数据。
+
+示例：
+
+```bash
+csml rqdata list-hk-financial-fields --contains profit --out out/hk_profit_fields.txt
+```
+
+## 12) `csml rqdata mirror-hk-pit-financials`
+
+用途：按港股 symbol 集合拉取 PIT 三大表财报数据，输出项目无关的 `parquet + manifest` 资产目录。
+
+关键参数：
+
+* `--config <path_or_alias>`：用于 `rqdata.init`。当没有显式传 `--symbol/--symbols-file/--by-date-file` 时，也会拿配置里的 universe 解析 symbol。
+* `--username <name>`
+* `--password <password>`
+* `--start-quarter <YYYYqN>`
+* `--end-quarter <YYYYqN>`
+* `--date <YYYYMMDD>`
+* `--statements <latest|all>`
+* `--field <name>` 或 `--fields-file <path>`
+* `--symbol <code>` / `--symbols-file <path>` / `--by-date-file <path>`
+* `--batch-size <n>`
+* `--out-root <path>`
+* `--name <snapshot_name>`
+
+补充：
+
+* 默认输出到 `data_assets/rqdata/hk/pit_financials/<snapshot>/`。
+* 目录里会写 `manifest.yml`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`。
+* 仓库内置了一份 starter 字段文件：`config/rqdata_assets/hk_financial_fields_starter.txt`。
+* 为了复现，建议显式传 `--date`，例如 `20260310`。
+
+示例：
+
+```bash
+csml rqdata mirror-hk-pit-financials \
+  --config config/hk_selected__baseline.yml \
+  --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
+  --start-quarter 2011q1 \
+  --end-quarter 2025q4 \
+  --date 20260310
+```
+
+## 13) `csml rqdata mirror-hk-financial-details`
+
+用途：拉取港股原始财报细分项目，输出项目无关的 `parquet + manifest` 资产目录。
+
+关键参数：
+
+* 参数结构与 `mirror-hk-pit-financials` 相同
+* 数据来源是 `rqdatac.hk.get_detailed_financial_items`
+
+补充：
+
+* 默认输出到 `data_assets/rqdata/hk/financial_details/<snapshot>/`。
+* 这类数据通常比 PIT 宽表更大。第一次建议先用 `--statements latest`，并限制字段范围。
+
+示例：
+
+```bash
+csml rqdata mirror-hk-financial-details \
+  --symbol 00005.HK \
+  --field revenue \
+  --start-quarter 2024q1 \
+  --end-quarter 2025q4 \
+  --date 20260310
+```
+
+## 14) `csml rqdata build-hk-pit-fundamentals`
+
+用途：把 `mirror-hk-pit-financials` 生成的资产目录整理成 pipeline 可直接读取的 `fundamentals.source=file` 文件。
+
+关键参数：
+
+* `--asset-dir <path>`：`mirror-hk-pit-financials` 的输出目录
+* `--field <name>` 或 `--fields-file <path>`：可选。默认沿用资产目录 `manifest.yml` 里的字段列表
+* `--out <path>`：可选。默认写到 `<asset-dir>/pipeline_fundamentals.parquet`
+* `--keep-meta`
+* `--duplicate-policy <keep-last|error>`
+* `--force`
+
+补充：
+
+* 输出文件至少包含 `trade_date`、`ts_code` 和选中的财报字段。
+* 默认把 `trade_date` 写成财报披露日，也就是 `info_date`。
+* 后续在 pipeline 里通常配合 `fundamentals.ffill=true` 使用，这样披露后的交易日会延续最近一版财报值。
+* 命令会额外写一份 sidecar manifest：`<out>.manifest.yml`。
+
+示例：
+
+```bash
+csml rqdata build-hk-pit-fundamentals \
+  --asset-dir data_assets/rqdata/hk/pit_financials/pit_demo \
+  --out data_assets/rqdata/hk/pit_financials/pit_demo/pipeline_fundamentals.parquet
+```
+
+## 15) `csml tushare verify-token`
 
 用途：验证 TuShare token 是否可用。
 
@@ -356,7 +467,7 @@ csml backup-data \
 * 推荐直接执行 `csml tushare verify-token`。
 * 额外参数会转发到底层脚本。
 
-## 12) `csml universe index-components`
+## 16) `csml universe index-components`
 
 用途：拉取指数成分并输出 symbols 文件，必要时生成 PIT 文件。
 
@@ -371,7 +482,7 @@ csml backup-data \
 csml universe index-components --index-code 000300.SH --month 202501
 ```
 
-## 13) `csml universe hk-connect`
+## 17) `csml universe hk-connect`
 
 用途：构建港股通 PIT universe。
 
@@ -390,7 +501,7 @@ csml universe index-components --index-code 000300.SH --month 202501
 csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 ```
 
-## 14) `csml init-config`
+## 18) `csml init-config`
 
 用途：导出内置配置模板。
 

@@ -139,6 +139,99 @@ def test_cli_parses_rqdata_quota_pretty():
     assert args.pretty is True
 
 
+def test_cli_parses_rqdata_asset_commands():
+    parser = cli.build_parser()
+
+    list_fields = parser.parse_args(
+        ["rqdata", "list-hk-financial-fields", "--contains", "profit", "--out", "out/hk_fields.txt"]
+    )
+    assert list_fields.command == "rqdata"
+    assert list_fields.rq_command == "list-hk-financial-fields"
+    assert list_fields.contains == ["profit"]
+    assert list_fields.out == "out/hk_fields.txt"
+    assert callable(list_fields.func)
+
+    pit = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-pit-financials",
+            "--config",
+            "config/hk.yml",
+            "--fields-file",
+            "config/rqdata_assets/hk_financial_fields_starter.txt",
+            "--start-quarter",
+            "2011q1",
+            "--end-quarter",
+            "2025q4",
+            "--date",
+            "20260310",
+            "--batch-size",
+            "10",
+            "--name",
+            "pit_demo",
+        ]
+    )
+    assert pit.command == "rqdata"
+    assert pit.rq_command == "mirror-hk-pit-financials"
+    assert pit.config == "config/hk.yml"
+    assert pit.fields_file == ["config/rqdata_assets/hk_financial_fields_starter.txt"]
+    assert pit.start_quarter == "2011q1"
+    assert pit.end_quarter == "2025q4"
+    assert pit.batch_size == 10
+    assert pit.name == "pit_demo"
+    assert callable(pit.func)
+
+    details = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-financial-details",
+            "--symbol",
+            "00005.HK",
+            "--field",
+            "revenue",
+            "--start-quarter",
+            "2024q1",
+            "--end-quarter",
+            "2025q4",
+        ]
+    )
+    assert details.command == "rqdata"
+    assert details.rq_command == "mirror-hk-financial-details"
+    assert details.symbol == ["00005.HK"]
+    assert details.field == ["revenue"]
+    assert details.start_quarter == "2024q1"
+    assert details.end_quarter == "2025q4"
+    assert callable(details.func)
+
+    pit_fundamentals = parser.parse_args(
+        [
+            "rqdata",
+            "build-hk-pit-fundamentals",
+            "--asset-dir",
+            "data_assets/rqdata/hk/pit_financials/pit_demo",
+            "--field",
+            "revenue",
+            "--field",
+            "net_profit",
+            "--out",
+            "out/pit_fundamentals.parquet",
+            "--keep-meta",
+            "--duplicate-policy",
+            "error",
+            "--force",
+        ]
+    )
+    assert pit_fundamentals.command == "rqdata"
+    assert pit_fundamentals.rq_command == "build-hk-pit-fundamentals"
+    assert pit_fundamentals.asset_dir == "data_assets/rqdata/hk/pit_financials/pit_demo"
+    assert pit_fundamentals.field == ["revenue", "net_profit"]
+    assert pit_fundamentals.out == "out/pit_fundamentals.parquet"
+    assert pit_fundamentals.keep_meta is True
+    assert pit_fundamentals.duplicate_policy == "error"
+    assert pit_fundamentals.force is True
+    assert callable(pit_fundamentals.func)
+
+
 def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     parser = cli.build_parser()
 
