@@ -88,12 +88,12 @@ csml rqdata quota --pretty
 * `docs/config.md`
 * `docs/outputs.md`
 
-## 4. “当前持仓”与预期不一致
+## 4. 当前持仓”与预期不一致
 
 常见原因：
 
 * `label.shift_days=1` 时，月末信号会在下一交易日入场
-* 查询时点和你心里的“持仓生效日”不是同一天
+* 查询时点和你心里的持仓生效日不是同一天
 
 先看：
 

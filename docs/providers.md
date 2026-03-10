@@ -30,7 +30,7 @@ provider 侧转换：
 1. RQData（HK）：内部 `00001.HK` 会转换为 `00001.XHKG` 调接口。
 1. EODHD（HK）：`data.eodhd.hk_symbol_mode` 支持 `strip_one`（常见默认：`00001.HK -> 0001.HK`）、`strip_all`、`pad4`、`pad5`。
 
-## 缓存与“同配置结果变化”
+## 缓存与同配置结果变化
 
 关键配置：
 
@@ -42,7 +42,7 @@ provider 侧转换：
 行为差异：
 
 1. `symbol` 模式（默认）：单票一个缓存文件，会按 `cache_refresh_days` 增量刷新末端区间。
-1. `range/window` 模式：按请求时间窗口缓存，不做“末端刷新”合并。
+1. `range/window` 模式：按请求时间窗口缓存，不做末端刷新合并。
 1. 不同 `cache_tag` 会形成独立命名空间，适合隔离实验版本。
 
 结果变化常见来源：

@@ -2,7 +2,7 @@
 
 ## 0. 这个项目在干什么（用一句话讲清楚）
 
-它用配置指定的模型（`xgb_regressor/xgb_ranker/ridge/elasticnet`）在每天的股票截面上预测目标列 `future_return`（也就是“未来一段持有期的收益”），然后用 IC、分位数组合、换手估计、Top-K 回测来评估这堆预测到底有没有交易意义。
+它用配置指定的模型（`xgb_regressor/xgb_ranker/ridge/elasticnet`）在每天的股票截面上预测目标列 `future_return`（也就是未来一段持有期的收益），然后用 IC、分位数组合、换手估计、Top-K 回测来评估这堆预测到底有没有交易意义。
 
 项目典型产物会落到 `out/runs/<run_name>_<timestamp>_<hash>/`，包括 `summary.json`、`ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`、`feature_importance.csv` 等。
 
@@ -66,11 +66,11 @@
 * cv_ic：时间序列 CV 得到的 IC 分数列表 + mean/std（用于更稳地判断方向）。
 * signal_direction_mode：支持 `fixed / train_ic / cv_ic`；当你选 `cv_ic` 时，会用 CV 的 ic_mean 符号决定是否把预测整体乘以 -1（翻转方向），并可设置最小阈值 `min_abs_ic_to_flip`。
 
-> 模型可能学到“负相关因子”，翻一下方向就变成正向信号，因此这一步就是自动完成此项操作。
+> 模型可能学到负相关因子，翻一下方向就变成正向信号，因此这一步就是自动完成此项操作。
 
 ### 3.4 分位数组合收益（quantile_returns.csv）
 
-* 把每天预测值做分位分组（默认 5 组），计算每个分位的平均 `future_return`，得到一个 “trade_date × quantile” 的表。
+* 把每天预测值做分位分组（默认 5 组），计算每个分位的平均 `future_return`，得到一个 trade_date × quantile 的表。
   用途：
 * 看单调性：高分位是否系统性优于低分位。
 * 看尾部：最高分位是不是特别好，还是只是中间平平。
@@ -180,7 +180,7 @@
 ## 8) 特征重要性（解释模型在看啥）
 
 * 输出 `feature_importance.csv`，来自 XGBoost 的 `feature_importances_`（注意：这不是因果解释，只是模型内部的分裂贡献类权重）。
-* 如果启用 walk-forward，还会输出窗口级与稳定性统计，便于做“多窗口一致性筛选”。
+* 如果启用 walk-forward，还会输出窗口级与稳定性统计，便于做多窗口一致性筛选。
 
 怎么解读：
 
@@ -194,7 +194,7 @@
 ### A) Pearson IC（线性相关）
 
 * 是什么：每天截面上 `corr(pred, future_return)`（不做 rank）。
-* 解决什么：Spearman 只看排序，不敏感于“幅度是否有意义”。Pearson 能补上这一块。
+* 解决什么：Spearman 只看排序，不敏感于幅度是否有意义。Pearson 能补上这一块。
 * 怎么看：如果 Spearman 很高但 Pearson 接近 0，可能只是排序有点用，但强度不稳。
 * 产物：
   * `ic_pearson_test.csv`（测试集日度 Pearson IC 序列）
