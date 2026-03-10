@@ -1,42 +1,160 @@
 # Cookbook
 
-这份流程用于做同一研究设置下的多模型对比，核心顺序是：
+本页分成两段：
+
+1. 通用最短流程：第一次跑通项目时先看这里。
+2. HK selected 研究配方：用 RQData + PIT universe 做港股多模型对比时再看这里。
+
+CLI 参数细节见 `docs/cli.md`。配置键见 `docs/config.md`。输出文件和字段见 `docs/outputs.md`。
+
+## 1) 通用最短流程
+
+### 1.1 准备环境
+
+推荐使用 `uv`：
+
+```bash
+uv venv --seed
+uv sync --extra dev
+```
+
+如果你准备用 `RQData`：
+
+```bash
+uv sync --extra dev --extra rqdata
+```
+
+如果本地还没有配置文件，可以先导出内置模板：
+
+```bash
+csml init-config --market hk --out config/
+```
+
+同时准备好对应 provider 的鉴权变量：
+
+* `tushare`：`TUSHARE_TOKEN`
+* `rqdata`：`RQDATA_USERNAME` + `RQDATA_PASSWORD`
+* `eodhd`：`EODHD_API_TOKEN`
+
+### 1.2 跑一次最小流程
+
+```bash
+csml run --config config/hk.yml
+```
+
+第一次跑完后，先看这三个文件：
+
+1. `summary.json`
+1. `config.used.yml`
+1. `positions_current.csv`
+
+建议先用 `config.used.yml` 复盘本次 run。它保存的是实际生效配置。
+
+### 1.3 汇总历史 run
+
+当你已经有多次运行结果时，再用 `summarize` 做横向比较：
+
+```bash
+csml summarize \
+  --runs-dir out/runs \
+  --output out/runs/runs_summary.csv
+```
+
+如果筛选后输出 `No runs matched current summarize filters.`，先去掉全部 `--exclude-flag-*` 看全量结果，再检查 `flag_*` 列。
+
+### 1.4 生成 live 快照
+
+仓库里没有内置的 `config/hk_live.yml`。要跑 `snapshot`，请先单独准备一份 live 配置，例如 `config/hk_live.local.yml`。
+
+常见最小改法：
+
+```yaml
+data:
+  end_date: "t-1"
+
+eval:
+  output_dir: "out/live_runs"
+  save_artifacts: true
+
+backtest:
+  enabled: false
+
+live:
+  enabled: true
+  as_of: "t-1"
+  train_mode: "full"
+```
+
+然后再执行：
+
+```bash
+csml snapshot --config config/hk_live.local.yml
+csml snapshot --config config/hk_live.local.yml --skip-run --format json
+```
+
+## 2) HK selected 多模型研究配方
+
+这一段用于同一研究设置下的多模型对比。核心顺序是：
 
 1. 线性基线（`ridge` / `elasticnet`）
 1. 非线性对照（`xgb_regressor` / `xgb_ranker`）
 1. `csml summarize` 跨 run 汇总比较
 
-## 0) 先固定实验基准
+### 2.1 前置条件
 
-开始前先统一一个原则：除了 `model` 和 `eval.run_name`，尽量不改别的参数（尤其是 `universe/label/features/eval/backtest`）。
+这套配方默认你已经具备下面这些条件：
 
-本仓库已提供一组 HK 配置文件：
+1. 已安装 `RQData` 依赖：`uv sync --extra dev --extra rqdata`
+1. 已准备 `out/universe/universe_by_date.csv`
+1. 已确认研究使用的是 HK selected 这组配置
 
-1. `config/hk_selected__baseline.yml`（建议作为 sweep/base 配置入口）
+如果你要直接读取本地 PIT fundamentals 文件，还需要先准备资产目录，再执行：
+
+```bash
+csml rqdata mirror-hk-pit-financials \
+  --config config/hk_selected__baseline.yml \
+  --name hk_selected_pit_2011_2025_latest \
+  --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
+  --start-quarter 2011q1 \
+  --end-quarter 2025q4 \
+  --date 20260310
+
+csml rqdata build-hk-pit-fundamentals \
+  --asset-dir data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --out data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+```
+
+### 2.2 先固定实验基准
+
+做模型对比时，先固定研究口径。优先只改 `model` 和 `eval.run_name`。尽量不要同时改 `universe`、`label`、`features`、`eval`、`backtest`。
+
+仓库当前提供的 HK 相关配置：
+
+1. `config/hk_selected__baseline.yml`
 1. `config/hk_selected__baseline_pit_file.yml`
 1. `config/hk_selected__xgb_regressor.yml`
 1. `config/hk_selected__ridge_a1.yml`
 1. `config/hk_selected__elasticnet_a0.1_l0.5.yml`
 1. `config/hk_selected__xgb_ranker_pairwise.yml`
 
-每次运行后优先看 `config.used.yml`，它是“本次 run 实际生效配置”。
+使用建议：
 
-HK selected 这组基线现在默认使用 `2015-01-01` 到 `2025-12-31`，并假定 `out/universe/universe_by_date.csv` 也是对应的长历史 PIT universe。
+1. 线性模型批跑时，优先以 `config/hk_selected__baseline.yml` 为 base 配置。
+1. 已经生成本地 PIT fundamentals 文件时，改用 `config/hk_selected__baseline_pit_file.yml`。
+1. 非线性对照时，显式使用 `config/hk_selected__xgb_regressor.yml` 或 `config/hk_selected__xgb_ranker_pairwise.yml`。
 
-如果你已经把港股 PIT 财报镜像整理成了本地 fundamentals 文件，可以直接切到 `config/hk_selected__baseline_pit_file.yml`。默认路径是：
+当前仓库内置的 `config/hk_selected__baseline.yml` 把样本窗口写成 `2015-01-01` 到 `2025-12-31`。这只是模板默认值。你要研究更新的时间区间时，先改配置，再比较结果。
 
-`data_assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet`
+### 2.3 先过可信性门槛
 
-## 0.5) 先过能不能信的门槛
+建议先做这四个检查，再看夏普：
 
-建议先做这三个检查，再看夏普：
+1. 样本长度：`backtest_periods >= 24`
+1. 交易可实现性：`backtest_avg_turnover <= 0.7`
+1. 数据稳定性：`data.end_date` 优先固定绝对日期
+1. 模型退化：优先剔除 `flag_constant_prediction=true` 或 `flag_zero_feature_importance=true`
 
-1. 样本长度：`backtest_periods >= 24`（`summarize` 默认短样本阈值就是 24）。
-1. 交易可实现性：`backtest_avg_turnover <= 0.7`（默认高换手阈值 0.7）。
-1. 数据稳定性：`data.end_date` 优先固定绝对日期，避免 `today/t-1` 引入复现漂移。
-1. 模型退化：优先剔除 `flag_constant_prediction=true` 或 `flag_zero_feature_importance=true` 的 run。
-
-先看全量汇总，再决定是否加严格过滤：
+先看全量汇总：
 
 ```bash
 csml summarize \
@@ -44,7 +162,7 @@ csml summarize \
   --sort-by score
 ```
 
-确认这批 run 已经满足上面三条门槛后，再加排除参数：
+确认这批 run 基本满足门槛后，再加排除参数：
 
 ```bash
 csml summarize \
@@ -55,17 +173,17 @@ csml summarize \
   --sort-by score
 ```
 
-如果输出 `No runs matched current summarize filters.`，说明当前 run 在筛选后一个都没剩。常见情况是：
+如果输出 `No runs matched current summarize filters.`，常见原因有：
 
-1. `backtest_periods < 24`，被 `--exclude-flag-short-sample` 全部排掉。
-1. `backtest_avg_turnover > 0.7`，被 `--exclude-flag-high-turnover` 继续排掉。
-1. 历史 run 的 `config.used.yml` 和你当前参考的模板不是同一版，实际门槛没有达到预期。
+1. `backtest_periods < 24`
+1. `backtest_avg_turnover > 0.7`
+1. 历史 run 的 `config.used.yml` 和当前模板不是同一版
 
-这时先去掉 `--exclude-flag-*` 看全量结果，再根据 `flag_*` 字段决定是重跑、更换样本窗口，还是下调阈值。
+这时先去掉 `--exclude-flag-*` 看全量结果，再决定是重跑、更换样本窗口，还是下调阈值。
 
-## 1) 先跑线性基线（Ridge / ElasticNet）
+### 2.4 先跑线性基线
 
-`ridge` / `elasticnet` 常用来做稳定基线：参数少、共线性鲁棒、复现成本低。
+`ridge` 和 `elasticnet` 适合做稳定基线。它们参数少，复现成本低。
 
 先跑两条默认基线：
 
@@ -74,19 +192,19 @@ csml run --config config/hk_selected__ridge_a1.yml
 csml run --config config/hk_selected__elasticnet_a0.1_l0.5.yml
 ```
 
-需要扩展网格时，建议先扫：
+需要扩展网格时，优先扫描：
 
 1. `ridge.alpha`: `0.01, 0.1, 1, 10, 100`
 1. `elasticnet.alpha`: `0.01, 0.1, 1`
 1. `elasticnet.l1_ratio`: `0.1, 0.5, 0.9`
 
-如果希望一次性批跑并自动导出对比表，可直接用：
+要一次性批跑并自动导出对比表，可以直接用：
 
 ```bash
 csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml
 ```
 
-临时覆盖少量参数时再叠加 CLI 参数（CLI 会覆盖 sweep config）：
+临时覆盖少量参数时，再叠加 CLI 参数：
 
 ```bash
 csml sweep-linear \
@@ -102,34 +220,34 @@ csml sweep-linear \
 1. `run_results.csv`：每个组合执行状态
 1. `runs_summary.csv`：自动执行 `csml summarize` 的聚合结果
 
-如果线性基线已经有可用候选，但长期卡在 `flag_short_sample=true`，先不要继续盲扫更多 `alpha`。先改 `eval` 设计，再跑一轮小 sweep：
+如果线性基线已经有可用候选，但长期卡在 `flag_short_sample=true`，先不要继续扩大 `alpha` 网格。先改 `eval` 设计，再跑一轮小 sweep：
 
 ```bash
 csml sweep-linear --sweep-config config/sweeps/hk_selected__eval_sample.yml
 csml sweep-linear --sweep-config config/sweeps/hk_selected__eval_sample_ffill.yml
 ```
 
-这两组配置只保留当前最值得继续看的 3 个模型：
+这两组配置当前只保留 3 个候选模型：
 
 1. `ridge alpha = 30`
 1. `ridge alpha = 100`
 1. `elasticnet alpha = 0.01, l1_ratio = 0.05`
 
-区别：
+区别是：
 
-1. `hk_selected__eval_sample.yml`：把主测试窗口拉到 `test_size=0.7`，并把 walk-forward 改成更小的多窗口切法。
-1. `hk_selected__eval_sample_ffill.yml`：在同样的样本切法下，把 `backtest.exit_price_policy` 从 `delay` 改成 `ffill`，单独检查“短样本”是不是主要来自延迟退出。
+1. `hk_selected__eval_sample.yml` 把主测试窗口改成 `test_size=0.7`，并把 walk-forward 调成更小的多窗口切法。
+1. `hk_selected__eval_sample_ffill.yml` 在同样的样本切法下，把 `backtest.exit_price_policy` 从 `delay` 改成 `ffill`。
 
-## 2) 再跑非线性对照组（XGBRegressor / XGBRanker）
+### 2.5 再跑非线性对照组
 
 ```bash
 csml run --config config/hk_selected__xgb_regressor.yml
 csml run --config config/hk_selected__xgb_ranker_pairwise.yml
 ```
 
-说明：`xgb_ranker` 与回归模型不是同一个学习问题。项目会按 `trade_date` 分组（query group）训练 ranker，而不是仅仅改一个 objective。
+`xgb_ranker` 和回归模型不是同一个学习问题。项目会按 `trade_date` 分组训练 ranker。
 
-## 3) 用 summarize 汇总所有 run
+### 2.6 汇总所有 run
 
 ```bash
 csml summarize \
@@ -138,24 +256,26 @@ csml summarize \
   --output out/runs/hk_sel_models_summary.csv
 ```
 
-汇总表会聚合每个 run 的 `summary.json + config.used.yml`，并生成 `flag_*` 与 `score` 字段，方便筛选稳定策略。若模型退化成常数预测或全零重要度，`score/dsr` 会自动留空。
+汇总表会聚合每个 run 的 `summary.json` 和 `config.used.yml`，并生成 `flag_*`、`score`、`dsr` 字段。退化模型的 `score` 和 `dsr` 会留空。
 
-## 4) 结果怎么解读（建议顺序）
+### 2.7 结果怎么读
 
-1. 先看稳定性：`eval.ic`、`eval.pearson_ic`、walk-forward 指标。
-1. 再看可交易性：`eval.turnover_mean`、成本拖累、`backtest.stats`。
-1. 最后看“是否值得更复杂”：非线性模型若只在单期更高、但波动和换手更差，通常不如线性基线可用。
+建议按这个顺序看：
+
+1. 先看稳定性：`eval.ic`、`eval.pearson_ic`、walk-forward 指标
+1. 再看可交易性：`eval.turnover_mean`、成本拖累、`backtest.stats`
+1. 最后再决定是否值得上更复杂的模型
 
 常见情形：
 
 1. 线性和 XGB 差不多，甚至更好：优先选线性，把精力放在特征和交易假设。
-1. XGB 指标更高但不稳定：优先怀疑过拟合，重点看 walk-forward/permutation test。
-1. 收益提升但换手飙升：先调 `buffer_exit/buffer_entry` 或降低模型复杂度。
-1. `long_short` 经常翻向：多见于弱信号或噪声主导，需回看标签与特征对齐。
+1. XGB 指标更高但不稳定：优先怀疑过拟合，重点看 walk-forward 和 permutation test。
+1. 收益提升但换手飙升：先调 `buffer_exit` / `buffer_entry` 或降低模型复杂度。
+1. `long_short` 经常翻向：先回看标签和特征对齐。
 
-## 5) 可选：`csml grid` 做 Top-K/成本/buffer 形状分析
+### 2.8 可选：`csml grid` 做 Top-K / 成本 / buffer 形状分析
 
-`csml grid` 不是模型超参网格搜索。它会先基于给定配置跑一次 base pipeline，读取 `eval_scored.parquet`，然后在同一份 scored 数据上循环 `Top-K × cost_bps × buffer_exit × buffer_entry × weighting` 组合，不会为每个网格点重训模型。
+`csml grid` 会先基于给定配置跑一次 base pipeline，读取 `eval_scored.parquet`，然后在同一份 scored 数据上循环 `Top-K × cost_bps × buffer_exit × buffer_entry × weighting`。它不会为每个网格点重训模型。
 
 示例：
 
@@ -169,7 +289,7 @@ csml grid \
   --weighting equal,signal
 ```
 
-## 6) 最小可执行清单
+### 2.9 最小可执行清单
 
 ```bash
 csml run --config config/hk_selected__ridge_a1.yml
@@ -179,9 +299,11 @@ csml run --config config/hk_selected__xgb_ranker_pairwise.yml
 csml summarize --runs-dir out/runs --run-name-prefix hk_sel_ --output out/runs/hk_sel_models_summary.csv
 ```
 
-## 7) 私有数据快照
+## 3) 私有快照与分享
 
-当你已经拿到一轮完整缓存、PIT universe 和研究配置，建议立刻做一份私有快照，区分 `frozen` 与 `rolling`：
+`csml backup-data` 只做本地快照。它会把当前 `cache/`、`out/universe/`、指定配置文件和额外路径复制到 `data_mirror/<name>/`。这个命令不会联网，也不会自动生成压缩包。
+
+示例：
 
 ```bash
 csml backup-data \
@@ -200,55 +322,14 @@ csml backup-data \
 
 1. `frozen` 快照固定研究口径和窗口，只用于可比回测。
 1. `rolling` 快照随最新已完成交易日更新，用于近端验证。
-1. 两套数据尽量配不同的 `data.cache_tag`，避免缓存混用。
-1. 若仓库是公开仓库，发布到 GitHub Releases 时只上传安全包。安全包应排除 `cache/` 和其他 provider 原始数据。
+1. 两套数据尽量用不同的 `data.cache_tag`。
+1. 如果仓库是公开仓库，不要把 `cache/` 或 provider 原始数据直接上传到公开 release。
 
-可以单独生成一份适合公开 release 的轻量快照：
-
-```bash
-csml backup-data \
-  --name hk_eval_bundle_public \
-  --no-cache \
-  --config config/hk_selected__baseline_eval_sample.yml \
-  --config config/hk_selected__baseline_eval_sample_ffill.yml \
-  --include-path out/runs/hk_evalb_ridge_a30_grid_summary.csv
-```
-
-## 8) 私有 Release 恢复
-
-如果你已经把一轮研究上传成私有 release，建议至少保留这 4 个资产：
-
-1. `csml-data-snapshot-*.tar.gz`
-1. `csml-source-snapshot-*.tar.gz`
-1. `csml-research-summaries-*.tar.gz`
-1. `SHA256SUMS.txt`
-
-当前这轮示例 release 是 `backup-hk-20260310`：
+如果你想把源码和快照目录另存成压缩包，可以分别处理：
 
 ```bash
-mkdir -p restore/backup-hk-20260310
-cd restore/backup-hk-20260310
-
-gh release download backup-hk-20260310 \
-  --repo runchengxie/cross-sectional-machine-learning \
-  --pattern 'csml-*.tar.gz' \
-  --pattern 'SHA256SUMS.txt' \
-  --pattern 'RESTORE.md' \
-  --pattern 'research_summary_paths.txt' \
-  --pattern 'source_paths.txt'
-
-sha256sum -c SHA256SUMS.txt
-mkdir repo
-tar -xzf csml-source-snapshot-20260310.tar.gz -C repo
-cd repo
-tar -xzf ../csml-data-snapshot-hk_eval_bundle_20260310.tar.gz
-tar -xzf ../csml-research-summaries-20260310.tar.gz
-uv sync --extra dev --extra rqdata
+./scripts/package_zip.sh --name csml-source-snapshot --out-dir release/
+tar -czf release/csml-data-snapshot-hk_frozen_20251231.tar.gz data_mirror/hk_frozen_20251231
 ```
 
-补充说明：
-
-1. `csml-source-snapshot-*.tar.gz` 保存的是当时本地工作树状态，适合直接恢复代码。
-1. `csml-data-snapshot-*.tar.gz` 里包含 `cache/`、`out/universe/`、配置和 `manifest.yml`。
-1. `csml-research-summaries-*.tar.gz` 只保留结果摘要，不包含完整 `out/runs/` 大目录。
-1. 若只想继续研究，不需要完整回看历史派生产物，这 3 个 tar 包已经够用。
+恢复时，先解压快照目录，再查看 `manifest.yml`。按需把里面的 `cache/`、`out/universe/`、`config/` 拷回工作区。当前仓库没有单独的“私有 release 自动恢复”命令。
