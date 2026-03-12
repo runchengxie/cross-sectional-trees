@@ -36,6 +36,8 @@
 
 补充：如果你的目标是“港股通历史股票池 + 更完整的 PIT 财务归档”，优先用 `config/universe.hk_connect_full.yml` 生成 `artifacts/assets/universe/hk_connect_full_by_date.csv`，再执行财报镜像命令。这个模板把 `top_quantile` 设成 `0`，表示保留全部港股通候选。
 
+补充：如果你想把 HK 的股票池、日线缓存、PIT 财务镜像、平面 fundamentals 和本地备份放到同一套流程里看，直接读 `docs/playbooks/hk-data-assets.md`。
+
 补充：港股 ETF、杠杆/反向产品或其他非普通股产品，常见情况是能取到日线，但拿不到 `market_cap / pe_ttm / pb` 这类 provider 基本面字段。pipeline 会跳过这些 symbol，并给 warning。
 
 补充：`csml holdings/snapshot/alloc --as-of last_trading_day` 在能识别到 `provider=rqdata` + `market` 上下文时同样按交易日解析；缺少上下文时回退自然日（会输出 warning）。
