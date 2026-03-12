@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 import pandas as pd
 import yaml
@@ -189,6 +190,36 @@ class _FakeRQDetailsClient:
         self.hk = _FakeRQHKApi()
 
 
+class _FakeRQInstrumentsClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def all_instruments(self, instrument_type, market="hk"):
+        self.calls.append({"instrument_type": instrument_type, "market": market})
+        return pd.DataFrame(
+            [
+                {
+                    "order_book_id": "00005.XHKG",
+                    "symbol": "HSBC HOLDINGS",
+                    "listed_date": pd.Timestamp("2000-01-03"),
+                    "de_listed_date": pd.NaT,
+                    "round_lot": 400,
+                    "board_type": "Main Board",
+                    "status": "Active",
+                },
+                {
+                    "order_book_id": "00700.XHKG",
+                    "symbol": "TENCENT",
+                    "listed_date": pd.Timestamp("2004-06-16"),
+                    "de_listed_date": pd.NaT,
+                    "round_lot": 100,
+                    "board_type": "Main Board",
+                    "status": "Active",
+                },
+            ]
+        )
+
+
 class _FlakyRQPitClient:
     def __init__(self):
         self.calls: list[dict] = []
@@ -329,6 +360,43 @@ def test_list_hk_financial_fields_filters_and_writes_file(tmp_path, monkeypatch,
 
     assert out_path.read_text(encoding="utf-8") == "net_profit\n"
     assert "Wrote 1 HK financial fields" in capsys.readouterr().out
+
+
+def test_export_hk_instruments_writes_filtered_asset_and_manifest(tmp_path, monkeypatch, capsys):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+    monkeypatch.setattr(rqdata_assets, "_ensure_rqdatac_hk_plugin", lambda: None)
+    client = _FakeRQInstrumentsClient()
+    out_path = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instruments" / "demo.parquet"
+
+    result = rqdata_assets.export_hk_instruments(
+        SimpleNamespace(
+            config="hk",
+            username=None,
+            password=None,
+            use_config_universe=False,
+            symbol=["00005.HK"],
+            symbols_file=None,
+            by_date_file=None,
+            limit=None,
+            out=str(out_path),
+            force=False,
+        ),
+        client,
+    )
+
+    assert result == 0
+    assert client.calls == [{"instrument_type": "CS", "market": "hk"}]
+    frame = pd.read_parquet(out_path)
+    assert frame["ts_code"].tolist() == ["00005.HK"]
+    assert int(frame["round_lot"].iloc[0]) == 400
+
+    manifest = yaml.safe_load(Path(f"{out_path}.manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "hk_instruments"
+    assert manifest["totals"]["symbols"] == 1
+    assert manifest["symbol_source"]["mode"] == "explicit"
+    assert "Wrote 1 HK instruments" in capsys.readouterr().out
 
 
 def test_resolve_fields_supports_field_profile(monkeypatch):

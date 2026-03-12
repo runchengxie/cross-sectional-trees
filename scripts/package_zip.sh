@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Internal maintainer helper for packaging the repository.
+# This script is not part of the public `csml` workflow.
+
 die() {
   echo "$*" >&2
   exit 1

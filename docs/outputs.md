@@ -331,11 +331,11 @@ artifacts/snapshots/<name>/
 1. 这是本地私有快照工具，不会重新向 provider 拉数。
 1. 若需要公开分享，请另做一份不含 `artifacts/cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、汇总 CSV 和简短说明。
 
-### 旧目录迁移
+### 一次性旧目录迁移
 
 当前仓库默认只使用 `artifacts/` 布局。
 
-如果本地还保留旧目录，可执行：
+如果你是从旧版本目录升级过来，本地还保留旧目录，可执行：
 
 ```bash
 csml migrate-artifacts
@@ -351,6 +351,8 @@ csml migrate-artifacts
 * `out/live_runs/` -> `artifacts/live_runs/`
 * `out/sweeps/` -> `artifacts/sweeps/`
 * `data_mirror/` -> `artifacts/snapshots/`
+
+新仓库或新克隆目录通常不需要这一步。
 
 ## 其他常用文件
 

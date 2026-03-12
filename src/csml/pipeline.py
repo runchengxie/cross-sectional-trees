@@ -3811,7 +3811,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Cross-sectional factor pipeline")
     parser.add_argument(
         "--config",
-        help="Path to YAML config or built-in name (default/cn/hk/us).",
+        help="Path to YAML config or built-in name (default/hk/cn/us; cn/us are compatibility templates).",
     )
     args = parser.parse_args(argv)
     run(args.config)

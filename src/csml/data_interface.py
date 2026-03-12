@@ -133,7 +133,6 @@ class DataInterface:
         raw_tokens = [
             os.getenv("TUSHARE_TOKEN"),
             os.getenv("TUSHARE_TOKEN_2"),
-            os.getenv("TUSHARE_API_KEY"),  # legacy alias
         ]
         tokens: list[str] = []
         for token in raw_tokens:
@@ -155,7 +154,7 @@ class DataInterface:
             self.tushare_tokens = self._load_tushare_tokens()
             if not self.tushare_tokens:
                 raise SystemExit(
-                    "Please set TUSHARE_TOKEN (or TUSHARE_TOKEN_2 / legacy TUSHARE_API_KEY) first."
+                    "Please set TUSHARE_TOKEN or TUSHARE_TOKEN_2 first."
                 )
             self.tushare_token_idx = 0
             self.client = self._make_tushare_client(self.tushare_tokens[self.tushare_token_idx])

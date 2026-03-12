@@ -22,6 +22,7 @@ from .backup_data import _git_metadata
 DEFAULT_OUT_ROOT = DEFAULT_RQDATA_ASSETS_DIR.as_posix()
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_PIPELINE_FUNDAMENTALS_NAME = "pipeline_fundamentals.parquet"
+DEFAULT_HK_INSTRUMENTS_FILENAME_PREFIX = "hk_instruments"
 DEFAULT_MIRROR_MAX_ATTEMPTS = 3
 DEFAULT_MIRROR_BACKOFF_SECONDS = 1.0
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = 30.0
@@ -355,6 +356,58 @@ def _resolve_symbols(args) -> tuple[list[str], dict]:
     metadata["count"] = len(normalized)
     metadata["limit"] = limit
     return normalized, metadata
+
+
+def _resolve_instrument_symbol_filter(args) -> tuple[list[str] | None, dict]:
+    explicit_values = list(getattr(args, "symbol", None) or [])
+    symbols_file = getattr(args, "symbols_file", None)
+    by_date_file = getattr(args, "by_date_file", None)
+    use_config_universe = bool(getattr(args, "use_config_universe", False))
+    limit = getattr(args, "limit", None)
+    if limit is not None and limit <= 0:
+        raise SystemExit("--limit must be > 0.")
+
+    if explicit_values or symbols_file or by_date_file:
+        symbols = list(explicit_values)
+        if symbols_file:
+            symbols.extend(_load_text_list(symbols_file, label="Symbols file"))
+        if by_date_file:
+            symbols.extend(_load_symbols_from_by_date(by_date_file))
+        metadata = {
+            "mode": "explicit",
+            "symbols_file": str(_resolve_path(symbols_file)) if symbols_file else None,
+            "by_date_file": str(_resolve_path(by_date_file)) if by_date_file else None,
+        }
+    elif use_config_universe:
+        config_ref = getattr(args, "config", None)
+        if not config_ref:
+            raise SystemExit("--use-config-universe requires --config.")
+        symbols, metadata = _resolve_symbols_from_config(config_ref)
+    else:
+        return None, {
+            "mode": "all_instruments",
+            "config_ref": str(getattr(args, "config", None) or "") or None,
+            "limit": limit,
+        }
+
+    normalized = _dedupe_preserve_order(_normalize_hk_symbol(symbol) for symbol in symbols)
+    if limit is not None:
+        normalized = normalized[:limit]
+    if not normalized:
+        raise SystemExit("No HK symbols resolved for instrument export.")
+    metadata["count"] = len(normalized)
+    metadata["limit"] = limit
+    return normalized, metadata
+
+
+def _default_hk_instruments_out_path() -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return (
+        _resolve_path(DEFAULT_OUT_ROOT)
+        / "hk"
+        / "instruments"
+        / f"{DEFAULT_HK_INSTRUMENTS_FILENAME_PREFIX}_{timestamp}.parquet"
+    )
 
 
 def _default_snapshot_name(dataset_name: str, start_quarter: str, end_quarter: str, statements: str) -> str:
@@ -871,6 +924,95 @@ def list_hk_financial_fields(args) -> int:
         print(f"Wrote {len(fields)} HK financial fields to {out_path}")
     else:
         print(output, end="")
+    return 0
+
+
+def export_hk_instruments(args, rqdatac) -> int:
+    _ensure_rqdatac_hk_plugin()
+    symbol_filter, symbol_metadata = _resolve_instrument_symbol_filter(args)
+    try:
+        frame = rqdatac.all_instruments("CS", market="hk")
+    except TypeError:
+        frame = rqdatac.all_instruments("CS")
+    if frame is None or frame.empty:
+        raise SystemExit("rqdatac.all_instruments returned no HK instruments.")
+
+    instruments = _normalize_frame_columns(frame.copy())
+    if "order_book_id" not in instruments.columns:
+        raise SystemExit("HK instruments payload is missing order_book_id.")
+    instruments["order_book_id"] = instruments["order_book_id"].astype(str).str.strip()
+    instruments["ts_code"] = instruments["order_book_id"].map(_normalize_hk_symbol)
+    instruments = instruments[instruments["ts_code"] != ""].copy()
+
+    if symbol_filter is not None:
+        instruments = instruments[instruments["ts_code"].isin(symbol_filter)].copy()
+    elif getattr(args, "limit", None) is not None:
+        instruments = instruments.sort_values(["ts_code", "order_book_id"], kind="mergesort").head(args.limit).copy()
+
+    if instruments.empty:
+        raise SystemExit("No HK instruments matched the requested filter.")
+
+    preferred_columns = [
+        column
+        for column in (
+            "ts_code",
+            "order_book_id",
+            "symbol",
+            "name",
+            "listed_date",
+            "de_listed_date",
+            "round_lot",
+            "board_type",
+            "status",
+        )
+        if column in instruments.columns
+    ]
+    remaining_columns = [column for column in instruments.columns if column not in preferred_columns]
+    instruments = instruments[preferred_columns + remaining_columns].copy()
+    instruments.sort_values(["ts_code", "order_book_id"], kind="mergesort", inplace=True)
+    instruments.reset_index(drop=True, inplace=True)
+
+    out_arg = getattr(args, "out", None)
+    out_path = _resolve_path(out_arg) if out_arg else _default_hk_instruments_out_path()
+    if not out_path.suffix:
+        out_path = out_path.with_suffix(".parquet")
+    if out_path.exists() and not getattr(args, "force", False):
+        raise SystemExit(f"Refusing to overwrite existing output: {out_path}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if out_path.suffix.lower() == ".csv":
+        instruments.to_csv(out_path, index=False)
+    else:
+        instruments.to_parquet(out_path, index=False)
+
+    manifest_path = Path(f"{out_path}.manifest.yml")
+    symbol_metadata = dict(symbol_metadata)
+    symbol_metadata["count"] = int(instruments["ts_code"].nunique())
+    manifest = {
+        "name": out_path.stem,
+        "created_at": _timestamp_now(),
+        "dataset": "hk_instruments",
+        "api": "rqdatac.all_instruments",
+        "market": "hk",
+        "config_ref": getattr(args, "config", None),
+        "output_file": str(out_path),
+        "format": out_path.suffix.lstrip(".").lower(),
+        "symbol_source": symbol_metadata,
+        "columns": instruments.columns.tolist(),
+        "totals": {
+            "rows": int(len(instruments)),
+            "symbols": int(instruments["ts_code"].nunique()),
+            "round_lot_nonnull": int(instruments["round_lot"].notna().sum())
+            if "round_lot" in instruments.columns
+            else 0,
+        },
+        "git": _git_metadata(Path.cwd().resolve()),
+    }
+    _write_manifest(manifest_path, manifest)
+    print(
+        f"Wrote {len(instruments)} HK instruments to {out_path} "
+        f"(manifest: {manifest_path})"
+    )
     return 0
 
 
@@ -1670,6 +1812,51 @@ def add_list_hk_financial_fields_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--out",
         help="Optional output path. Default: print to stdout.",
+    )
+
+
+def add_hk_instruments_export_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--config", help="Optional config path or alias for rqdata.init.")
+    parser.add_argument("--username", help="Override RQData username")
+    parser.add_argument("--password", help="Override RQData password")
+    parser.add_argument(
+        "--use-config-universe",
+        action="store_true",
+        help="Filter to the universe resolved from --config instead of exporting the full HK instrument list.",
+    )
+    parser.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="HK symbol to keep, for example 00005.HK. Repeatable.",
+    )
+    parser.add_argument(
+        "--symbols-file",
+        help="Text file with one HK symbol per line.",
+    )
+    parser.add_argument(
+        "--by-date-file",
+        help="Universe-by-date CSV used to derive the HK symbol set.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Optional cap on the exported symbol count after dedupe/filtering.",
+    )
+    parser.add_argument(
+        "--out",
+        help=(
+            "Output file path. Default: "
+            + DEFAULT_OUT_ROOT
+            + "/hk/instruments/"
+            + DEFAULT_HK_INSTRUMENTS_FILENAME_PREFIX
+            + "_<timestamp>.parquet"
+        ),
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite the output file if it already exists.",
     )
 
 

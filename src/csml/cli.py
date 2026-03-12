@@ -247,6 +247,13 @@ def _handle_rqdata_list_hk_financial_fields(args) -> int:
     return rqdata_assets.list_hk_financial_fields(args)
 
 
+def _handle_rqdata_export_hk_instruments(args) -> int:
+    from .project_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.export_hk_instruments(args, rqdatac)
+
+
 def _handle_rqdata_mirror_hk_pit_financials(args) -> int:
     from .project_tools import rqdata_assets
 
@@ -491,7 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="Run the main training/eval/backtest pipeline")
     run.add_argument(
         "--config",
-        help="Path to YAML config or built-in name (default/cn/hk/us).",
+        help="Path to YAML config or built-in name (default/hk/cn/us; cn/us are compatibility templates).",
     )
     run.set_defaults(func=_handle_run)
 
@@ -523,6 +530,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_list_hk_financial_fields_args(rq_list_fields)
     rq_list_fields.set_defaults(func=_handle_rqdata_list_hk_financial_fields)
+
+    rq_export_instruments = rq_sub.add_parser(
+        "export-hk-instruments",
+        help="Export HK instrument metadata such as order_book_id, listed_date, and round_lot",
+    )
+    rqdata_assets.add_hk_instruments_export_args(rq_export_instruments)
+    rq_export_instruments.set_defaults(func=_handle_rqdata_export_hk_instruments)
 
     rq_pit = rq_sub.add_parser(
         "mirror-hk-pit-financials",
@@ -574,7 +588,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sweep_linear = subparsers.add_parser(
         "sweep-linear",
-        help="Run ridge/elasticnet hyper-parameter sweep and auto summarize",
+        help="Run HK selected ridge/elasticnet hyper-parameter sweep and auto summarize",
     )
     from .project_tools import linear_sweep
 
@@ -600,7 +614,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     migrate_artifacts = subparsers.add_parser(
         "migrate-artifacts",
-        help="Move legacy cache/out/data_mirror paths into artifacts/",
+        help="One-time migration of legacy cache/out/data_mirror paths into artifacts/",
     )
     from .project_tools import migrate_artifacts as migrate_artifacts_tool
 
@@ -769,7 +783,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_cfg.add_argument(
         "--market",
         default="default",
-        help="Template to export (default/cn/hk/us).",
+        help="Template to export (default/hk/cn/us; prefer default or hk for new setups).",
     )
     init_cfg.add_argument(
         "--out",

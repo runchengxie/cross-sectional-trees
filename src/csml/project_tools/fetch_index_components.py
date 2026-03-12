@@ -14,14 +14,10 @@ import tushare as ts
 
 def require_token() -> str:
     load_dotenv()
-    token = (
-        os.getenv("TUSHARE_TOKEN")
-        or os.getenv("TUSHARE_TOKEN_2")
-        or os.getenv("TUSHARE_API_KEY")  # legacy alias
-    )
+    token = os.getenv("TUSHARE_TOKEN") or os.getenv("TUSHARE_TOKEN_2")
     if not token:
         raise SystemExit(
-            "Please set TUSHARE_TOKEN (or TUSHARE_TOKEN_2 / legacy TUSHARE_API_KEY) before running."
+            "Please set TUSHARE_TOKEN or TUSHARE_TOKEN_2 before running."
         )
     return token
 

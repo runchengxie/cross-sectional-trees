@@ -1,4 +1,4 @@
-## Explicit model-name variant of hk_selected.yml
+## Explicit model-name variant of hk_selected__baseline.yml
 market: hk
 data:
   provider: rqdata

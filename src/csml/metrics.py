@@ -218,9 +218,10 @@ def estimate_turnover(
 ) -> pd.Series:
     prev = None
     turnovers: list[tuple[pd.Timestamp, float]] = []
+    day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
     for date in rebalance_dates:
-        day = data[data["trade_date"] == date]
-        if len(day) < k:
+        day = day_groups.get(date)
+        if day is None or len(day) < k:
             continue
         ranked = day.sort_values(pred_col, ascending=False)["ts_code"].tolist()
         holdings = set(

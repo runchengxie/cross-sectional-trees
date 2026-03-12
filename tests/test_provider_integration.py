@@ -11,9 +11,9 @@ def test_tushare_provider_fetch_daily_real_token(tmp_path):
     if os.getenv("CSML_RUN_PROVIDER_INTEGRATION") != "1":
         pytest.skip("Set CSML_RUN_PROVIDER_INTEGRATION=1 to enable real provider integration tests.")
 
-    token = os.getenv("TUSHARE_TOKEN") or os.getenv("TUSHARE_API_KEY")
+    token = os.getenv("TUSHARE_TOKEN") or os.getenv("TUSHARE_TOKEN_2")
     if not token:
-        pytest.skip("Set TUSHARE_TOKEN (or TUSHARE_API_KEY) to run this integration test.")
+        pytest.skip("Set TUSHARE_TOKEN or TUSHARE_TOKEN_2 to run this integration test.")
 
     symbol = os.getenv("CSML_INTEGRATION_TUSHARE_SYMBOL", "000001.SZ")
     end = (pd.Timestamp.now().normalize() - pd.Timedelta(days=2)).strftime("%Y%m%d")
