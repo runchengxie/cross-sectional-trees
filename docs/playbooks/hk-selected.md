@@ -156,7 +156,7 @@ csml summarize \
   --sort-by score
 ```
 
-如果你要做线性模型搜索，再单独用 `csml sweep-linear`。前提仍然是先把研究单元固定住。
+如果你要做线性模型搜索，再单独用 `csml sweep-linear`。这一步只搜索 `ridge` 和 `elasticnet` 的正则参数。前提仍然是先把研究单元固定住。
 
 ## 7. 什么时候需要准备 PIT 财务文件
 

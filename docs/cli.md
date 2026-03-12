@@ -146,6 +146,8 @@ csml grid \
 
 * `config/hk_selected.yml` 已移除。旧 sweep 配置请直接改成 `config/hk_selected__baseline.yml`。
 * 输出目录默认在 `artifacts/sweeps/<tag>/`。
+* 这里的“线性模型”只包括 `ridge` 和 `elasticnet`。当前不会生成普通最小二乘线性回归配置。
+* 默认基础配置是 `config/hk_selected__baseline.yml`。它当前的 `model.type` 是 `xgb_regressor`，但 sweep 生成任务时会把模型块改写成 `ridge` 或 `elasticnet`。
 
 示例：
 

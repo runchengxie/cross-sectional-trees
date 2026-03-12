@@ -9,6 +9,8 @@
 * `ridge`
 * `elasticnet`
 
+模型差异、适用场景和选择建议见 `docs/config.md`。
+
 默认产物写入 `artifacts/`，其中常见目录包括：
 
 ```text

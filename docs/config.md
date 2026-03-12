@@ -47,7 +47,7 @@ csml init-config --market default --out config/
 | `config/hk_selected__pit_quarterly_financial_linear.yml` | 季度 PIT 财务线性对照。 |
 | `config/hk_selected__pit_quarterly_hybrid.yml` | 季度 PIT 财报 + 慢技术面混合配置。 |
 | `config/hk_connect__pit_quarterly_financial_ml.yml` | 更宽港股通股票池上的季度 PIT 财务 ML 配置。 |
-| `config/hk_selected__xgb_regressor.yml` | 显式 XGB 回归配置。 |
+| `config/hk_selected__xgb_regressor.yml` | 显式 XGB 回归配置。当前内容和 `config/hk_selected__baseline.yml` 相同。 |
 | `config/hk_selected__xgb_ranker_pairwise.yml` | 显式 XGB 排序配置。 |
 
 补充：
@@ -56,6 +56,8 @@ csml init-config --market default --out config/
 * `--config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
 * 新项目优先从 `default` 或 `hk` 开始。只有确实需要多市场对照时，再切到 `cn/us`。
 * `config/hk_selected.yml` 已移除。旧配置请直接改成 `config/hk_selected__baseline.yml`。
+* `config/hk_selected__baseline.yml` 当前就是一份 `xgb_regressor` 配置。这个文件名强调“研究基线”。
+* `config/hk_selected__xgb_regressor.yml` 当前和 `config/hk_selected__baseline.yml` 只有文件头注释不同。这个文件名强调“当前模型是 `xgb_regressor`”。
 * `config/universe.hk_connect_full.yml` 用于生成更完整的港股通历史股票池文件。
 * 当前现成模板主要覆盖月度和季度。年度 `Y` 需要从月度或季度模板本地派生。
 * 当前现成季度模板主要是在比较不同信号路线，不是完整的“四模型矩阵”。如果你要做季度四模型 PK，先选一份季度基线，再本地派生四个模型版本。
@@ -98,6 +100,35 @@ model:
 
 * 未显式设置 `model.type` 时，默认使用 `xgb_regressor`。
 * `xgb_ranker` 会按 `trade_date` 自动分组训练，其余模型走回归流程。
+
+### 模型区别
+
+| 模型 | 训练目标 | 优点 | 局限 | 适合什么场景 |
+| --- | --- | --- | --- | --- |
+| `xgb_regressor` | 直接拟合数值型 label | 能吃非线性和特征交互，通常是最强的通用起点 | 参数更多，训练更慢，可解释性更弱 | 你已经有一套稳定研究单元，想先拿一个强非线性基线 |
+| `xgb_ranker` | 按 `trade_date` 分组做排序学习 | 和截面选股的排序目标更接近，适合做 Top-K 对照 | 训练口径更特殊，调参和结果解释都更挑数据 | 你关心同日相对排序，想比较“直接回归”与“直接排序” |
+| `ridge` | 带 L2 正则的线性回归 | 训练快，稳定，参数少，系数容易看 | 只能表达线性关系，吃不到复杂交互 | 你要先做线性基线、做 sanity check、或快速比较很多研究单元 |
+| `elasticnet` | 带 L1 + L2 正则的线性回归 | 比 `ridge` 更容易压缩无效特征，适合做线性搜索 | 超参数更多，稳定性通常不如 `ridge`，更容易出现退化 run | 你想在线性模型里同时做收缩和稀疏化 |
+
+### 线性模型搜索是什么意思
+
+`csml sweep-linear` 里的“线性模型搜索”指的是正则化线性模型搜索：
+
+* `ridge`：搜索 `alpha`
+* `elasticnet`：搜索 `alpha` 和 `l1_ratio`
+
+当前仓库没有单独的普通最小二乘线性回归 `model.type`。如果你看到“线性模型”这个说法，默认是指 `ridge` 和 `elasticnet` 这两条路线。
+
+### 在这个项目里怎么选
+
+建议按下面的顺序理解：
+
+* 默认起点仍然是 `xgb_regressor`。仓库里的 `default`、`hk`、`config/hk_selected__baseline.yml` 都是这个方向。
+* `ridge` 更适合当线性基线。它跑得快，也更适合先判断这套特征和标签是不是有稳定关系。
+* `elasticnet` 更适合在线性路线里做补充搜索，不一定适合作为唯一主模型。
+* `xgb_ranker` 更适合当排序目标的专项对照，不建议一上来就替代所有回归基线。
+
+如果你只想先选一个模型开跑，当前最稳妥的默认选项仍然是 `xgb_regressor`。如果你在做新路线探索，最好同时保留一份 `ridge` 对照。
 
 ## `data`
 
