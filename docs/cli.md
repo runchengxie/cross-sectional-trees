@@ -597,7 +597,54 @@ csml rqdata build-hk-pit-fundamentals \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 ```
 
-## 18) `csml tushare verify-token`
+## 18) `csml rqdata inspect-hk-pit-coverage`
+
+用途：检查 HK PIT fundamentals 文件的覆盖率，判断一组原始字段或派生特征是否适合做季度 PIT 研究。
+
+关键参数：
+
+* `--config <path_or_alias>`：可选。默认读取配置里的 `fundamentals.file`，并用 `fundamentals.features` 作为体检特征集。
+* `--asset-dir <path>`：可选。PIT 资产目录。默认会尝试读取 `<asset-dir>/pipeline_fundamentals.parquet`
+* `--fundamentals-file <path>`：可选。直接指定平面 fundamentals 文件
+* `--field-profile <starter|full>`：可选。按内置字段集检查 raw PIT 列
+* `--field <name>` 或 `--fields-file <path>`：可选。指定要检查的字段或派生特征
+* `--mode <strict|trainable|both>`：可选。`strict` 看 source-level complete-case；`trainable` 按配置估算季度 ffill 和 `features.missing` 之后还剩多少 PIT 样本；`both` 同时输出两种口径
+* `--min-symbols <int>`：可选。季度可用 symbol 门槛。默认沿用配置里的 `universe.min_symbols_per_date`，没有配置时用 `5`
+* `--format <text|json>`
+* `--out <path>`
+
+补充：
+
+* 命令会优先按你选中的特征集计算 complete-case 覆盖率。
+* `strict` 模式默认沿用当前行为。它更适合判断原始 PIT 资产和字段集本身有多稀。
+* `trainable` 模式默认优先读取配置里的 `features.list`，只保留其中 PIT 支持的特征，再按季度做一次 `fundamentals.ffill` 和 `features.missing` 估算。
+* 如果特征是 `profit_margin`、`asset_turnover`、`receivables_to_revenue`、`delta_*`、`growth_*` 这类派生项，命令会按 pipeline 的依赖关系推回到底层 PIT 列，再估算可用率。
+* `trainable` 模式里的估算重点是 PIT 侧样本。它不会替代完整的 `csml run`，也不会估算价格特征的 warm-up。
+* `trainable` / `both` 会额外输出 `Fill Dependence`。它用 `period_count_meeting_min_symbols_after_ffill / period_count_meeting_min_symbols_after_missing_fill` 估算这条配置对横截面填补的依赖。
+* `route_type=pit_only` 时，`retention_ratio_after_ffill >= 0.60` 记为 `green`，`0.30-0.59` 记为 `yellow`，`< 0.30` 记为 `red`。
+* `route_type=hybrid` 时，`retention_ratio_after_ffill >= 0.40` 记为 `green`，`0.15-0.39` 记为 `yellow`，`< 0.15` 记为 `red`。
+* 如果 `periods_after_missing_fill=0`，命令会直接给 `red`。这表示缺失填补后仍然没有季度样本达到 `min_symbols`。
+* 输出会包含四类信息：总体样本规模、complete-case 结果、最拖后腿的特征、每个季度可用 symbol 数。`trainable` / `both` 还会补一段“填补后估算”的周期样本结果。
+* 这个命令适合回答两个问题：源头 PIT 资产本身稀不稀；按当前配置的 PIT 口径，样本大概能不能训练。
+* 它能发现覆盖率问题，不能单独证明 provider 理论上就应该返回某个值。要确认 provider 异常，仍然要结合 `audit.csv`、镜像 `manifest.yml` 和公开财报核对。
+
+示例：
+
+```bash
+csml rqdata inspect-hk-pit-coverage \
+  --config config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
+  --mode both
+
+csml rqdata inspect-hk-pit-coverage \
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --field revenue \
+  --field net_profit \
+  --field profit_margin \
+  --format json \
+  --out artifacts/reports/hk_pit_coverage.json
+```
+
+## 19) `csml tushare verify-token`
 
 用途：验证 TuShare token 是否可用。
 
@@ -606,7 +653,7 @@ csml rqdata build-hk-pit-fundamentals \
 * 推荐直接执行 `csml tushare verify-token`。
 * 额外参数会转发到底层脚本。
 
-## 19) `csml universe index-components`
+## 20) `csml universe index-components`
 
 用途：拉取指数成分并输出 symbols 文件，必要时生成 PIT 文件。
 
@@ -621,7 +668,7 @@ csml rqdata build-hk-pit-fundamentals \
 csml universe index-components --index-code 000300.SH --month 202501
 ```
 
-## 20) `csml universe hk-connect`
+## 21) `csml universe hk-connect`
 
 用途：构建港股通 PIT universe。
 
@@ -643,7 +690,7 @@ csml universe index-components --index-code 000300.SH --month 202501
 csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 ```
 
-## 21) `csml init-config`
+## 22) `csml init-config`
 
 用途：导出内置配置模板。
 

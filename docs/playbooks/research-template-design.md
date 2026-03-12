@@ -31,6 +31,7 @@
 
 * 如果你还在同一个研究矩阵单元里，优先派生本地配置。
 * 如果你已经跨到了新的研究矩阵单元，才考虑新建仓库模板。
+* 如果 PIT 体检还没有到绿灯，先继续派生和收窄本地配置，不要急着沉淀模板。
 
 ## 2. 什么叫“同一个研究矩阵单元”
 
@@ -74,7 +75,8 @@
 更合适的做法是：
 
 * 保留 `config/hk_selected__pit_quarterly_hybrid.yml` 作为路线基线
-* 在 `config/local/` 派生四份模型配置
+* 先在 `config/local/` 派生三条基线，把 PIT 体检跑到绿灯
+* 再在 `config/local/` 派生四份模型配置
 * 不要把四份实验文件都沉淀进仓库根目录
 
 ## 4. 什么时候新建仓库模板
@@ -148,8 +150,9 @@
 
 例如：
 
-* `config/local/hk_sel_pit_q_hybrid_xgb_rank.yml`
-* `config/local/hk_sel_pit_q_hybrid_en.yml`
+* `config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml`
+* `config/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml`
+* `config/local/hk_sel_q_pk_pit_core_hybrid_en.yml`
 
 ## 7. 新建模板时必须同步什么
 

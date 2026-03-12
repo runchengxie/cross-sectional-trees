@@ -1,10 +1,11 @@
 # HK selected 研究路线
 
-本页把 HK selected 研究拆成三步：
+本页把 HK selected 研究拆成四步：
 
 1. 先选频率：`M` / `Q` / `Y`
 2. 再选数据路线：`纯量价` / `量价 + provider 基本面` / `量价 + PIT 财务`
-3. 最后在同一条路线里比较模型：`xgb_regressor` / `xgb_ranker` / `ridge` / `elasticnet`
+3. 如果走 PIT 路线，先过覆盖率体检
+4. 最后才在同一条路线里比较模型：`xgb_regressor` / `xgb_ranker` / `ridge` / `elasticnet`
 
 本页只讲研究路线、模板选择和比较顺序。
 
@@ -29,10 +30,14 @@ PIT 资产准备看：
 
 如果你第一次做 HK selected，先按下面的顺序走：
 
-1. 想先跑通四模型对比，从“月度 + provider 基本面”开始。
-2. 想做低频调仓，但暂时不想准备本地 PIT 财务文件，从“季度 + provider 基本面对照”开始。
-3. 想研究财报驱动信号，从“季度 + PIT 财务”开始。
+1. 想先确认主流程和命令入口，从“月度 + provider 基本面”开始。
+2. 想做正式的财报驱动研究，默认从“季度 + PIT 财务”开始。
+3. 想做低频调仓，但暂时不想准备本地 PIT 财务文件，从“季度 + provider 基本面对照”开始。
 4. 年度 `Y` 先当探索路线。先把季度路线跑稳，再上年度。
+
+这里多记一条经验：
+
+* 对 PIT 财务路线，先过覆盖率体检，并把 `Fill Dependence` 调到可接受状态，再谈模型比较。
 
 ## 2. 先看研究矩阵
 
@@ -71,7 +76,10 @@ PIT 资产准备看：
 
 季度路线适合低频调仓和财报驱动研究。
 
-这里先记住一件事：季度路线仍然读取日线行情。变化的是标签、评估和回测的 rebalance 频率。
+这里先记住两件事：
+
+* 季度路线仍然读取日线行情。变化的是标签、评估和回测的 rebalance 频率。
+* PIT 财务只在披露日更新。季度频率更适合作为正式研究起点。
 
 | 数据路线 | 起点配置 | 需要本地 PIT 文件 | 更适合回答的问题 |
 | --- | --- | --- | --- |
@@ -79,7 +87,56 @@ PIT 资产准备看：
 | 量价 + provider 基本面 | `config/hk_selected__provider_quarterly_valuation.yml` 是现成估值对照；如果要叠加量价特征，需要继续派生 | 否 | 低频估值字段本身有没有方向；是否值得再叠加量价 |
 | 量价 + PIT 财务 | `config/hk_selected__baseline_pit_quarterly.yml`、`config/hk_selected__pit_quarterly_financial_ml.yml`、`config/hk_selected__pit_quarterly_financial_linear.yml`、`config/hk_selected__pit_quarterly_hybrid.yml` | 是 | 财报披露节奏对齐后，慢基本面、财务质量和慢量价特征有没有 alpha |
 
-季度 PIT 这几份配置的分工是：
+### 4.1 季度 PIT 的默认研究流程
+
+如果你的目标是研究财报驱动信号，推荐按下面的顺序走：
+
+1. 准备 `pipeline_fundamentals.parquet`
+2. 先跑 `csml rqdata inspect-hk-pit-coverage`
+3. 如果 `Fill Dependence` 还是红灯，先缩窄 PIT 特征，再重跑体检
+4. 先做三条基线：`季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价`
+5. 确认基线稳定后，再做四模型 PK
+
+这条流程的重点是先判断数据和信号，再判断模型。
+
+这里的 `core PIT` 指高覆盖财务主项和少量稳健派生项。低覆盖字段先不要放进起步配置。
+
+本文下面出现的 `config/local/*.yml` 只是推荐的本地派生命名。  
+前提是你已经从仓库模板复制到 `config/local/`，然后按这条流程收窄成自己的季度研究单元。
+
+如果体检结果说明 source-level 覆盖很差，先回到资产准备。  
+如果源头覆盖还可以，但 selected features 的 complete-case 结果很差，先缩窄特征集。  
+如果 `季度 core PIT + 慢量价` 没有明显优于 `季度纯量价`，先不要急着继续调模型。
+
+体检命令示例：
+
+```bash
+csml rqdata inspect-hk-pit-coverage \
+  --config config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
+  --mode both
+```
+
+看 `Fill Dependence` 时，先按这套门槛判断：
+
+* `core PIT`：`retention_ratio_after_ffill >= 0.60` 记为绿灯，`0.30-0.59` 记为黄灯，`< 0.30` 记为红灯。
+* `core_hybrid`：`retention_ratio_after_ffill >= 0.40` 记为绿灯，`0.15-0.39` 记为黄灯，`< 0.15` 记为红灯。
+* 如果 `periods_after_missing_fill=0`，直接按红灯处理。
+
+`Fill Dependence` 是红灯时，先停下来改资产或特征集。  
+`Fill Dependence` 是黄灯时，先看 `Worst Features`，删掉最拖后腿的一两个字段，再重跑体检。  
+`Fill Dependence` 是绿灯时，再继续跑三条基线和四模型 PK。
+
+如果你按本文派生到 `config/local/`，建议把三条基线和四模型 PK 命名成这样：
+
+* `config/local/hk_sel_q_price_only_xgb_reg.yml`：季度纯量价基线
+* `config/local/hk_sel_pit_q_core_xgb_reg.yml`：季度 core PIT 基线
+* `config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml`：季度 core PIT + 慢量价基线
+* `config/local/hk_sel_q_pk_pit_core_hybrid_xgb_reg.yml`
+* `config/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml`
+* `config/local/hk_sel_q_pk_pit_core_hybrid_ridge.yml`
+* `config/local/hk_sel_q_pk_pit_core_hybrid_en.yml`
+
+仓库里现成季度模板的分工是：
 
 * `config/hk_selected__baseline_pit_quarterly.yml`：简单 PIT 财报基线，模型是 `xgb_regressor`
 * `config/hk_selected__pit_quarterly_financial_ml.yml`：更丰富的财务主项、增长和质量特征，模型是 `xgb_regressor`
@@ -90,7 +147,7 @@ PIT 资产准备看：
 
 * 这四份文件是四条季度实验路线。
 * 它们不是“四种模型”的一一对应模板。
-* 如果你要做严格的四模型 PK，应该先选其中一条作为基线，再只改 `model`。
+* 如果你要做严格的四模型 PK，应该先选其中一条作为路线基线，再只改 `model`。
 
 ## 5. 年度 `Y` 怎么选
 
@@ -109,7 +166,7 @@ PIT 资产准备看：
 * 你接受更少的训练窗口
 * 你愿意先做探索，再决定要不要长期维护这条路线
 
-## 6. 四模型 PK 的标准做法
+## 6. 四模型 PK 放在流程后段
 
 仓库当前支持四种模型：
 
@@ -120,14 +177,16 @@ PIT 资产准备看：
 
 推荐做法很固定：
 
-1. 先选定研究矩阵里的一个单元。
-2. 复制一份基线配置到本地，例如放到 `config/local/`。
-3. 保持下面这些块尽量不变：
+1. 先把数据路线和特征口径定住。
+2. 先跑完 `季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价` 这三条基线。
+3. 再选定研究矩阵里的一个单元。
+4. 复制一份基线配置到本地，例如放到 `config/local/`。
+5. 保持下面这些块尽量不变：
    `universe`、`fundamentals`、`features`、`label`、`backtest`
-4. 只改两类内容：
+6. 只改两类内容：
    `model`
    `eval.run_name`
-5. 跑四份配置，再统一 `summarize`。
+7. 跑四份配置，再统一 `summarize`。
 
 模型块可以直接参考现成模板：
 
@@ -136,11 +195,18 @@ PIT 资产准备看：
 * `ridge`：`config/hk_selected__ridge_a1.yml`
 * `elasticnet`：`config/hk_selected__elasticnet_a0.1_l0.5.yml`
 
-如果你现在要做“季度 + 量价 + PIT 财务”的四模型 PK，最直接的起点是：
+如果你现在要做“季度 + 量价 + PIT 财务”的四模型 PK，更稳妥的起点是：
 
-* 以 `config/hk_selected__pit_quarterly_hybrid.yml` 为基线
-* 派生四份本地配置
+* 先跑完 `季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价`
+* 用 `config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml` 固定研究单元
+* 再派生四份 `hk_sel_q_pk_pit_core_hybrid_*.yml`
 * 只改 `model` 和 `eval.run_name`
+
+这一步更适合放在下面这些条件都满足之后：
+
+* PIT 覆盖率体检已经跑过
+* `季度 core PIT` 已经能稳定训练
+* `季度 core PIT + 慢量价` 已经证明比更简单的基线更有信息量
 
 模型分组可以直接这样记：
 
@@ -150,17 +216,20 @@ PIT 资产准备看：
 示例：
 
 ```bash
-# 非线性模型
-csml run --config config/local/hk_sel_pit_q_hybrid_xgb_reg.yml
-csml run --config config/local/hk_sel_pit_q_hybrid_xgb_rank.yml
+# 三条基线
+csml run --config config/local/hk_sel_q_price_only_xgb_reg.yml
+csml run --config config/local/hk_sel_pit_q_core_xgb_reg.yml
+csml run --config config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml
 
-# 线性模型
-csml run --config config/local/hk_sel_pit_q_hybrid_ridge.yml
-csml run --config config/local/hk_sel_pit_q_hybrid_en.yml
+# 四模型 PK
+csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_xgb_reg.yml
+csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml
+csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_ridge.yml
+csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_en.yml
 
 csml summarize \
   --runs-dir artifacts/runs \
-  --run-name-prefix hk_sel_pit_q_hybrid \
+  --run-name-prefix hk_sel_q_pk_pit_core_hybrid \
   --sort-by score
 ```
 
@@ -190,6 +259,10 @@ csml rqdata mirror-hk-pit-financials \
 csml rqdata build-hk-pit-fundamentals \
   --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+
+csml rqdata inspect-hk-pit-coverage \
+  --config config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
+  --mode both
 ```
 
 更完整的资产准备顺序看：
@@ -237,3 +310,4 @@ csml rqdata build-hk-pit-fundamentals \
 * walk-forward 是否稳定
 * `positions_current.csv` 是否集中在极少数低流动性标的
 * 样本覆盖是否因为缺失填补、`growth_*` 特征或更慢的 rebalance 频率发生明显变化
+* 体检输出里的 `Complete Case` 和 `Recent Quarters` 是否还支持当前研究口径

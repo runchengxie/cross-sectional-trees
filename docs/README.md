@@ -56,6 +56,11 @@
 * `docs/cookbook.md`
 * `docs/playbooks/README.md`
 
+补充：
+
+* 如果你在做季度 PIT 财报研究，先读 `docs/cookbook.md` 里的 HK selected 流程，再去 `docs/playbooks/hk-selected.md` 看路线细节。
+* 这条流程现在会先做 PIT 覆盖率体检，把 `Fill Dependence` 调到可接受状态，再做基线和模型比较。
+
 ### 想做 HK selected 研究
 
 * `docs/playbooks/README.md`

@@ -330,6 +330,31 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit_fundamentals.force is True
     assert callable(pit_fundamentals.func)
 
+    pit_coverage = parser.parse_args(
+        [
+            "rqdata",
+            "inspect-hk-pit-coverage",
+            "--config",
+            "config/local/hk_sel_pit_q_hybrid_xgb_reg.yml",
+            "--mode",
+            "trainable",
+            "--min-symbols",
+            "10",
+            "--format",
+            "json",
+            "--out",
+            "artifacts/reports/hk_pit_coverage.json",
+        ]
+    )
+    assert pit_coverage.command == "rqdata"
+    assert pit_coverage.rq_command == "inspect-hk-pit-coverage"
+    assert pit_coverage.config == "config/local/hk_sel_pit_q_hybrid_xgb_reg.yml"
+    assert pit_coverage.mode == "trainable"
+    assert pit_coverage.min_symbols == 10
+    assert pit_coverage.format == "json"
+    assert pit_coverage.out == "artifacts/reports/hk_pit_coverage.json"
+    assert callable(pit_coverage.func)
+
 
 def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     parser = cli.build_parser()

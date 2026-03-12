@@ -111,6 +111,98 @@ def test_fetch_daily_symbol_cache_refresh_on_hit_triggers_tail_refresh(tmp_path,
     ]
 
 
+def test_fetch_daily_symbol_cache_skips_small_leading_calendar_gap(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    symbol = "AAA"
+    cache_file = cache_dir / "us_tushare_daily_AAA.parquet"
+
+    cached = _daily_frame(symbol, "20200102", "20200105", close_offset=0.0)
+    cached.to_parquet(cache_file)
+
+    fetch_ranges = []
+
+    def fake_fetch(provider, market, symbol_value, start_date, end_date, client, data_cfg):
+        fetch_ranges.append((start_date, end_date))
+        return _daily_frame(symbol_value, start_date, end_date, close_offset=300.0)
+
+    monkeypatch.setattr(data_providers, "_fetch_daily_from_provider", fake_fetch)
+
+    data_cfg = {
+        "provider": "tushare",
+        "cache_mode": "symbol",
+        "cache_refresh_days": 0,
+        "cache_refresh_on_hit": False,
+    }
+    result = data_providers.fetch_daily(
+        "us",
+        symbol,
+        "20200101",
+        "20200105",
+        cache_dir,
+        client=None,
+        data_cfg=data_cfg,
+    )
+
+    assert fetch_ranges == []
+    assert result["trade_date"].tolist() == [
+        "20200102",
+        "20200103",
+        "20200104",
+        "20200105",
+    ]
+
+
+def test_fetch_daily_symbol_cache_fetches_large_leading_gap(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    symbol = "AAA"
+    cache_file = cache_dir / "us_tushare_daily_AAA.parquet"
+
+    cached = _daily_frame(symbol, "20200110", "20200112", close_offset=0.0)
+    cached.to_parquet(cache_file)
+
+    fetch_ranges = []
+
+    def fake_fetch(provider, market, symbol_value, start_date, end_date, client, data_cfg):
+        fetch_ranges.append((start_date, end_date))
+        return _daily_frame(symbol_value, start_date, end_date, close_offset=400.0)
+
+    monkeypatch.setattr(data_providers, "_fetch_daily_from_provider", fake_fetch)
+
+    data_cfg = {
+        "provider": "tushare",
+        "cache_mode": "symbol",
+        "cache_refresh_days": 0,
+        "cache_refresh_on_hit": False,
+    }
+    result = data_providers.fetch_daily(
+        "us",
+        symbol,
+        "20200101",
+        "20200112",
+        cache_dir,
+        client=None,
+        data_cfg=data_cfg,
+    )
+
+    assert fetch_ranges == [("20200101", "20200110")]
+    assert result["trade_date"].tolist() == [
+        "20200101",
+        "20200102",
+        "20200103",
+        "20200104",
+        "20200105",
+        "20200106",
+        "20200107",
+        "20200108",
+        "20200109",
+        "20200110",
+        "20200111",
+        "20200112",
+    ]
+
+
 class _FakeRQInstrument:
     def __init__(self, listed_date: str):
         self.listed_date = listed_date

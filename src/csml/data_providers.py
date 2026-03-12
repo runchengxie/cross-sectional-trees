@@ -388,6 +388,22 @@ def _ensure_trade_date_str(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _is_small_leading_calendar_gap(
+    start_date: str,
+    cached_min: str,
+    *,
+    max_gap_days: int = 7,
+) -> bool:
+    """Treat tiny left-edge gaps as likely non-trading days."""
+    try:
+        start_ts = pd.to_datetime(str(start_date), format="%Y%m%d", errors="raise")
+        cached_min_ts = pd.to_datetime(str(cached_min), format="%Y%m%d", errors="raise")
+    except Exception:
+        return False
+    gap_days = int((cached_min_ts.normalize() - start_ts.normalize()).days)
+    return 0 < gap_days <= int(max_gap_days)
+
+
 def _resolve_eodhd_config(data_cfg: Mapping, client) -> dict:
     eod_cfg = data_cfg.get("eodhd") if isinstance(data_cfg, Mapping) else None
     resolved = dict(eod_cfg) if isinstance(eod_cfg, Mapping) else {}
@@ -806,7 +822,7 @@ def fetch_daily(
         fetch_ranges.append((start_date, end_date))
     else:
         cached_min, cached_max = trade_dates[0], trade_dates[-1]
-        if start_date < cached_min:
+        if start_date < cached_min and not _is_small_leading_calendar_gap(start_date, cached_min):
             left_end = min(end_date, cached_min)
             if start_date <= left_end:
                 fetch_ranges.append((start_date, left_end))

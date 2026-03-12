@@ -12,6 +12,10 @@
 2. 如果你选的是 PIT 财务路线，再看 [hk-data-assets.md](./hk-data-assets.md) 准备资产。
 3. 如果你要派生本地配置，或判断某个实验值不值得沉淀成仓库模板，再看 [research-template-design.md](./research-template-design.md)。
 
+补充：
+
+* 季度 PIT 路线现在建议先做覆盖率体检，把 `Fill Dependence` 调到可接受状态，再做基线和四模型比较。入口在 [hk-selected.md](./hk-selected.md) 和 `csml rqdata inspect-hk-pit-coverage`。
+
 ## 每一页解决什么问题
 
 | 页面 | 解决的问题 | 什么时候打开 |
@@ -28,6 +32,7 @@
 
 1. [hk-selected.md](./hk-selected.md)
 2. 如果走 PIT 财务路线，再看 [hk-data-assets.md](./hk-data-assets.md)
+3. 资产准备完成后，先跑 PIT 覆盖率体检，再决定基线和模型比较顺序
 
 ### 我已经知道要跑哪条路线，但不知道该不该新建模板
 
@@ -41,7 +46,8 @@
 
 1. [hk-selected.md](./hk-selected.md)
 2. [hk-data-assets.md](./hk-data-assets.md)
-3. [research-template-design.md](./research-template-design.md)
+3. 先跑 PIT 覆盖率体检
+4. [research-template-design.md](./research-template-design.md)
 
 ## 这组文档怎么分工
 

@@ -281,6 +281,12 @@ def _handle_rqdata_build_hk_pit_fundamentals(args) -> int:
     return rqdata_assets.build_hk_pit_fundamentals_file(args)
 
 
+def _handle_rqdata_inspect_hk_pit_coverage(args) -> int:
+    from .project_tools import rqdata_assets
+
+    return rqdata_assets.inspect_hk_pit_coverage(args)
+
+
 def _handle_universe_hk_connect(args) -> int:
     from .project_tools import build_hk_connect_universe
 
@@ -572,6 +578,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_pit_fundamentals_build_args(rq_pit_fundamentals)
     rq_pit_fundamentals.set_defaults(func=_handle_rqdata_build_hk_pit_fundamentals)
+
+    rq_pit_coverage = rq_sub.add_parser(
+        "inspect-hk-pit-coverage",
+        help="Inspect HK PIT fundamentals coverage for selected raw or derived features",
+    )
+    rqdata_assets.add_hk_pit_coverage_args(rq_pit_coverage)
+    rq_pit_coverage.set_defaults(func=_handle_rqdata_inspect_hk_pit_coverage)
 
     universe = subparsers.add_parser("universe", help="Universe construction helpers")
     uni_sub = universe.add_subparsers(dest="uni_command", required=True)
