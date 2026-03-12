@@ -11,7 +11,8 @@ csml init-config --market default --out config/
 * CLI 用法：`docs/cli.md`
 * 项目能力：`docs/capabilities.md`
 * 常见流程：`docs/cookbook.md`
-* HK selected 配方：`docs/playbooks/hk-selected.md`
+* HK selected 配方：`docs/playbooks/README.md`
+* 模板维护与派生：`docs/playbooks/research-template-design.md`
 * 数据源差异：`docs/providers.md`
 * 输出文件与字段：`docs/outputs.md`
 * 常见报错：`docs/troubleshooting.md`
@@ -37,6 +38,8 @@ csml init-config --market default --out config/
 | `hk` | 港股 PIT 研究模板。适合正式研究配置。 |
 | `cn/us` | 兼容模板。适合保留多市场基础切换或做对照。 |
 | `config/hk_selected__baseline.yml` | HK selected 通用基线。适合 `sweep-linear` 和线性模型批跑。 |
+| `config/hk_selected__baseline_eval_sample.yml` | HK selected 评估抽样实验配置。适合检查样本抽样口径。 |
+| `config/hk_selected__baseline_eval_sample_ffill.yml` | HK selected 评估抽样 + 退出价格回退实验配置。 |
 | `config/hk_selected__baseline_pit_file.yml` | 读取本地 PIT fundamentals 文件的 HK 基线。 |
 | `config/hk_selected__provider_quarterly_valuation.yml` | 不依赖本地 PIT 文件的季度估值对照。 |
 | `config/hk_selected__baseline_pit_quarterly.yml` | 季度 PIT 财报基线。 |
@@ -50,10 +53,14 @@ csml init-config --market default --out config/
 补充：
 
 * `default` 现在是港股优先的 starter 模板。它用静态港股股票池，不依赖 PIT universe 文件。
+* `--config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
 * 新项目优先从 `default` 或 `hk` 开始。只有确实需要多市场对照时，再切到 `cn/us`。
 * `config/hk_selected.yml` 已移除。旧配置请直接改成 `config/hk_selected__baseline.yml`。
 * `config/universe.hk_connect_full.yml` 用于生成更完整的港股通历史股票池文件。
-* 想按研究路线选择这些模板时，直接看 `docs/playbooks/hk-selected.md`。
+* 当前现成模板主要覆盖月度和季度。年度 `Y` 需要从月度或季度模板本地派生。
+* 当前现成季度模板主要是在比较不同信号路线，不是完整的“四模型矩阵”。如果你要做季度四模型 PK，先选一份季度基线，再本地派生四个模型版本。
+* 想按研究路线选择这些模板时，先看 `docs/playbooks/README.md`。
+* 想判断某个实验应该派生本地配置还是沉淀成仓库模板，继续看 `docs/playbooks/research-template-design.md`。
 
 ## 顶层配置块
 
@@ -173,6 +180,7 @@ model:
 
 补充：
 
+* `rebalance_frequency` 常见值是 `M`、`Q`、`Y`。
 * `shift_days` 会影响信号日和入场日的对应关系。
 * 如果你看到“当月持仓”和预期不一致，先回看 `shift_days`。
 
@@ -261,6 +269,10 @@ model:
 * 先用 `equal` 做基线，便于解释和横向比较。
 * 当 `Pearson IC`、尾部组合或回测明显优于 `Spearman IC` 时，再单独测试 `signal`。
 
+补充：
+
+* `rebalance_frequency` 常见值是 `M`、`Q`、`Y`。
+
 ### 新旧键优先级
 
 * 旧键：`backtest.exit_price_policy` / `backtest.exit_fallback_policy`
@@ -287,6 +299,7 @@ model:
 
 补充：
 
+* 想做纯量价路线时，最直接的做法是把 `fundamentals.enabled=false`。
 * `source=provider` 支持 TuShare，也支持 `market=hk` + `provider=rqdata`
 * `source=file` 读取本地 CSV 或 Parquet
 * `provider=rqdata` 时，默认走 `rqdatac.get_factor`

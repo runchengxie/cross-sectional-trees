@@ -652,7 +652,10 @@ def build_parser() -> argparse.ArgumentParser:
     holdings.add_argument(
         "--as-of",
         default="t-1",
-        help="As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1). Default: t-1.",
+        help=(
+            "As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1, last_trading_day, "
+            "last_completed_trading_day). Default: t-1."
+        ),
     )
     holdings.add_argument(
         "--source",
@@ -696,7 +699,10 @@ def build_parser() -> argparse.ArgumentParser:
     alloc.add_argument(
         "--as-of",
         default="t-1",
-        help="As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1). Default: t-1.",
+        help=(
+            "As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1, last_trading_day, "
+            "last_completed_trading_day). Default: t-1."
+        ),
     )
     alloc.add_argument(
         "--source",
@@ -767,7 +773,10 @@ def build_parser() -> argparse.ArgumentParser:
     snapshot.add_argument(
         "--as-of",
         default="t-1",
-        help="As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1). Default: t-1.",
+        help=(
+            "As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1, last_trading_day, "
+            "last_completed_trading_day). Default: t-1."
+        ),
     )
     snapshot.add_argument(
         "--skip-run",

@@ -54,8 +54,16 @@
 ### 想做特定研究流程
 
 * `docs/cookbook.md`
-* `docs/playbooks/hk-selected.md`
-* `docs/playbooks/hk-data-assets.md`
+* `docs/playbooks/README.md`
+
+### 想做 HK selected 研究
+
+* `docs/playbooks/README.md`
+
+补充：
+
+* `docs/playbooks/README.md` 会先告诉你该读哪一页。
+* 如果你要跑季度或年度 PIT 财报路线，最后会落到 `docs/playbooks/hk-data-assets.md` 准备本地 `pipeline_fundamentals.parquet`。
 
 ### 想排错
 

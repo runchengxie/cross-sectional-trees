@@ -8,6 +8,9 @@
 * 市场是 `hk`
 * 股票池使用港股通 PIT universe
 
+如果你还没选好研究路线，先看 [hk-selected.md](./hk-selected.md)。
+如果你在判断该不该新建模板，继续看 [research-template-design.md](./research-template-design.md)。
+
 ## 1. 先分清几层数据
 
 | 数据层 | 主要命令 | 默认输出位置 | 作用 |

@@ -1,169 +1,174 @@
-# HK selected 多模型研究配方
+# HK selected 研究路线
 
-本页只讨论 HK selected 这条研究路线。
+本页把 HK selected 研究拆成三步：
 
-这条路线当前有两种成熟频率：
+1. 先选频率：`M` / `Q` / `Y`
+2. 再选数据路线：`纯量价` / `量价 + provider 基本面` / `量价 + PIT 财务`
+3. 最后在同一条路线里比较模型：`xgb_regressor` / `xgb_ranker` / `ridge` / `elasticnet`
 
-* 月度 `M`
-* 季度 `Q`
+本页只讲研究路线、模板选择和比较顺序。
 
-代码层也支持年度 `Y`，但仓库里还没有单独维护的年度模板。当前更适合把它当成探索路线。
+先看本目录导航：
 
-参数细节看 `docs/cli.md` 和 `docs/config.md`。本页只保留选路线时最容易混淆的几件事。
+* [README.md](./README.md)
 
-## 1. 前置条件
+参数细节看：
 
-开始前先确认这几项：
+* `docs/cli.md`
+* `docs/config.md`
 
-1. 已安装 `RQData` 依赖：`uv sync --extra dev --extra rqdata`
-2. 已准备港股通股票池文件，或知道要用哪份配置生成它
-3. 已确认研究范围是 HK selected，不是更宽的港股普通股池
+PIT 资产准备看：
 
-## 2. 先按频率选路线
+* [hk-data-assets.md](./hk-data-assets.md)
 
-| 路线 | 频率 | 常用配置 | 更适合回答的问题 |
+模板维护和派生原则看：
+
+* [research-template-design.md](./research-template-design.md)
+
+## 1. 新手先看这个
+
+如果你第一次做 HK selected，先按下面的顺序走：
+
+1. 想先跑通四模型对比，从“月度 + provider 基本面”开始。
+2. 想做低频调仓，但暂时不想准备本地 PIT 财务文件，从“季度 + provider 基本面对照”开始。
+3. 想研究财报驱动信号，从“季度 + PIT 财务”开始。
+4. 年度 `Y` 先当探索路线。先把季度路线跑稳，再上年度。
+
+## 2. 先看研究矩阵
+
+这张表只回答“你应该从哪一格开始”。它不表示每一格都有完整的内置模板。
+
+| 频率 | 纯量价 | 量价 + provider 基本面 | 量价 + PIT 财务 |
 | --- | --- | --- | --- |
-| 月度研究基线 | `M` | `config/hk_selected__baseline.yml`、`config/hk_selected__ridge_a1.yml`、`config/hk_selected__xgb_regressor.yml`、`config/hk_selected__xgb_ranker_pairwise.yml` | 日常研究基准、模型横向对比、技术面和估值混合信号 |
-| 季度估值对照 | `Q` | `config/hk_selected__provider_quarterly_valuation.yml` | 低频调仓加估值字段本身有没有方向 |
-| 季度 PIT 财报研究 | `Q` | `config/hk_selected__baseline_pit_quarterly.yml`、`config/hk_selected__pit_quarterly_financial_ml.yml`、`config/hk_selected__pit_quarterly_financial_linear.yml`、`config/hk_selected__pit_quarterly_hybrid.yml` | 按披露节奏对齐后，慢基本面和财报特征有没有 alpha |
-| 年度 PIT 财报探索 | `Y` | 以季度 PIT 配置为起点自行派生 | 只想研究非常慢的财报信号，接受样本明显变少 |
+| 月度 `M` | 需要本地派生。可从 `config/hk_selected__baseline.yml` 关掉 `fundamentals` 开始。 | 现成模板最完整：`config/hk_selected__baseline.yml`、`config/hk_selected__ridge_a1.yml`、`config/hk_selected__elasticnet_a0.1_l0.5.yml`、`config/hk_selected__xgb_regressor.yml`、`config/hk_selected__xgb_ranker_pairwise.yml`。 | 有现成起点：`config/hk_selected__baseline_pit_file.yml`。如果要四模型 PK，需要继续派生。 |
+| 季度 `Q` | 需要本地派生。可从 `config/hk_selected__pit_quarterly_hybrid.yml` 关掉 `fundamentals` 开始。 | 有现成估值对照：`config/hk_selected__provider_quarterly_valuation.yml`。如果要再叠加量价特征，需要继续派生。 | 现成模板最多：`config/hk_selected__baseline_pit_quarterly.yml`、`config/hk_selected__pit_quarterly_financial_ml.yml`、`config/hk_selected__pit_quarterly_financial_linear.yml`、`config/hk_selected__pit_quarterly_hybrid.yml`。 |
+| 年度 `Y` | 代码支持，当前没有内置模板。建议从月度或季度配置派生。 | 代码支持，当前没有内置模板。建议从季度 provider 路线派生。 | 代码支持，当前没有内置模板。建议从季度 PIT 路线派生。 |
 
-当前建议：
+读表时记住两点：
 
-1. 月度路线用于日常基线和模型比较。
-2. 季度路线用于财报驱动研究。
-3. 年度路线先不要当默认模板。先确认你接受更少的训练窗口和回测期数。
+* 做模型比较时，只在同一格里换模型。
+* 跨格比较时，你比较的是整条研究路线，不只是模型。
 
-## 3. 先固定研究基线
+## 3. 月度 `M` 怎么选
 
-做模型对比时，优先只改这两类内容：
+月度路线适合日常基线、模型横向对比和更高样本量的研究。
 
-* `model`
-* `eval.run_name`
-
-尽量不要同时改：
-
-* `universe`
-* `label`
-* `features`
-* `eval`
-* `backtest`
-
-这样结果更容易比较。
-
-## 4. PIT 港股通股票池和财务资产层
-
-这里最容易混淆，单独写清楚：
-
-1. `by_date_file` 决定的是一只股票在哪些日期属于研究股票池。
-2. `mirror-hk-pit-financials --by-date-file ...` 用这份文件先解析出一组 symbol。
-3. symbol 一旦被解析出来，财务镜像命令会按你给的 `start-quarter -> end-quarter` 下载这只股票的整段财务历史。
-4. 下载逻辑不会把财务数据裁成“只保留在港股通期间”。
-5. 真正按日期裁股票池，是 pipeline 里后面的 `universe-by-date` 过滤步骤。
-
-这意味着：
-
-* 有些股票后来才加入港股通。它们更早的财务历史仍然会被下载。
-* 有些股票曾经在港股通，后来被移出。它们被移出后的研究日期会被股票池过滤掉。
-* PIT 股票池控制的是“某天能不能进研究样本”，不是“这只股票允许保留几年财报历史”。
-
-## 5. 月度路线怎么理解
-
-月度路线是仓库里的默认研究基线。
-
-常用配置：
-
-* `config/hk_selected__baseline.yml`
-* `config/hk_selected__baseline_pit_file.yml`
-* `config/hk_selected__ridge_a1.yml`
-* `config/hk_selected__elasticnet_a0.1_l0.5.yml`
-* `config/hk_selected__xgb_regressor.yml`
-* `config/hk_selected__xgb_ranker_pairwise.yml`
-
-这条路线的特点：
-
-* `label.rebalance_frequency=M`
-* `eval.rebalance_frequency=M`
-* `backtest.rebalance_frequency=M`
-* 通常继续使用日线价格、成交量和成交额数据
-* 更适合日常研究、模型批跑和基线比较
-
-使用顺序建议：
-
-1. 先从 `config/hk_selected__baseline.yml` 开始。
-2. 需要本地 PIT 文件时，再切到 `config/hk_selected__baseline_pit_file.yml`。
-3. 需要显式模型模板时，再切到 ridge、elasticnet、XGB 配置。
-
-## 6. 季度路线怎么理解
-
-季度路线要解决的是“信号更新节奏”和“调仓节奏”更接近财报披露。
-
-这里有三个关键点：
-
-1. 季度路线仍然使用日线行情数据。
-2. 季度路线把标签、评估和回测频率一起改成 `Q`。
-3. 是否只在季度调仓日抽样，要看 `eval.sample_on_rebalance_dates`。
-
-以 `config/hk_selected__pit_quarterly_financial_ml.yml` 为例：
-
-* 日线数据仍然从 `data.rqdata.frequency: 1d` 拉取。
-* 股票池仍然是 `universe.mode: pit`。
-* 财务文件来自本地 `pipeline_fundamentals.parquet`。
-* `label.rebalance_frequency=Q`
-* `eval.rebalance_frequency=Q`
-* `backtest.rebalance_frequency=Q`
-* `eval.sample_on_rebalance_dates=true`，表示建模样本只取季度调仓点。
-
-这条路线不是“原生季度 bar 引擎”。它还是在日线面板上运行，只是：
-
-* 用日线序列计算标签和回测持有窗口
-* 用季度频率确定 rebalance date
-* 用 PIT 财报文件按 `info_date` 并入，再向后填充到后续交易日
-
-还要注意一件事：
-
-* 季度 PIT 配置不会自动把镜像资产里的全部字段都喂给模型。
-* 实际会进入研究的数据，取决于 `fundamentals.features` 和 `features.list`。
-* 如果你手里有 full mirror，默认配置仍然只会用它引用到的那一部分字段。
-
-季度路线内部可以继续分成三类：
-
-| 路线 | 配置 | 是否需要先准备本地 PIT 文件 | 说明 |
+| 数据路线 | 起点配置 | 需要本地 PIT 文件 | 更适合回答的问题 |
 | --- | --- | --- | --- |
-| provider 季度估值对照 | `config/hk_selected__provider_quarterly_valuation.yml` | 否 | 先快速验证低频估值方向 |
-| PIT 财报季度基线 | `config/hk_selected__baseline_pit_quarterly.yml` | 是 | 用较简单的财报字段做低频基线 |
-| PIT 财务 ML / 线性 / hybrid | `config/hk_selected__pit_quarterly_financial_ml.yml`、`config/hk_selected__pit_quarterly_financial_linear.yml`、`config/hk_selected__pit_quarterly_hybrid.yml` | 是 | 用更丰富的财务主项、增长和质量特征做深入研究 |
+| 纯量价 | 从 `config/hk_selected__baseline.yml` 派生，设 `fundamentals.enabled=false` | 否 | 先看技术面和量价本身有没有稳定信号 |
+| 量价 + provider 基本面 | `config/hk_selected__baseline.yml` 及其显式模型模板 | 否 | 日常基线、四模型 PK、估值与技术面的混合信号 |
+| 量价 + PIT 财务 | `config/hk_selected__baseline_pit_file.yml` | 是 | 想保留月度调仓，同时把财报字段并进模型 |
 
-如果你决定切到季度口径，三处频率一起改：
+月度路线当前最适合做四模型比较。原因很简单：
 
-1. `label.rebalance_frequency=Q`
-2. `eval.rebalance_frequency=Q`
-3. `backtest.rebalance_frequency=Q`
+* 内置模板最完整
+* 样本点更多
+* 调参与回看结果都更直接
 
-只改回测频率，结果通常很难解释。
+如果你只想先把四模型跑一遍，优先从这一块开始。
 
-## 7. 年度路线怎么试
+## 4. 季度 `Q` 怎么选
 
-代码层已经支持年度频率，因为 rebalance date 是按 pandas period frequency 生成的。`Y` 可以直接工作。
+季度路线适合低频调仓和财报驱动研究。
 
-但当前没有单独维护的年度模板。更稳妥的做法是从季度 PIT 配置派生一份本地配置，然后改这几项：
+这里先记住一件事：季度路线仍然读取日线行情。变化的是标签、评估和回测的 rebalance 频率。
 
-1. `label.rebalance_frequency=Y`
-2. `eval.rebalance_frequency=Y`
-3. `backtest.rebalance_frequency=Y`
+| 数据路线 | 起点配置 | 需要本地 PIT 文件 | 更适合回答的问题 |
+| --- | --- | --- | --- |
+| 纯量价 | 从 `config/hk_selected__pit_quarterly_hybrid.yml` 派生，设 `fundamentals.enabled=false` | 否 | 低频调仓下，慢量价特征本身有没有方向 |
+| 量价 + provider 基本面 | `config/hk_selected__provider_quarterly_valuation.yml` 是现成估值对照；如果要叠加量价特征，需要继续派生 | 否 | 低频估值字段本身有没有方向；是否值得再叠加量价 |
+| 量价 + PIT 财务 | `config/hk_selected__baseline_pit_quarterly.yml`、`config/hk_selected__pit_quarterly_financial_ml.yml`、`config/hk_selected__pit_quarterly_financial_linear.yml`、`config/hk_selected__pit_quarterly_hybrid.yml` | 是 | 财报披露节奏对齐后，慢基本面、财务质量和慢量价特征有没有 alpha |
 
-建议同步收紧这几项：
+季度 PIT 这几份配置的分工是：
 
-* `eval.n_splits` 降低
-* `eval.walk_forward.n_windows` 降低
-* 尽量把起始日期拉长
-* 模型先用线性或较浅的树模型
+* `config/hk_selected__baseline_pit_quarterly.yml`：简单 PIT 财报基线，模型是 `xgb_regressor`
+* `config/hk_selected__pit_quarterly_financial_ml.yml`：更丰富的财务主项、增长和质量特征，模型是 `xgb_regressor`
+* `config/hk_selected__pit_quarterly_financial_linear.yml`：和上一份尽量保持同一套财务特征，但模型换成 `ridge`
+* `config/hk_selected__pit_quarterly_hybrid.yml`：PIT 财务 + 慢量价特征，模型是 `xgb_regressor`
 
-原因很简单：年度调仓的样本点会明显少很多。`2015-01-01 -> 2025-12-31` 这段区间按年看，只有大约十来个 rebalance 点。复杂模型会很容易变得不稳定。
+这里最容易混淆的点是：
 
-## 8. 准备本地 PIT fundamentals 文件
+* 这四份文件是四条季度实验路线。
+* 它们不是“四种模型”的一一对应模板。
+* 如果你要做严格的四模型 PK，应该先选其中一条作为基线，再只改 `model`。
 
-如果你要走本地 PIT 文件路线，先执行：
+## 5. 年度 `Y` 怎么选
+
+代码层已经支持年度频率，但当前没有单独维护的年度模板。
+
+更稳妥的做法是：
+
+1. 先从季度路线选一份最接近你的配置。
+2. 把 `label.rebalance_frequency`、`eval.rebalance_frequency`、`backtest.rebalance_frequency` 一起改成 `Y`。
+3. 同步把 `eval.n_splits` 和 `eval.walk_forward.n_windows` 调低。
+4. 起步时优先用线性模型或较浅的树模型。
+
+年度路线更适合这类问题：
+
+* 你只关心很慢的财报信号
+* 你接受更少的训练窗口
+* 你愿意先做探索，再决定要不要长期维护这条路线
+
+## 6. 四模型 PK 的标准做法
+
+仓库当前支持四种模型：
+
+* `xgb_regressor`
+* `xgb_ranker`
+* `ridge`
+* `elasticnet`
+
+推荐做法很固定：
+
+1. 先选定研究矩阵里的一个单元。
+2. 复制一份基线配置到本地，例如放到 `config/local/`。
+3. 保持下面这些块尽量不变：
+   `universe`、`fundamentals`、`features`、`label`、`backtest`
+4. 只改两类内容：
+   `model`
+   `eval.run_name`
+5. 跑四份配置，再统一 `summarize`。
+
+模型块可以直接参考现成模板：
+
+* `xgb_regressor`：`config/hk_selected__xgb_regressor.yml`
+* `xgb_ranker`：`config/hk_selected__xgb_ranker_pairwise.yml`
+* `ridge`：`config/hk_selected__ridge_a1.yml`
+* `elasticnet`：`config/hk_selected__elasticnet_a0.1_l0.5.yml`
+
+如果你现在要做“季度 + 量价 + PIT 财务”的四模型 PK，最直接的起点是：
+
+* 以 `config/hk_selected__pit_quarterly_hybrid.yml` 为基线
+* 派生四份本地配置
+* 只改 `model` 和 `eval.run_name`
+
+示例：
+
+```bash
+csml run --config config/local/hk_sel_pit_q_hybrid_xgb_reg.yml
+csml run --config config/local/hk_sel_pit_q_hybrid_xgb_rank.yml
+csml run --config config/local/hk_sel_pit_q_hybrid_ridge.yml
+csml run --config config/local/hk_sel_pit_q_hybrid_en.yml
+
+csml summarize \
+  --runs-dir artifacts/runs \
+  --run-name-prefix hk_sel_pit_q_hybrid \
+  --sort-by score
+```
+
+如果你要做线性模型搜索，再单独用 `csml sweep-linear`。前提仍然是先把研究单元固定住。
+
+## 7. 什么时候需要准备 PIT 财务文件
+
+只有在你走“量价 + PIT 财务”这条路线时，才需要本地 PIT fundamentals 文件。
+
+判断方法很简单：
+
+* `fundamentals.source=provider`：不需要本地 PIT 文件
+* `fundamentals.enabled=false`：不需要本地 PIT 文件
+* `fundamentals.source=file`：需要本地 PIT 文件
+
+最短准备流程：
 
 ```bash
 csml rqdata mirror-hk-pit-financials \
@@ -172,61 +177,36 @@ csml rqdata mirror-hk-pit-financials \
   --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
   --start-quarter 2011q1 \
   --end-quarter 2025q4 \
-  --date 20260310
+  --date 20260312
 
 csml rqdata build-hk-pit-fundamentals \
   --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 ```
 
-如果你要准备更宽股票池的财报资产，先生成股票池文件，再镜像财报：
+更完整的资产准备顺序看：
 
-```bash
-csml universe hk-connect --config config/universe.hk_connect_full.yml
+* [hk-data-assets.md](./hk-data-assets.md)
 
-csml rqdata mirror-hk-pit-financials \
-  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
-  --field-profile full \
-  --name hk_connect_full_2000_2025_full_latest \
-  --start-quarter 2000q1 \
-  --end-quarter 2025q4 \
-  --date 20260310
-```
+## 8. 常见误解
 
-补充：
+### 误解 1：研究矩阵里的每一格都有完整内置模板
 
-* 请求起点可以写到 `2000q1`。
-* provider 实际返回的最早有效季度可能晚于请求起点。
-* 当前这批 HK Connect PIT 财务资产，实际最早覆盖到的是 `2000q4`。
+当前不是这样。仓库已经覆盖了常用单元，但不是九宫格全部现成。
 
-## 9. 建议的比较顺序
+### 误解 2：季度或年度路线不再依赖日线行情
 
-如果你做的是月度基线：
+不会。季度和年度路线仍然读取日线价格、成交量和成交额，只是 rebalance 频率变了。
 
-```bash
-csml run --config config/hk_selected__ridge_a1.yml
-csml run --config config/hk_selected__elasticnet_a0.1_l0.5.yml
-csml run --config config/hk_selected__xgb_regressor.yml
-csml run --config config/hk_selected__xgb_ranker_pairwise.yml
-```
+### 误解 3：PIT 股票池会把财务历史自动裁成成员期
 
-如果你做的是季度财报路线：
+不会。股票池控制的是某个日期能不能进入研究样本。财务镜像控制的是本地保留了多少历史。
 
-```bash
-csml run --config config/hk_selected__provider_quarterly_valuation.yml
-csml run --config config/hk_selected__baseline_pit_quarterly.yml
-csml run --config config/hk_selected__pit_quarterly_financial_ml.yml
-```
+### 误解 4：比较模型时，可以直接拿不同路线的模板互相比
 
-统一汇总：
+这样很难解释。更稳妥的做法是在同一条路线里换模型。
 
-```bash
-csml summarize \
-  --runs-dir artifacts/runs \
-  --sort-by score
-```
-
-## 10. 结果怎么读
+## 9. 结果先看什么
 
 先读这几个文件：
 
@@ -235,7 +215,7 @@ csml summarize \
 3. `positions_current.csv`
 4. `runs_summary.csv`
 
-重点看这些指标：
+重点看：
 
 * `ic_mean`
 * `long_short`
@@ -244,8 +224,8 @@ csml summarize \
 * `backtest_avg_turnover`
 * `flag_*`
 
-如果你在比较季度 PIT run，再额外看：
+如果你在比较季度或年度低频 run，再额外看：
 
-* walk-forward 结果是否稳定
+* walk-forward 是否稳定
 * `positions_current.csv` 是否集中在极少数低流动性标的
-* 缺失填补和 `growth_*` 特征是否让样本覆盖明显变化
+* 样本覆盖是否因为缺失填补、`growth_*` 特征或更慢的 rebalance 频率发生明显变化

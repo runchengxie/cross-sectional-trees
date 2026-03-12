@@ -121,4 +121,4 @@ artifacts/
 * 想知道项目能做什么：本页 -> `docs/outputs.md`
 * 想查命令：`docs/cli.md`
 * 想改配置：`docs/config.md`
-* 想做 HK selected 研究：`docs/playbooks/hk-selected.md`
+* 想做 HK selected 研究：`docs/playbooks/README.md`

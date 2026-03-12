@@ -5,7 +5,7 @@
 阅读建议：
 
 * 想按任务串起来执行时，先看 `docs/cookbook.md`
-* 想看 HK selected 研究路线时，先看 `docs/playbooks/hk-selected.md`
+* 想看 HK selected 研究路线时，先看 `docs/playbooks/README.md`
 * 想查配置键时，继续看 `docs/config.md`
 * 想查输出文件时，继续看 `docs/outputs.md`
 
@@ -28,6 +28,7 @@ csml <subcommand> --help
 补充：
 
 * `default` 现在是 HK starter 模板。
+* `--config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
 * `hk` 更适合 PIT 港股研究。
 * `cn/us` 主要保留基础兼容模板。
 * 新项目优先从 `default` 或 `hk` 开始。
@@ -530,7 +531,7 @@ csml rqdata mirror-hk-pit-financials \
   --date 20260310
 ```
 
-更完整的 HK selected 研究流程见 `docs/playbooks/hk-selected.md`。
+更完整的 HK selected 研究流程见 `docs/playbooks/README.md`。如果你当前在准备 PIT 财务资产，继续看 `docs/playbooks/hk-data-assets.md`。
 
 ## 16) `csml rqdata mirror-hk-financial-details`
 
@@ -632,7 +633,7 @@ csml universe index-components --index-code 000300.SH --month 202501
 * by-date CSV 会同时包含 `ts_code` 和 `stock_ticker`。
 * `top_quantile=0` 表示保留全部港股通候选。这个口径适合做全量资产镜像。
 * 仓库提供了 `config/universe.hk_connect_full.yml`，用于生成更完整的历史港股通股票池文件。
-* 场景化用法见 `docs/playbooks/hk-selected.md`。
+* 场景化用法见 `docs/playbooks/hk-data-assets.md`。
 
 示例：
 

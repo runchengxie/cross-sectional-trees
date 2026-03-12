@@ -54,7 +54,23 @@ csml run --config default
 csml run --config hk
 ```
 
-## 2. 横向比较多次 run
+补充：
+
+* `csml run --config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
+
+## 2. 做 HK selected 研究
+
+HK selected 路线单独放在：
+
+* `docs/playbooks/README.md`
+
+这组文档会先让你选频率和数据路线，再决定要不要准备 PIT 资产，最后再判断本地派生配置还是新建仓库模板。
+
+还要先记住一件事：
+
+* 如果你要跑季度或年度的 PIT 财报路线，先准备本地 `pipeline_fundamentals.parquet`。数据准备入口也在 `docs/playbooks/README.md` 里。
+
+## 3. 横向比较多次 run
 
 ```bash
 csml summarize \
@@ -83,7 +99,7 @@ csml summarize \
 
 如果输出 `No runs matched current summarize filters.`，先去掉全部 `--exclude-flag-*` 看全量结果。
 
-## 3. 生成 live 快照
+## 4. 生成 live 快照
 
 仓库里没有内置的 `config/hk_live.yml`。通常做法是单独准备一份 live 配置，例如 `config/hk_live.local.yml`。
 
@@ -113,7 +129,26 @@ csml snapshot --config config/hk_live.local.yml
 csml snapshot --config config/hk_live.local.yml --skip-run --format json
 ```
 
-## 4. 做本地快照和目录整理
+## 5. 从持仓到资金分配
+
+如果你已经有当前持仓，想继续做等权手数分配：
+
+```bash
+csml alloc --config config/hk_live.local.yml --source live --top-n 20 --cash 1000000
+```
+
+如果你已经有现成的持仓 CSV：
+
+```bash
+csml alloc \
+  --positions-file artifacts/runs/<run_dir>/positions_by_rebalance_live.csv \
+  --top-n 10 \
+  --cash 1000000
+```
+
+`alloc` 会直接用到 RQData 价格和 `round_lot`。如果你要长期复用这条流程，先看 `docs/cli.md` 和 `docs/providers.md` 里的相关说明。
+
+## 6. 做本地快照和目录整理
 
 需要归档一轮研究时：
 
@@ -130,13 +165,17 @@ csml migrate-artifacts --dry-run
 csml migrate-artifacts
 ```
 
-## 5. 常见场景入口
+## 7. 常见场景入口
 
 ### HK selected 多模型研究
 
 这条路线单独放到：
 
-* `docs/playbooks/hk-selected.md`
+* `docs/playbooks/README.md`
+
+补充：
+
+* `docs/playbooks/README.md` 会告诉你先看研究路线、资产准备还是模板设计原则。
 
 ### 查 provider 差异
 
