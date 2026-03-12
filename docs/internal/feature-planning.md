@@ -1,4 +1,4 @@
-# 项目全量功能矩阵、难点分层与工时重估（内部资料）
+# 功能矩阵与规划评估（内部资料）
 
 给一份配置，`csml` 会跑完整研究流水线：拉数、构池、打标签、做特征、训练、评估、回测、落盘产物、输出持仓快照。
 
@@ -26,7 +26,7 @@
 | 命令 | 能力 | 关键输入 | 关键输出/副作用 | 备注 |
 | --- | --- | --- | --- | --- |
 | `csml run` | 主流程：训练/评估/回测/持仓产物 | `--config` | `artifacts/runs/...` 全套产物 | 研究主入口 |
-| `csml grid` | Top-K × 成本 × buffer（入/出）敏感性网格 | base config + grid 参数 | `grid_summary.csv` | 先跑一次 base，再复用 scored 数据；详见 [cli.md#2-csml-grid](cli.md#2-csml-grid) |
+| `csml grid` | Top-K × 成本 × buffer（入/出）敏感性网格 | base config + grid 参数 | `grid_summary.csv` | 先跑一次 base，再复用 scored 数据；详见 [../cli.md#2-csml-grid](../cli.md#2-csml-grid) |
 | `csml sweep-linear` | Ridge/ElasticNet 参数 sweep | `--sweep-config` 或 CLI 网格参数 | `artifacts/sweeps/<tag>/` + 自动 summarize | 已覆盖（不是 `sweep`，是 `sweep-linear`） |
 | `csml summarize` | 聚合历史 run 关键指标 | `--runs-dir`、筛选参数 | `runs_summary.csv` | 研究对比入口 |
 | `csml holdings` | 输出当前持仓 | `--config/--run-dir`、`--as-of` | text/csv/json | 支持 `auto/backtest/live` |
@@ -160,6 +160,6 @@ run 目录规则：
 
 ## 结论
 
-* `docs/internal/full_function.md` 现版本已按全量功能矩阵列出 CLI 与 pipeline 能力，`sweep-linear` 已明确纳入。
+* 本页按全量功能矩阵列出 CLI 与 pipeline 能力，`sweep-linear` 已明确纳入。
 * 难点不应只看算法本身，主要工时消耗常在数据一致性、泄漏防控、回测语义和可复现运维。
 * 以人天口径，项目级预算通常应按 60 人天以上（可复现研究目标）准备；若要长期稳定运维，应按 100 人天以上准备。

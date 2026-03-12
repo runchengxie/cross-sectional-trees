@@ -20,7 +20,11 @@
 
 补充：如果你要下载更完整的港股财报资产，使用 `csml rqdata mirror-hk-pit-financials` 或 `csml rqdata mirror-hk-financial-details`。这两条命令会把数据写到 `artifacts/assets/rqdata/`，不走 pipeline 的 provider 基本面缓存。
 
-补充：如果你已经有 `pit_financials` 资产目录，可以继续执行 `csml rqdata build-hk-pit-fundamentals`。这条命令会生成一个平面 fundamentals 文件，默认把 `trade_date` 写成 `info_date`，可直接接到 `fundamentals.source=file`。
+补充：财报镜像目录除了 `manifest.yml`，现在还会写 `audit.csv`。做大范围下载时，优先固定 `--name` 并配合 `--resume` 使用，这样网络抖动重试、已有文件跳过和 quota 中断都能保留进度。
+
+补充：如果你已经有 `pit_financials` 资产目录，可以继续执行 `csml rqdata build-hk-pit-fundamentals`。这条命令会生成一个平面 fundamentals 文件，默认把 `trade_date` 写成 `info_date`，可直接接到 `fundamentals.source=file`。如果你同时传 `--source-universe-by-date` 和 `--universe-by-date-out`，还可以顺手派生一份只保留“确实有 PIT 财报”的研究 universe。
+
+补充：旧的 HK PIT 资产里如果出现过字段名尾随空格，`build-hk-pit-fundamentals` 现在会在构建时自动规范化；不需要手工重写原始 parquet。
 
 补充：字段名可以先用 `csml rqdata list-hk-financial-fields` 导出，再整理成 `--fields-file`。如果你只是想快速准备一份更完整的财务归档，也可以直接用 `--field-profile full`。
 

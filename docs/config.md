@@ -9,11 +9,14 @@ csml init-config --market hk --out config/
 相关文档：
 
 * CLI 用法：`docs/cli.md`
+* 项目能力：`docs/capabilities.md`
+* 常见流程：`docs/cookbook.md`
+* HK selected 配方：`docs/playbooks/hk-selected.md`
 * 数据源差异：`docs/providers.md`
 * 输出文件与字段：`docs/outputs.md`
 * 常见报错：`docs/troubleshooting.md`
 
-## 开始前先决定这几件事
+## 先选模板，再改参数
 
 第一次改配置时，优先看这些键：
 
@@ -26,35 +29,27 @@ csml init-config --market hk --out config/
 * `label.shift_days`：会直接影响当前持仓的解释。
 * `live.enabled`：如果需要当前持仓快照，再开启 live。
 
-## HK 配置角色分工
+## 常用模板
 
-HK 相关配置建议按职责使用：
+| 模板 | 用途 |
+| --- | --- |
+| `default/cn/hk/us` | 内置基础模板。适合先跑通项目。 |
+| `config/hk_selected__baseline.yml` | HK selected 通用基线。适合 `sweep-linear` 和线性模型批跑。 |
+| `config/hk_selected__baseline_pit_file.yml` | 读取本地 PIT fundamentals 文件的 HK 基线。 |
+| `config/hk_selected__provider_quarterly_valuation.yml` | 不依赖本地 PIT 文件的季度估值对照。 |
+| `config/hk_selected__baseline_pit_quarterly.yml` | 季度 PIT 财报基线。 |
+| `config/hk_selected__pit_quarterly_financial_ml.yml` | 季度 PIT 财务 ML 基线。 |
+| `config/hk_selected__pit_quarterly_financial_linear.yml` | 季度 PIT 财务线性对照。 |
+| `config/hk_selected__pit_quarterly_hybrid.yml` | 季度 PIT 财报 + 慢技术面混合配置。 |
+| `config/hk_connect__pit_quarterly_financial_ml.yml` | 更宽港股通股票池上的季度 PIT 财务 ML 配置。 |
+| `config/hk_selected__xgb_regressor.yml` | 显式 XGB 回归配置。 |
+| `config/hk_selected__xgb_ranker_pairwise.yml` | 显式 XGB 排序配置。 |
 
-* `config/hk_selected__baseline.yml`：通用基线配置。适合 `sweep-linear` 和线性模型批跑。
-* `config/hk_selected__baseline_pit_file.yml`：读取本地 PIT fundamentals 文件的 HK 基线配置。
-* `config/hk_selected__provider_quarterly_valuation.yml`：直接读取 provider 基本面字段的季度估值对照配置。适合先做最小验证。
-* `config/hk_selected__baseline_pit_quarterly.yml`：季度调仓的 HK PIT 财报基线配置。
-* `config/hk_selected__pit_quarterly_financial_ml.yml`：季度调仓的 HK PIT 财务 ML 基线。默认用高覆盖财报主项、报告级增长和横截面缺失填补。
-* `config/hk_selected__pit_quarterly_financial_linear.yml`：和财务 ML 基线同口径的季度 ridge 对照配置。适合看线性方向和系数归因。
-* `config/hk_connect__pit_quarterly_financial_ml.yml`：港股通更宽股票池的季度 PIT 财务 ML 基线。默认接 `hk_connect_full` 这套 universe 和财务资产路径。
-* `config/hk_selected__pit_quarterly_hybrid.yml`：季度调仓的 HK PIT 财报 + 慢技术面混合配置。
-* `config/hk_selected__xgb_regressor.yml`：显式 XGB 回归实验配置。
-* `config/hk_selected__xgb_ranker_pairwise.yml`：显式 XGB 排序实验配置。
+补充：
 
-实践建议：
-
-* 线性模型批跑时，优先用 `config/hk_selected__baseline.yml` 作为基础配置。
-* 如果你已经执行过 `csml rqdata build-hk-pit-fundamentals`，并希望研究直接读取本地财报文件，可切到 `config/hk_selected__baseline_pit_file.yml`。
-* 如果你想先确认“季度低频 + 估值字段”有没有方向，可先跑 `config/hk_selected__provider_quarterly_valuation.yml`。
-* 如果你要研究低频财报 alpha，先用 `config/hk_selected__baseline_pit_quarterly.yml`。它把标签、评估和回测一起切到季度口径。
-* 如果你要直接研究“高覆盖财报主项 + 增长 + 缺失标记”这条路线，优先用 `config/hk_selected__pit_quarterly_financial_ml.yml`。
-* 如果你要先看线性版本，再判断非线性模型是否真的提供增量，可先跑 `config/hk_selected__pit_quarterly_financial_linear.yml`。
-* 如果你先准备了一份更完整的港股通历史财务归档，再想在更宽股票池上重跑季度财务 ML，可切到 `config/hk_connect__pit_quarterly_financial_ml.yml`。
-* 如果你要把慢财报信号和价格趋势一起看，再切到 `config/hk_selected__pit_quarterly_hybrid.yml`。
-* 非线性对照时，显式指定对应的 XGB 配置文件。
-* HK selected 基线现在默认覆盖 `2015-01-01` 到 `2025-12-31`，配合 PIT universe 做 10y+ 回测。
-* 旧的 `config/hk_selected.yml` 已弃用。若 `sweep-linear` 遇到该路径且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
-* `config/universe.hk_connect_full.yml` 用于生成更完整的港股通历史股票池文件。它把 `top_quantile` 设成 `0`，保留全部港股通候选。
+* `config/hk_selected.yml` 已弃用。`sweep-linear` 遇到该路径且文件不存在时，会自动回退到 `config/hk_selected__baseline.yml`。
+* `config/universe.hk_connect_full.yml` 用于生成更完整的港股通历史股票池文件。
+* 想按研究路线选择这些模板时，直接看 `docs/playbooks/hk-selected.md`。
 
 ## 顶层配置块
 

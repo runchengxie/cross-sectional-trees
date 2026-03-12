@@ -31,10 +31,10 @@ csml run --config config/default.yml
 
 ## 测试
 
-项目使用 `pytest`，默认参数见 `pyproject.toml`（含 `--cov=csml`）。
+项目使用 `pytest`。默认入口不再强制打开 coverage，便于本地只收集测试、定点排查和拆分回归。
 
 ```bash
-uv run pytest
+scripts/run_tests.sh all
 ```
 
 常见用法：
@@ -44,10 +44,16 @@ uv run pytest
 uv run pytest tests/test_metrics.py
 
 # 日常快回归
-uv run pytest -m "not integration and not slow"
+scripts/run_tests.sh fast
+
+# 较重的离线回归
+scripts/run_tests.sh slow
 
 # 跑集成测试
-uv run pytest -m integration
+scripts/run_tests.sh integration
+
+# 需要 coverage 时显式执行
+scripts/run_tests.sh coverage
 
 # 真实 provider 集成测试（需显式启用 + 配置对应 token/账号）
 CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
@@ -59,22 +65,37 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 
 1. `unit`（默认日常回归）：不依赖外部账号、网络与真实行情接口。
 1. `integration`：覆盖跨模块流程（可包含较慢测试或更重的 fixture）。
-1. `slow`：显式标注高耗时用例，便于 CI 按需拆分执行。
+1. `slow`：离线但更重的回归。当前主要覆盖 `tests/test_pipeline_filters.py` 这类会反复拉起 pipeline 的用例，便于本地和 CI 拆分执行。
 
 常用命令：
 
 ```bash
 # 离线回归（建议本地高频执行）
-uv run pytest -m "not integration and not slow"
+scripts/run_tests.sh fast
+
+# 较重的离线回归
+scripts/run_tests.sh slow
 
 # 仅集成测试
-uv run pytest -m integration
+scripts/run_tests.sh integration
 ```
+
+## CI
+
+仓库现在提供 GitHub Actions workflow：`.github/workflows/tests.yml`。
+
+CI 默认拆成三段：
+
+1. `fast`：`scripts/run_tests.sh fast`
+1. `slow`：`scripts/run_tests.sh slow`
+1. `integration`：`scripts/run_tests.sh integration`
+
+这样可以把默认离线回归、较重离线回归和端到端流程分开看。排查失败时，先在本地复现对应那一段。
 
 最近几轮和 HK + RQData 相关的高频回归，建议至少覆盖这组：
 
 ```bash
-uv run pytest \
+scripts/run_tests.sh all \
   tests/test_pipeline_validation.py \
   tests/test_summarize_runs.py \
   tests/test_pipeline_filters.py \
@@ -103,7 +124,7 @@ uv run pytest \
 
 ## 提交前检查建议
 
-1. 至少跑一遍 `uv run pytest`。
+1. 至少跑一遍 `scripts/run_tests.sh all`。
 1. 用你修改过的配置跑一次 `csml run --config ...`。
 1. 检查 `README.md` 与 `docs/` 是否同步更新。
 

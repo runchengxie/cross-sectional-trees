@@ -80,6 +80,51 @@ class _FakeRQPitClient:
         )
 
 
+class _WhitespaceFieldRQPitClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_pit_financials_ex(
+        self,
+        *,
+        order_book_ids,
+        fields,
+        start_quarter,
+        end_quarter,
+        date=None,
+        statements="latest",
+        market="hk",
+    ):
+        self.calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "fields": list(fields),
+                "start_quarter": start_quarter,
+                "end_quarter": end_quarter,
+                "date": date,
+                "statements": statements,
+                "market": market,
+            }
+        )
+        return pd.DataFrame(
+            [
+                {
+                    "info_date": pd.Timestamp("2025-03-20"),
+                    "fiscal_year": pd.Timestamp("2024-12-31"),
+                    "standard": "IFRS",
+                    "if_adjusted": 0,
+                    "rice_create_tm": pd.Timestamp("2025-03-20 09:00:00"),
+                    "revenue": 100.0,
+                    "goodwill_and_intangible_assets ": 55.0,
+                }
+            ],
+            index=pd.MultiIndex.from_tuples(
+                [("00005.XHKG", "2024q4")],
+                names=["order_book_id", "quarter"],
+            ),
+        )
+
+
 class _FakeRQHKApi:
     def __init__(self):
         self.calls: list[dict] = []
@@ -142,6 +187,129 @@ class _FakeRQHKApi:
 class _FakeRQDetailsClient:
     def __init__(self):
         self.hk = _FakeRQHKApi()
+
+
+class _FlakyRQPitClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+        self._delegate = _FakeRQPitClient()
+        self._failed_once = False
+
+    def get_pit_financials_ex(
+        self,
+        *,
+        order_book_ids,
+        fields,
+        start_quarter,
+        end_quarter,
+        date=None,
+        statements="latest",
+        market="hk",
+    ):
+        self.calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "fields": list(fields),
+                "start_quarter": start_quarter,
+                "end_quarter": end_quarter,
+                "date": date,
+                "statements": statements,
+                "market": market,
+            }
+        )
+        if not self._failed_once:
+            self._failed_once = True
+            raise ConnectionError("temporary network jitter")
+        return self._delegate.get_pit_financials_ex(
+            order_book_ids=order_book_ids,
+            fields=fields,
+            start_quarter=start_quarter,
+            end_quarter=end_quarter,
+            date=date,
+            statements=statements,
+            market=market,
+        )
+
+
+class _QuotaRQPitClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+        self._delegate = _FakeRQPitClient()
+
+    def get_pit_financials_ex(
+        self,
+        *,
+        order_book_ids,
+        fields,
+        start_quarter,
+        end_quarter,
+        date=None,
+        statements="latest",
+        market="hk",
+    ):
+        payload = {
+            "order_book_ids": list(order_book_ids),
+            "fields": list(fields),
+            "start_quarter": start_quarter,
+            "end_quarter": end_quarter,
+            "date": date,
+            "statements": statements,
+            "market": market,
+        }
+        self.calls.append(payload)
+        if len(self.calls) >= 2:
+            raise RuntimeError("daily quota exceeded: bytes_limit reached")
+        return self._delegate.get_pit_financials_ex(
+            order_book_ids=order_book_ids,
+            fields=fields,
+            start_quarter=start_quarter,
+            end_quarter=end_quarter,
+            date=date,
+            statements=statements,
+            market=market,
+        )
+
+
+class _FieldFallbackRQPitClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+        self._delegate = _FakeRQPitClient()
+
+    def get_pit_financials_ex(
+        self,
+        *,
+        order_book_ids,
+        fields,
+        start_quarter,
+        end_quarter,
+        date=None,
+        statements="latest",
+        market="hk",
+    ):
+        self.calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "fields": list(fields),
+                "start_quarter": start_quarter,
+                "end_quarter": end_quarter,
+                "date": date,
+                "statements": statements,
+                "market": market,
+            }
+        )
+        if "goodwill_and_intangible_assets" in fields:
+            raise RuntimeError(
+                "fields: got invalided value goodwill_and_intangible_assets, choose any in ['revenue', 'net_profit']"
+            )
+        return self._delegate.get_pit_financials_ex(
+            order_book_ids=order_book_ids,
+            fields=fields,
+            start_quarter=start_quarter,
+            end_quarter=end_quarter,
+            date=date,
+            statements=statements,
+            market=market,
+        )
 
 
 def test_list_hk_financial_fields_filters_and_writes_file(tmp_path, monkeypatch, capsys):
@@ -432,3 +600,386 @@ def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, m
     assert output_manifest["totals"]["output_rows"] == 3
     assert output_manifest["totals"]["duplicate_rows_seen"] == 2
     assert output_manifest["totals"]["duplicate_rows_dropped"] == 1
+
+
+def test_build_hk_pit_fundamentals_file_normalizes_whitespace_fields_and_derives_universe(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    manifest = {
+        "dataset": "pit_financials",
+        "query": {"fields": ["revenue", "goodwill_and_intangible_assets"]},
+        "columns": [
+            "quarter",
+            "info_date",
+            "fiscal_year",
+            "standard",
+            "if_adjusted",
+            "rice_create_tm",
+            "revenue",
+            "goodwill_and_intangible_assets ",
+            "order_book_id",
+            "ts_code",
+        ],
+    }
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "quarter": ["2024q4"],
+            "info_date": pd.to_datetime(["2025-03-20"]),
+            "fiscal_year": pd.to_datetime(["2024-12-31"]),
+            "standard": ["IFRS"],
+            "if_adjusted": [0],
+            "rice_create_tm": pd.to_datetime(["2025-03-20 09:00:00"]),
+            "revenue": [100.0],
+            "goodwill_and_intangible_assets ": [55.0],
+            "order_book_id": ["00005.XHKG"],
+            "ts_code": ["00005.HK"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    source_universe = repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_by_date.csv"
+    source_universe.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "trade_date": ["20250320", "20250320"],
+            "ts_code": ["00005.HK", "00011.HK"],
+            "stock_ticker": ["00005.HK", "00011.HK"],
+            "selected": [1, 1],
+        }
+    ).to_csv(source_universe, index=False)
+
+    out_path = repo_root / "artifacts" / "assets" / "fundamentals" / "pit_fundamentals_full.parquet"
+    research_universe_out = (
+        repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_research_by_date.csv"
+    )
+    symbols_out = repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_research_symbols.txt"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        field=[],
+        fields_file=[],
+        out=str(out_path),
+        source_universe_by_date=str(source_universe),
+        universe_by_date_out=str(research_universe_out),
+        symbols_out=str(symbols_out),
+        keep_meta=False,
+        duplicate_policy="keep-last",
+        force=False,
+    )
+
+    assert rqdata_assets.build_hk_pit_fundamentals_file(args) == 0
+
+    fundamentals = pd.read_parquet(out_path)
+    assert fundamentals.columns.tolist() == [
+        "trade_date",
+        "ts_code",
+        "revenue",
+        "goodwill_and_intangible_assets",
+    ]
+    assert fundamentals["goodwill_and_intangible_assets"].tolist() == [55.0]
+
+    research_universe = pd.read_csv(research_universe_out)
+    assert research_universe["ts_code"].tolist() == ["00005.HK"]
+    assert research_universe["stock_ticker"].tolist() == ["00005.HK"]
+    assert symbols_out.read_text(encoding="utf-8") == "00005.HK\n"
+
+    output_manifest = yaml.safe_load(
+        (
+            repo_root
+            / "artifacts"
+            / "assets"
+            / "fundamentals"
+            / "pit_fundamentals_full.manifest.yml"
+        ).read_text(encoding="utf-8")
+    )
+    assert output_manifest["query"]["fields"] == ["revenue", "goodwill_and_intangible_assets"]
+    assert output_manifest["outputs"]["symbols_file"] == str(symbols_out)
+    assert output_manifest["outputs"]["universe_by_date_file"] == str(research_universe_out)
+    assert output_manifest["filtered_universe"]["symbols"] == 1
+
+
+def test_mirror_hk_pit_financials_normalizes_whitespace_field_columns(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _WhitespaceFieldRQPitClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_quarter="2024q4",
+        end_quarter="2025q1",
+        date="20260310",
+        statements="latest",
+        field=["revenue", "goodwill_and_intangible_assets"],
+        fields_file=[],
+        symbol=["00005.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=1,
+        out_root="artifacts/assets/rqdata",
+        name="pit_whitespace_fields_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_pit_financials(args, client) == 0
+
+    output_dir = (
+        repo_root
+        / "artifacts"
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "pit_financials"
+        / "pit_whitespace_fields_demo"
+    )
+    data = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert "goodwill_and_intangible_assets" in data.columns
+    assert "goodwill_and_intangible_assets " not in data.columns
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert "goodwill_and_intangible_assets" in manifest["columns"]
+    assert "goodwill_and_intangible_assets " not in manifest["columns"]
+
+
+def test_mirror_hk_pit_financials_resume_skips_existing_and_writes_audit(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    data_dir = output_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    pd.DataFrame(
+        {
+            "quarter": ["2024q4"],
+            "info_date": pd.to_datetime(["2025-03-20"]),
+            "fiscal_year": pd.to_datetime(["2024-12-31"]),
+            "standard": ["IFRS"],
+            "if_adjusted": [0],
+            "rice_create_tm": pd.to_datetime(["2025-03-20 09:00:00"]),
+            "revenue": [100.0],
+            "net_profit": [10.0],
+            "order_book_id": ["00005.XHKG"],
+            "ts_code": ["00005.HK"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+    (output_dir / "fields.txt").write_text("revenue\nnet_profit\n", encoding="utf-8")
+    (output_dir / "symbols.txt").write_text("00005.HK\n00011.HK\n", encoding="utf-8")
+    (output_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "pit_financials",
+                "query": {
+                    "start_quarter": "2024q4",
+                    "end_quarter": "2025q1",
+                    "date": "20260310",
+                    "statements": "latest",
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    client = _FakeRQPitClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_quarter="2024q4",
+        end_quarter="2025q1",
+        date="20260310",
+        statements="latest",
+        field=["revenue", "net_profit"],
+        fields_file=[],
+        symbol=["00005.HK", "00011.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=20,
+        out_root="artifacts/assets/rqdata",
+        name="pit_demo",
+        resume=True,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_pit_financials(args, client) == 0
+    assert client.calls == [
+        {
+            "order_book_ids": ["00011.XHKG"],
+            "fields": ["revenue", "net_profit"],
+            "start_quarter": "2024q4",
+            "end_quarter": "2025q1",
+            "date": "20260310",
+            "statements": "latest",
+            "market": "hk",
+        }
+    ]
+
+    audit = pd.read_csv(output_dir / "audit.csv")
+    status_map = dict(zip(audit["ts_code"], audit["status"]))
+    assert status_map["00005.HK"] == "skipped_existing"
+    assert status_map["00011.HK"] == "written"
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["totals"]["symbols_written"] == 2
+    assert manifest["totals"]["symbols_newly_written"] == 1
+    assert manifest["totals"]["symbols_skipped_existing"] == 1
+    assert manifest["status_counts"]["skipped_existing"] == 1
+    assert manifest["status_counts"]["written"] == 1
+
+
+def test_mirror_hk_pit_financials_retries_and_records_attempts(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FlakyRQPitClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_quarter="2024q4",
+        end_quarter="2025q1",
+        date="20260310",
+        statements="latest",
+        field=["revenue", "net_profit"],
+        fields_file=[],
+        symbol=["00005.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=1,
+        out_root="artifacts/assets/rqdata",
+        name="pit_retry_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=2,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_pit_financials(args, client) == 0
+    assert len(client.calls) == 2
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_retry_demo"
+    audit = pd.read_csv(output_dir / "audit.csv")
+    assert audit.loc[audit["ts_code"] == "00005.HK", "attempts"].iloc[0] == 2
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["batches"][0]["attempts"] == 2
+    assert manifest["status"] == "completed"
+
+
+def test_mirror_hk_pit_financials_stops_on_quota_and_marks_remaining_symbols(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _QuotaRQPitClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_quarter="2024q4",
+        end_quarter="2025q1",
+        date="20260310",
+        statements="latest",
+        field=["revenue", "net_profit"],
+        fields_file=[],
+        symbol=["00005.HK", "00011.HK", "00012.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=1,
+        out_root="artifacts/assets/rqdata",
+        name="pit_quota_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_pit_financials(args, client) == 2
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_quota_demo"
+    audit = pd.read_csv(output_dir / "audit.csv")
+    status_map = dict(zip(audit["ts_code"], audit["status"]))
+    assert status_map["00005.HK"] == "written"
+    assert status_map["00011.HK"] == "quota_blocked"
+    assert status_map["00012.HK"] == "quota_blocked"
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["status"] == "stopped_quota"
+    assert manifest["totals"]["symbols_written"] == 1
+    assert manifest["totals"]["symbols_quota_blocked"] == 2
+    assert manifest["quota_blocked_symbols"] == ["00011.HK", "00012.HK"]
+
+
+def test_mirror_hk_pit_financials_drops_invalid_field_per_symbol_and_keeps_schema(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FieldFallbackRQPitClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_quarter="2024q4",
+        end_quarter="2025q1",
+        date="20260310",
+        statements="latest",
+        field=["revenue", "goodwill_and_intangible_assets"],
+        fields_file=[],
+        symbol=["00005.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=1,
+        out_root="artifacts/assets/rqdata",
+        name="pit_field_fallback_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_pit_financials(args, client) == 0
+    assert len(client.calls) == 2
+    assert client.calls[0]["fields"] == ["revenue", "goodwill_and_intangible_assets"]
+    assert client.calls[1]["fields"] == ["revenue"]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_field_fallback_demo"
+    data = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert "revenue" in data.columns
+    assert "goodwill_and_intangible_assets" in data.columns
+    assert data["goodwill_and_intangible_assets"].isna().all()
+
+    audit = pd.read_csv(output_dir / "audit.csv")
+    assert audit.loc[audit["ts_code"] == "00005.HK", "status"].iloc[0] == "written"
+    assert (
+        audit.loc[audit["ts_code"] == "00005.HK", "dropped_fields"].iloc[0]
+        == "goodwill_and_intangible_assets"
+    )

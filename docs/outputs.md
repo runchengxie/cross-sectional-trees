@@ -79,6 +79,8 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 配套文件：
 
 * `pipeline_fundamentals.manifest.yml`：来源资产目录、字段选择、去重策略和输出统计。
+* 可选：如果构建时传了 `--symbols-out`，会额外写一个 symbol 文本文件。
+* 可选：如果构建时传了 `--source-universe-by-date` + `--universe-by-date-out`，会额外写一个过滤后的 PIT universe CSV。
 
 字段约定：
 
@@ -86,6 +88,7 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * 值列：你在命令里选中的 PIT 财报字段；如果没显式传字段，默认沿用源资产 `manifest.yml` 里的字段列表
 * `trade_date` 默认等于原始 PIT 行的 `info_date`
 * 传 `--keep-meta` 时，会额外保留 `quarter`、`info_date`、`fiscal_year`、`standard`、`if_adjusted`、`rice_create_tm`、`order_book_id`
+* 构建阶段会自动规范化旧资产里的尾随空格字段名
 
 使用建议：
 
