@@ -14,7 +14,7 @@ import yaml
 from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, SWEEPS_DIR as DEFAULT_SWEEPS_DIR_PATH
 from ..config_utils import resolve_pipeline_config
 
-DEFAULT_BASE_CONFIG = "config/hk_selected__baseline.yml"
+DEFAULT_BASE_CONFIG = "config/hk_selected__xgb_regressor.yml"
 DEFAULT_RUN_NAME_PREFIX = "hk_sel_"
 DEFAULT_SWEEPS_DIR = DEFAULT_SWEEPS_DIR_PATH.as_posix()
 DEFAULT_RIDGE_ALPHA = [0.01, 0.1, 1, 10, 100]

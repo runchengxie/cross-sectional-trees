@@ -155,7 +155,7 @@ csml alloc \
 ```bash
 csml backup-data \
   --name hk_frozen_20251231 \
-  --config config/hk_selected__baseline.yml
+  --config config/hk_selected__xgb_regressor.yml
 ```
 
 如果你是从旧版本目录升级过来，本地还保留旧布局：

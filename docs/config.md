@@ -37,7 +37,8 @@ csml init-config --market default --out config/
 | `default` | HK starter 模板。适合先跑通主流程。 |
 | `hk` | 港股 PIT 研究模板。适合正式研究配置。 |
 | `cn/us` | 兼容模板。适合保留多市场基础切换或做对照。 |
-| `config/hk_selected__baseline.yml` | HK selected 通用基线。适合 `sweep-linear` 和线性模型批跑。 |
+| `config/hk_selected__xgb_regressor.yml` | 显式 XGB 回归配置。当前推荐作为 HK selected 的默认起点。 |
+| `config/hk_selected__baseline.yml` | HK selected 兼容基线。当前内容和 `config/hk_selected__xgb_regressor.yml` 相同。 |
 | `config/hk_selected__baseline_eval_sample.yml` | HK selected 评估抽样实验配置。适合检查样本抽样口径。 |
 | `config/hk_selected__baseline_eval_sample_ffill.yml` | HK selected 评估抽样 + 退出价格回退实验配置。 |
 | `config/hk_selected__baseline_pit_file.yml` | 读取本地 PIT fundamentals 文件的 HK 基线。 |
@@ -47,7 +48,6 @@ csml init-config --market default --out config/
 | `config/hk_selected__pit_quarterly_financial_linear.yml` | 季度 PIT 财务线性对照。 |
 | `config/hk_selected__pit_quarterly_hybrid.yml` | 季度 PIT 财报 + 慢技术面混合配置。 |
 | `config/hk_connect__pit_quarterly_financial_ml.yml` | 更宽港股通股票池上的季度 PIT 财务 ML 配置。 |
-| `config/hk_selected__xgb_regressor.yml` | 显式 XGB 回归配置。当前内容和 `config/hk_selected__baseline.yml` 相同。 |
 | `config/hk_selected__xgb_ranker_pairwise.yml` | 显式 XGB 排序配置。 |
 
 补充：
@@ -55,9 +55,9 @@ csml init-config --market default --out config/
 * `default` 现在是港股优先的 starter 模板。它用静态港股股票池，不依赖 PIT universe 文件。
 * `--config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
 * 新项目优先从 `default` 或 `hk` 开始。只有确实需要多市场对照时，再切到 `cn/us`。
-* `config/hk_selected.yml` 已移除。旧配置请直接改成 `config/hk_selected__baseline.yml`。
-* `config/hk_selected__baseline.yml` 当前就是一份 `xgb_regressor` 配置。这个文件名强调“研究基线”。
-* `config/hk_selected__xgb_regressor.yml` 当前和 `config/hk_selected__baseline.yml` 只有文件头注释不同。这个文件名强调“当前模型是 `xgb_regressor`”。
+* `config/hk_selected.yml` 已移除。旧配置请直接改成 `config/hk_selected__xgb_regressor.yml`，或继续沿用 `config/hk_selected__baseline.yml`。
+* 新文档和新实验更建议直接用 `config/hk_selected__xgb_regressor.yml`。
+* `config/hk_selected__baseline.yml` 继续保留，主要用于兼容旧文档、旧脚本和旧 sweep 配置。
 * `config/universe.hk_connect_full.yml` 用于生成更完整的港股通历史股票池文件。
 * 当前现成模板主要覆盖月度和季度。年度 `Y` 需要从月度或季度模板本地派生。
 * 当前现成季度模板主要是在比较不同信号路线，不是完整的“四模型矩阵”。如果你要做季度四模型 PK，先选一份季度基线，再本地派生四个模型版本。
@@ -112,7 +112,7 @@ model:
 
 ### 线性模型搜索是什么意思
 
-`csml sweep-linear` 里的“线性模型搜索”指的是正则化线性模型搜索：
+`csml sweep-linear` 里的“线性模型搜索”只覆盖这两类模型：
 
 * `ridge`：搜索 `alpha`
 * `elasticnet`：搜索 `alpha` 和 `l1_ratio`
@@ -123,12 +123,12 @@ model:
 
 建议按下面的顺序理解：
 
-* 默认起点仍然是 `xgb_regressor`。仓库里的 `default`、`hk`、`config/hk_selected__baseline.yml` 都是这个方向。
+* 默认起点更适合用 `xgb_regressor`。仓库里的 `default`、`hk`、`config/hk_selected__xgb_regressor.yml` 都是这个方向。
+* `xgb_ranker` 很重要，但它更像排序目标的专项对照，不适合直接当所有路线的统一默认值。
 * `ridge` 更适合当线性基线。它跑得快，也更适合先判断这套特征和标签是不是有稳定关系。
 * `elasticnet` 更适合在线性路线里做补充搜索，不一定适合作为唯一主模型。
-* `xgb_ranker` 更适合当排序目标的专项对照，不建议一上来就替代所有回归基线。
 
-如果你只想先选一个模型开跑，当前最稳妥的默认选项仍然是 `xgb_regressor`。如果你在做新路线探索，最好同时保留一份 `ridge` 对照。
+如果你只想先选一个模型开跑，当前更稳妥的默认选项仍然是 `xgb_regressor`。如果你明确只关心同日截面排序，也可以把 `xgb_ranker` 作为第一对照。新路线探索时，最好同时保留一份 `ridge` 对照。
 
 ## `data`
 

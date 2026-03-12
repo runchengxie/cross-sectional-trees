@@ -40,7 +40,7 @@ PIT 资产准备看：
 
 | 频率 | 纯量价 | 量价 + provider 基本面 | 量价 + PIT 财务 |
 | --- | --- | --- | --- |
-| 月度 `M` | 需要本地派生。可从 `config/hk_selected__baseline.yml` 关掉 `fundamentals` 开始。 | 现成模板最完整：`config/hk_selected__baseline.yml`、`config/hk_selected__ridge_a1.yml`、`config/hk_selected__elasticnet_a0.1_l0.5.yml`、`config/hk_selected__xgb_regressor.yml`、`config/hk_selected__xgb_ranker_pairwise.yml`。 | 有现成起点：`config/hk_selected__baseline_pit_file.yml`。如果要四模型 PK，需要继续派生。 |
+| 月度 `M` | 需要本地派生。可从 `config/hk_selected__xgb_regressor.yml` 关掉 `fundamentals` 开始。 | 现成模板最完整：`config/hk_selected__xgb_regressor.yml`、`config/hk_selected__xgb_ranker_pairwise.yml`、`config/hk_selected__ridge_a1.yml`、`config/hk_selected__elasticnet_a0.1_l0.5.yml`。 | 有现成起点：`config/hk_selected__baseline_pit_file.yml`。如果要四模型 PK，需要继续派生。 |
 | 季度 `Q` | 需要本地派生。可从 `config/hk_selected__pit_quarterly_hybrid.yml` 关掉 `fundamentals` 开始。 | 有现成估值对照：`config/hk_selected__provider_quarterly_valuation.yml`。如果要再叠加量价特征，需要继续派生。 | 现成模板最多：`config/hk_selected__baseline_pit_quarterly.yml`、`config/hk_selected__pit_quarterly_financial_ml.yml`、`config/hk_selected__pit_quarterly_financial_linear.yml`、`config/hk_selected__pit_quarterly_hybrid.yml`。 |
 | 年度 `Y` | 代码支持，当前没有内置模板。建议从月度或季度配置派生。 | 代码支持，当前没有内置模板。建议从季度 provider 路线派生。 | 代码支持，当前没有内置模板。建议从季度 PIT 路线派生。 |
 
@@ -55,8 +55,8 @@ PIT 资产准备看：
 
 | 数据路线 | 起点配置 | 需要本地 PIT 文件 | 更适合回答的问题 |
 | --- | --- | --- | --- |
-| 纯量价 | 从 `config/hk_selected__baseline.yml` 派生，设 `fundamentals.enabled=false` | 否 | 先看技术面和量价本身有没有稳定信号 |
-| 量价 + provider 基本面 | `config/hk_selected__baseline.yml` 及其显式模型模板 | 否 | 日常基线、四模型 PK、估值与技术面的混合信号 |
+| 纯量价 | 从 `config/hk_selected__xgb_regressor.yml` 派生，设 `fundamentals.enabled=false` | 否 | 先看技术面和量价本身有没有稳定信号 |
+| 量价 + provider 基本面 | `config/hk_selected__xgb_regressor.yml` 及其显式模型模板 | 否 | 日常基线、四模型 PK、估值与技术面的混合信号 |
 | 量价 + PIT 财务 | `config/hk_selected__baseline_pit_file.yml` | 是 | 想保留月度调仓，同时把财报字段并进模型 |
 
 月度路线当前最适合做四模型比较。原因很简单：
@@ -142,11 +142,19 @@ PIT 资产准备看：
 * 派生四份本地配置
 * 只改 `model` 和 `eval.run_name`
 
+模型分组可以直接这样记：
+
+* 线性模型：`ridge`、`elasticnet`
+* 非线性模型：`xgb_regressor`、`xgb_ranker`
+
 示例：
 
 ```bash
+# 非线性模型
 csml run --config config/local/hk_sel_pit_q_hybrid_xgb_reg.yml
 csml run --config config/local/hk_sel_pit_q_hybrid_xgb_rank.yml
+
+# 线性模型
 csml run --config config/local/hk_sel_pit_q_hybrid_ridge.yml
 csml run --config config/local/hk_sel_pit_q_hybrid_en.yml
 
@@ -156,7 +164,7 @@ csml summarize \
   --sort-by score
 ```
 
-如果你要做线性模型搜索，再单独用 `csml sweep-linear`。这一步只搜索 `ridge` 和 `elasticnet` 的正则参数。前提仍然是先把研究单元固定住。
+如果你要继续细化线性模型，再单独用 `csml sweep-linear` 跑 `ridge` 和 `elasticnet`。前提仍然是先把研究单元固定住。
 
 ## 7. 什么时候需要准备 PIT 财务文件
 
@@ -172,7 +180,7 @@ csml summarize \
 
 ```bash
 csml rqdata mirror-hk-pit-financials \
-  --config config/hk_selected__baseline.yml \
+  --config config/hk_selected__xgb_regressor.yml \
   --name hk_selected_pit_2011_2025_latest \
   --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
   --start-quarter 2011q1 \

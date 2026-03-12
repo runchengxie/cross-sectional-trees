@@ -111,7 +111,7 @@ csml run --config hk
 csml grid --config config/hk.yml --top-k 5,10 --cost-bps 15,25
 
 csml grid \
-  --config config/hk_selected__baseline.yml \
+  --config config/hk_selected__xgb_regressor.yml \
   --top-k 10,20 \
   --cost-bps 15,25,40 \
   --buffer-exit 8,10 \
@@ -126,7 +126,7 @@ csml grid \
 关键参数：
 
 * `--sweep-config <path>`：sweep YAML。CLI 参数会覆盖该文件。
-* `--config <path_or_alias>`：基础配置，默认 `config/hk_selected__baseline.yml`。
+* `--config <path_or_alias>`：基础配置，默认 `config/hk_selected__xgb_regressor.yml`。
 * `--run-name-prefix <prefix>`
 * `--sweeps-dir <dir>`
 * `--tag <name>`
@@ -144,10 +144,10 @@ csml grid \
 
 补充：
 
-* `config/hk_selected.yml` 已移除。旧 sweep 配置请直接改成 `config/hk_selected__baseline.yml`。
+* `config/hk_selected.yml` 已移除。旧 sweep 配置请直接改成 `config/hk_selected__xgb_regressor.yml`，或继续沿用 `config/hk_selected__baseline.yml`。
 * 输出目录默认在 `artifacts/sweeps/<tag>/`。
-* 这里的“线性模型”只包括 `ridge` 和 `elasticnet`。当前不会生成普通最小二乘线性回归配置。
-* 默认基础配置是 `config/hk_selected__baseline.yml`。它当前的 `model.type` 是 `xgb_regressor`，但 sweep 生成任务时会把模型块改写成 `ridge` 或 `elasticnet`。
+* 这里的“线性模型”只包括 `ridge` 和 `elasticnet`。
+* 默认基础配置是 `config/hk_selected__xgb_regressor.yml`。生成 sweep 任务时，命令会把模型块改写成 `ridge` 或 `elasticnet`。
 
 示例：
 
@@ -327,7 +327,7 @@ csml alloc --positions-file artifacts/runs/<run_dir>/positions_by_rebalance_live
 ```bash
 csml backup-data \
   --name hk_frozen_20251231 \
-  --config config/hk_selected__baseline.yml
+  --config config/hk_selected__xgb_regressor.yml
 
 csml backup-data \
   --name hk_eval_bundle \
@@ -525,7 +525,7 @@ csml rqdata mirror-hk-daily \
 
 ```bash
 csml rqdata mirror-hk-pit-financials \
-  --config config/hk_selected__baseline.yml \
+  --config config/hk_selected__xgb_regressor.yml \
   --name hk_selected_pit_2011_2025_latest \
   --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
   --start-quarter 2011q1 \
