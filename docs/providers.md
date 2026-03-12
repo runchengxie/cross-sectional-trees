@@ -22,6 +22,8 @@
 
 补充：如果你要下载更完整的港股财报资产，使用 `csml rqdata mirror-hk-pit-financials` 或 `csml rqdata mirror-hk-financial-details`。这两条命令会把数据写到 `artifacts/assets/rqdata/`，不走 pipeline 的 provider 基本面缓存。
 
+补充：如果你也想把 HK 日线落成独立资产目录，使用 `csml rqdata mirror-hk-daily`。这条命令同样写到 `artifacts/assets/rqdata/`，和 `artifacts/cache/` 里的 query cache 是两套东西。
+
 补充：如果你依赖 `round_lot`、`listed_date`、`de_listed_date` 这类 instrument 元数据，使用 `csml rqdata export-hk-instruments` 先做一份本地快照。`alloc` 这类下游命令会直接用到 `round_lot`。
 
 补充：财报镜像目录除了 `manifest.yml`，现在还会写 `audit.csv`。做大范围下载时，优先固定 `--name` 并配合 `--resume` 使用，这样网络抖动重试、已有文件跳过和 quota 中断都能保留进度。

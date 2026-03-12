@@ -194,6 +194,35 @@ def test_cli_parses_rqdata_asset_commands():
     assert export_instruments.force is True
     assert callable(export_instruments.func)
 
+    daily = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-daily",
+            "--by-date-file",
+            "artifacts/assets/universe/hk_connect_full_by_date.csv",
+            "--start-date",
+            "20000101",
+            "--end-date",
+            "20260311",
+            "--field",
+            "vwap",
+            "--resume",
+            "--include-suspended",
+            "--name",
+            "daily_demo",
+        ]
+    )
+    assert daily.command == "rqdata"
+    assert daily.rq_command == "mirror-hk-daily"
+    assert daily.by_date_file == "artifacts/assets/universe/hk_connect_full_by_date.csv"
+    assert daily.start_date == "20000101"
+    assert daily.end_date == "20260311"
+    assert daily.field == ["vwap"]
+    assert daily.resume is True
+    assert daily.skip_suspended is False
+    assert daily.name == "daily_demo"
+    assert callable(daily.func)
+
     pit = parser.parse_args(
         [
             "rqdata",

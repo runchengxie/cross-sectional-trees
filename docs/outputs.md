@@ -30,10 +30,11 @@ artifacts/
 
 当前 `dataset` 包括：
 
+* `daily`
 * `pit_financials`
 * `financial_details`
 
-这类目录由 `csml rqdata mirror-hk-pit-financials` 和 `csml rqdata mirror-hk-financial-details` 生成。
+这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials` 和 `csml rqdata mirror-hk-financial-details` 生成。
 如果你继续执行 `csml rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
 
 ## RQData 资产镜像目录
@@ -43,6 +44,7 @@ artifacts/
 ```text
 artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
   manifest.yml
+  audit.csv
   fields.txt
   symbols.txt
   data/
@@ -54,12 +56,14 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 文件说明：
 
 * `manifest.yml`：查询参数、字段列表、symbol 来源、文件统计、缺失 symbol 和 git 元数据。
+* `audit.csv`：逐 symbol 下载状态，便于区分 `written`、`skipped_existing`、`missing_remote`、`failed` 和 `quota_blocked`。
 * `fields.txt`：本次拉取的字段名清单。
 * `symbols.txt`：本次拉取的 symbol 清单。
 * `data/<ts_code>.parquet`：按 symbol 分开的原始镜像文件。
 
 字段约定：
 
+* `daily` 保留 `rqdatac.get_price` 返回的日频字段名，并额外写入 `trade_date`、`ts_code`、`order_book_id`。
 * `pit_financials` 保留 `rqdatac.get_pit_financials_ex` 的字段名，并额外写入 `ts_code`、`order_book_id`。
 * `financial_details` 保留 `rqdatac.hk.get_detailed_financial_items` 的字段名，并额外写入 `ts_code`、`order_book_id`。
 
