@@ -47,10 +47,10 @@ where = ["src"]
 csml = ["config/*.yml"]
 
 [tool.pytest.ini_options]
-addopts = "-q --disable-warnings --maxfail=1 --cov=csml --cov-report=term-missing"
+addopts = "-q --disable-warnings --maxfail=1 --strict-markers"
 markers = [
-  "integration: end-to-end or slower tests",
-  "slow: intentionally slow tests",
+  "integration: cross-module end-to-end tests",
+  "slow: heavier offline regression tests",
 ]
 
 [tool.uv.extra-build-dependencies]

@@ -182,6 +182,13 @@ def test_cli_parses_rqdata_asset_commands():
             "20260310",
             "--batch-size",
             "10",
+            "--resume",
+            "--max-attempts",
+            "5",
+            "--backoff-seconds",
+            "0.25",
+            "--max-backoff-seconds",
+            "2.0",
             "--name",
             "pit_demo",
         ]
@@ -194,6 +201,11 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit.start_quarter == "2011q1"
     assert pit.end_quarter == "2025q4"
     assert pit.batch_size == 10
+    assert pit.resume is True
+    assert pit.skip_existing is False
+    assert pit.max_attempts == 5
+    assert pit.backoff_seconds == 0.25
+    assert pit.max_backoff_seconds == 2.0
     assert pit.name == "pit_demo"
     assert callable(pit.func)
 
@@ -233,6 +245,12 @@ def test_cli_parses_rqdata_asset_commands():
             "net_profit",
             "--out",
             "artifacts/assets/fundamentals/pit_fundamentals.parquet",
+            "--source-universe-by-date",
+            "artifacts/assets/universe/hk_connect_full_by_date.csv",
+            "--universe-by-date-out",
+            "artifacts/assets/universe/hk_connect_full_research_by_date.csv",
+            "--symbols-out",
+            "artifacts/assets/universe/hk_connect_full_research_symbols.txt",
             "--keep-meta",
             "--duplicate-policy",
             "error",
@@ -245,6 +263,9 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit_fundamentals.field_profile == ["starter"]
     assert pit_fundamentals.field == ["revenue", "net_profit"]
     assert pit_fundamentals.out == "artifacts/assets/fundamentals/pit_fundamentals.parquet"
+    assert pit_fundamentals.source_universe_by_date == "artifacts/assets/universe/hk_connect_full_by_date.csv"
+    assert pit_fundamentals.universe_by_date_out == "artifacts/assets/universe/hk_connect_full_research_by_date.csv"
+    assert pit_fundamentals.symbols_out == "artifacts/assets/universe/hk_connect_full_research_symbols.txt"
     assert pit_fundamentals.keep_meta is True
     assert pit_fundamentals.duplicate_policy == "error"
     assert pit_fundamentals.force is True

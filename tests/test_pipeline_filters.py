@@ -66,6 +66,7 @@ def _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=None) -> Path:
     return run_dirs[0]
 
 
+@pytest.mark.slow
 def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=12, freq="B")
     symbols = ["AAA", "BBB", "CCC"]
@@ -159,6 +160,7 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
     assert zero_vol_rows["is_tradable"].eq(False).all()
 
 
+@pytest.mark.slow
 def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch):
     dates = pd.date_range("2025-01-01", periods=12, freq="B")
     symbols = ["00005.HK", "00011.HK"]
@@ -283,6 +285,7 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
     assert set(seen_cache_dirs.values()) == {str(tmp_path / "cache" / "fundamentals" / "hk")}
 
 
+@pytest.mark.slow
 def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -460,6 +463,7 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
     assert on_00011["revenue"].eq(220.0).all()
 
 
+@pytest.mark.slow
 def test_pipeline_hk_file_fundamentals_derived_slow_features(tmp_path, monkeypatch):
     dates = pd.date_range("2025-03-10", periods=40, freq="B")
     symbols = ["00005.HK", "00011.HK"]
@@ -597,6 +601,7 @@ def test_pipeline_hk_file_fundamentals_derived_slow_features(tmp_path, monkeypat
         assert after_00005[column].iloc[0] == pytest.approx(expected_value)
 
 
+@pytest.mark.slow
 def test_pipeline_hk_file_fundamentals_missing_fill_with_indicators(tmp_path, monkeypatch):
     dates = pd.date_range("2025-03-10", periods=25, freq="B")
     symbols = ["00005.HK", "00011.HK", "00016.HK"]
@@ -707,6 +712,7 @@ def test_pipeline_hk_file_fundamentals_missing_fill_with_indicators(tmp_path, mo
     assert observed_row["profit_margin_missing"].iloc[0] == pytest.approx(0.0)
 
 
+@pytest.mark.slow
 def test_pipeline_hk_file_fundamentals_supports_sales_delta_and_report_age(tmp_path, monkeypatch):
     dates = pd.date_range("2025-03-10", periods=35, freq="B")
     symbols = ["00005.HK", "00011.HK"]
@@ -817,6 +823,7 @@ def test_pipeline_hk_file_fundamentals_supports_sales_delta_and_report_age(tmp_p
     assert after_report_row["days_since_report"].iloc[0] == pytest.approx(1.0)
 
 
+@pytest.mark.slow
 def test_pipeline_hk_file_fundamentals_supports_growth_and_structure_ratios(
     tmp_path, monkeypatch
 ):
@@ -1056,6 +1063,7 @@ def test_pipeline_hk_file_fundamentals_missing_file_fails_before_daily_fetch(tmp
     assert fetch_calls["count"] == 0
 
 
+@pytest.mark.slow
 def test_pipeline_feature_formulas(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=20, freq="B")
     symbols = ["AAA", "BBB"]
