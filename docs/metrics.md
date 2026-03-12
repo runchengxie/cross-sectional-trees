@@ -1,266 +1,349 @@
-# cross-sectional-machine-learning 评估指标说明书
+# 指标与结果解读
 
-## 0. 这个项目在干什么（用一句话讲清楚）
+本页只说明当前仓库已经实现、并且会写入 run 目录的指标与结果文件。
 
-它用配置指定的模型（`xgb_regressor/xgb_ranker/ridge/elasticnet`）在每天的股票截面上预测目标列 `future_return`（也就是未来一段持有期的收益），然后用 IC、分位数组合、换手估计、Top-K 回测来评估这堆预测到底有没有交易意义。
+如果你只想先看一次 run 的结果，先读这几个文件：
 
-项目典型产物会落到 `artifacts/runs/<run_name>_<timestamp>_<hash>/`，包括 `summary.json`、`ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`、`feature_importance.csv` 等。
+* `summary.json`
+* `config.used.yml`
+* `positions_current.csv` 或 `positions_current_live.csv`
+* `ic_test.csv`
+* `quantile_returns.csv`
+* `backtest_net.csv`
 
-## 1) 数据与股票池相关指标
+默认 run 目录是 `artifacts/runs/<run_name>_<timestamp>_<hash>/`。
 
-> 这些是防止模型形成前视/幸存者偏差的基础
+## 先看哪里
 
-这些都在 `summary.json -> data / universe` 里：
+`summary.json` 是总览。大多数问题都可以先在这里定位。
 
-### 1.1 symbols / rows / rows_model
+常见节点：
 
-* symbols：本次跑了多少只股票。
-* rows：全量数据行数。
-* rows_model：真正进入建模（含特征、label、过滤后）的行数。
-  这些能快速反映数据是不是大面积缺失/被过滤掉。
+* `data`：样本区间、行数、provider、缓存和日期信息。
+* `universe`：股票池模式、最小样本数、丢弃日期数、停牌处理。
+* `eval`：预测质量、分位收益、换手、训练期对照、可选稳健性指标。
+* `backtest`：Top-K 回测参数、回测统计、基准与主动收益。
+* `final_oos`：最终留出期结果。结构和 `eval/backtest` 基本对应。
+* `walk_forward`：滚动窗口验证结果和文件路径。
 
-### 1.2 min_symbols_per_date / dropped_dates
+如果你想看时序而不是摘要，继续读 CSV：
 
-* min_symbols_per_date：每天至少要有多少只股票才算该交易日可用作训练。
-* dropped_dates：有多少个交易日因为股票数不足被丢掉。
-  如果 dropped_dates 很多，IC、分位收益都会波动明显。
+* `ic_test.csv` / `ic_pearson_test.csv`
+* `quantile_returns.csv`
+* `turnover_eval.csv`
+* `backtest_net.csv` / `backtest_gross.csv`
+* `backtest_turnover.csv`
+* `walk_forward_summary.csv`
 
-### 1.3 universe.mode（pit/static）与停牌处理
+完整产物列表见 `docs/outputs.md`。
 
-* universe.mode：支持 `pit`（按日期动态股票池）等模式，且可以要求 `require_by_date`。
-* drop_suspended / suspended_policy：是否丢弃停牌、怎么处理停牌。
+## 数据与样本质量
 
-## 2) 标签相关（模型到底在预测什么）
+这些字段主要在 `summary.json -> data` 和 `summary.json -> universe`。
 
-配置里 label 常见字段：
+重点先看：
 
-* target_col：默认 `future_return`。
-* horizon_days / horizon_mode / rebalance_frequency / shift_days：决定未来收益怎么算，例如 `next_rebalance` + 月度再平衡，和回测节奏绑定。
+* `symbols`：本次样本里实际出现过多少只股票。
+* `rows`：原始数据总行数。
+* `rows_model`：真正进入建模的数据行数。这里已经经过特征、label 和过滤步骤。
+* `min_symbols_per_date`：单个交易日至少要有多少只股票才保留。
+* `dropped_dates`：因为股票数不足而被丢弃的交易日数量。
+* `mode`：股票池模式，常见是 `static`、`pit`、`auto`。
+* `drop_suspended` / `suspended_policy`：停牌股票是否剔除，或仅标记为不可交易。
 
----
+这些字段先回答两个问题：
 
-## 3) 因子/预测质量指标
+* 样本够不够大。
+* 样本有没有因为股票池、停牌或缺失值而被大幅压缩。
 
-这些主要来自 `src/csml/metrics.py`，并汇总进 `summary.json -> eval`。
+如果 `rows_model` 明显小于 `rows`，或者 `dropped_dates` 很多，后面的 IC、分位收益和回测都需要谨慎解读。
 
-### 3.1 日度 IC 序列（Spearman Rank IC）
+## 标签定义
 
-* daily IC（ic_test.csv）：对每天的截面，计算预测值 `pred` 和真实 `future_return` 的 Spearman 秩相关。
-* 为什么用 Spearman：更关注排序对不对，对极端值不那么敏感。
+标签定义决定“模型到底在预测什么”。相关配置主要在 `label`。
 
-### 3.2 IC 汇总统计（summary.eval.ic）
+高频字段：
 
-对上面的 IC 序列做汇总：`n / mean / std / ir / t_stat / p_value`。
+* `target_col`：默认是 `future_return`。
+* `horizon_days`：固定持有期长度。
+* `horizon_mode`：`fixed` 或 `next_rebalance`。
+* `rebalance_frequency`：在 `next_rebalance` 模式下决定未来收益窗口。
+* `shift_days`：信号日和入场日之间的偏移。
 
-* n：有效交易日数（有些天会被跳过，比如当日 `future_return` 没有足够离散度）。
-* mean：平均 IC。
-* std：IC 的波动。
-* IR（Information Ratio, 这里是 ic_mean / ic_std）：越大代表IC 更稳定。
-* t_stat / p_value：把 IC 当成样本均值检验（非常粗糙但常用）。`p_value` 只有在装了 SciPy 才算。
+先确认标签定义，再解释指标。否则你看到的 IC 和回测收益，可能并不是你以为的持有期。
 
-> 友情提示：金融时间序列并不独立同分布，t/p 只能当简易指标。
+## 预测质量指标
 
-### 3.3 训练集 IC / CV IC（用来决定信号方向）
+这些字段主要在 `summary.json -> eval`。
 
-* train_ic：训练集的 IC 汇总（可开关）。
-* cv_ic：时间序列 CV 得到的 IC 分数列表 + mean/std（用于更稳地判断方向）。
-* signal_direction_mode：支持 `fixed / train_ic / cv_ic`；当你选 `cv_ic` 时，会用 CV 的 ic_mean 符号决定是否把预测整体乘以 -1（翻转方向），并可设置最小阈值 `min_abs_ic_to_flip`。
+### IC
 
-> 模型可能学到负相关因子，翻一下方向就变成正向信号，因此这一步就是自动完成此项操作。
+默认会输出两类 IC：
 
-### 3.4 分位数组合收益（quantile_returns.csv）
+* `ic`：Spearman Rank IC。看排序是否有效。
+* `pearson_ic`：Pearson IC。看预测幅度和真实收益的线性关系。
 
-* 把每天预测值做分位分组（默认 5 组），计算每个分位的平均 `future_return`，得到一个 trade_date × quantile 的表。
-  用途：
-* 看单调性：高分位是否系统性优于低分位。
-* 看尾部：最高分位是不是特别好，还是只是中间平平。
+对应文件：
 
-### 3.5 quantile_mean 与 long_short
+* `ic_test.csv`
+* `ic_pearson_test.csv`
 
-* quantile_mean：每个分位的平均收益（跨时间取平均后写进 summary）。
-* long_short：最高分位均值 - 最低分位均值（一个非常粗暴但直观的截面收益跨度）。
+汇总字段常见为：
 
----
+* `n`
+* `mean`
+* `std`
+* `ir`
+* `t_stat`
+* `p_value`
 
-## 4) 换手与交易成本相关
+解读建议：
 
-项目会在 eval 和 backtest 两处都输出换手相关信息。
+* `mean` 看方向和平均强度。
+* `ir` 看稳定性。
+* `t_stat` / `p_value` 只能当简化参考。金融时间序列通常不满足独立同分布。
 
-### 4.1 turnover（换手率）与 turnover_mean
+### 训练期对照与方向校正
 
-* turnover series：每次调仓点的换手率序列（`turnover_eval.csv` / `backtest_turnover.csv`）。
-* turnover_mean：换手均值写进 `summary.eval.turnover_mean`。
-* 换手怎么定义（核心直觉）：用新旧持仓的重叠程度来算，近似是 `1 - overlap/k`（重叠越少，换手越高）。
+这些字段用于判断信号方向和稳定性：
 
-### 4.2 buffer_entry / buffer_exit（缓冲区机制）
+* `train_ic`
+* `train_ic_raw`
+* `train_pearson_ic`
+* `cv_ic`
+* `cv_ic_raw`
+* `signal_direction`
+* `signal_direction_mode`
 
-* 这是为了降低换手：只有排名掉出更远才卖出（exit buffer），只有排名足够靠前才买入（entry buffer）。参数会写进 summary。
-  回测里选股函数也显式接收 `buffer_exit/buffer_entry` 和上一期持仓。
+`signal_direction_mode` 支持 `fixed`、`train_ic`、`cv_ic`。当模型学到的是稳定负相关信号时，系统可以自动翻转方向。
 
-### 4.3 transaction_cost_bps 与 cost drag
+### 误差指标
 
-* transaction_cost_bps：按 bps 设定的单边交易成本（eval/backtest 都有）。
-* avg_cost_drag / avg_cost_drag：回测统计里会输出平均成本拖累（本质是因为换手付出的成本把收益吃掉多少）。
+`error_metrics` 包含：
 
----
+* `mae`
+* `rmse`
+* `r2`
 
-## 5) 回测绩效指标（Top-K 策略到底赚不赚钱）
+这组指标不是截面选股里最核心的 KPI，但很适合排查退化模型、常数预测和 label 异常。
 
-回测核心是 `backtest_topk` + `summarize_period_returns`，输出在 `summary.json -> backtest.stats`，并落 CSV。
+### 分位收益
 
-### 5.1 净收益 vs 毛收益
+分位收益用于回答“高分股票是否真的系统性更好”。
 
-* gross_return（backtest_gross.csv）：不扣交易成本的周期收益。
-* net_return（backtest_net.csv）：扣完成本后的周期收益（更该看这个）。
+对应文件：
 
-### 5.2 核心绩效统计（summarize_period_returns）
+* `quantile_returns.csv`
 
-* total_return：样本期总收益（nav 最后 - 1）。
-* ann_return：按持有天数折算的年化收益（不是按自然年，是按交易日近似）。
-* ann_vol：年化波动（用周期收益 std × sqrt(periods_per_year)）。
-* sharpe：均值/波动 × sqrt(periods_per_year)。
-* max_drawdown：净值序列的最大回撤（nav/nav_max - 1 的最小值）。
-* avg_holding / periods_per_year：平均持有期长度，以及由此推算的一年多少期。
+对应摘要字段：
 
-### 5.3 回测额外统计（更贴近交易）
+* `quantile_mean`
+* `long_short`
 
-回测在 stats 里额外塞了：
+解读建议：
 
-* avg_turnover：回测调仓点换手平均。
-* avg_cost_drag：平均成本拖累。
-* mode / long_k：long-only 还是 long-short、持仓数等。
+* `quantile_mean` 看各分位平均收益是否单调。
+* `long_short` 看最高分位和最低分位之间的收益跨度。
 
----
+### 换手与缓冲区
 
-## 6) 基准与主动收益指标（有 benchmark 的时候才有）
+评估侧换手相关字段：
 
-如果回测配置了 `benchmark_symbol`，会构建基准收益序列，并计算主动收益统计。
+* `turnover_mean`
+* `turnover_count`
+* `buffer_exit`
+* `buffer_entry`
 
-### 6.1 active_return（策略 - 基准）
+对应文件：
 
-* active_return series（backtest_active.csv）：每期策略净收益减去基准收益。
+* `turnover_eval.csv`
 
-### 6.2 主动收益统计（summarize_active_returns）
+`buffer_exit` 和 `buffer_entry` 用来降低调仓抖动。排名轻微波动时，缓冲区可以减少不必要的换手。
 
-输出字段：
+### 命中率与 Top-K 正收益占比
 
-* tracking_error：主动收益的年化波动（std × sqrt(periods_per_year)）。
-* information_ratio：主动均值/主动波动 × sqrt(periods_per_year)。
-* beta：策略对基准的 beta（协方差/基准方差）。
-* alpha（ann）：用 `strategy.mean - beta*benchmark.mean` 再乘 `periods_per_year` 得到年化 alpha。
-* corr：策略与基准收益相关。
-* active_total_return：策略总收益相对基准总收益的比值超额。
+这两个字段更直观：
 
----
+* `hit_rate`
+* `topk_positive_ratio`
 
-## 7) 鲁棒性与“别自嗨”测试
+它们适合回答两个问题：
 
-### 7.1 permutation test（置换检验）
+* 方向判断是否经常做对。
+* 选出来的 Top-K 标的里，未来收益为正的比例高不高。
 
-* 配置里可以开 `eval.permutation_test.enabled`。
-* 做法：训练阶段把 label 打乱再训练，看看测试集 IC 均值分布长啥样（本质是随机情况模型预测能力有多强）。代码里每次 run 都把 mean(IC) 记下来。
-* 落盘：会输出 `permutation_test.csv`（列名 ic）。
+### 可选拆解
 
-怎么解读：
+按配置启用时，还会写这些结果：
 
-* 如果真实模型的 `IC mean` 只比 permutation 分布好一点点，那基本在训练噪声。
+* `bucket_ic` / `bucket_ic_file`：按行业、市值、流动性等分桶后分别计算 IC。
+* `rolling_ic`：滚动 IC 均值与滚动 IC IR。
+* `permutation_test`：置换检验结果。
 
-### 7.2 walk-forward（滚动窗口验证）
+常见文件：
 
-* 内置模板默认 `walk_forward.enabled: true`；如果配置中完全不写该段，代码级默认是 `false`。
-* 落盘：`walk_forward_summary.csv`，并且 summary 里也会带 `walk_forward` 结果。
-* 新增：`walk_forward_feature_importance.csv`（每窗口特征重要性）与 `walk_forward_feature_stability.csv`（跨窗口稳定性）。
+* `bucket_ic.csv`
+* `ic_rolling_6m.csv`
+* `ic_rolling_12m.csv`
+* `permutation_test.csv`
 
-怎么解读：
+## 回测指标
 
-* 看每个窗口的 IC/回测是不是都差不多，还是只有某一个窗口很好，其他窗口表现一般。
+这些字段主要在 `summary.json -> backtest`。
 
----
+### 先看净收益
 
-## 8) 特征重要性（解释模型在看啥）
+对应文件：
 
-* 输出 `feature_importance.csv`，来自 XGBoost 的 `feature_importances_`（注意：这不是因果解释，只是模型内部的分裂贡献类权重）。
-* 如果启用 walk-forward，还会输出窗口级与稳定性统计，便于做多窗口一致性筛选。
+* `backtest_net.csv`
+* `backtest_gross.csv`
 
-怎么解读：
+日常判断策略时，先看净收益。毛收益只用于看成本前的信号质量。
 
-* 用来发现明显异常（比如某个本不该重要的字段突然 0.99），以及做特征筛选的线索。
-* 不要用它证明这个因子有效，它证明不了。
+### 核心统计
 
-# 9) 补充指标（简单、直观、实用）
+`summary.json -> backtest.stats` 常见字段：
 
-## 9.1 预测层面的补充
+* `periods`
+* `total_return`
+* `ann_return`
+* `ann_vol`
+* `sharpe`
+* `max_drawdown`
+* `avg_holding`
+* `periods_per_year`
+* `avg_turnover`
+* `avg_cost_drag`
 
-### A) Pearson IC（线性相关）
+这组字段先回答三个问题：
 
-* 是什么：每天截面上 `corr(pred, future_return)`（不做 rank）。
-* 解决什么：Spearman 只看排序，不敏感于幅度是否有意义。Pearson 能补上这一块。
-* 怎么看：如果 Spearman 很高但 Pearson 接近 0，可能只是排序有点用，但强度不稳。
-* 产物：
-  * `ic_pearson_test.csv`（测试集日度 Pearson IC 序列）
-  * `summary.json -> eval.pearson_ic`（汇总统计）
-  * 若开 `report_train_ic`：`ic_pearson_train.csv` / `summary.json -> eval.train_pearson_ic`
-  * 若有 Final OOS：`ic_pearson_oos.csv` / `summary.json -> final_oos.pearson_ic`
+* 赚没赚钱。
+* 波动和回撤大不大。
+* 收益是不是被换手和成本吃掉了。
 
-### B) MAE / RMSE / R²（误差指标）
+### 风险和尾部
 
-* 是什么
+回测还会给出一组更偏交易语境的风险指标：
 
-  * MAE：平均绝对误差
-  * RMSE：均方根误差（更惩罚大错）
-  * R²：解释方差比例（可选）
-* 解决什么：快速抓 bug/退化，比如模型输出几乎常数、或 label 缩放错误。
+* `sortino`
+* `calmar`
+* `drawdown_duration`
+* `recovery_time`
+* `drawdown_duration_days`
+* `recovery_time_days`
+* `skew`
+* `kurtosis`
+* `var_95`
+* `cvar_95`
 
-> 现实里你可能不会把它们当 KPI，但它们是非常好的错误预警。
+它们分别补充：
 
-* 产物：`summary.json -> eval.error_metrics`（以及 `final_oos.error_metrics`）。
+* 下行风险和回撤效率。
+* 最大回撤持续多久。
+* 收益分布是否过度依赖少数极端时期。
 
-### C) 分桶 IC（稳定性拆解）
+### 基准与主动收益
 
-* 是什么：按行业/市值/流动性分组分别算 IC。
-* 解决什么：避免某个小角落扛起全场，或者策略其实是在吃某个风格暴露。
-* 说明：通过 `eval.bucket_ic` 配置启用（可指定列名与 quantile 分桶）。
-* 产物：
-  * `bucket_ic.csv`（若启用）
-  * `summary.json -> eval.bucket_ic / eval.bucket_ic_file`
+当配置了 `benchmark_symbol` 时，还会写：
 
-## 9.2 策略层面的补充
+* `summary.json -> backtest.benchmark`
+* `summary.json -> backtest.active`
 
-### D) rolling IC / rolling Sharpe（滚动表现）
+对应文件可能包括：
 
-* 是什么：比如 6M/12M 滚动窗口计算 IC mean/IR、Sharpe。
-* 解决什么：识别策略是不是只在某段行情有效。
-* 产物：
-  * `ic_rolling_6m.csv` / `ic_rolling_12m.csv`（按配置窗口）
-  * `backtest_rolling_sharpe_6m.csv` / `backtest_rolling_sharpe_12m.csv`
-  * `summary.json -> eval.rolling_ic` / `summary.json -> backtest.rolling_sharpe`
+* `backtest_benchmark.csv`
+* `backtest_active.csv`
 
-### E) Drawdown duration（回撤持续时间）与 recovery time（恢复时间）
+主动收益侧常见字段：
 
-* 是什么：最大回撤跌了多久、从谷底爬回前高用了多久。
-* 解决什么：最大回撤只说跌多深，不说持续多久。而持续多久往往感官更痛苦。
-* 字段：`summary.json -> backtest.stats.drawdown_duration / recovery_time`（单位=回测期数），
-  以及 `_days`（若能从日期索引推算）。
+* `tracking_error`
+* `information_ratio`
+* `beta`
+* `alpha`
+* `corr`
+* `active_total_return`
 
-### F) Sortino / Calmar（更适合交易语境的比率）
+### 滚动回测统计
 
-* Sortino：只用下行波动算风险，适合非对称收益。
-* Calmar：年化收益 / 最大回撤，低频策略常用。
-* 字段：`summary.json -> backtest.stats.sortino / calmar`。
+按配置启用时，还会写：
 
-### G) hit rate（方向命中）/ top-K 正收益占比
+* `summary.json -> backtest.rolling_sharpe`
+* `backtest_rolling_sharpe_6m.csv`
+* `backtest_rolling_sharpe_12m.csv`
 
-* 是什么
+这部分适合看策略是否只在某一段行情有效。
 
-  * hit rate：`sign(pred) == sign(real)` 的比例
-  * top-K positive ratio：Top-K 里未来收益为正的占比
-* 解决什么：有些策略不追求高 IC，但追求选出来的大概率别是不良标的。
-* 字段：`summary.json -> eval.hit_rate / eval.topk_positive_ratio`。
+## 最终留出期
 
-## 9.3 风险与尾部补充
+如果开启 `eval.final_oos`，`summary.json -> final_oos` 会再给一套独立结果。
 
-### H) 收益分布统计（skew/kurtosis、VaR/CVaR）
+这部分通常包含：
 
-* 是什么：看收益是否来自几次偶发的情况，或者是不是高度右偏靠极少数大赚撑起来。
-* 至少上 95% VaR + CVaR（Expected Shortfall），关注尾部风险。
-* 字段：`summary.json -> backtest.stats.skew / kurtosis / var_95 / cvar_95`。
+* `ic`
+* `pearson_ic`
+* `error_metrics`
+* `hit_rate`
+* `topk_positive_ratio`
+* `bucket_ic`
+* `rolling_ic`
+* `quantile_mean`
+* `long_short`
+* `turnover_mean`
+* `backtest`
+* `positions`
+
+这是一段真正不参与训练和调参的保留样本。你可以把它当成“最后一次单独验收”。
+
+## Walk-Forward 与特征重要性
+
+### Walk-Forward
+
+如果启用了 `eval.walk_forward`，常见文件有：
+
+* `walk_forward_summary.csv`
+* `walk_forward_feature_importance.csv`
+* `walk_forward_feature_stability.csv`
+
+这部分主要看两件事：
+
+* 不同窗口的 IC 和回测是否稳定。
+* 重要特征是否在多个窗口里反复出现。
+
+### 特征重要性
+
+默认训练成功且模型支持时，会输出：
+
+* `feature_importance.csv`
+
+重要性来源会写在 `summary.json -> eval.feature_importance_source`：
+
+* XGBoost 模型通常来自 `feature_importances_`
+* 线性模型通常来自绝对值系数 `coef_abs`
+
+同时还会给：
+
+* `feature_importance_nonzero`
+* `zero_feature_importance`
+* `constant_prediction`
+
+这几个字段适合快速识别退化 run。做线性模型汇总时，通常应排除或单独标记这些 run。
+
+## 建议阅读顺序
+
+如果你在做一次常规研究，建议按这个顺序读：
+
+1. `summary.json -> data / universe`
+2. `summary.json -> eval.ic / eval.pearson_ic / eval.quantile_mean / eval.long_short`
+3. `summary.json -> backtest.stats`
+4. `summary.json -> backtest.active` 或 `backtest.benchmark`
+5. `summary.json -> final_oos`
+6. `walk_forward_summary.csv`
+7. `feature_importance.csv`
+
+如果你只想先判断这次 run 值不值得继续看，最短路径是：
+
+1. 样本有没有被压缩得太厉害。
+2. `eval.ic.mean` 和 `eval.ic.ir` 是否稳定。
+3. `quantile_mean` 是否有基本单调性。
+4. `backtest.stats` 的净收益、回撤和成本拖累是否还能接受。
+5. `final_oos` 和 `walk_forward` 是否延续了同样的结论。
