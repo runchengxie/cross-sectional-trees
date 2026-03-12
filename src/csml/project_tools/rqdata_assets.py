@@ -832,13 +832,13 @@ def _write_audit_csv(path: Path, records: Sequence[MirrorAuditRecord]) -> None:
     pd.DataFrame(rows).to_csv(path, index=False)
 
 
-def _load_existing_text_list(path: Path) -> list[str]:
+def _load_existing_text_list(path: Path, *, strip: bool = True) -> list[str]:
     if not path.exists():
         return []
     values: list[str] = []
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
-            text = line.strip()
+            text = line.strip() if strip else line.rstrip("\r\n")
             if text:
                 values.append(text)
     return values
@@ -1021,7 +1021,7 @@ def _validate_resume_inputs(
                     f"Resume target query mismatch for {key}: expected {expected!r}, got {actual!r}."
                 )
 
-    existing_fields = _load_existing_text_list(output_dir / "fields.txt")
+    existing_fields = _load_existing_text_list(output_dir / "fields.txt", strip=False)
     if existing_fields and list(existing_fields) != list(fields):
         raise SystemExit("Resume target fields.txt does not match the requested field list.")
     existing_symbols = _load_existing_text_list(output_dir / "symbols.txt")
@@ -1062,7 +1062,7 @@ def _validate_daily_resume_inputs(
                     f"Resume target query mismatch for {key}: expected {expected!r}, got {actual!r}."
                 )
 
-    existing_fields = _load_existing_text_list(output_dir / "fields.txt")
+    existing_fields = _load_existing_text_list(output_dir / "fields.txt", strip=False)
     if existing_fields and list(existing_fields) != list(fields):
         raise SystemExit("Resume target fields.txt does not match the requested field list.")
     existing_symbols = _load_existing_text_list(output_dir / "symbols.txt")
