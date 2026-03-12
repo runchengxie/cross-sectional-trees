@@ -567,6 +567,57 @@ def test_resolve_fields_supports_field_profile(monkeypatch):
     assert metadata["field_profile"] == ["starter", "full"]
 
 
+def test_validate_resume_inputs_preserves_whitespace_fields(tmp_path, monkeypatch):
+    output_dir = tmp_path / "pit_demo"
+    output_dir.mkdir(parents=True)
+    (output_dir / "fields.txt").write_text(
+        "revenue\ngoodwill_and_intangible_assets \n",
+        encoding="utf-8",
+    )
+    (output_dir / "symbols.txt").write_text("00005.HK\n", encoding="utf-8")
+    (output_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "pit_financials",
+                "query": {
+                    "start_quarter": "2024q4",
+                    "end_quarter": "2025q1",
+                    "date": "20260310",
+                    "statements": "latest",
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        rqdata_assets,
+        "_load_hk_financial_fields",
+        lambda: ["revenue", "goodwill_and_intangible_assets "],
+    )
+    fields, _ = rqdata_assets._resolve_fields(
+        SimpleNamespace(
+            field_profile=["full"],
+            field=[],
+            fields_file=[],
+        )
+    )
+
+    assert fields == ["revenue", "goodwill_and_intangible_assets "]
+    rqdata_assets._validate_resume_inputs(
+        output_dir=output_dir,
+        dataset_name="pit_financials",
+        fields=fields,
+        symbols=["00005.HK"],
+        start_quarter="2024q4",
+        end_quarter="2025q1",
+        statements="latest",
+        query_date="20260310",
+    )
+
+
 def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     (repo_root / "config").mkdir(parents=True)
