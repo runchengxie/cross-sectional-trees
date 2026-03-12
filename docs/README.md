@@ -55,6 +55,7 @@
 
 * `docs/cookbook.md`
 * `docs/playbooks/hk-selected.md`
+* `docs/playbooks/hk-data-assets.md`
 
 ### 想排错
 
