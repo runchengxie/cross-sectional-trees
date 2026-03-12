@@ -30,7 +30,7 @@
 5. 用 `build-hk-pit-fundamentals` 生成研究用平面文件。
 6. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
 
-## 3. 股票池和下载历史不是同一件事
+## 3. 股票池与下载历史的关系和处理
 
 这里要单独记住：
 
@@ -51,9 +51,32 @@
 
 ## 4. 日线缓存怎么落地
 
-当前仓库没有单独的 `mirror-hk-daily` 命令。
+现在有两条路：
 
-港股日线数据的落地方式是：
+1. 用 `csml rqdata mirror-hk-daily` 生成独立资产目录
+2. 让 pipeline 首次运行时自动把 query cache 写到 `artifacts/cache/`
+
+如果你要做可备份、可复用、可 `--resume` 的大范围归档，优先用第一条。
+
+独立资产命令示例：
+
+```bash
+csml rqdata mirror-hk-daily \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20000101 \
+  --end-date 20260311 \
+  --name hk_connect_full_2000_20260311_daily_latest \
+  --resume
+```
+
+这条命令的特点：
+
+* 默认字段集是 `open/high/low/close/volume/total_turnover`
+* 输出到 `artifacts/assets/rqdata/hk/daily/<snapshot>/`
+* 目录里会写 `manifest.yml`、`audit.csv`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`
+* 当前实现按 symbol 单独请求，更适合 quota 中断后续跑
+
+如果你只是要给 pipeline 日常研究提速，日线缓存仍然按下面的方式落地：
 
 1. pipeline 按 symbol 调 `fetch_daily`
 2. 命中 `data.cache_mode=symbol`
@@ -68,9 +91,10 @@
 如果你的目标是“把港股通 symbol archive 的日线缓存尽量补齐”，当前做法是：
 
 1. 先准备好更宽的港股通 `by_date_file`
-2. 用一份覆盖这组 symbol 的配置跑 pipeline
-3. 固定 `data.start_date/end_date`
-4. 保持 `data.cache_mode=symbol`
+2. 优先跑 `mirror-hk-daily` 做独立归档
+3. 需要 pipeline query cache 时，再用一份覆盖这组 symbol 的配置跑 pipeline
+4. 固定 `data.start_date/end_date`
+5. 保持 `data.cache_mode=symbol`
 
 首次运行会最慢。后续同口径重跑时，主要是命中缓存和刷新尾部。
 

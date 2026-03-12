@@ -254,6 +254,13 @@ def _handle_rqdata_export_hk_instruments(args) -> int:
     return rqdata_assets.export_hk_instruments(args, rqdatac)
 
 
+def _handle_rqdata_mirror_hk_daily(args) -> int:
+    from .project_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_daily(args, rqdatac)
+
+
 def _handle_rqdata_mirror_hk_pit_financials(args) -> int:
     from .project_tools import rqdata_assets
 
@@ -537,6 +544,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_instruments_export_args(rq_export_instruments)
     rq_export_instruments.set_defaults(func=_handle_rqdata_export_hk_instruments)
+
+    rq_daily = rq_sub.add_parser(
+        "mirror-hk-daily",
+        help="Mirror HK daily OHLCV + turnover data into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_daily_mirror_args(rq_daily)
+    rq_daily.set_defaults(func=_handle_rqdata_mirror_hk_daily)
 
     rq_pit = rq_sub.add_parser(
         "mirror-hk-pit-financials",
