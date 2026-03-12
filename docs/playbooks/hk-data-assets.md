@@ -75,6 +75,7 @@ csml rqdata mirror-hk-daily \
 * 输出到 `artifacts/assets/rqdata/hk/daily/<snapshot>/`
 * 目录里会写 `manifest.yml`、`audit.csv`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`
 * 当前实现按 symbol 单独请求，更适合 quota 中断后续跑
+* RQData 当前会把早于 `2000-01-04` 的 HK 日线请求自动裁到 `2000-01-04`
 
 如果你只是要给 pipeline 日常研究提速，日线缓存仍然按下面的方式落地：
 
@@ -127,6 +128,7 @@ csml rqdata mirror-hk-pit-financials \
 * `--by-date-file` 先解析 symbol 集合，再按 symbol 全区间拉财务历史。
 * PIT 财务镜像目录会写 `manifest.yml`、`audit.csv`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`。
 * 如果 hit quota，中断后可以继续 `--resume`。
+* 当前这套 HK PIT 财务镜像实测最早返回到 `2000q4`，不是连续从 `2000q1` 开始。
 
 ## 6. 平面 fundamentals 文件怎么生成
 
