@@ -1,6 +1,5 @@
 import csv
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -217,9 +216,7 @@ def test_linear_sweep_reads_sweep_config_and_cli_overrides(tmp_path, monkeypatch
     assert jobs[0]["run_name"] == "cli_ridge_a0.5"
 
 
-def test_linear_sweep_fallbacks_when_deprecated_base_config_missing(
-    tmp_path, monkeypatch, caplog
-):
+def test_linear_sweep_requires_existing_base_config(tmp_path, monkeypatch):
     sweep_spec = {
         "base_config": "config/hk_selected.yml",
         "run_name_prefix": "legacy_",
@@ -238,31 +235,8 @@ def test_linear_sweep_fallbacks_when_deprecated_base_config_missing(
     sweep_config_path.write_text(yaml.safe_dump(sweep_spec, sort_keys=False), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    resolved_refs: list[str] = []
-
-    def fake_resolve_pipeline_config(ref: str):
-        resolved_refs.append(ref)
-        return SimpleNamespace(
-            data={
-                "model": {
-                    "type": "xgb_regressor",
-                    "params": {"random_state": 42},
-                    "sample_weight_mode": "date_equal",
-                },
-                "eval": {
-                    "output_dir": str(tmp_path / "runs"),
-                    "run_name": "base",
-                },
-            }
-        )
-
-    monkeypatch.setattr(linear_sweep, "resolve_pipeline_config", fake_resolve_pipeline_config)
-
-    with caplog.at_level("WARNING"):
+    with pytest.raises(SystemExit, match="Config file not found: config/hk_selected.yml"):
         linear_sweep.main(["--sweep-config", str(sweep_config_path)])
-
-    assert resolved_refs == ["config/hk_selected__baseline.yml"]
-    assert "deprecated and not found; falling back" in caplog.text
 
 
 def test_repo_quarterly_pit_sweep_spec_points_to_existing_base_config():

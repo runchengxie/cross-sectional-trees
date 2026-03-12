@@ -24,10 +24,17 @@ uv sync --extra dev --extra stats
 ## 本地运行
 
 ```bash
-csml run --config config/default.yml
+csml run --config default
 ```
 
 调试时建议先用较短日期区间，确认流程可跑通后再放大样本窗口。
+
+补充：
+
+* `default` 现在是 HK starter 模板。
+* 跑 `default` 或 `hk` 模板前，先安装 `--extra rqdata`。
+* 如果你要复现仓库里的 PIT 港股研究路线，继续用 `config/hk.yml` 或 `config/hk_selected__*.yml`。
+* `cn/us` 相关改动主要属于兼容维护。日常开发优先验证 `default`、`hk` 和 HK selected 路线。
 
 ## 测试
 

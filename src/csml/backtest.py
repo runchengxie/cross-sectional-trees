@@ -253,6 +253,7 @@ def backtest_topk(
         return None
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
     price_table = data.pivot(index="trade_date", columns="ts_code", values=price_col)
+    day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
     tradable_table = None
     if tradable_col and tradable_col in data.columns:
         tradable_table = data.pivot(index="trade_date", columns="ts_code", values=tradable_col)
@@ -357,8 +358,8 @@ def backtest_topk(
         entry_date = trade_dates[entry_idx]
         planned_exit_idx = exit_idx
         planned_exit_date = trade_dates[planned_exit_idx]
-        day = data[data["trade_date"] == reb_date]
-        if day.empty:
+        day = day_groups.get(reb_date)
+        if day is None or day.empty:
             continue
 
         k = min(top_k, len(day))

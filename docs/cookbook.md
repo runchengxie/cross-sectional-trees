@@ -27,7 +27,7 @@ uv sync --extra dev --extra rqdata
 如需导出内置模板：
 
 ```bash
-csml init-config --market hk --out config/
+csml init-config --market default --out config/
 ```
 
 同时准备对应 provider 的鉴权变量：
@@ -39,7 +39,7 @@ csml init-config --market hk --out config/
 ### 1.2 跑一次最小流程
 
 ```bash
-csml run --config config/hk.yml
+csml run --config default
 ```
 
 第一次跑完后，先看：
@@ -47,6 +47,12 @@ csml run --config config/hk.yml
 1. `summary.json`
 2. `config.used.yml`
 3. `positions_current.csv`
+
+如果你已经要做 PIT 港股研究，再切到：
+
+```bash
+csml run --config hk
+```
 
 ## 2. 横向比较多次 run
 
@@ -117,7 +123,7 @@ csml backup-data \
   --config config/hk_selected__baseline.yml
 ```
 
-如果本地还保留旧布局：
+如果你是从旧版本目录升级过来，本地还保留旧布局：
 
 ```bash
 csml migrate-artifacts --dry-run

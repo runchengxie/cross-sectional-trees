@@ -25,7 +25,8 @@ artifacts/
 
 * 低频研究与复现实验。
 * Long-only 组合评估与目标持仓快照。
-* A 股、港股、美股的多市场配置切换。
+* 港股优先的研究与持仓工作流。
+* A 股和美股模板继续保留，用于兼容已有配置和多市场对照。
 * 历史 run 汇总、线性模型 sweep、Top-K / 成本敏感性分析。
 
 当前不覆盖：
@@ -40,15 +41,15 @@ artifacts/
 
 ```bash
 uv venv --seed
-uv sync --extra dev
+uv sync --extra dev --extra rqdata
 cp .env.example .env
-csml run --config config/hk.yml
+csml run --config default
 ```
 
-如需 `RQData`：
+如果你只想安装基础开发依赖，不跑港股默认模板：
 
 ```bash
-uv sync --extra dev --extra rqdata
+uv sync --extra dev
 ```
 
 最小鉴权取决于 `data.provider`：
@@ -56,6 +57,12 @@ uv sync --extra dev --extra rqdata
 * `tushare`：`TUSHARE_TOKEN`
 * `rqdata`：`RQDATA_USERNAME` + `RQDATA_PASSWORD`
 * `eodhd`：`EODHD_API_TOKEN`
+
+补充：
+
+* `default` 是 HK starter 模板。它用静态港股股票池，适合先确认主流程能跑通。
+* `hk` 或 `config/hk.yml` 更适合正式 PIT 港股研究。
+* `cn/us` 继续保留，但当前文档不把它们作为主阅读路线。
 
 第一次跑完后，先看这三个文件：
 
@@ -67,16 +74,19 @@ uv sync --extra dev --extra rqdata
 
 ```bash
 # 主流程
-csml run --config config/hk.yml
+csml run --config default
+
+# PIT 港股研究模板
+csml run --config hk
 
 # 导出内置模板
-csml init-config --market hk --out config/
+csml init-config --market default --out config/
 
 # 跨历史 run 汇总
 csml summarize --runs-dir artifacts/runs --output artifacts/runs/runs_summary.csv
 
 # 读取当前持仓
-csml holdings --config config/hk.yml --as-of t-1
+csml holdings --config hk --as-of t-1
 
 # 一键生成 live 快照
 csml snapshot --config config/hk_live.local.yml
@@ -86,7 +96,7 @@ csml --help
 csml <subcommand> --help
 ```
 
-如果本地仍保留旧布局的 `cache/`、`out/`、`data_assets/` 或 `data_mirror/`，先执行 `csml migrate-artifacts`。
+如果你是在旧版本目录上继续使用这个仓库，再看 `docs/troubleshooting.md` 里的 `csml migrate-artifacts`。新仓库通常不需要这一步。
 
 ## 文档导航
 

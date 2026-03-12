@@ -15,7 +15,6 @@ from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, SWEEPS_DIR as DEFAULT_SWEE
 from ..config_utils import resolve_pipeline_config
 
 DEFAULT_BASE_CONFIG = "config/hk_selected__baseline.yml"
-DEPRECATED_BASE_CONFIG = "config/hk_selected.yml"
 DEFAULT_RUN_NAME_PREFIX = "hk_sel_"
 DEFAULT_SWEEPS_DIR = DEFAULT_SWEEPS_DIR_PATH.as_posix()
 DEFAULT_RIDGE_ALPHA = [0.01, 0.1, 1, 10, 100]
@@ -79,28 +78,6 @@ def _ensure_mapping(parent: dict[str, Any], key: str) -> dict[str, Any]:
 
 def _default_tag() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
-
-
-def _resolve_base_config_ref(base_config_ref: str) -> str:
-    """Gracefully migrate deprecated base-config paths for legacy sweep specs."""
-    deprecated_path = _resolve_path(DEPRECATED_BASE_CONFIG)
-    candidate_path = _resolve_path(base_config_ref)
-    if candidate_path != deprecated_path:
-        return base_config_ref
-    if candidate_path.exists():
-        logging.warning(
-            "Base config `%s` is deprecated and will be removed in a future release; "
-            "please switch to `%s`.",
-            DEPRECATED_BASE_CONFIG,
-            DEFAULT_BASE_CONFIG,
-        )
-        return base_config_ref
-    logging.warning(
-        "Base config `%s` is deprecated and not found; falling back to `%s`.",
-        DEPRECATED_BASE_CONFIG,
-        DEFAULT_BASE_CONFIG,
-    )
-    return DEFAULT_BASE_CONFIG
 
 
 def _write_yaml(path: Path, payload: dict[str, Any]) -> None:
@@ -478,7 +455,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     if sweep_spec_path:
         logging.info("Loaded sweep config: %s", sweep_spec_path)
-    base_config_ref = _resolve_base_config_ref(base_config_ref)
 
     ridge_alphas = _parse_float_grid(ridge_alpha_values, DEFAULT_RIDGE_ALPHA, "ridge-alpha")
     en_alphas = _parse_float_grid(elasticnet_alpha_values, DEFAULT_ELASTICNET_ALPHA, "elasticnet-alpha")

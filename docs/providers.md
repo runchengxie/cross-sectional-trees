@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | `data.provider` | `tushare` | `rqdata` | `eodhd` |
 | 必需鉴权 | `TUSHARE_TOKEN` | `RQDATA_USERNAME` + `RQDATA_PASSWORD` | `EODHD_API_TOKEN` |
-| 额外兼容变量 | `TUSHARE_TOKEN_2` / `TUSHARE_API_KEY` | `RQDATA_USER`（用户名别名） | `EODHD_API_KEY` |
+| 额外附加变量 | `TUSHARE_TOKEN_2` | `RQDATA_USER`（用户名别名） | `EODHD_API_KEY` |
 | 日线接口 | TuShare endpoint（可配） | `rqdatac.get_price` | EODHD HTTP API |
 | 基础信息（name/list_date） | TuShare basic endpoint | `rqdatac.instruments/all_instruments` | `exchange-symbol-list` |
 | `last_trading_day` 严格交易日 | 否（回退自然日） | 是（可用交易日历时） | 否（回退自然日） |
@@ -18,7 +18,11 @@
 
 补充：`rqdata` 的基本面 provider 模式当前只覆盖 `market=hk`。pipeline 默认走 `rqdatac.get_factor`。其他市场仍建议使用 `fundamentals.source=file`。
 
+补充：当前主文档和默认模板按港股优先组织。`cn/us` provider 入口继续保留，但更适合兼容已有配置或做对照实验。
+
 补充：如果你要下载更完整的港股财报资产，使用 `csml rqdata mirror-hk-pit-financials` 或 `csml rqdata mirror-hk-financial-details`。这两条命令会把数据写到 `artifacts/assets/rqdata/`，不走 pipeline 的 provider 基本面缓存。
+
+补充：如果你依赖 `round_lot`、`listed_date`、`de_listed_date` 这类 instrument 元数据，使用 `csml rqdata export-hk-instruments` 先做一份本地快照。`alloc` 这类下游命令会直接用到 `round_lot`。
 
 补充：财报镜像目录除了 `manifest.yml`，现在还会写 `audit.csv`。做大范围下载时，优先固定 `--name` 并配合 `--resume` 使用，这样网络抖动重试、已有文件跳过和 quota 中断都能保留进度。
 

@@ -129,7 +129,7 @@ def add_migrate_artifacts_args(parser: argparse.ArgumentParser) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="csml migrate-artifacts",
-        description="Move legacy cache/out/data_mirror paths into the artifacts/ layout.",
+        description="One-time migration for old cache/out/data_mirror paths into the artifacts/ layout.",
     )
     add_migrate_artifacts_args(parser)
     args = parser.parse_args(argv)

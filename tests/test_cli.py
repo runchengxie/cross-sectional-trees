@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from csml import cli
+from csml.config_utils import resolve_pipeline_config
 from csml.project_tools import alloc as alloc_tool
 from csml.project_tools import holdings as holdings_tool
 from csml.project_tools import run_grid as grid_tool
@@ -13,6 +14,12 @@ def test_cli_parses_run_command():
     assert args.command == "run"
     assert args.config == "default"
     assert callable(args.func)
+
+
+def test_default_builtin_config_is_hk_first():
+    resolved = resolve_pipeline_config(None)
+    assert resolved.data["market"] == "hk"
+    assert resolved.data["data"]["provider"] == "rqdata"
 
 
 def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
@@ -163,6 +170,29 @@ def test_cli_parses_rqdata_asset_commands():
     assert list_fields.contains == ["profit"]
     assert list_fields.out == "artifacts/exports/hk_fields.txt"
     assert callable(list_fields.func)
+
+    export_instruments = parser.parse_args(
+        [
+            "rqdata",
+            "export-hk-instruments",
+            "--config",
+            "config/hk.yml",
+            "--use-config-universe",
+            "--limit",
+            "100",
+            "--out",
+            "artifacts/assets/rqdata/hk/instruments/demo.parquet",
+            "--force",
+        ]
+    )
+    assert export_instruments.command == "rqdata"
+    assert export_instruments.rq_command == "export-hk-instruments"
+    assert export_instruments.config == "config/hk.yml"
+    assert export_instruments.use_config_universe is True
+    assert export_instruments.limit == 100
+    assert export_instruments.out == "artifacts/assets/rqdata/hk/instruments/demo.parquet"
+    assert export_instruments.force is True
+    assert callable(export_instruments.func)
 
     pit = parser.parse_args(
         [

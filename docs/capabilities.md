@@ -19,14 +19,14 @@
 | `csml run` | 跑主流程 | `artifacts/runs/<run>/` |
 | `csml summarize` | 聚合历史 run，对比指标 | `runs_summary.csv` |
 | `csml grid` | 在已有评分结果上做 Top-K / 成本 / buffer 敏感性分析 | `grid_summary.csv` |
-| `csml sweep-linear` | 批量跑 `ridge` / `elasticnet` 并自动汇总 | `artifacts/sweeps/<tag>/` |
+| `csml sweep-linear` | 批量跑 HK selected 路线的 `ridge` / `elasticnet` 并自动汇总 | `artifacts/sweeps/<tag>/` |
 | `csml holdings` | 读取当前持仓 | text / csv / json |
 | `csml snapshot` | 跑 live 快照，或从现有 run 导出快照 | text / csv / json |
 | `csml alloc` | 基于持仓做等权手数分配 | text / csv / json |
 | `csml init-config` | 导出内置配置模板 | 本地 YAML |
 | `csml backup-data` | 归档本地缓存、股票池和配置 | `artifacts/snapshots/<name>/` |
-| `csml migrate-artifacts` | 把旧布局迁到 `artifacts/` | 新目录结构 |
-| `csml rqdata ...` | RQData 账号、配额、港股财报资产工具 | 账号信息或资产目录 |
+| `csml migrate-artifacts` | 一次性把旧布局迁到 `artifacts/` | 新目录结构 |
+| `csml rqdata ...` | RQData 账号、配额、港股财报资产与 instrument 元数据工具 | 账号信息或资产目录 |
 | `csml universe ...` | 股票池构建工具 | 股票池文件 |
 | `csml tushare verify-token` | 验证 TuShare token | 验证结果 |
 
@@ -38,6 +38,8 @@
 
 * 支持 `tushare`、`rqdata`、`eodhd`。
 * 支持 `cn`、`hk`、`us` 三个市场口径。
+* 当前工作流以 `hk` 为主。
+* `cn/us` 主要保留基础兼容、对照实验和已有配置切换能力。
 * 支持缓存、重试、相对日期和绝对日期。
 
 provider 差异见 `docs/providers.md`。
@@ -111,6 +113,7 @@ artifacts/
 * `holdings` 和 `snapshot` 输出的是目标持仓，不是成交后持仓。
 * `last_trading_day` 只有在识别到 `provider=rqdata` 且交易日历可用时才会严格按交易日解析。
 * provider 回补、缓存刷新和相对日期都会影响同配置重跑结果。
+* `migrate-artifacts` 只服务旧目录升级。新仓库通常不需要执行。
 
 ## 常见阅读路径
 

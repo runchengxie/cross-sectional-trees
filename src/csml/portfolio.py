@@ -186,6 +186,7 @@ def build_positions_by_rebalance(
         )
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
     price_table = data.pivot(index="trade_date", columns="ts_code", values=price_col)
+    day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
 
     tradable_table = None
     if tradable_col and tradable_col in data.columns:
@@ -203,8 +204,8 @@ def build_positions_by_rebalance(
         if entry_idx >= len(trade_dates):
             continue
         entry_date = trade_dates[entry_idx]
-        day = data[data["trade_date"] == reb_date]
-        if day.empty:
+        day = day_groups.get(reb_date)
+        if day is None or day.empty:
             continue
 
         k = min(int(top_k), len(day))

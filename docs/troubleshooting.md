@@ -203,7 +203,7 @@ csml rqdata quota --pretty
 * 复现实验时优先以 `config.used.yml` 为准
 
 ```bash
-csml init-config --market hk --out config/
+csml init-config --market default --out config/
 ```
 
 相关文档：
@@ -278,3 +278,4 @@ csml migrate-artifacts
 * 这个命令默认执行移动，不会重新拉取 provider 数据。
 * 如果你想先看影响范围，可先执行 `csml migrate-artifacts --dry-run`。
 * 如果需要保留旧目录副本，可执行 `csml migrate-artifacts --copy`。
+* 新仓库通常不需要这个命令。只有沿用旧目录时才需要迁移。

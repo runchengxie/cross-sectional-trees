@@ -9,6 +9,12 @@
 
 如果你是第一次进入仓库，先看根目录 `README.md`。
 
+当前文档路线默认按港股优先组织：
+
+* 先用 `default` 跑通。
+* 需要正式 PIT 港股研究时，再切到 `hk` 或 `config/hk.yml`。
+* `cn/us` 仍保留，但主要用于兼容已有配置和多市场对照。
+
 ## 推荐阅读顺序
 
 1. `README.md`：项目定位、快速开始、常用入口。
@@ -24,6 +30,7 @@
 
 * `README.md`
 * `docs/cookbook.md`
+* 默认从 `default` 开始。
 
 ### 想知道项目能做什么
 
@@ -71,5 +78,6 @@
 * `docs/outputs.md`：输出文件和字段约定。
 * `docs/cookbook.md`：常见任务流程。
 * `docs/playbooks/`：场景化研究配方。
+* `docs/troubleshooting.md`：常见问题和一次性迁移命令。
 * `docs/internal/`：内部规划资料。
 * `docs/research/`：研究笔记和论文精读。

@@ -17,12 +17,12 @@ def test_load_local_env_reads_first_existing_file(tmp_path, monkeypatch):
     assert verify.os.getenv("TUSHARE_TOKEN") == "from_env_file"
 
 
-def test_resolve_env_keys_falls_back_to_legacy(monkeypatch):
+def test_resolve_env_keys_ignores_legacy_alias(monkeypatch):
     monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
     monkeypatch.delenv("TUSHARE_TOKEN_2", raising=False)
     monkeypatch.setenv("TUSHARE_API_KEY", "legacy-token")
 
-    assert verify.resolve_env_keys() == ["TUSHARE_API_KEY"]
+    assert verify.resolve_env_keys() == ["TUSHARE_TOKEN", "TUSHARE_TOKEN_2"]
 
 
 def test_check_token_returns_missing_error(monkeypatch):

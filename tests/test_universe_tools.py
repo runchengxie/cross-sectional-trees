@@ -83,3 +83,13 @@ def test_month_bounds_handles_leap_year():
 def test_month_bounds_rejects_invalid_month():
     with pytest.raises(SystemExit, match="month must be between 01 and 12."):
         index_components.month_bounds("202413")
+
+
+def test_require_token_ignores_legacy_alias(monkeypatch):
+    monkeypatch.setattr(index_components, "load_dotenv", lambda: None)
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.delenv("TUSHARE_TOKEN_2", raising=False)
+    monkeypatch.setenv("TUSHARE_API_KEY", "legacy-only")
+
+    with pytest.raises(SystemExit, match="Please set TUSHARE_TOKEN or TUSHARE_TOKEN_2 before running."):
+        index_components.require_token()

@@ -25,6 +25,13 @@ csml <subcommand> --help
 * 内置别名：`default/cn/hk/us`
 * 本地 YAML 路径：如 `config/hk.yml`
 
+补充：
+
+* `default` 现在是 HK starter 模板。
+* `hk` 更适合 PIT 港股研究。
+* `cn/us` 主要保留基础兼容模板。
+* 新项目优先从 `default` 或 `hk` 开始。
+
 ### run 定位
 
 `holdings`、`snapshot`、`alloc` 这类命令常见三种定位方式：
@@ -77,7 +84,7 @@ csml <subcommand> --help
 示例：
 
 ```bash
-csml run --config config/hk.yml
+csml run --config default
 csml run --config hk
 ```
 
@@ -113,7 +120,7 @@ csml grid \
 
 ## 3) `csml sweep-linear`
 
-用途：批量生成 `ridge` / `elasticnet` 配置，执行 `run`，再自动 `summarize`。
+用途：批量生成 HK selected 路线的 `ridge` / `elasticnet` 配置，执行 `run`，再自动 `summarize`。
 
 关键参数：
 
@@ -136,7 +143,7 @@ csml grid \
 
 补充：
 
-* 若仍写 `config/hk_selected.yml` 且文件不存在，会自动回退到 `config/hk_selected__baseline.yml` 并给 warning。
+* `config/hk_selected.yml` 已移除。旧 sweep 配置请直接改成 `config/hk_selected__baseline.yml`。
 * 输出目录默认在 `artifacts/sweeps/<tag>/`。
 
 示例：
@@ -338,6 +345,8 @@ csml backup-data \
 
 用途：把旧布局的 `cache/`、`out/`、`data_assets/`、`data_mirror/` 迁移到 `artifacts/`。
 
+这是一条一次性迁移命令。只有你本地还保留旧目录布局时才需要执行。
+
 关键参数：
 
 * `--copy`：复制到新布局，保留旧目录
@@ -401,7 +410,37 @@ csml migrate-artifacts --copy
 csml rqdata list-hk-financial-fields --contains profit --out artifacts/exports/hk_profit_fields.txt
 ```
 
-## 13) `csml rqdata mirror-hk-pit-financials`
+## 13) `csml rqdata export-hk-instruments`
+
+用途：导出港股 instrument 元数据快照，例如 `order_book_id`、`listed_date`、`de_listed_date`、`round_lot`。
+
+关键参数：
+
+* `--config <path_or_alias>`：可选。用于 `rqdata.init`
+* `--username <name>`
+* `--password <password>`
+* `--use-config-universe`
+* `--symbol <code>` / `--symbols-file <path>` / `--by-date-file <path>`
+* `--limit <n>`
+* `--out <path>`
+* `--force`
+
+补充：
+
+* 默认输出到 `artifacts/assets/rqdata/hk/instruments/hk_instruments_<timestamp>.parquet`。
+* 会额外写一份 sidecar manifest：`<out>.manifest.yml`。
+* 如果你后面要做 `alloc`，建议至少备份一份，因为 `round_lot` 会直接影响手数分配。
+* 这个命令导出的是当前 instrument 元数据快照，不是按历史日期回放的 PIT 资产。
+
+示例：
+
+```bash
+csml rqdata export-hk-instruments \
+  --config config/hk.yml \
+  --out artifacts/assets/rqdata/hk/instruments/hk_instruments_latest.parquet
+```
+
+## 14) `csml rqdata mirror-hk-pit-financials`
 
 用途：按港股 symbol 集合拉取 PIT 三大表财报数据，输出项目无关的 `parquet + manifest` 资产目录。
 
@@ -451,7 +490,7 @@ csml rqdata mirror-hk-pit-financials \
 
 更完整的 HK selected 研究流程见 `docs/playbooks/hk-selected.md`。
 
-## 14) `csml rqdata mirror-hk-financial-details`
+## 15) `csml rqdata mirror-hk-financial-details`
 
 用途：拉取港股原始财报细分项目，输出项目无关的 `parquet + manifest` 资产目录。
 
@@ -477,7 +516,7 @@ csml rqdata mirror-hk-financial-details \
   --date 20260310
 ```
 
-## 15) `csml rqdata build-hk-pit-fundamentals`
+## 16) `csml rqdata build-hk-pit-fundamentals`
 
 用途：把 `mirror-hk-pit-financials` 生成的资产目录整理成 pipeline 可直接读取的 `fundamentals.source=file` 文件。
 
@@ -513,7 +552,7 @@ csml rqdata build-hk-pit-fundamentals \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 ```
 
-## 16) `csml tushare verify-token`
+## 17) `csml tushare verify-token`
 
 用途：验证 TuShare token 是否可用。
 
@@ -522,7 +561,7 @@ csml rqdata build-hk-pit-fundamentals \
 * 推荐直接执行 `csml tushare verify-token`。
 * 额外参数会转发到底层脚本。
 
-## 17) `csml universe index-components`
+## 18) `csml universe index-components`
 
 用途：拉取指数成分并输出 symbols 文件，必要时生成 PIT 文件。
 
@@ -537,7 +576,7 @@ csml rqdata build-hk-pit-fundamentals \
 csml universe index-components --index-code 000300.SH --month 202501
 ```
 
-## 18) `csml universe hk-connect`
+## 19) `csml universe hk-connect`
 
 用途：构建港股通 PIT universe。
 
@@ -559,7 +598,7 @@ csml universe index-components --index-code 000300.SH --month 202501
 csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 ```
 
-## 19) `csml init-config`
+## 20) `csml init-config`
 
 用途：导出内置配置模板。
 
@@ -572,5 +611,5 @@ csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 示例：
 
 ```bash
-csml init-config --market hk --out config/
+csml init-config --market default --out config/
 ```

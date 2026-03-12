@@ -3,7 +3,7 @@
 内置模板位于 `src/csml/config/*.yml`。导出后的配置默认放在 `config/`。
 
 ```bash
-csml init-config --market hk --out config/
+csml init-config --market default --out config/
 ```
 
 相关文档：
@@ -33,7 +33,9 @@ csml init-config --market hk --out config/
 
 | 模板 | 用途 |
 | --- | --- |
-| `default/cn/hk/us` | 内置基础模板。适合先跑通项目。 |
+| `default` | HK starter 模板。适合先跑通主流程。 |
+| `hk` | 港股 PIT 研究模板。适合正式研究配置。 |
+| `cn/us` | 兼容模板。适合保留多市场基础切换或做对照。 |
 | `config/hk_selected__baseline.yml` | HK selected 通用基线。适合 `sweep-linear` 和线性模型批跑。 |
 | `config/hk_selected__baseline_pit_file.yml` | 读取本地 PIT fundamentals 文件的 HK 基线。 |
 | `config/hk_selected__provider_quarterly_valuation.yml` | 不依赖本地 PIT 文件的季度估值对照。 |
@@ -47,7 +49,9 @@ csml init-config --market hk --out config/
 
 补充：
 
-* `config/hk_selected.yml` 已弃用。`sweep-linear` 遇到该路径且文件不存在时，会自动回退到 `config/hk_selected__baseline.yml`。
+* `default` 现在是港股优先的 starter 模板。它用静态港股股票池，不依赖 PIT universe 文件。
+* 新项目优先从 `default` 或 `hk` 开始。只有确实需要多市场对照时，再切到 `cn/us`。
+* `config/hk_selected.yml` 已移除。旧配置请直接改成 `config/hk_selected__baseline.yml`。
 * `config/universe.hk_connect_full.yml` 用于生成更完整的港股通历史股票池文件。
 * 想按研究路线选择这些模板时，直接看 `docs/playbooks/hk-selected.md`。
 
