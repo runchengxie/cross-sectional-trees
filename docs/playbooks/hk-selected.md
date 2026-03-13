@@ -101,6 +101,14 @@ PIT 资产准备看：
 
 这里的 `core PIT` 指高覆盖财务主项和少量稳健派生项。低覆盖字段先不要放进起步配置。
 
+**重要更新（2026-03）**：最新实验表明，在季度 PIT 路线上，`add_indicators: false`（不添加缺失指示器）+ `xgb_ranker` 的组合显著优于其他配置。具体结论：
+
+- `pit_core_hybrid` + `add_indicators: false` + `xgb_ranker`：IC 0.097，Sharpe 1.009，Score 0.959
+- 同特征 + `xgb_regressor`：IC 0.072，Sharpe 2.066（但样本太短，仅 3 个 period）
+- 同特征 + `add_indicators: true`（原版 hybrid）：IC 0.092，Sharpe 0.34，Score 0.249
+
+核心发现：去掉 `*_missing` 指示器后，模型真正学到了基本面信号，而非依赖"哪些公司财报缺了"这个捷径。
+
 本文下面出现的 `config/local/*.yml` 只是推荐的本地派生命名。  
 前提是你已经从仓库模板复制到 `config/local/`，然后按这条流程收窄成自己的季度研究单元。
 
@@ -135,6 +143,19 @@ csml rqdata inspect-hk-pit-coverage \
 * `config/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml`
 * `config/local/hk_sel_q_pk_pit_core_hybrid_ridge.yml`
 * `config/local/hk_sel_q_pk_pit_core_hybrid_en.yml`
+
+**推荐配置**（2026-03 实验结论）：
+
+当前实验表明，季度 PIT 路线的最佳配置是：
+
+* `config/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank.yml`
+
+配置要点：
+* `features.missing.add_indicators: false`（去掉缺失指示器）
+* `model.type: xgb_ranker`
+* 结果：IC 0.097，Sharpe 1.009，Score 0.959，Periods 10
+
+详细实验结果见 [runs_summary.csv](artifacts/runs/hk_sel_q_pk_pit_core_hybrid_nomiss_summary.csv)。
 
 仓库里现成季度模板的分工是：
 
@@ -188,6 +209,11 @@ csml rqdata inspect-hk-pit-coverage \
    `eval.run_name`
 7. 跑四份配置，再统一 `summarize`。
 
+**重要更新（2026-03）**：最新实验表明，季度 PIT 路线的最佳实践是：
+
+1. **一定要设置 `features.missing.add_indicators: false`**，去掉 `*_missing` 指示器
+2. **优先使用 `xgb_ranker`**，在基本面路线上表现显著优于 `xgb_regressor`
+
 模型块可以直接参考现成模板：
 
 * `xgb_regressor`：`config/hk_selected__xgb_regressor.yml`
@@ -221,15 +247,15 @@ csml run --config config/local/hk_sel_q_price_only_xgb_reg.yml
 csml run --config config/local/hk_sel_pit_q_core_xgb_reg.yml
 csml run --config config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml
 
-# 四模型 PK
-csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_xgb_reg.yml
-csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml
-csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_ridge.yml
-csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_en.yml
+# 四模型 PK（推荐使用 _nomiss 版本，即 add_indicators: false）
+csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_reg.yml
+csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank.yml
+csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_nomiss_ridge.yml
+csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_nomiss_en.yml
 
 csml summarize \
   --runs-dir artifacts/runs \
-  --run-name-prefix hk_sel_q_pk_pit_core_hybrid \
+  --run-name-prefix hk_sel_q_pk_pit_core_hybrid_nomiss \
   --sort-by score
 ```
 
