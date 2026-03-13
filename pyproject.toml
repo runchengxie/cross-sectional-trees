@@ -53,5 +53,9 @@ markers = [
   "slow: heavier offline regression tests",
 ]
 
+[tool.uv]
+no-build-isolation = true
+
 [tool.uv.extra-build-dependencies]
-rqsdk = ["setuptools<82"]
+rqsdk = ["setuptools"]
+rqdatac-fund = ["setuptools"]
