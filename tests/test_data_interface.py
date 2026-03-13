@@ -36,3 +36,35 @@ def test_data_interface_loads_primary_tushare_tokens_only(tmp_path, monkeypatch)
     interface = DataInterface.__new__(DataInterface)
     tokens = DataInterface._load_tushare_tokens(interface)
     assert tokens == ["primary", "secondary"]
+
+
+def test_data_interface_skips_rqdatac_init_when_local_assets_configured(tmp_path, monkeypatch):
+    asset_dir = tmp_path / "daily_assets"
+    (asset_dir / "data").mkdir(parents=True, exist_ok=True)
+    instruments = tmp_path / "hk_instruments.parquet"
+    instruments.write_bytes(b"PAR1")
+
+    import builtins
+
+    original_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "rqdatac":
+            raise AssertionError("rqdatac should not be imported in local asset mode")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    interface = DataInterface(
+        market="hk",
+        data_cfg={
+            "provider": "rqdata",
+            "rqdata": {
+                "daily_asset_dir": str(asset_dir),
+                "instruments_file": str(instruments),
+            },
+        },
+        cache_dir=tmp_path / "cache",
+    )
+
+    assert interface.client is None

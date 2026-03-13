@@ -16,6 +16,7 @@
 | 数据层 | 主要命令 | 默认输出位置 | 作用 |
 | --- | --- | --- | --- |
 | 港股通 PIT 股票池 | `csml universe hk-connect` | `artifacts/assets/universe/` | 决定某只股票在哪些日期属于研究股票池 |
+| HK 全市场 by-date 股票池 | `csml universe hk-daily-assets` | `artifacts/assets/universe/` | 用本地日线镜像派生更长历史的 HK 全市场研究股票池 |
 | instrument 快照 | `csml rqdata export-hk-instruments` | `artifacts/assets/rqdata/hk/instruments/` | 保留 `listed_date`、`de_listed_date`、`round_lot` 等元数据 |
 | 日线缓存 | pipeline 首次拉取时自动写入 | `artifacts/cache/hk_rqdata_daily_<ts_code>.parquet` | 保留按 symbol 分开的日频行情缓存 |
 | PIT 财务镜像 | `csml rqdata mirror-hk-pit-financials` | `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/` | 保留按 symbol 分开的原始 PIT 财务资产 |
@@ -91,6 +92,20 @@ csml rqdata mirror-hk-daily \
 * 默认一个 symbol 一个缓存文件
 * 已有缓存时，会按 `data.cache_refresh_days` 只刷新尾部区间
 * 适合长期维护一套稳定的 HK 日线缓存
+
+如果你已经有本地日线镜像，而且想完全离线跑 pipeline，可以再多配两项：
+
+* `data.rqdata.daily_asset_dir`：指向 daily snapshot 目录
+* `data.rqdata.instruments_file`：指向 HK instrument 快照文件
+
+这样 `provider=rqdata` 也可以直接吃本地资产，不需要运行时再初始化 provider。
+
+如果你的目标是“把 2000 年以来的 HK 全市场研究口径补齐”，常见顺序是：
+
+1. 先跑 `mirror-hk-daily`
+2. 再跑 `csml universe hk-daily-assets`
+3. 再把 `universe.by_date_file` 切到 `artifacts/assets/universe/hk_all_full_by_date.csv`
+4. 配上 `data.rqdata.daily_asset_dir` 和 `data.rqdata.instruments_file`
 
 如果你的目标是“把港股通 symbol archive 的日线缓存尽量补齐”，当前做法是：
 

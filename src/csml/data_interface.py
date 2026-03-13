@@ -14,6 +14,7 @@ import pandas as pd
 from .data_providers import (
     fetch_daily,
     fetch_fundamentals,
+    has_local_rqdata_assets,
     load_basic,
     normalize_market,
     resolve_provider,
@@ -161,6 +162,10 @@ class DataInterface:
             return
 
         if self.provider == "rqdata":
+            if has_local_rqdata_assets(self.data_cfg):
+                self.logger.info("Using local RQData daily/instruments assets; skipping rqdatac.init.")
+                self.client = None
+                return
             try:
                 import rqdatac
             except ImportError as exc:

@@ -690,7 +690,32 @@ csml universe index-components --index-code 000300.SH --month 202501
 csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 ```
 
-## 22) `csml init-config`
+## 22) `csml universe hk-daily-assets`
+
+用途：用本地 HK 日线镜像构建更长历史的全市场 `by_date` universe。
+
+关键参数：
+
+* `--config <path_or_alias>`
+* 其余参数转发到底层脚本 `build_hk_daily_asset_universe.py`
+
+补充：
+
+* 默认会自动寻找最新的 `artifacts/assets/rqdata/hk/daily/hk_all_*_daily_full_latest/`
+* 输出 CSV 会同时包含 `symbol`、`stock_ticker` 和 `ts_code`
+* 这个命令不查 provider，适合你已经完成本地日线归档后的离线研究
+
+示例：
+
+```bash
+csml universe hk-daily-assets \
+  --config config/universe.hk_all_assets.yml \
+  -- \
+  --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_full_latest \
+  --end-date 20251231
+```
+
+## 23) `csml init-config`
 
 用途：导出内置配置模板。
 

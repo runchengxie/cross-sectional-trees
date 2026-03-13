@@ -2,6 +2,7 @@ import pytest
 import pandas as pd
 
 from csml.project_tools import build_hk_connect_universe as hk_universe
+from csml.project_tools import build_hk_daily_asset_universe as hk_daily_assets
 from csml.project_tools import fetch_index_components as index_components
 
 
@@ -74,6 +75,53 @@ def test_select_liquid_symbols_keeps_all_when_top_quantile_zero():
 
     assert selected.index.tolist() == ["00700.XHKG", "00001.XHKG", "00005.XHKG"]
     assert selected.tolist() == [30.0, 20.0, 10.0]
+
+
+def test_build_hk_daily_asset_universe_outputs_symbol_aliases(tmp_path):
+    asset_dir = tmp_path / "daily_assets"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20200101", "20200102", "20200103", "20200104", "20200105"],
+            "ts_code": ["AAA.HK"] * 5,
+            "total_turnover": [10.0, 20.0, 30.0, 40.0, 50.0],
+        }
+    ).to_parquet(data_dir / "AAA.HK.parquet")
+    pd.DataFrame(
+        {
+            "trade_date": ["20200101", "20200102", "20200103", "20200104", "20200105"],
+            "ts_code": ["BBB.HK"] * 5,
+            "total_turnover": [50.0, 40.0, 30.0, 20.0, 10.0],
+        }
+    ).to_parquet(data_dir / "BBB.HK.parquet")
+
+    universe, stats = hk_daily_assets.build_universe_frame(
+        asset_dir,
+        start_date="20200101",
+        end_date="20200131",
+        rebalance_frequency="M",
+        lookback_days=2,
+        min_window_days=2,
+        top_quantile=0.0,
+        min_turnover=0.0,
+    )
+
+    assert stats["symbols_selected"] == 2
+    assert universe.columns.tolist() == [
+        "trade_date",
+        "symbol",
+        "stock_ticker",
+        "ts_code",
+        "liq_metric",
+        "selected",
+    ]
+    assert universe["trade_date"].tolist() == ["20200105", "20200105"]
+    assert universe["symbol"].tolist() == ["AAA.HK", "BBB.HK"]
+    assert universe["stock_ticker"].tolist() == ["AAA.HK", "BBB.HK"]
+    assert universe["ts_code"].tolist() == ["AAA.HK", "BBB.HK"]
+    assert universe["liq_metric"].tolist() == [35.0, 25.0]
 
 
 def test_month_bounds_handles_leap_year():

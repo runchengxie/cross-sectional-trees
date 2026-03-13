@@ -173,7 +173,10 @@ def _append_bool_switch(
 
 def _append_passthrough(argv: list[str], values) -> None:
     if values:
-        argv.extend(list(values))
+        items = list(values)
+        if items and items[0] == "--":
+            items = items[1:]
+        argv.extend(items)
 
 
 def _init_rqdatac(args) -> object:
@@ -294,6 +297,16 @@ def _handle_universe_hk_connect(args) -> int:
     _append_arg(argv, "--config", args.config)
     _append_passthrough(argv, args.args)
     build_hk_connect_universe.main(argv)
+    return 0
+
+
+def _handle_universe_hk_daily_assets(args) -> int:
+    from .project_tools import build_hk_daily_asset_universe
+
+    argv: list[str] = []
+    _append_arg(argv, "--config", args.config)
+    _append_passthrough(argv, args.args)
+    build_hk_daily_asset_universe.main(argv)
     return 0
 
 
@@ -593,6 +606,14 @@ def build_parser() -> argparse.ArgumentParser:
     hk.add_argument("--config", help="YAML config path (optional).")
     hk.add_argument("args", nargs=argparse.REMAINDER)
     hk.set_defaults(func=_handle_universe_hk_connect)
+
+    hk_daily_assets = uni_sub.add_parser(
+        "hk-daily-assets",
+        help="Build HK full-market universe from local daily assets",
+    )
+    hk_daily_assets.add_argument("--config", help="YAML config path (optional).")
+    hk_daily_assets.add_argument("args", nargs=argparse.REMAINDER)
+    hk_daily_assets.set_defaults(func=_handle_universe_hk_daily_assets)
 
     index_components = uni_sub.add_parser(
         "index-components", help="Fetch index constituents (TuShare)"

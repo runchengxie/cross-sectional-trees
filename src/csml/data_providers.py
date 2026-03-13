@@ -569,6 +569,9 @@ def _load_basic_rqdata(
     client,
     data_cfg: Mapping,
 ) -> pd.DataFrame:
+    local_basic = _load_basic_from_local_asset(symbols, data_cfg)
+    if local_basic is not None:
+        return local_basic
     if client is None:
         import rqdatac as client
     rq_cfg = data_cfg.get("rqdata") if isinstance(data_cfg, Mapping) else None
@@ -698,6 +701,124 @@ def _standardize_daily_frame(
     return df
 
 
+def _resolve_local_path(path_text: object, *, label: str) -> Path | None:
+    if path_text in {None, ""}:
+        return None
+    path = Path(str(path_text)).expanduser()
+    if not path.is_absolute():
+        path = (Path.cwd() / path).resolve()
+    else:
+        path = path.resolve()
+    if not path.exists():
+        raise SystemExit(f"{label} not found: {path}")
+    return path
+
+
+def _resolve_local_daily_asset_dir(data_cfg: Mapping | None) -> Path | None:
+    if not isinstance(data_cfg, Mapping):
+        return None
+    rq_cfg = data_cfg.get("rqdata")
+    candidates = []
+    if isinstance(rq_cfg, Mapping):
+        candidates.extend([rq_cfg.get("daily_asset_dir"), rq_cfg.get("asset_dir")])
+    candidates.extend([data_cfg.get("daily_asset_dir"), data_cfg.get("asset_dir")])
+    for candidate in candidates:
+        root = _resolve_local_path(candidate, label="Local RQData daily asset path") if candidate else None
+        if root is None:
+            continue
+        if (root / "data").exists():
+            return root
+        if root.name == "data" and root.is_dir():
+            return root.parent
+        raise SystemExit(f"Local RQData daily asset directory is missing data/: {root}")
+    return None
+
+
+def _resolve_local_instruments_file(data_cfg: Mapping | None) -> Path | None:
+    if not isinstance(data_cfg, Mapping):
+        return None
+    rq_cfg = data_cfg.get("rqdata")
+    candidates = []
+    if isinstance(rq_cfg, Mapping):
+        candidates.extend([rq_cfg.get("instruments_file"), rq_cfg.get("basic_file")])
+    candidates.extend([data_cfg.get("instruments_file"), data_cfg.get("basic_file")])
+    for candidate in candidates:
+        resolved = _resolve_local_path(candidate, label="Local RQData instruments file") if candidate else None
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def has_local_rqdata_assets(data_cfg: Mapping | None) -> bool:
+    return (
+        _resolve_local_daily_asset_dir(data_cfg) is not None
+        and _resolve_local_instruments_file(data_cfg) is not None
+    )
+
+
+def _read_local_table(path: Path) -> pd.DataFrame:
+    if path.suffix.lower() == ".parquet":
+        return pd.read_parquet(path)
+    if path.suffix.lower() == ".csv":
+        return pd.read_csv(path)
+    raise SystemExit(f"Unsupported local asset file type: {path}")
+
+
+def _load_daily_from_local_asset(
+    market: str,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    data_cfg: Mapping,
+) -> pd.DataFrame | None:
+    asset_dir = _resolve_local_daily_asset_dir(data_cfg)
+    if asset_dir is None:
+        return None
+    asset_path = asset_dir / "data" / f"{symbol}.parquet"
+    if not asset_path.exists():
+        return pd.DataFrame()
+    frame = pd.read_parquet(asset_path)
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+    frame = _standardize_daily_frame(frame, market, data_cfg, symbol)
+    frame = _ensure_trade_date_str(frame)
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+    mask = (frame["trade_date"] >= str(start_date)) & (frame["trade_date"] <= str(end_date))
+    return frame.loc[mask].copy()
+
+
+def _load_basic_from_local_asset(
+    symbols: Optional[Iterable[str]],
+    data_cfg: Mapping,
+) -> pd.DataFrame | None:
+    instruments_file = _resolve_local_instruments_file(data_cfg)
+    if instruments_file is None:
+        return None
+    work = _read_local_table(instruments_file)
+    if work is None or work.empty:
+        return pd.DataFrame()
+    work = work.copy()
+    if "ts_code" not in work.columns and "order_book_id" in work.columns:
+        work["ts_code"] = work["order_book_id"]
+    if "symbol" in work.columns and "name" not in work.columns:
+        work["name"] = work["symbol"]
+    if "listed_date" in work.columns and "list_date" not in work.columns:
+        work["list_date"] = work["listed_date"]
+    required = ["ts_code", "name", "list_date"]
+    missing = [column for column in required if column not in work.columns]
+    if missing:
+        raise SystemExit(
+            f"Local RQData instruments file is missing required columns {missing}: {instruments_file}"
+        )
+    work = work[required].copy()
+    work["ts_code"] = work["ts_code"].astype(str).str.strip()
+    work["list_date"] = pd.to_datetime(work["list_date"], errors="coerce").dt.strftime("%Y%m%d")
+    if symbols:
+        work = work[work["ts_code"].isin(list(symbols))].copy()
+    return work.reset_index(drop=True)
+
+
 def _resolve_endpoint_name(
     market: str,
     data_cfg: Mapping,
@@ -730,6 +851,9 @@ def _fetch_daily_from_provider(
     client,
     data_cfg: Mapping,
 ) -> pd.DataFrame:
+    local_frame = _load_daily_from_local_asset(market, symbol, start_date, end_date, data_cfg)
+    if local_frame is not None:
+        return local_frame
     if provider == "rqdata":
         df = _fetch_daily_rqdata(market, symbol, start_date, end_date, client, data_cfg)
     elif provider == "tushare":

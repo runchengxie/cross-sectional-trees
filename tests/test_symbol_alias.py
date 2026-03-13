@@ -9,6 +9,15 @@ def test_ensure_symbol_columns_accepts_stock_ticker_only():
     out = ensure_symbol_columns(frame, context="positions.csv")
     assert out["ts_code"].tolist() == ["AAA", "BBB", ""]
     assert out["stock_ticker"].tolist() == ["AAA", "BBB", ""]
+    assert out["symbol"].tolist() == ["AAA", "BBB", ""]
+
+
+def test_ensure_symbol_columns_accepts_symbol_only():
+    frame = pd.DataFrame({"symbol": ["AAA", " BBB ", ""], "weight": [0.3, 0.4, 0.3]})
+    out = ensure_symbol_columns(frame, context="positions.csv")
+    assert out["ts_code"].tolist() == ["AAA", "BBB", ""]
+    assert out["stock_ticker"].tolist() == ["AAA", "BBB", ""]
+    assert out["symbol"].tolist() == ["AAA", "BBB", ""]
 
 
 def test_load_universe_by_date_accepts_stock_ticker_column(tmp_path):

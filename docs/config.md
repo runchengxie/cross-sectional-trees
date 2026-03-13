@@ -174,6 +174,19 @@ model:
 * 想减少“同配置结果漂移”时，固定绝对日期并保留缓存目录
 * HK 这类日频研究，几百只股票跑 10-15 年通常仍是几十 MB 级别，优先继续用 Parquet 缓存，不必先上数据库
 
+### 本地 HK 资产直读
+
+如果你已经有本地 HK 日线镜像和 instrument 快照，可以让 pipeline 不走 provider，直接读本地资产：
+
+* `data.rqdata.daily_asset_dir`：指向 `csml rqdata mirror-hk-daily` 生成的 snapshot 目录
+* `data.rqdata.instruments_file`：指向 `csml rqdata export-hk-instruments` 导出的 parquet/csv
+
+建议：
+
+* 两个键一起配。这样 `provider=rqdata` 也可以跳过 `rqdatac.init`，适合离线复现
+* 本地资产模式下，仍然建议保留 `data.cache_tag`，把 query cache 和旧实验隔离开
+* 如果 snapshot 固定不再增量刷新，`cache_refresh_days` 可以直接设成 `0`
+
 ### TuShare 覆盖项
 
 按需可配：

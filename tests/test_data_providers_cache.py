@@ -203,6 +203,58 @@ def test_fetch_daily_symbol_cache_fetches_large_leading_gap(tmp_path, monkeypatc
     ]
 
 
+def test_fetch_daily_reads_from_local_asset_dir_without_remote_fetch(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    asset_dir = tmp_path / "daily_assets"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    symbol = "AAA"
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20200101", "20200102", "20200103"],
+            "ts_code": [symbol, symbol, symbol],
+            "close": [10.0, 11.0, 12.0],
+            "volume": [100.0, 110.0, 120.0],
+            "total_turnover": [1000.0, 1100.0, 1200.0],
+        }
+    ).to_parquet(data_dir / f"{symbol}.parquet")
+
+    def fake_fetch(*args, **kwargs):
+        raise AssertionError("remote provider should not be called when local asset is configured")
+
+    monkeypatch.setattr(data_providers, "_fetch_daily_rqdata", fake_fetch)
+
+    result = data_providers.fetch_daily(
+        "hk",
+        symbol,
+        "20200102",
+        "20200103",
+        cache_dir,
+        client=None,
+        data_cfg={
+            "provider": "rqdata",
+            "cache_mode": "symbol",
+            "cache_refresh_days": 0,
+            "cache_refresh_on_hit": False,
+            "column_map": {
+                "trade_date": "trade_date",
+                "ts_code": "ts_code",
+                "close": "close",
+                "vol": "volume",
+                "amount": "total_turnover",
+            },
+            "rqdata": {
+                "daily_asset_dir": str(asset_dir),
+            },
+        },
+    )
+
+    assert result["trade_date"].tolist() == ["20200102", "20200103"]
+    assert result["close"].tolist() == [11.0, 12.0]
+
+
 class _FakeRQInstrument:
     def __init__(self, listed_date: str):
         self.listed_date = listed_date

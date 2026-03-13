@@ -268,6 +268,12 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit.name == "pit_demo"
     assert callable(pit.func)
 
+
+def test_append_passthrough_strips_leading_separator():
+    argv: list[str] = []
+    cli._append_passthrough(argv, ["--", "--start-date", "20250101"])
+    assert argv == ["--start-date", "20250101"]
+
     details = parser.parse_args(
         [
             "rqdata",
@@ -405,6 +411,25 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     assert hk_connect.config == "config/universe.hk_connect.yml"
     assert hk_connect.args == ["--", "--mode", "daily", "--start-date", "20250101"]
     assert callable(hk_connect.func)
+
+    hk_daily_assets = parser.parse_args(
+        [
+            "universe",
+            "hk-daily-assets",
+            "--config",
+            "config/universe.hk_all_assets.yml",
+            "--",
+            "--start-date",
+            "20000104",
+            "--end-date",
+            "20251231",
+        ]
+    )
+    assert hk_daily_assets.command == "universe"
+    assert hk_daily_assets.uni_command == "hk-daily-assets"
+    assert hk_daily_assets.config == "config/universe.hk_all_assets.yml"
+    assert hk_daily_assets.args == ["--", "--start-date", "20000104", "--end-date", "20251231"]
+    assert callable(hk_daily_assets.func)
 
     index_components = parser.parse_args(
         [

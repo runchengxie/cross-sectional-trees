@@ -89,7 +89,10 @@ def test_holdings_missing_symbol_column_raises(tmp_path):
     run_dir = tmp_path / "run"
     df = pd.DataFrame({"entry_date": ["2020-01-02"], "weight": [1.0]})
     _write_positions(run_dir, df)
-    with pytest.raises(SystemExit, match="positions_by_rebalance.csv is missing ts_code/stock_ticker."):
+    with pytest.raises(
+        SystemExit,
+        match="positions_by_rebalance.csv is missing symbol/stock_ticker/ts_code/order_book_id.",
+    ):
         holdings.main(
             [
                 "--run-dir",
