@@ -494,7 +494,14 @@ def _handle_alloc(args) -> int:
 
 def _handle_init_config(args) -> int:
     filename = resolve_pipeline_filename(args.market)
-    content = read_package_text("csml.config", filename)
+
+    # Load from configs/presets/ (project root) instead of packaged csml.config
+    project_root = Path(__file__).parent.parent.parent
+    presets_dir = project_root / "configs" / "presets"
+    source_path = presets_dir / filename
+    if not source_path.exists():
+        raise SystemExit(f"Preset not found: {source_path}")
+    content = source_path.read_text(encoding="utf-8")
 
     if args.out:
         out_path = Path(args.out)
@@ -504,7 +511,7 @@ def _handle_init_config(args) -> int:
             out_path.mkdir(parents=True, exist_ok=True)
             out_path = out_path / filename
     else:
-        out_dir = Path.cwd() / "config"
+        out_dir = Path.cwd() / "configs"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / filename
 
@@ -844,7 +851,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_cfg.add_argument(
         "--out",
-        help="Output path or directory (default: ./config/<template>.yml).",
+        help="Output path or directory (default: ./configs/<template>.yml).",
     )
     init_cfg.add_argument(
         "--force",

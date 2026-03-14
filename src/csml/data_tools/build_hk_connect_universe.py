@@ -90,10 +90,11 @@ def normalize_date_token(value: object, label: str) -> str | None:
 
 
 def load_yaml_config(path: str | Path | None) -> dict:
+    # Now loads from configs/presets/ instead of packaged csml.config
     resolved = resolve_config(
         path,
-        package="csml.config",
-        default_name="universe.hk_connect.yml",
+        package=None,  # Use project configs/
+        default_name="universe/hk_connect.yml",
     )
     return resolved.data
 
