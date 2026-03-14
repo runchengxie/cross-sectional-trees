@@ -393,7 +393,7 @@ def _handle_sweep_linear(args) -> int:
 
 
 def _handle_summarize(args) -> int:
-    from .research_tools import summarize_runs
+    from .research import summarize_runs
 
     summarize_runs.run(args)
     return 0
@@ -434,7 +434,7 @@ def _handle_migrate_artifacts(args) -> int:
 
 
 def _handle_holdings(args) -> int:
-    from .research_tools import holdings
+    from .liveops import holdings
 
     argv: list[str] = []
     _append_arg(argv, "--config", getattr(args, "config", None))
@@ -449,7 +449,7 @@ def _handle_holdings(args) -> int:
 
 
 def _handle_snapshot(args) -> int:
-    from .research_tools import snapshot
+    from .liveops import snapshot
 
     argv: list[str] = []
     _append_arg(argv, "--config", getattr(args, "config", None))
@@ -464,7 +464,7 @@ def _handle_snapshot(args) -> int:
 
 
 def _handle_alloc(args) -> int:
-    from .research_tools import alloc
+    from .liveops import alloc
 
     argv: list[str] = []
     _append_arg(argv, "--config", getattr(args, "config", None))
