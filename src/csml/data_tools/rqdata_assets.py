@@ -3519,6 +3519,12 @@ def build_hk_pit_fundamentals_file(args) -> int:
         work = work.loc[~empty_value_rows].copy()
         if work.empty:
             continue
+
+        # Early dedup per file: keep only the latest row per ts_code before appending.
+        # This reduces memory usage from O(total_rows) to O(num_symbols * num_files).
+        if "trade_date" in work.columns and "ts_code" in work.columns:
+            work = work.sort_values("trade_date").drop_duplicates(subset=["ts_code"], keep="last")
+
         combined_frames.append(work)
 
     meta_columns = [col for col in PIT_METADATA_COLUMNS if keep_meta and col in available_columns]
