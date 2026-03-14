@@ -1,13 +1,10 @@
 # 配置参考
 
-这个文档是配置键的速查表。
-
-- **如果你想了解"模型怎么选"** → 去 `docs/concepts/model-selection.md`
-- **如果你想了解"PIT 覆盖率怎么看"** → 去 `docs/concepts/pit-coverage.md`
-- **如果你想了解"股票池模式有什么区别"** → 去 `docs/concepts/universe-modes.md`
-- **如果你想了解"数据 provider 怎么选"** → 去 `docs/concepts/data-sources.md`
-
----
+本页解决什么：配置键与默认行为的速查表。
+本页不解决什么：不展开研究路线与概念选择。
+适合谁：需要查配置定义与模板的人。
+读完你会得到什么：配置键的权威定义与常用模板入口。
+相关页面：`docs/concepts/model-selection.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/universe-modes.md`、`docs/concepts/data-sources.md`
 
 ## 常用模板速查
 

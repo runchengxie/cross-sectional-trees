@@ -1,5 +1,11 @@
 # 数据源行为差异与限制
 
+本页解决什么：provider 行为差异、限制与缓存策略。
+本页不解决什么：不展开完整研究流程与配置键定义。
+适合谁：需要选择或切换 provider 的读者。
+读完你会得到什么：provider 差异对照与注意事项。
+相关页面：`docs/config.md`、`docs/cli.md`、`docs/concepts/data-sources.md`
+
 本项目支持 `tushare`、`rqdata`、`eodhd`。同一份配置在不同 provider 下，结果可能不同（字段覆盖、交易日历、历史回补、停牌口径都不同）。
 
 ## 快速对照

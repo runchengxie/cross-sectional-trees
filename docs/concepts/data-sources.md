@@ -1,10 +1,12 @@
 # 数据源指南
 
+本页解决什么：选择数据 provider 的决策与权衡。
+本页不解决什么：不展开配置键的权威定义。
+适合谁：需要在 provider 之间做选择的人。
+读完你会得到什么：provider 选择建议与使用边界。
+相关页面：`docs/config.md`、`docs/providers.md`、`docs/cli.md`
+
 这个文档帮你选择和配置数据 provider。
-
-如果你只是想知道配置键的定义，去 `docs/config.md`。
-
----
 
 ## 支持的 provider
 

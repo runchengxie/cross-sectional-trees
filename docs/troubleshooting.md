@@ -1,5 +1,11 @@
 # 常见问题排查
 
+本页解决什么：按症状组织的排障路径。
+本页不解决什么：不替代参数与默认行为的权威说明。
+适合谁：运行中遇到错误或结果异常的人。
+读完你会得到什么：按症状定位原因与处理步骤。
+相关页面：`docs/config.md`、`docs/cli.md`、`docs/providers.md`、`docs/outputs.md`
+
 本页只保留排障路径。参数定义和默认行为以 `docs/config.md`、`docs/cli.md`、`docs/providers.md` 为准。
 
 ## 先看哪里

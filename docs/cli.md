@@ -1,12 +1,10 @@
 # CLI 参考
 
-这个文档汇总 `csml` 的命令入口和高频参数。
-
-- 想按任务串起来执行时，先看 `docs/cookbook.md`
-- 想查配置键时，继续看 `docs/config.md`
-- 想查输出文件时，继续看 `docs/outputs.md`
-
----
+本页解决什么：`csml` 命令入口与高频参数速查。
+本页不解决什么：不展开研究流程与配置语义。
+适合谁：需要查命令和参数的读者。
+读完你会得到什么：按场景检索命令与参数的路径。
+相关页面：`docs/cookbook.md`、`docs/config.md`、`docs/outputs.md`
 
 ## 快速决策
 

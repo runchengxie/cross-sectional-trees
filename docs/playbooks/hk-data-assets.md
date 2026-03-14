@@ -1,5 +1,13 @@
 # HK 数据下载与整备
 
+本页解决什么：解释 HK 研究中各类数据资产的准备顺序与落地位置。
+本页不解决什么：不展开研究路线选择与参数定义。
+适合谁：准备做 HK PIT 或本地资产归档的人。
+读完你会得到什么：一条可执行的数据准备顺序与资产关系说明。
+相关页面：`docs/playbooks/hk-selected.md`、`docs/playbooks/research-template-design.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`
+
+任务摘要：先有股票池与 instrument，再落地日线与 PIT 资产，最后构建平面 fundamentals 与备份。
+
 本页说明 HK 研究里几类数据各自落到哪里、推荐按什么顺序准备，以及 PIT 股票池、日线缓存、财务资产之间是什么关系。
 
 本页默认场景：

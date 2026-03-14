@@ -1,3 +1,3 @@
-# 文档导航
+# 文档首页
 
-主文档首页见 `docs/README.md`。
+本页已合并到 `docs/README.md`。请以 `docs/README.md` 为唯一入口。

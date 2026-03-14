@@ -1,10 +1,12 @@
 # PIT 覆盖率指南
 
+本页解决什么：理解 PIT 财务覆盖率体检的意义与解读方法。
+本页不解决什么：不替代命令参数与配置定义。
+适合谁：做季度 PIT 财报研究或需要判断样本覆盖的人。
+读完你会得到什么：覆盖率体检的解读框架与行动建议。
+相关页面：`docs/cli.md`、`docs/playbooks/hk-selected.md`、`docs/playbooks/hk-data-assets.md`
+
 这个文档帮你理解 PIT 财务数据的覆盖率体检。
-
-如果你只是想知道"覆盖率体检命令怎么跑"，去 `docs/cli.md` 找 `csml rqdata inspect-hk-pit-coverage`。
-
----
 
 ## 什么是 PIT 覆盖率
 

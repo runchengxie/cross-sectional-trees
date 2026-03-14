@@ -1,5 +1,13 @@
 # HK selected 研究路线
 
+本页解决什么：在 HK selected 路线上做频率与数据路线选择，并确定比较顺序。
+本页不解决什么：不展开参数定义与资产准备细节。
+适合谁：已经要做 HK selected 研究的人。
+读完你会得到什么：一条可执行的路线选择与比较顺序。
+相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/cli.md`、`docs/config.md`
+
+任务摘要：先选频率，再选数据路线；走 PIT 路线先做覆盖率体检，最后在同一路线内比较模型。
+
 本页把 HK selected 研究拆成四步：
 
 1. 先选频率：`M` / `Q` / `Y`

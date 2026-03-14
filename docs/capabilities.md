@@ -1,12 +1,10 @@
 # 项目能力总览
 
-本页回答三个问题：
-
-1. 这个项目能做什么。
-2. 常见入口分别在哪个命令。
-3. 当前边界在哪里。
-
-如果你想直接上手，先看 `README.md` 和 `docs/cookbook.md`。如果你想查参数，继续看 `docs/cli.md` 和 `docs/config.md`。
+本页解决什么：概览项目能力、主要入口和边界。
+本页不解决什么：不展开命令参数与配置细节。
+适合谁：想判断项目能力范围与边界的人。
+读完你会得到什么：能力清单、入口与边界说明。
+相关页面：`README.md`、`docs/cookbook.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`
 
 ## 一句话说明
 
@@ -114,11 +112,3 @@ artifacts/
 * `last_trading_day` 只有在识别到 `provider=rqdata` 且交易日历可用时才会严格按交易日解析。
 * provider 回补、缓存刷新和相对日期都会影响同配置重跑结果。
 * `migrate-artifacts` 只服务旧目录升级。新仓库通常不需要执行。
-
-## 常见阅读路径
-
-* 想先跑通一次：`README.md` -> `docs/cookbook.md`
-* 想知道项目能做什么：本页 -> `docs/outputs.md`
-* 想查命令：`docs/cli.md`
-* 想改配置：`docs/config.md`
-* 想做 HK selected 研究：`docs/playbooks/README.md`
