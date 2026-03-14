@@ -59,13 +59,28 @@ uv sync --extra dev --extra rqdata
 ## 配置与研究约定
 
 * `config.used.yml` 是每次 run 的实际生效配置，应优先用于复现。
+* 配置目录已重构为 `configs/` 结构：
+  * `configs/presets/` - 内置预设（market 默认配置）
+  * `configs/experiments/` - 研究实验配置
+  * `configs/experiments/baseline/` - 基线配置
+  * `configs/experiments/variants/` - 模型变体配置
+  * `configs/experiments/sweeps/` - 批量实验配置
+  * `configs/local/` - 本地覆盖配置（gitignored）
+* 支持 `extends` 机制减少配置复制，参考 `configs/catalog.csv` 索引表。
 * 研究对比时，优先保持 `universe`、`label`、`features`、`eval`、`backtest` 不变，只替换模型相关参数。
-* HK 线性模型批跑优先使用 `config/hk_selected__baseline.yml` 作为基线配置。
+* HK 线性模型批跑优先使用 `configs/experiments/baseline/hk_selected.yml` 作为基线配置。
 * HK 默认研究模板使用港股通 PIT universe；这只是仓库内置研究口径，不等于 provider 的港股覆盖边界。
 * 输出目录默认是 `artifacts/runs/<run_name>_<timestamp>_<hash>/`。
 * 看结果时，先读 `summary.json`、`config.used.yml` 和持仓文件。
 * 线性模型汇总时，优先排除或单独标记 `flag_constant_prediction=true`、`flag_zero_feature_importance=true` 的退化 run。
 * 并行维护 `frozen` 与 `rolling` 数据窗口时，优先用不同的 `data.cache_tag` 隔离缓存。
+
+## 数据目录约定
+
+* 原始数据缓存：`artifacts/cache/` - 运行时缓存，可删除重建
+* 元数据：`artifacts/metadata/` - universe membership、symbol 映射等
+* 研究结果：`artifacts/runs/` - 实验运行输出
+* 详见 `artifacts/metadata/dataset_registry.csv` 数据集索引。
 
 ## 编辑与验证
 

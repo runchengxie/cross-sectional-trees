@@ -1,0 +1,14 @@
+# XGBoost Ranker preset
+model:
+  type: xgb_ranker
+  params:
+    n_estimators: 300
+    learning_rate: 0.05
+    max_depth: 3
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.0
+    reg_lambda: 1.0
+    objective: "rank:pairwise"
+    random_state: 42
+  sample_weight_mode: "date_equal"

@@ -245,53 +245,53 @@ def _handle_rqdata_quota(args) -> int:
 
 
 def _handle_rqdata_list_hk_financial_fields(args) -> int:
-    from .project_tools import rqdata_assets
+    from .data_tools import rqdata_assets
 
     return rqdata_assets.list_hk_financial_fields(args)
 
 
 def _handle_rqdata_export_hk_instruments(args) -> int:
-    from .project_tools import rqdata_assets
+    from .data_tools import rqdata_assets
 
     rqdatac = _init_rqdatac(args)
     return rqdata_assets.export_hk_instruments(args, rqdatac)
 
 
 def _handle_rqdata_mirror_hk_daily(args) -> int:
-    from .project_tools import rqdata_assets
+    from .data_tools import rqdata_assets
 
     rqdatac = _init_rqdatac(args)
     return rqdata_assets.mirror_hk_daily(args, rqdatac)
 
 
 def _handle_rqdata_mirror_hk_pit_financials(args) -> int:
-    from .project_tools import rqdata_assets
+    from .data_tools import rqdata_assets
 
     rqdatac = _init_rqdatac(args)
     return rqdata_assets.mirror_hk_pit_financials(args, rqdatac)
 
 
 def _handle_rqdata_mirror_hk_financial_details(args) -> int:
-    from .project_tools import rqdata_assets
+    from .data_tools import rqdata_assets
 
     rqdatac = _init_rqdatac(args)
     return rqdata_assets.mirror_hk_financial_details(args, rqdatac)
 
 
 def _handle_rqdata_build_hk_pit_fundamentals(args) -> int:
-    from .project_tools import rqdata_assets
+    from .data_tools import rqdata_assets
 
     return rqdata_assets.build_hk_pit_fundamentals_file(args)
 
 
 def _handle_rqdata_inspect_hk_pit_coverage(args) -> int:
-    from .project_tools import rqdata_assets
+    from .data_tools import rqdata_assets
 
     return rqdata_assets.inspect_hk_pit_coverage(args)
 
 
 def _handle_universe_hk_connect(args) -> int:
-    from .project_tools import build_hk_connect_universe
+    from .data_tools import build_hk_connect_universe
 
     argv: list[str] = []
     _append_arg(argv, "--config", args.config)
@@ -301,7 +301,7 @@ def _handle_universe_hk_connect(args) -> int:
 
 
 def _handle_universe_hk_daily_assets(args) -> int:
-    from .project_tools import build_hk_daily_asset_universe
+    from .data_tools import build_hk_daily_asset_universe
 
     argv: list[str] = []
     _append_arg(argv, "--config", args.config)
@@ -311,21 +311,21 @@ def _handle_universe_hk_daily_assets(args) -> int:
 
 
 def _handle_universe_index_components(args) -> int:
-    from .project_tools import fetch_index_components
+    from .data_tools import fetch_index_components
 
     fetch_index_components.main(args.args)
     return 0
 
 
 def _handle_tushare_verify(args) -> int:
-    from .project_tools import verify_tushare_tokens
+    from .data_tools import verify_tushare_tokens
 
     verify_tushare_tokens.main(args.args)
     return 0
 
 
 def _handle_grid(args) -> int:
-    from .project_tools import run_grid
+    from .commands import run_grid
 
     argv: list[str] = []
     _append_arg(argv, "--config", getattr(args, "config", None))
@@ -343,7 +343,7 @@ def _handle_grid(args) -> int:
 
 
 def _handle_sweep_linear(args) -> int:
-    from .project_tools import linear_sweep
+    from .commands import linear_sweep
 
     argv: list[str] = []
     _append_arg(argv, "--sweep-config", getattr(args, "sweep_config", None))
@@ -393,14 +393,14 @@ def _handle_sweep_linear(args) -> int:
 
 
 def _handle_summarize(args) -> int:
-    from .project_tools import summarize_runs
+    from .research_tools import summarize_runs
 
     summarize_runs.run(args)
     return 0
 
 
 def _handle_backup_data(args) -> int:
-    from .project_tools import backup_data
+    from .data_tools import backup_data
 
     argv: list[str] = []
     _append_arg(argv, "--out-root", getattr(args, "out_root", None))
@@ -423,7 +423,7 @@ def _handle_backup_data(args) -> int:
 
 
 def _handle_migrate_artifacts(args) -> int:
-    from .project_tools import migrate_artifacts
+    from .data_tools import migrate_artifacts
 
     argv: list[str] = []
     _append_bool_switch(argv, getattr(args, "copy", None), true_flag="--copy")
@@ -434,7 +434,7 @@ def _handle_migrate_artifacts(args) -> int:
 
 
 def _handle_holdings(args) -> int:
-    from .project_tools import holdings
+    from .research_tools import holdings
 
     argv: list[str] = []
     _append_arg(argv, "--config", getattr(args, "config", None))
@@ -449,7 +449,7 @@ def _handle_holdings(args) -> int:
 
 
 def _handle_snapshot(args) -> int:
-    from .project_tools import snapshot
+    from .research_tools import snapshot
 
     argv: list[str] = []
     _append_arg(argv, "--config", getattr(args, "config", None))
@@ -464,7 +464,7 @@ def _handle_snapshot(args) -> int:
 
 
 def _handle_alloc(args) -> int:
-    from .project_tools import alloc
+    from .research_tools import alloc
 
     argv: list[str] = []
     _append_arg(argv, "--config", getattr(args, "config", None))
@@ -548,7 +548,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rq_quota.set_defaults(func=_handle_rqdata_quota)
 
-    from .project_tools import rqdata_assets
+    from .data_tools import rqdata_assets
 
     rq_list_fields = rq_sub.add_parser(
         "list-hk-financial-fields",
@@ -629,7 +629,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify.set_defaults(func=_handle_tushare_verify)
 
     grid = subparsers.add_parser("grid", help="Run Top-K × cost grid and summarize results")
-    from .project_tools import run_grid
+    from .commands import run_grid
 
     run_grid.add_grid_args(grid)
     grid.set_defaults(func=_handle_grid)
@@ -638,7 +638,7 @@ def build_parser() -> argparse.ArgumentParser:
         "sweep-linear",
         help="Run HK selected ridge/elasticnet hyper-parameter sweep and auto summarize",
     )
-    from .project_tools import linear_sweep
+    from .commands import linear_sweep
 
     linear_sweep.add_linear_sweep_args(sweep_linear)
     sweep_linear.set_defaults(func=_handle_sweep_linear)
@@ -646,7 +646,7 @@ def build_parser() -> argparse.ArgumentParser:
     summarize = subparsers.add_parser(
         "summarize", help="Aggregate saved runs into a summary CSV"
     )
-    from .project_tools import summarize_runs
+    from .research_tools import summarize_runs
 
     summarize_runs.add_summarize_args(summarize)
     summarize.set_defaults(func=_handle_summarize)
@@ -655,7 +655,7 @@ def build_parser() -> argparse.ArgumentParser:
         "backup-data",
         help="Create a private local snapshot of caches, universe files, and configs",
     )
-    from .project_tools import backup_data as backup_data_tool
+    from .data_tools import backup_data as backup_data_tool
 
     backup_data_tool.add_backup_data_args(backup_data)
     backup_data.set_defaults(func=_handle_backup_data)
@@ -664,7 +664,7 @@ def build_parser() -> argparse.ArgumentParser:
         "migrate-artifacts",
         help="One-time migration of legacy cache/out/data_mirror paths into artifacts/",
     )
-    from .project_tools import migrate_artifacts as migrate_artifacts_tool
+    from .data_tools import migrate_artifacts as migrate_artifacts_tool
 
     migrate_artifacts_tool.add_migrate_artifacts_args(migrate_artifacts)
     migrate_artifacts.set_defaults(func=_handle_migrate_artifacts)

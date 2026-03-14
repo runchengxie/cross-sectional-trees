@@ -1,0 +1,7 @@
+# Ridge Regression preset
+model:
+  type: ridge
+  params:
+    alpha: 1.0
+    random_state: 42
+  sample_weight_mode: "date_equal"
