@@ -1,0 +1,8 @@
+# Quarterly Rebalance Label Preset
+label:
+  horizon_mode: "next_rebalance"
+  rebalance_frequency: "Q"
+  horizon_days: 63
+  shift_days: 1
+  target_col: "future_return"
+  winsorize_pct: 0.01

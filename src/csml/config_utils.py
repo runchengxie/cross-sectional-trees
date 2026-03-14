@@ -158,18 +158,29 @@ def _resolve_alias(ref: str, aliases: Optional[Mapping[str, str]]) -> Optional[s
 def resolve_config(
     ref: str | Path | None,
     *,
-    package: str,
+    package: str | None,
     default_name: str,
     aliases: Optional[Mapping[str, str]] = None,
     search_paths: list[str] | None = None,
 ) -> ResolvedConfig:
     """Resolve pipeline config with extends support."""
     if ref is None or str(ref).strip() == "":
-        data = load_yaml_package(package, default_name)
-        data = _resolve_extends(data, package=package, search_paths=search_paths)
+        if package is None:
+            # Load from filesystem
+            base_data = None
+            for search_dir in search_paths:
+                search_path = Path(search_dir) / default_name
+                if search_path.exists():
+                    base_data = load_yaml_path(search_path)
+                    break
+            if base_data is None:
+                raise SystemExit(f"Default config not found: {default_name}")
+        else:
+            base_data = load_yaml_package(package, default_name)
+        base_data = _resolve_extends(base_data, package=package, search_paths=search_paths)
         label = Path(default_name).stem
-        source = f"package:{package}/{default_name}"
-        return ResolvedConfig(data=data, label=label, path=None, source=source)
+        source = f"{default_name}" if package is None else f"package:{package}/{default_name}"
+        return ResolvedConfig(data=base_data, label=label, path=None, source=source)
 
     ref_text = str(ref).strip()
     path = Path(ref_text)
@@ -185,11 +196,22 @@ def resolve_config(
             alias = candidate
 
     if alias:
-        data = load_yaml_package(package, alias)
-        data = _resolve_extends(data, package=package, search_paths=search_paths)
+        if package is None:
+            # Load from filesystem search_paths
+            base_data = None
+            for search_dir in search_paths:
+                search_path = Path(search_dir) / alias
+                if search_path.exists():
+                    base_data = load_yaml_path(search_path)
+                    break
+            if base_data is None:
+                raise SystemExit(f"Config file not found: {alias}")
+        else:
+            base_data = load_yaml_package(package, alias)
+        base_data = _resolve_extends(base_data, package=package, search_paths=search_paths)
         label = Path(alias).stem
-        source = f"package:{package}/{alias}"
-        return ResolvedConfig(data=data, label=label, path=None, source=source)
+        source = f"{alias}" if package is None else f"package:{package}/{alias}"
+        return ResolvedConfig(data=base_data, label=label, path=None, source=source)
 
     raise SystemExit(f"Config file not found: {ref_text}")
 
@@ -211,24 +233,40 @@ PIPELINE_ALIASES: Mapping[str, str] = {
 
 
 def resolve_pipeline_config(ref: str | Path | None) -> ResolvedConfig:
+    """Resolve pipeline config from project configs/ directory."""
+    # Use project root configs/ instead of packaged csml.config
+    project_root = Path(__file__).parent.parent.parent
+    configs_dir = project_root / "configs"
+    search_paths = [
+        str(configs_dir / "presets"),
+        str(configs_dir / "experiments"),
+        str(configs_dir),
+    ]
     return resolve_config(
         ref,
-        package="csml.config",
+        package=None,  # Disable package loading, use filesystem only
         default_name="default.yml",
         aliases=PIPELINE_ALIASES,
-        search_paths=["configs/presets", "configs/experiments", "configs"],
+        search_paths=search_paths,
     )
 
 
 def resolve_pipeline_filename(ref: str) -> str:
+    """Resolve pipeline config filename from project configs/ directory."""
+    project_root = Path(__file__).parent.parent.parent
+    configs_dir = project_root / "configs"
+    search_paths = [
+        str(configs_dir / "presets"),
+        str(configs_dir / "experiments"),
+        str(configs_dir),
+    ]
+
     alias = _resolve_alias(ref, PIPELINE_ALIASES)
     if alias:
         return alias
     candidate = Path(ref).name
-    if _package_has_file("csml.config", candidate):
-        return candidate
-    for search_dir in ["configs/presets", "configs/experiments", "configs"]:
+    for search_dir in search_paths:
         search_path = Path(search_dir) / candidate
         if search_path.exists():
             return candidate
-    raise SystemExit(f"Unknown built-in config name: {ref}")
+    raise SystemExit(f"Unknown config name: {ref}")

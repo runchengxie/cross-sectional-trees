@@ -1,0 +1,33 @@
+# HK Market Data Preset
+data:
+  provider: "rqdata"
+  start_date: "20150101"
+  end_date: "20251231"
+  cache_dir: "artifacts/cache"
+  cache_tag: null
+  cache_mode: "symbol"
+  cache_refresh_days: 10
+  cache_refresh_on_hit: false
+  price_col: "close"
+  retry:
+    max_attempts: 1
+    backoff_seconds: 0.5
+    max_backoff_seconds: 5.0
+    rotate_tokens: true
+  eodhd:
+    exchange: "HK"
+    period: "d"
+    order: "a"
+    fmt: "json"
+    hk_symbol_mode: "strip_one"
+  rqdata:
+    market: "hk"
+    frequency: "1d"
+    skip_suspended: true
+    fields: ["close", "volume", "total_turnover"]
+  column_map:
+    trade_date: trade_date
+    ts_code: ts_code
+    close: close
+    vol: volume
+    amount: total_turnover

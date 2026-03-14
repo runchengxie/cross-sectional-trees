@@ -1,0 +1,8 @@
+# Monthly Rebalance Label Preset
+label:
+  horizon_mode: "next_rebalance"
+  rebalance_frequency: "M"
+  horizon_days: 20
+  shift_days: 1
+  target_col: "future_return"
+  winsorize_pct: null

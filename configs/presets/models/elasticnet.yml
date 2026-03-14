@@ -1,0 +1,8 @@
+# ElasticNet Model Preset
+model:
+  type: elasticnet
+  params:
+    alpha: 0.1
+    l1_ratio: 0.5
+    random_state: 42
+  sample_weight_mode: "date_equal"

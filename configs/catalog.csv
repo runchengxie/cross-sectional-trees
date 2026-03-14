@@ -5,9 +5,16 @@ presets/cn.yml,preset,cn,rqdata,M,price_only,xgb_regressor,China A-share templat
 presets/us.yml,preset,us,eodhd,M,price_only,xgb_regressor,US market template,
 presets/universe/hk_connect.yml,preset_universe,hk,hk_connect,PIT,N/A,N/A,HK Connect PIT universe definition,
 presets/universe/hk_all_assets.yml,preset_universe,hk,all_assets,PIT,N/A,N/A,All HK assets universe definition,
+presets/universe/pit_selected.yml,preset_universe,hk,selected,PIT,N/A,N/A,Selected PIT universe definition,
 presets/models/xgb_regressor.yml,preset_model,N/A,N/A,N/A,N/A,xgb_regressor,XGBoost regressor model preset,
 presets/models/xgb_ranker.yml,preset_model,N/A,N/A,N/A,N/A,xgb_ranker,XGBoost ranker model preset,
 presets/models/ridge.yml,preset_model,N/A,N/A,N/A,N/A,ridge,Ridge regression model preset,
+presets/models/elasticnet.yml,preset_model,N/A,N/A,N/A,N/A,elasticnet,ElasticNet model preset,
+presets/data/hk_rqdata.yml,preset_data,hk,rqdata,N/A,N/A,N/A,HK RQData data provider config,
+presets/label/monthly.yml,preset_label,N/A,N/A,M,N/A,N/A,Monthly rebalance label preset,
+presets/label/quarterly.yml,preset_label,N/A,N/A,Q,N/A,N/A,Quarterly rebalance label preset,
+experiments/template__quarterly_xgb_ranker.yml,template,hk,selected,Q,hybrid,xgb_ranker,Quarterly XGB ranker template,presets/hk.yml;presets/models/xgb_ranker.yml
+experiments/template__monthly_xgb_regressor.yml,template,hk,selected,M,price_only,xgb_regressor,Monthly XGB regressor template,presets/hk.yml;presets/models/xgb_regressor.yml
 experiments/baseline/hk_selected.yml,experiment,hk,selected,M,price_only,xgb_regressor,HK selected baseline,
 experiments/variants/hk_selected__ridge_a1.yml,experiment,hk,selected,M,price_only,ridge,Ridge variant with alpha=1.0,
 experiments/variants/hk_selected__xgb_ranker_pairwise.yml,experiment,hk,selected,M,price_only,xgb_ranker,XGB ranker with pairwise objective,

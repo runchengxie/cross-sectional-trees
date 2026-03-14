@@ -1,0 +1,29 @@
+## Example: Using extends to compose config from reusable components
+## This demonstrates the composition pattern - no more full copy-paste
+
+extends:
+  - presets/hk.yml
+  - presets/models/xgb_ranker.yml
+
+# Only override what's different from base presets
+label:
+  rebalance_frequency: "Q"
+  horizon_days: 63
+
+eval:
+  top_k: 20
+  test_size: 0.4
+  n_splits: 4
+  run_name: hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank
+
+# Add quarterly-specific feature config
+features:
+  list:
+    - ret_60
+    - ret_120
+    - rv_60
+    - volume_sma20_ratio
+    - log_vol
+  cross_sectional:
+    method: rank
+    winsorize_pct: 0.01
