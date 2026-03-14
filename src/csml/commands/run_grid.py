@@ -181,8 +181,8 @@ def _init_row(
 def add_grid_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
-        default="config/hk.yml",
-        help="Base config path or built-in name (default: config/hk.yml)",
+        default="configs/presets/hk.yml",
+        help="Base config path or built-in name (default: configs/presets/hk.yml)",
     )
     parser.add_argument(
         "--top-k",

@@ -203,7 +203,7 @@ csml rqdata quota --pretty
 * 复现实验时优先以 `config.used.yml` 为准
 
 ```bash
-csml init-config --market default --out config/
+csml init-config --market default --out configs/
 ```
 
 相关文档：

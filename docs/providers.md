@@ -38,7 +38,7 @@
 
 补充：`RQData market=hk` 的行情覆盖范围大于仓库里的默认 `hk-connect` 研究股票池。仓库当前提供的是港股通 PIT universe 模板；如果你想研究更广的港股普通股池，需要单独准备 `universe.by_date_file` 或新的 universe builder。
 
-补充：如果你的目标是“港股通历史股票池 + 更完整的 PIT 财务归档”，优先用 `config/universe.hk_connect_full.yml` 生成 `artifacts/assets/universe/hk_connect_full_by_date.csv`，再执行财报镜像命令。这个模板把 `top_quantile` 设成 `0`，表示保留全部港股通候选。
+补充：如果你的目标是“港股通历史股票池 + 更完整的 PIT 财务归档”，优先用 `configs/presets/universe/hk_connect_full.yml` 生成 `artifacts/assets/universe/hk_connect_full_by_date.csv`，再执行财报镜像命令。这个模板把 `top_quantile` 设成 `0`，表示保留全部港股通候选。
 
 补充：如果你想把 HK 的股票池、日线缓存、PIT 财务镜像、平面 fundamentals 和本地备份放到同一套流程里看，直接读 `docs/playbooks/hk-data-assets.md`。
 

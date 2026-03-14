@@ -63,8 +63,8 @@ uv sync --extra dev
 补充：
 
 * `default` 是 HK starter 模板。它用静态港股股票池，适合先确认主流程能跑通。
-* `csml run --config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
-* `hk` 或 `config/hk.yml` 更适合正式 PIT 港股研究。
+* `csml run --config default` 里的 `default` 是内置别名，不等于仓库里的 `configs/presets/default.yml`。
+* `hk` 或 `configs/presets/hk.yml` 更适合正式 PIT 港股研究。
 * `cn/us` 继续保留，但当前文档不把它们作为主阅读路线。
 * 如果你要跑季度或年度 PIT 财报路线，先准备本地 `pipeline_fundamentals.parquet`。入口见 `docs/playbooks/README.md`。
 
@@ -84,7 +84,7 @@ csml run --config default
 csml run --config hk
 
 # 导出内置模板
-csml init-config --market default --out config/
+csml init-config --market default --out configs/
 
 # 跨历史 run 汇总
 csml summarize --runs-dir artifacts/runs --output artifacts/runs/runs_summary.csv
@@ -93,10 +93,10 @@ csml summarize --runs-dir artifacts/runs --output artifacts/runs/runs_summary.cs
 csml holdings --config hk --as-of t-1
 
 # 一键生成 live 快照
-csml snapshot --config config/hk_live.local.yml
+csml snapshot --config configs/local/hk_live.local.yml
 
 # 从持仓生成等权手数分配
-csml alloc --config config/hk_live.local.yml --source live --top-n 20 --cash 1000000
+csml alloc --config configs/local/hk_live.local.yml --source live --top-n 20 --cash 1000000
 
 # 查询命令帮助
 csml --help

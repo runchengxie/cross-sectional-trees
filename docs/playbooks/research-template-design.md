@@ -8,7 +8,7 @@
 这页主要给两类人看：
 
 * 想在现有路线里继续做实验的人
-* 想维护 `config/` 模板的人
+* 想维护 `configs/` 模板的人
 
 如果你还没选好研究路线，先看 [hk-selected.md](./hk-selected.md)。
 如果你还没准备好 PIT 财务资产，先看 [hk-data-assets.md](./hk-data-assets.md)。
@@ -64,7 +64,7 @@
 
 推荐做法：
 
-1. 从现有基线复制到 `config/local/` 或你自己的实验目录。
+1. 从现有基线复制到 `configs/local/` 或你自己的实验目录。
 2. 只改本次实验真的需要改的字段。
 3. 用稳定的 `run_name` 前缀，方便后续 `summarize`。
 
@@ -74,9 +74,9 @@
 
 更合适的做法是：
 
-* 保留 `config/hk_selected__pit_quarterly_hybrid.yml` 作为路线基线
-* 先在 `config/local/` 派生三条基线，把 PIT 体检跑到绿灯
-* 再在 `config/local/` 派生四份模型配置
+* 保留 `configs/hk_selected__pit_quarterly_hybrid.yml` 作为路线基线
+* 先在 `configs/local/` 派生三条基线，把 PIT 体检跑到绿灯
+* 再在 `configs/local/` 派生四份模型配置
 * 不要把四份实验文件都沉淀进仓库根目录
 
 ## 4. 什么时候新建仓库模板
@@ -111,23 +111,23 @@
 
 月度 `M` + provider 基本面 这条路线符合这些条件，所以仓库里已经维护了：
 
-* `config/hk_selected__ridge_a1.yml`
-* `config/hk_selected__elasticnet_a0.1_l0.5.yml`
-* `config/hk_selected__xgb_regressor.yml`
-* `config/hk_selected__xgb_ranker_pairwise.yml`
+* `configs/hk_selected__ridge_a1.yml`
+* `configs/hk_selected__elasticnet_a0.1_l0.5.yml`
+* `configs/hk_selected__xgb_regressor.yml`
+* `configs/hk_selected__xgb_ranker_pairwise.yml`
 
 季度路线当前还在优先维护“路线基线”，所以更适合：
 
 * 先保留 1 份到 2 份稳定基线
 * 再让用户按需要派生四模型实验文件
 
-这样 `config/` 不会很快变成一串难以分辨的实验快照。
+这样 `configs/` 不会很快变成一串难以分辨的实验快照。
 
 ## 6. 命名和放置建议
 
 ### 仓库内长期维护模板
 
-继续放在 `config/`，并保持名字能看出三件事：
+继续放在 `configs/`，并保持名字能看出三件事：
 
 * 股票池或市场范围
 * 数据路线
@@ -143,16 +143,16 @@
 
 建议放在你自己的本地目录，例如：
 
-* `config/local/`
-* `config/experiments/`
+* `configs/local/`
+* `configs/experiments/`
 
 这类文件更适合描述实验目的，而不是沉淀成仓库默认入口。
 
 例如：
 
-* `config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml`
-* `config/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml`
-* `config/local/hk_sel_q_pk_pit_core_hybrid_en.yml`
+* `configs/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml`
+* `configs/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml`
+* `configs/local/hk_sel_q_pk_pit_core_hybrid_en.yml`
 
 ## 7. 新建模板时必须同步什么
 

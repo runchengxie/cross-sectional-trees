@@ -192,7 +192,7 @@ csml rqdata build-hk-pit-fundamentals \
 ```bash
 csml backup-data \
   --name hk_frozen_20260312 \
-  --config config/hk_selected__xgb_regressor.yml
+  --config configs/experiments/variants/hk_selected__xgb_regressor.yml
 ```
 
 这个命令默认会把下面几类内容一起复制：

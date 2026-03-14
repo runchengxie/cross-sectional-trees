@@ -23,12 +23,12 @@ csml <subcommand> --help
 多数命令的 `--config` 支持两种写法：
 
 * 内置别名：`default/cn/hk/us`
-* 本地 YAML 路径：如 `config/hk.yml`
+* 本地 YAML 路径：如 `configs/presets/hk.yml`
 
 补充：
 
 * `default` 现在是 HK starter 模板。
-* `--config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
+* `--config default` 里的 `default` 是内置别名，不等于仓库里的 `configs/presets/default.yml`。
 * `hk` 更适合 PIT 港股研究。
 * `cn/us` 主要保留基础兼容模板。
 * 新项目优先从 `default` 或 `hk` 开始。
@@ -108,10 +108,10 @@ csml run --config hk
 示例：
 
 ```bash
-csml grid --config config/hk.yml --top-k 5,10 --cost-bps 15,25
+csml grid --config configs/presets/hk.yml --top-k 5,10 --cost-bps 15,25
 
 csml grid \
-  --config config/hk_selected__xgb_regressor.yml \
+  --config configs/experiments/variants/hk_selected__xgb_regressor.yml \
   --top-k 10,20 \
   --cost-bps 15,25,40 \
   --buffer-exit 8,10 \
@@ -126,7 +126,7 @@ csml grid \
 关键参数：
 
 * `--sweep-config <path>`：sweep YAML。CLI 参数会覆盖该文件。
-* `--config <path_or_alias>`：基础配置，默认 `config/hk_selected__xgb_regressor.yml`。
+* `--config <path_or_alias>`：基础配置，--config configs/experiments/variants/hk_selected__xgb_regressor.yml。
 * `--run-name-prefix <prefix>`
 * `--sweeps-dir <dir>`
 * `--tag <name>`
@@ -144,18 +144,18 @@ csml grid \
 
 补充：
 
-* `config/hk_selected.yml` 已移除。旧 sweep 配置请直接改成 `config/hk_selected__xgb_regressor.yml`，或继续沿用 `config/hk_selected__baseline.yml`。
+* `configs/experiments/baseline/hk_selected.yml` 已移除。旧 sweep 配置请直接改成 `configs/experiments/variants/hk_selected__xgb_regressor.yml`，或继续沿用 `configs/experiments/baseline/hk_selected.yml`。
 * 输出目录默认在 `artifacts/sweeps/<tag>/`。
 * 这里的“线性模型”只包括 `ridge` 和 `elasticnet`。
-* 默认基础配置是 `config/hk_selected__xgb_regressor.yml`。生成 sweep 任务时，命令会把模型块改写成 `ridge` 或 `elasticnet`。
+* 默认基础配置是 `configs/experiments/variants/hk_selected__xgb_regressor.yml`。生成 sweep 任务时，命令会把模型块改写成 `ridge` 或 `elasticnet`。
 
 示例：
 
 ```bash
-csml sweep-linear --sweep-config config/sweeps/hk_selected__linear_a.yml
+csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_a.yml
 
 csml sweep-linear \
-  --sweep-config config/sweeps/hk_selected__linear_a.yml \
+  --sweep-config configs/experiments/sweeps/hk_selected__linear_a.yml \
   --tag hk_linear_a_debug \
   --dry-run
 ```
@@ -230,7 +230,7 @@ csml summarize \
 示例：
 
 ```bash
-csml holdings --config config/hk.yml --as-of t-1
+csml holdings --config configs/presets/hk.yml --as-of t-1
 csml holdings --run-dir artifacts/runs/<run_dir> --format csv --out artifacts/exports/positions/latest.csv
 ```
 
@@ -253,13 +253,13 @@ csml holdings --run-dir artifacts/runs/<run_dir> --format csv --out artifacts/ex
 * 默认会先执行一次 `run`，再读取 live 持仓。
 * `--config` 和 `--run-dir` 至少要提供一个。
 * live 配置要求 `live.enabled=true` 且 `eval.save_artifacts=true`。
-* 仓库里没有内置的 `config/hk_live.yml`。通常做法是从 `csml init-config --market hk` 导出的模板另存一份 live 配置。
+* 仓库里没有内置的 `configs/local/hk_live.yml`。通常做法是从 `csml init-config --market hk` 导出的模板另存一份 live 配置。
 
 示例：
 
 ```bash
-csml snapshot --config config/hk_live.local.yml
-csml snapshot --config config/hk_live.local.yml --skip-run --format json
+csml snapshot --config configs/local/hk_live.local.yml
+csml snapshot --config configs/local/hk_live.local.yml --skip-run --format json
 ```
 
 ## 7) `csml alloc`
@@ -293,7 +293,7 @@ csml snapshot --config config/hk_live.local.yml --skip-run --format json
 示例：
 
 ```bash
-csml alloc --config config/hk_live.local.yml --source live --top-n 20 --cash 1000000
+csml alloc --config configs/local/hk_live.local.yml --source live --top-n 20 --cash 1000000
 
 csml alloc --run-dir artifacts/runs/<run_dir> --source live --top-n 10 --format json --out artifacts/exports/alloc/top10.json
 
@@ -327,20 +327,20 @@ csml alloc --positions-file artifacts/runs/<run_dir>/positions_by_rebalance_live
 ```bash
 csml backup-data \
   --name hk_frozen_20251231 \
-  --config config/hk_selected__xgb_regressor.yml
+  --config configs/experiments/variants/hk_selected__xgb_regressor.yml
 
 csml backup-data \
   --name hk_eval_bundle \
-  --config config/hk_selected__baseline_eval_sample.yml \
-  --config config/hk_selected__baseline_eval_sample_ffill.yml \
-  --include-path config/sweeps/hk_selected__eval_sample.yml \
-  --include-path config/sweeps/hk_selected__eval_sample_ffill.yml
+  --config configs/experiments/sweeps/hk_selected__baseline_eval_sample.yml \
+  --config configs/experiments/sweeps/hk_selected__baseline_eval_sample_ffill.yml \
+  --include-path configs/experiments/sweeps/hk_selected__eval_sample.yml \
+  --include-path configs/experiments/sweeps/hk_selected__eval_sample_ffill.yml
 
 csml backup-data \
   --name hk_eval_bundle_public \
   --no-cache \
-  --config config/hk_selected__baseline_eval_sample.yml \
-  --config config/hk_selected__baseline_eval_sample_ffill.yml \
+  --config configs/experiments/sweeps/hk_selected__baseline_eval_sample.yml \
+  --config configs/experiments/sweeps/hk_selected__baseline_eval_sample_ffill.yml \
   --include-path artifacts/runs/hk_evalb_ridge_a30_grid_summary.csv
 ```
 
@@ -439,7 +439,7 @@ csml rqdata list-hk-financial-fields --contains profit --out artifacts/exports/h
 
 ```bash
 csml rqdata export-hk-instruments \
-  --config config/hk.yml \
+  --config configs/presets/hk.yml \
   --out artifacts/assets/rqdata/hk/instruments/hk_instruments_latest.parquet
 ```
 
@@ -514,7 +514,7 @@ csml rqdata mirror-hk-daily \
 
 * 默认输出到 `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/`。
 * 目录里会写 `manifest.yml`、`audit.csv`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`。
-* 仓库内置了一份 starter 字段文件：`config/rqdata_assets/hk_financial_fields_starter.txt`。
+* 仓库内置了一份 starter 字段文件：`configs/field_profiles/hk_financial_fields_starter.txt`。
 * `--field-profile starter` 等价于仓库内置的 starter 字段集。
 * `--field-profile full` 会读取本地安装的 `rqdatac` 元数据，把港股财务接口当前支持的全部字段都拉进来。
 * 为了复现，建议显式传 `--date`，例如 `20260310`。
@@ -525,9 +525,9 @@ csml rqdata mirror-hk-daily \
 
 ```bash
 csml rqdata mirror-hk-pit-financials \
-  --config config/hk_selected__xgb_regressor.yml \
+  --config configs/experiments/variants/hk_selected__xgb_regressor.yml \
   --name hk_selected_pit_2011_2025_latest \
-  --fields-file config/rqdata_assets/hk_financial_fields_starter.txt \
+  --fields-file configs/field_profiles/hk_financial_fields_starter.txt \
   --start-quarter 2011q1 \
   --end-quarter 2025q4 \
   --date 20260310
@@ -632,7 +632,7 @@ csml rqdata build-hk-pit-fundamentals \
 
 ```bash
 csml rqdata inspect-hk-pit-coverage \
-  --config config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
+  --config configs/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
   --mode both
 
 csml rqdata inspect-hk-pit-coverage \
@@ -681,13 +681,13 @@ csml universe index-components --index-code 000300.SH --month 202501
 
 * by-date CSV 会同时包含 `ts_code` 和 `stock_ticker`。
 * `top_quantile=0` 表示保留全部港股通候选。这个口径适合做全量资产镜像。
-* 仓库提供了 `config/universe.hk_connect_full.yml`，用于生成更完整的历史港股通股票池文件。
+* 仓库提供了 `configs/presets/universe/hk_connect_full.yml`，用于生成更完整的历史港股通股票池文件。
 * 场景化用法见 `docs/playbooks/hk-data-assets.md`。
 
 示例：
 
 ```bash
-csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
+csml universe hk-connect --config configs/presets/universe/hk_connect.yml --mode daily
 ```
 
 ## 22) `csml universe hk-daily-assets`
@@ -709,7 +709,7 @@ csml universe hk-connect --config config/universe.hk_connect.yml --mode daily
 
 ```bash
 csml universe hk-daily-assets \
-  --config config/universe.hk_all_assets.yml \
+  --config configs/presets/universe/hk_all_assets.yml \
   -- \
   --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_full_latest \
   --end-date 20251231
@@ -728,5 +728,5 @@ csml universe hk-daily-assets \
 示例：
 
 ```bash
-csml init-config --market default --out config/
+csml init-config --market default --out configs/
 ```

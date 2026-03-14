@@ -11,7 +11,7 @@ import pandas as pd
 from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, resolve_repo_path
 from ..config_utils import resolve_pipeline_config
 from ..date_utils import resolve_date_token
-from .symbols import ensure_symbol_columns
+from ..data_tools.symbols import ensure_symbol_columns
 
 
 def _normalize_provider(value: object | None) -> str | None:

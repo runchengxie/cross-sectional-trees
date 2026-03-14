@@ -30,7 +30,7 @@
 * `model`
 * `eval.run_name`
 
-如果你需要派生很多本地实验配置，优先放到 `config/local/`。这类文件默认只服务当前机器上的研究流程。
+如果你需要派生很多本地实验配置，优先放到 `configs/local/`。这类文件默认只服务当前机器上的研究流程。
 
 ## 2. 首次跑通
 
@@ -52,7 +52,7 @@ uv sync --extra dev --extra rqdata
 如需导出内置模板：
 
 ```bash
-csml init-config --market default --out config/
+csml init-config --market default --out configs/
 ```
 
 同时准备对应 provider 的鉴权变量：
@@ -81,7 +81,7 @@ csml run --config hk
 
 补充：
 
-* `csml run --config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
+* `csml run --config default` 里的 `default` 是内置别名，不等于仓库里的 `configs/presets/default.yml`。
 
 ## 3. 做 HK selected 研究
 
@@ -118,14 +118,14 @@ HK selected 的研究流程建议按下面的顺序走：
 
 这里的 `core PIT` 指高覆盖财务主项和少量稳健派生项。低覆盖字段先不要放进起步配置。
 
-下面的命令示例默认你已经按这条流程在 `config/local/` 派生了本地配置。  
+下面的命令示例默认你已经按这条流程在 `configs/local/` 派生了本地配置。  
 如果你还没有本地季度配置，先从仓库里的季度 PIT 模板复制一份，再按本文的步骤收窄。
 
 体检命令：
 
 ```bash
 csml rqdata inspect-hk-pit-coverage \
-  --config config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
+  --config configs/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
   --mode both
 ```
 
@@ -193,12 +193,12 @@ csml rqdata inspect-hk-pit-coverage \
 3. `季度 core PIT + 慢量价`
 4. 四模型 PK
 
-如果你已经在 `config/local/` 派生了本文建议的三条基线，直接按这个顺序跑：
+如果你已经在 `configs/local/` 派生了本文建议的三条基线，直接按这个顺序跑：
 
 ```bash
-csml run --config config/local/hk_sel_q_price_only_xgb_reg.yml
-csml run --config config/local/hk_sel_pit_q_core_xgb_reg.yml
-csml run --config config/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml
+csml run --config configs/local/hk_sel_q_price_only_xgb_reg.yml
+csml run --config configs/local/hk_sel_pit_q_core_xgb_reg.yml
+csml run --config configs/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml
 
 csml summarize \
   --runs-dir artifacts/runs \
@@ -214,13 +214,13 @@ csml summarize \
 如果你已经跑完三条基线，第四步再做四模型 PK。
 
 推荐继续沿用 `季度 core PIT + 慢量价` 那条线，只在同一研究单元里换模型。  
-下面这组命令同样假设你已经在 `config/local/` 派生了四份 PK 配置：
+下面这组命令同样假设你已经在 `configs/local/` 派生了四份 PK 配置：
 
 ```bash
-csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_xgb_reg.yml
-csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml
-csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_ridge.yml
-csml run --config config/local/hk_sel_q_pk_pit_core_hybrid_en.yml
+csml run --config configs/local/hk_sel_q_pk_pit_core_hybrid_xgb_reg.yml
+csml run --config configs/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml
+csml run --config configs/local/hk_sel_q_pk_pit_core_hybrid_ridge.yml
+csml run --config configs/local/hk_sel_q_pk_pit_core_hybrid_en.yml
 ```
 
 汇总时直接用统一前缀：
@@ -268,7 +268,7 @@ csml summarize \
 
 ## 5. 生成 live 快照
 
-仓库里没有内置的 `config/hk_live.yml`。通常做法是单独准备一份 live 配置，例如 `config/hk_live.local.yml`。
+仓库里没有内置的 `configs/local/hk_live.yml`。通常做法是单独准备一份 live 配置，例如 `configs/local/hk_live.local.yml`。
 
 常见最小改法：
 
@@ -292,8 +292,8 @@ live:
 然后执行：
 
 ```bash
-csml snapshot --config config/hk_live.local.yml
-csml snapshot --config config/hk_live.local.yml --skip-run --format json
+csml snapshot --config configs/local/hk_live.local.yml
+csml snapshot --config configs/local/hk_live.local.yml --skip-run --format json
 ```
 
 ## 6. 从持仓到资金分配
@@ -301,7 +301,7 @@ csml snapshot --config config/hk_live.local.yml --skip-run --format json
 如果你已经有当前持仓，想继续做等权手数分配：
 
 ```bash
-csml alloc --config config/hk_live.local.yml --source live --top-n 20 --cash 1000000
+csml alloc --config configs/local/hk_live.local.yml --source live --top-n 20 --cash 1000000
 ```
 
 如果你已经有现成的持仓 CSV：
@@ -322,7 +322,7 @@ csml alloc \
 ```bash
 csml backup-data \
   --name hk_frozen_20251231 \
-  --config config/hk_selected__xgb_regressor.yml
+  --config configs/experiments/variants/hk_selected__xgb_regressor.yml
 ```
 
 如果你是从旧版本目录升级过来，本地还保留旧布局：

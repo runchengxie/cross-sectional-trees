@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | `hk-selected.md` | 先跑哪条 HK selected 研究路线 | 想先选 `M/Q/Y`、选量价还是 PIT 财务、选四模型 PK 入口 |
 | `hk-data-assets.md` | PIT 股票池、日线、财务资产怎么准备 | 需要 `pipeline_fundamentals.parquet`、要做数据归档、要补全资产 |
-| `research-template-design.md` | 什么时候派生配置，什么时候新建模板 | 想把实验沉淀成模板，或担心 `config/` 越长越乱 |
+| `research-template-design.md` | 什么时候派生配置，什么时候新建模板 | 想把实验沉淀成模板，或担心 `configs/` 越长越乱 |
 
 ## 常见起点
 

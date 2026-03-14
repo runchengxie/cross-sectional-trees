@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from ..config_utils import resolve_pipeline_config
 from ..data_providers import normalize_market
 from . import holdings
-from .symbols import ensure_symbol_columns
+from ..data_tools.symbols import ensure_symbol_columns
 
 
 def _load_config(path: str | None) -> dict:

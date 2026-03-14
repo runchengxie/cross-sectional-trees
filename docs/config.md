@@ -1,10 +1,27 @@
 # 配置参考
 
-内置模板位于 `src/csml/config/*.yml`。导出后的配置默认放在 `config/`。
+内置模板位于 `configs/presets/`、`configs/experiments/` 和 `configs/local/`。项目已重构配置目录结构：
+
+* `configs/presets/` - 内置预设（market 默认配置）
+* `configs/experiments/` - 研究实验配置
+* `configs/local/` - 本地覆盖配置（gitignored）
 
 ```bash
-csml init-config --market default --out config/
+csml init-config --market default --out configs/
 ```
+
+## 路径迁移说明
+
+旧路径已迁移到新位置：
+
+| 旧路径 | 新路径 |
+| --- | --- |
+| `config/hk.yml` | `configs/presets/hk.yml` |
+| `config/default.yml` | `configs/presets/default.yml` |
+| `config/hk_selected__xgb_regressor.yml` | `configs/experiments/variants/hk_selected__xgb_regressor.yml` |
+| `config/hk_selected__baseline.yml` | `configs/experiments/baseline/hk_selected.yml` |
+| `config/universe.hk_connect.yml` | `configs/presets/universe/hk_connect.yml` |
+| `config/universe.hk_connect_full.yml` | `configs/presets/universe/hk_connect_full.yml` |
 
 相关文档：
 
@@ -37,28 +54,26 @@ csml init-config --market default --out config/
 | `default` | HK starter 模板。适合先跑通主流程。 |
 | `hk` | 港股 PIT 研究模板。适合正式研究配置。 |
 | `cn/us` | 兼容模板。适合保留多市场基础切换或做对照。 |
-| `config/hk_selected__xgb_regressor.yml` | 显式 XGB 回归配置。当前推荐作为 HK selected 的默认起点。 |
-| `config/hk_selected__baseline.yml` | HK selected 兼容基线。当前内容和 `config/hk_selected__xgb_regressor.yml` 相同。 |
-| `config/hk_selected__baseline_eval_sample.yml` | HK selected 评估抽样实验配置。适合检查样本抽样口径。 |
-| `config/hk_selected__baseline_eval_sample_ffill.yml` | HK selected 评估抽样 + 退出价格回退实验配置。 |
-| `config/hk_selected__baseline_pit_file.yml` | 读取本地 PIT fundamentals 文件的 HK 基线。 |
-| `config/hk_selected__provider_quarterly_valuation.yml` | 不依赖本地 PIT 文件的季度估值对照。 |
-| `config/hk_selected__baseline_pit_quarterly.yml` | 季度 PIT 财报基线。 |
-| `config/hk_selected__pit_quarterly_financial_ml.yml` | 季度 PIT 财务 ML 基线。 |
-| `config/hk_selected__pit_quarterly_financial_linear.yml` | 季度 PIT 财务线性对照。 |
-| `config/hk_selected__pit_quarterly_hybrid.yml` | 季度 PIT 财报 + 慢技术面混合配置。 |
-| `config/hk_connect__pit_quarterly_financial_ml.yml` | 更宽港股通股票池上的季度 PIT 财务 ML 配置。 |
-| `config/hk_selected__xgb_ranker_pairwise.yml` | 显式 XGB 排序配置。 |
+| `configs/experiments/variants/hk_selected__xgb_regressor.yml` | 显式 XGB 回归配置。当前推荐作为 HK selected 的默认起点。 |
+| `configs/experiments/baseline/hk_selected.yml` | HK selected 兼容基线。 |
+| `configs/experiments/sweeps/hk_selected__eval_sample.yml` | HK selected 评估抽样实验配置。适合检查样本抽样口径。 |
+| `configs/experiments/sweeps/hk_selected__eval_sample_ffill.yml` | HK selected 评估抽样 + 退出价格回退实验配置。 |
+| `configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml` | 季度 PIT 财务 ML 基线。 |
+| `configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml` | 季度 PIT 财务线性对照。 |
+| `configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml` | 季度 PIT 财报 + 慢技术面混合配置。 |
+| `configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml` | 显式 XGB 排序配置。 |
+| `configs/presets/universe/hk_connect.yml` | 港股通 PIT 股票池配置。 |
+| `configs/presets/universe/hk_connect_full.yml` | 更完整的港股通历史股票池配置。 |
 
 补充：
 
 * `default` 现在是港股优先的 starter 模板。它用静态港股股票池，不依赖 PIT universe 文件。
-* `--config default` 里的 `default` 是内置别名，不等于仓库里的 `config/default.yml`。
+* `--config default` 里的 `default` 是内置别名，不等于仓库里的 `configs/presets/default.yml`。
 * 新项目优先从 `default` 或 `hk` 开始。只有确实需要多市场对照时，再切到 `cn/us`。
-* `config/hk_selected.yml` 已移除。旧配置请直接改成 `config/hk_selected__xgb_regressor.yml`，或继续沿用 `config/hk_selected__baseline.yml`。
-* 新文档和新实验更建议直接用 `config/hk_selected__xgb_regressor.yml`。
-* `config/hk_selected__baseline.yml` 继续保留，主要用于兼容旧文档、旧脚本和旧 sweep 配置。
-* `config/universe.hk_connect_full.yml` 用于生成更完整的港股通历史股票池文件。
+* `configs/experiments/variants/hk_selected__xgb_regressor.yml` 已移除。旧配置请直接改成 `configs/experiments/variants/hk_selected__xgb_regressor.yml`，或继续沿用 `configs/experiments/baseline/hk_selected.yml`。
+* 新文档和新实验更建议直接用 `configs/experiments/variants/hk_selected__xgb_regressor.yml`。
+* `configs/experiments/baseline/hk_selected.yml` 继续保留，主要用于兼容旧文档、旧脚本和旧 sweep 配置。
+* `configs/local/` 目录用于存放本地覆盖配置（已 gitignored）。
 * 当前现成模板主要覆盖月度和季度。年度 `Y` 需要从月度或季度模板本地派生。
 * 当前现成季度模板主要是在比较不同信号路线，不是完整的“四模型矩阵”。如果你要做季度四模型 PK，先选一份季度基线，再本地派生四个模型版本。
 * 想按研究路线选择这些模板时，先看 `docs/playbooks/README.md`。
@@ -123,7 +138,7 @@ model:
 
 建议按下面的顺序理解：
 
-* 默认起点更适合用 `xgb_regressor`。仓库里的 `default`、`hk`、`config/hk_selected__xgb_regressor.yml` 都是这个方向。
+* 默认起点更适合用 `xgb_regressor`。仓库里的 `default`、`hk`、`configs/experiments/variants/hk_selected__xgb_regressor.yml` 都是这个方向。
 * `xgb_ranker` 很重要，但它更像排序目标的专项对照，不适合直接当所有路线的统一默认值。
 * `ridge` 更适合当线性基线。它跑得快，也更适合先判断这套特征和标签是不是有稳定关系。
 * `elasticnet` 更适合在线性路线里做补充搜索，不一定适合作为唯一主模型。
