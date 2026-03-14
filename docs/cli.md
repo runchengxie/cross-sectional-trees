@@ -18,16 +18,12 @@
 | 生成快照 | `csml snapshot --config <live.yml>` |
 | 手数分配 | `csml alloc --config <> --source live --top-n 20` |
 
----
-
 ## 查看帮助
 
 ```bash
 csml --help
 csml <subcommand> --help
 ```
-
----
 
 ## 共享约定
 
@@ -51,8 +47,6 @@ csml <subcommand> --help
 ### 输出格式
 
 `holdings`、`snapshot`、`alloc` 支持：`--format text|csv|json`
-
----
 
 ## 主流程命令
 
@@ -80,8 +74,6 @@ csml grid --config configs/presets/hk.yml --top-k 5,10 --cost-bps 15,25
 ```bash
 csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_a.yml
 ```
-
----
 
 ## 结果查看命令
 
@@ -119,7 +111,6 @@ csml snapshot --config configs/local/hk_live.local.yml
 csml alloc --config configs/local/hk_live.local.yml --source live --top-n 20 --cash 1000000
 ```
 
----
 
 ## 数据管理命令
 
@@ -140,7 +131,6 @@ csml migrate-artifacts --dry-run
 csml migrate-artifacts
 ```
 
----
 
 ## RQData 命令
 
@@ -202,8 +192,6 @@ csml rqdata inspect-hk-pit-coverage --config configs/local/hk_sel_pit_q_core_hyb
 
 详见 `docs/concepts/pit-coverage.md`。
 
----
-
 ## 股票池命令
 
 ### csml universe hk-connect
@@ -229,8 +217,6 @@ csml universe index-components --index-code 000300.SH --month 202501
 ```bash
 csml init-config --market default --out configs/
 ```
-
----
 
 ## 相关文档
 

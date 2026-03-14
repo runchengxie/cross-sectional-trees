@@ -37,8 +37,6 @@ configs/
 └── local/             # 本地覆盖配置（gitignored）
 ```
 
----
-
 ## 顶层配置块
 
 | 块 | 作用 | 常见键 |
@@ -54,8 +52,6 @@ configs/
 | `backtest` | 回测 | `enabled`, `rebalance_frequency`, `top_k`, `weighting` |
 | `live` | 快照 | `enabled`, `as_of` |
 
----
-
 ## 关键配置速查
 
 ### 数据源
@@ -67,6 +63,17 @@ data:
   start_date: "20200101" # 或 "today", "t-1"
   end_date: "20241231"
   cache_tag: "experiment_a"  # 隔离实验版本
+```
+
+### `data.rqdata`（离线资产对齐）
+
+如果你已经准备好本地日线镜像与 instrument 快照，可以让 pipeline 直接读资产目录，避免重复从 provider 拉取：
+
+```yaml
+data:
+  rqdata:
+    daily_asset_dir: "artifacts/assets/rqdata/hk/daily/<snapshot>"
+    instruments_file: "artifacts/assets/rqdata/hk/instruments/<snapshot>.parquet"
 ```
 
 ### 股票池
@@ -107,8 +114,6 @@ backtest:
   top_k: 20
   weighting: equal           # equal / signal
 ```
-
----
 
 ## 高频键快速参考
 
@@ -172,8 +177,6 @@ backtest:
 | `method` | 填补方法 | `none` / `zero` / `cross_sectional_median` |
 | `add_indicators` | 添加缺失标记 | `true` / `false` |
 
----
-
 ## 路径迁移（旧仓库升级）
 
 | 旧路径 | 新路径 |
@@ -189,8 +192,6 @@ csml migrate-artifacts
 ```
 
 详见 `docs/troubleshooting.md`。
-
----
 
 ## 相关文档
 

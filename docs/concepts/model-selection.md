@@ -17,8 +17,6 @@
 | 先做线性基线，做 sanity check | `ridge` |
 | 想在线性模型里做特征压缩 | `elasticnet` |
 
----
-
 ## 模型对比
 
 | 模型 | 训练目标 | 优点 | 局限 | 适合场景 |
@@ -28,17 +26,13 @@
 | `ridge` | 带 L2 正则的线性回归 | 训练快，稳定，参数少，系数容易看 | 只能表达线性关系，吃不到复杂交互 | 要先做线性基线、做 sanity check、或快速比较很多研究单元 |
 | `elasticnet` | 带 L1 + L2 正则的线性回归 | 比 `ridge` 更容易压缩无效特征 | 超参数更多，稳定性通常不如 `ridge`，更容易出现退化 run | 想在线性模型里同时做收缩和稀疏化 |
 
----
-
 ## 为什么默认推荐 xgb_regressor
 
 仓库里的 `default`、`hk`、以及大多数实验配置都使用 `xgb_regressor`，原因是：
 
-1. **通用性强** - 不需要对数据做什么特殊假设
-2. **非线性能力** - 能自动捕获特征交互，这在因子研究中很常见
-3. **实战验证多** - 仓库里积累的 baseline 和对比实验大多基于这个模型
-
----
+1. 通用性强 - 不需要对数据做什么特殊假设
+2. 非线性能力 - 能自动捕获特征交互，这在因子研究中很常见
+3. 实战验证多 - 仓库里积累的 baseline 和对比实验大多基于这个模型
 
 ## 什么时候考虑换模型
 
@@ -84,8 +78,6 @@ model:
 
 注意：`elasticnet` 更容易出现退化 run（常数预测、全零特征重要性），跑完后记得检查 `summary.json` 里的 `flag_constant_prediction` 和 `flag_zero_feature_importance`。
 
----
-
 ## 线性模型搜索（sweep-linear）
 
 如果你想做 `ridge` 或 `elasticnet` 的超参数搜索，用 `csml sweep-linear`：
@@ -100,8 +92,6 @@ csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_
 3. 自动汇总结果
 
 注意：这里的"线性模型搜索"只覆盖 `ridge` 和 `elasticnet`，不包括普通的最小二乘回归。
-
----
 
 ## 跑完后要检查什么
 
@@ -120,8 +110,6 @@ csml summarize \
   --exclude-flag-constant-prediction \
   --exclude-flag-zero-feature-importance
 ```
-
----
 
 ## 相关文档
 

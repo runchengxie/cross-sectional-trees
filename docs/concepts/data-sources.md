@@ -16,8 +16,6 @@
 | `rqdata` | 港股、A 股、美股 | 收费，覆盖全，历史数据好 |
 | `eodhd` | 港股、A 股、美股 | 收费，API 稳定 |
 
----
-
 ## 快速决策
 
 | 你的情况 | 推荐 provider |
@@ -26,8 +24,6 @@
 | 做 A 股研究 | `tushare` 或 `rqdata` |
 | 做美股研究 | `rqdata` 或 `eodhd` |
 | 想先跑通看看 | `rqdata`（需要账号）或 `tushare`（免费额度） |
-
----
 
 ## 配置示例
 
@@ -79,8 +75,6 @@ data:
 export EODHD_API_TOKEN=your_token_here
 ```
 
----
-
 ## provider 差异
 
 | 差异点 | TuShare | RQData | EODHD |
@@ -88,12 +82,10 @@ export EODHD_API_TOKEN=your_token_here
 | 港股通支持 | 有限 | 完整 | 完整 |
 | PIT 财报 | 不支持 | 支持 | 不支持 |
 | 历史数据质量 | 一般 | 好 | 好 |
-| 交易日历 | 不严格 | 严格 | 严格 |
+| 交易日历（last_trading_day） | 不严格（回退自然日） | 严格（需要 rqdatac 交易日历） | 不严格（回退自然日） |
 | 免费额度 | 有 | 无 | 有 |
 
 详见 `docs/providers.md`。
-
----
 
 ## 本地资产模式
 
@@ -110,8 +102,6 @@ data:
 这样即使没有网络，也能跑研究。
 
 详见 `docs/config.md` 的「本地 HK 资产直读」部分。
-
----
 
 ## 相关文档
 

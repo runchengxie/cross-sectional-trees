@@ -215,7 +215,50 @@ csml backup-data \
 * 公开仓库更适合上传 `manifest.yml`、配置、说明文件和汇总 CSV
 * 原始 provider 缓存和原始数据是否适合公开，要先看你的使用边界和合规要求
 
-## 9. 常见误解
+## 9. 跨机器打包与共享资产
+
+如果你需要把离线资产带到另一台机器或共享给他人，建议用仓库内置的打包脚本，把常用资产聚合成一个可搬运的 bundle。
+
+脚本入口：`scripts/package_assets.py`
+
+推荐用法（全市场口径，打包成独立目录）：
+
+```bash
+python3 scripts/package_assets.py \
+  --preset hk_full \
+  --dest /home/richard/code/csml_assets/hk_full_20260312 \
+  --mode copy \
+  --overwrite
+```
+
+说明：
+
+* `--preset hk_full`：全市场口径，包含日线、instrument、PIT 与 universe 资产。
+* `--mode copy`：生成独立可搬运目录；本机调试时也可以用 `--mode symlink`。
+* bundle 内会写 `manifest.yml`，并为关键入口生成 `latest` 软链接，方便配置引用。
+
+在其他项目里使用有两种常见方式：
+
+* 直接把 bundle 目录复制到目标项目的 `artifacts/assets/`。
+* 不复制，直接在配置里指向 bundle 的 `latest` 路径。
+
+示例（直接指向 bundle）：
+
+```yaml
+data:
+  rqdata:
+    daily_asset_dir: "/path/to/bundle/rqdata/hk/daily/latest"
+    instruments_file: "/path/to/bundle/rqdata/hk/instruments/latest.parquet"
+universe:
+  by_date_file: "/path/to/bundle/universe/latest_by_date.csv"
+fundamentals:
+  source: file
+  file: "/path/to/bundle/rqdata/hk/pit_financials/latest/pipeline_fundamentals.parquet"
+```
+
+如果你只想共享部分资产，可以用 `--no-pit` 或用 `--daily-snapshot`、`--instruments-file` 等参数覆盖默认快照。
+
+## 10. 常见误解
 
 ### 误解 1：PIT 股票池会把历史财报自动裁成成员期
 

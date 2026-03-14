@@ -3,8 +3,8 @@
 本页解决什么：provider 行为差异、限制与缓存策略。
 本页不解决什么：不展开完整研究流程与配置键定义。
 适合谁：需要选择或切换 provider 的读者。
-读完你会得到什么：provider 差异对照与注意事项。
-相关页面：`docs/config.md`、`docs/cli.md`、`docs/concepts/data-sources.md`
+读完你会得到什么：provider 差异对照、关键注意事项与离线入口。
+相关页面：`docs/config.md`、`docs/cli.md`、`docs/concepts/data-sources.md`、`docs/playbooks/hk-data-assets.md`
 
 本项目支持 `tushare`、`rqdata`、`eodhd`。同一份配置在不同 provider 下，结果可能不同（字段覆盖、交易日历、历史回补、停牌口径都不同）。
 
@@ -16,53 +16,39 @@
 | 必需鉴权 | `TUSHARE_TOKEN` | `RQDATA_USERNAME` + `RQDATA_PASSWORD` | `EODHD_API_TOKEN` |
 | 额外附加变量 | `TUSHARE_TOKEN_2` | `RQDATA_USER`（用户名别名） | `EODHD_API_KEY` |
 | 日线接口 | TuShare endpoint（可配） | `rqdatac.get_price` | EODHD HTTP API |
-| 基础信息（name/list_date） | TuShare basic endpoint | `rqdatac.instruments/all_instruments` | `exchange-symbol-list` |
-| `last_trading_day` 严格交易日 | 否（回退自然日） | 是（可用交易日历时） | 否（回退自然日） |
-| 基本面 `fundamentals.source=provider` | 支持 | HK 支持（pipeline 当前走 `get_factor`） | 不支持 |
+| 基础信息（name/list_date） | TuShare basic endpoint | `rqdatac.instruments` / `all_instruments` | `exchange-symbol-list` |
+| `last_trading_day` 严格交易日 | 否（回退自然日） | 是（依赖 rqdatac 交易日历） | 否（回退自然日） |
+| `fundamentals.source=provider` | 支持 | 仅 `market=hk`（`get_factor`） | 不支持 |
 
 说明：`last_trading_day / last_completed_trading_day` 只有在 `provider=rqdata` 且交易日历可用时才严格按交易日解析，否则会给 warning 并回退自然日。
 
-补充：`rqdata` 的基本面 provider 模式当前只覆盖 `market=hk`。pipeline 默认走 `rqdatac.get_factor`。其他市场仍建议使用 `fundamentals.source=file`。
+## 核心差异与注意事项
 
-补充：当前主文档和默认模板按港股优先组织。`cn/us` provider 入口继续保留，但更适合兼容已有配置或做对照实验。
+交易日历与相对日期：
 
-补充：如果你要下载更完整的港股财报资产，使用 `csml rqdata mirror-hk-pit-financials` 或 `csml rqdata mirror-hk-financial-details`。这两条命令会把数据写到 `artifacts/assets/rqdata/`，不走 pipeline 的 provider 基本面缓存。
+* `today/t-1` 永远走自然日。
+* `last_trading_day` 与 `last_completed_trading_day` 只有在 `provider=rqdata` 且交易日历可用时按交易日解析，否则回退自然日并给 warning。
+* `csml holdings/snapshot/alloc --as-of last_trading_day` 同样遵循上述规则。
 
-补充：如果你也想把 HK 日线落成独立资产目录，使用 `csml rqdata mirror-hk-daily`。这条命令同样写到 `artifacts/assets/rqdata/`，和 `artifacts/cache/` 里的 query cache 是两套东西。
+基本面 provider：
 
-补充：如果你已经准备好了 HK 日线 snapshot 和 instrument 快照，现在也可以在 pipeline 配 `data.rqdata.daily_asset_dir` + `data.rqdata.instruments_file`，直接离线读取本地资产，不再初始化 `rqdatac`。
+* `tushare` 支持 provider 模式（需配置 endpoint）。
+* `rqdata` 仅支持 `market=hk` 且仅 `endpoint=get_factor`。
+* `eodhd` 不支持 provider 基本面，改用 `fundamentals.source=file` 或本地资产。
 
-补充：如果你依赖 `round_lot`、`listed_date`、`de_listed_date` 这类 instrument 元数据，使用 `csml rqdata export-hk-instruments` 先做一份本地快照。`alloc` 这类下游命令会直接用到 `round_lot`。
+Symbol 规则（HK）：
 
-补充：财报镜像目录除了 `manifest.yml`，现在还会写 `audit.csv`。做大范围下载时，优先固定 `--name` 并配合 `--resume` 使用，这样网络抖动重试、已有文件跳过和 quota 中断都能保留进度。
+* 内部统一格式：`00001.HK`（5 位补零 + `.HK`）。
+* RQData：内部 `00001.HK` 会转换为 `00001.XHKG` 调接口。
+* EODHD：`data.eodhd.hk_symbol_mode` 支持 `strip_one`（常见默认）、`strip_all`、`pad4`、`pad5`。
 
-补充：如果你已经有 `pit_financials` 资产目录，可以继续执行 `csml rqdata build-hk-pit-fundamentals`。这条命令会生成一个平面 fundamentals 文件，默认把 `trade_date` 写成 `info_date`，可直接接到 `fundamentals.source=file`。如果你同时传 `--source-universe-by-date` 和 `--universe-by-date-out`，还可以顺手派生一份只保留“确实有 PIT 财报”的研究 universe。
+## HK 资产与离线入口
 
-补充：旧的 HK PIT 资产里如果出现过字段名尾随空格，`build-hk-pit-fundamentals` 现在会在构建时自动规范化；不需要手工重写原始 parquet。
-
-补充：字段名可以先用 `csml rqdata list-hk-financial-fields` 导出，再整理成 `--fields-file`。如果你只是想快速准备一份更完整的财务归档，也可以直接用 `--field-profile full`。
-
-补充：`RQData market=hk` 的行情覆盖范围大于仓库里的默认 `hk-connect` 研究股票池。仓库当前提供的是港股通 PIT universe 模板；如果你想研究更广的港股普通股池，需要单独准备 `universe.by_date_file` 或新的 universe builder。
-
-补充：如果你的目标是“港股通历史股票池 + 更完整的 PIT 财务归档”，优先用 `configs/presets/universe/hk_connect_full.yml` 生成 `artifacts/assets/universe/hk_connect_full_by_date.csv`，再执行财报镜像命令。这个模板把 `top_quantile` 设成 `0`，表示保留全部港股通候选。
-
-补充：如果你想把 HK 的股票池、日线缓存、PIT 财务镜像、平面 fundamentals 和本地备份放到同一套流程里看，直接读 `docs/playbooks/hk-data-assets.md`。
-
-补充：港股 ETF、杠杆/反向产品或其他非普通股产品，常见情况是能取到日线，但拿不到 `market_cap / pe_ttm / pb` 这类 provider 基本面字段。pipeline 会跳过这些 symbol，并给 warning。
-
-补充：`csml holdings/snapshot/alloc --as-of last_trading_day` 在能识别到 `provider=rqdata` + `market` 上下文时同样按交易日解析；缺少上下文时回退自然日（会输出 warning）。
-
-## Symbol 规则（重点是 HK）
-
-内部统一格式：
-
-* HK：`00001.HK`（5 位补零 + `.HK`）
-* CN/US：按输入与 provider 映射规则处理
-
-provider 侧转换：
-
-1. RQData（HK）：内部 `00001.HK` 会转换为 `00001.XHKG` 调接口。
-1. EODHD（HK）：`data.eodhd.hk_symbol_mode` 支持 `strip_one`（常见默认：`00001.HK -> 0001.HK`）、`strip_all`、`pad4`、`pad5`。
+* 日线与 instruments 离线：用 `csml rqdata mirror-hk-daily` + `csml rqdata export-hk-instruments` 生成资产，并在配置里设置 `data.rqdata.daily_asset_dir` 与 `data.rqdata.instruments_file`。
+* 财务镜像与平面 fundamentals：用 `csml rqdata mirror-hk-pit-financials` / `mirror-hk-financial-details`，再用 `build-hk-pit-fundamentals` 生成供 pipeline 读取的平面文件。
+* 镜像资产默认写到 `artifacts/assets/rqdata/`，与 `artifacts/cache/` 的查询缓存是两套目录。
+* 默认研究口径是港股通 PIT universe；若需要更广覆盖，先用 `configs/presets/universe/hk_connect_full.yml` 生成 universe 再做镜像。
+* 详细流程见 `docs/playbooks/hk-data-assets.md`，命令清单见 `docs/cli.md`，输出路径见 `docs/outputs.md`。
 
 ## 缓存与同配置结果变化
 
@@ -88,6 +74,7 @@ provider 侧转换：
 1. 使用相对日期（`today/t-1`）导致样本窗口每日漂移。
 1. 改动了 universe 或长历史窗口后，最好配一个新的 `cache_tag`，避免把旧研究缓存和新研究混用。
 1. 同时维护 `frozen` 和 `rolling` 两套研究时，建议给两套数据使用不同的 `cache_tag`。
+1. 港股 ETF、杠杆/反向产品等可能缺失 `market_cap / pe_ttm / pb`，pipeline 会跳过并给 warning。
 
 ## 速率限制与重试
 
