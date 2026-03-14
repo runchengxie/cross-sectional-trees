@@ -69,9 +69,9 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
         [
             "sweep-linear",
             "--sweep-config",
-            "config/sweeps/hk_selected__linear_a.yml",
+            "configs/experiments/sweeps/hk_selected__linear_a.yml",
             "--config",
-            "config/hk_selected__baseline.yml",
+            "configs/experiments/baseline/hk_selected.yml",
             "--run-name-prefix",
             "hk_sel_",
             "--tag",
@@ -87,7 +87,7 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
         ]
     )
     assert sweep.command == "sweep-linear"
-    assert sweep.sweep_config == "config/sweeps/hk_selected__linear_a.yml"
+    assert sweep.sweep_config == "configs/experiments/sweeps/hk_selected__linear_a.yml"
     assert sweep.run_name_prefix == "hk_sel_"
     assert sweep.tag == "exp_a"
     assert sweep.ridge_alpha == ["0.01,0.1"]
@@ -124,7 +124,7 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
             "--name",
             "hk_frozen",
             "--config",
-            "config/hk.yml",
+            "configs/presets/hk.yml",
             "--include-path",
             "artifacts/assets/universe",
             "--skip-missing",
@@ -133,7 +133,7 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
     assert backup.command == "backup-data"
     assert backup.out_root == "artifacts/snapshots"
     assert backup.name == "hk_frozen"
-    assert backup.config == ["config/hk.yml"]
+    assert backup.config == ["configs/presets/hk.yml"]
     assert backup.include_path == ["artifacts/assets/universe"]
     assert backup.skip_missing is True
 
@@ -176,7 +176,7 @@ def test_cli_parses_rqdata_asset_commands():
             "rqdata",
             "export-hk-instruments",
             "--config",
-            "config/hk.yml",
+            "configs/presets/hk.yml",
             "--use-config-universe",
             "--limit",
             "100",
@@ -187,7 +187,7 @@ def test_cli_parses_rqdata_asset_commands():
     )
     assert export_instruments.command == "rqdata"
     assert export_instruments.rq_command == "export-hk-instruments"
-    assert export_instruments.config == "config/hk.yml"
+    assert export_instruments.config == "configs/presets/hk.yml"
     assert export_instruments.use_config_universe is True
     assert export_instruments.limit == 100
     assert export_instruments.out == "artifacts/assets/rqdata/hk/instruments/demo.parquet"
@@ -228,11 +228,11 @@ def test_cli_parses_rqdata_asset_commands():
             "rqdata",
             "mirror-hk-pit-financials",
             "--config",
-            "config/hk.yml",
+            "configs/presets/hk.yml",
             "--field-profile",
             "full",
             "--fields-file",
-            "config/rqdata_assets/hk_financial_fields_starter.txt",
+            "configs/field_profiles/hk_financial_fields_starter.txt",
             "--start-quarter",
             "2011q1",
             "--end-quarter",
@@ -254,9 +254,9 @@ def test_cli_parses_rqdata_asset_commands():
     )
     assert pit.command == "rqdata"
     assert pit.rq_command == "mirror-hk-pit-financials"
-    assert pit.config == "config/hk.yml"
+    assert pit.config == "configs/presets/hk.yml"
     assert pit.field_profile == ["full"]
-    assert pit.fields_file == ["config/rqdata_assets/hk_financial_fields_starter.txt"]
+    assert pit.fields_file == ["configs/field_profiles/hk_financial_fields_starter.txt"]
     assert pit.start_quarter == "2011q1"
     assert pit.end_quarter == "2025q4"
     assert pit.batch_size == 10
@@ -341,7 +341,7 @@ def test_append_passthrough_strips_leading_separator():
             "rqdata",
             "inspect-hk-pit-coverage",
             "--config",
-            "config/local/hk_sel_pit_q_hybrid_xgb_reg.yml",
+            "configs/presets/local/hk_sel_pit_q_hybrid_xgb_reg.yml",
             "--mode",
             "trainable",
             "--min-symbols",
@@ -354,7 +354,7 @@ def test_append_passthrough_strips_leading_separator():
     )
     assert pit_coverage.command == "rqdata"
     assert pit_coverage.rq_command == "inspect-hk-pit-coverage"
-    assert pit_coverage.config == "config/local/hk_sel_pit_q_hybrid_xgb_reg.yml"
+    assert pit_coverage.config == "configs/presets/local/hk_sel_pit_q_hybrid_xgb_reg.yml"
     assert pit_coverage.mode == "trainable"
     assert pit_coverage.min_symbols == 10
     assert pit_coverage.format == "json"
@@ -366,11 +366,11 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     parser = cli.build_parser()
 
     init_cfg = parser.parse_args(
-        ["init-config", "--market", "hk", "--out", "config/", "--force"]
+        ["init-config", "--market", "hk", "--out", "configs/presets/", "--force"]
     )
     assert init_cfg.command == "init-config"
     assert init_cfg.market == "hk"
-    assert init_cfg.out == "config/"
+    assert init_cfg.out == "configs/presets/"
     assert init_cfg.force is True
     assert callable(init_cfg.func)
 
@@ -379,7 +379,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
             "rqdata",
             "info",
             "--config",
-            "config/hk.yml",
+            "configs/presets/hk.yml",
             "--username",
             "user",
             "--password",
@@ -388,7 +388,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     )
     assert rq_info.command == "rqdata"
     assert rq_info.rq_command == "info"
-    assert rq_info.config == "config/hk.yml"
+    assert rq_info.config == "configs/presets/hk.yml"
     assert rq_info.username == "user"
     assert rq_info.password == "pass"
     assert callable(rq_info.func)
@@ -398,7 +398,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
             "universe",
             "hk-connect",
             "--config",
-            "config/universe.hk_connect.yml",
+            "configs/presets/universe.hk_connect.yml",
             "--",
             "--mode",
             "daily",
@@ -408,7 +408,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     )
     assert hk_connect.command == "universe"
     assert hk_connect.uni_command == "hk-connect"
-    assert hk_connect.config == "config/universe.hk_connect.yml"
+    assert hk_connect.config == "configs/presets/universe.hk_connect.yml"
     assert hk_connect.args == ["--", "--mode", "daily", "--start-date", "20250101"]
     assert callable(hk_connect.func)
 
@@ -417,7 +417,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
             "universe",
             "hk-daily-assets",
             "--config",
-            "config/universe.hk_all_assets.yml",
+            "configs/presets/universe.hk_all_assets.yml",
             "--",
             "--start-date",
             "20000104",
@@ -427,7 +427,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     )
     assert hk_daily_assets.command == "universe"
     assert hk_daily_assets.uni_command == "hk-daily-assets"
-    assert hk_daily_assets.config == "config/universe.hk_all_assets.yml"
+    assert hk_daily_assets.config == "configs/presets/universe.hk_all_assets.yml"
     assert hk_daily_assets.args == ["--", "--start-date", "20000104", "--end-date", "20251231"]
     assert callable(hk_daily_assets.func)
 
@@ -605,8 +605,8 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
     monkeypatch.setattr(sweep_tool, "main", lambda argv: calls.append(argv))
 
     args = SimpleNamespace(
-        sweep_config="config/sweeps/hk_selected__linear_a.yml",
-        config="config/hk_selected__baseline.yml",
+        sweep_config="configs/experiments/sweeps/hk_selected__linear_a.yml",
+        config="configs/experiments/baseline/hk_selected.yml",
         run_name_prefix="hk_sel_",
         sweeps_dir="artifacts/sweeps",
         tag="exp_1",
@@ -627,9 +627,9 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
     assert calls == [
         [
             "--sweep-config",
-            "config/sweeps/hk_selected__linear_a.yml",
+            "configs/presets/sweeps/hk_selected__linear_a.yml",
             "--config",
-            "config/hk_selected__baseline.yml",
+            "configs/presets/hk_selected__baseline.yml",
             "--run-name-prefix",
             "hk_sel_",
             "--sweeps-dir",

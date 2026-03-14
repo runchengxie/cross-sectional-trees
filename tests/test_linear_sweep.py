@@ -218,7 +218,7 @@ def test_linear_sweep_reads_sweep_config_and_cli_overrides(tmp_path, monkeypatch
 
 def test_linear_sweep_requires_existing_base_config(tmp_path, monkeypatch):
     sweep_spec = {
-        "base_config": "config/hk_selected.yml",
+        "base_config": "configs/experiments/baseline/hk_selected.yml",
         "run_name_prefix": "legacy_",
         "tag": "legacy_spec",
         "sweeps_dir": str(tmp_path / "sweeps"),
@@ -235,19 +235,19 @@ def test_linear_sweep_requires_existing_base_config(tmp_path, monkeypatch):
     sweep_config_path.write_text(yaml.safe_dump(sweep_spec, sort_keys=False), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(SystemExit, match="Config file not found: config/hk_selected.yml"):
+    with pytest.raises(SystemExit, match="Config file not found: configs/experiments/baseline/hk_selected.yml"):
         linear_sweep.main(["--sweep-config", str(sweep_config_path)])
 
 
 def test_repo_quarterly_pit_sweep_spec_points_to_existing_base_config():
     repo_root = Path(__file__).resolve().parents[1]
-    sweep_spec_path = repo_root / "config" / "sweeps" / "hk_selected__pit_quarterly_linear.yml"
+    sweep_spec_path = repo_root / "configs" / "experiments" / "sweeps" / "hk_selected__pit_quarterly_linear.yml"
 
     payload = yaml.safe_load(sweep_spec_path.read_text(encoding="utf-8"))
     base_config_ref = payload["base_config"]
     resolved_base = repo_root / base_config_ref
 
-    assert base_config_ref == "config/hk_selected__baseline_pit_quarterly.yml"
+    assert base_config_ref == "configs/experiments/baseline/hk_selected.yml"
     assert resolved_base.exists()
     assert payload["run_name_prefix"] == "hk_pitq_"
     assert payload["tag"] == "hk_pit_quarterly_linear"
@@ -259,14 +259,14 @@ def test_repo_quarterly_pit_sweep_spec_points_to_existing_base_config():
 def test_repo_financial_quarterly_sweep_spec_points_to_existing_base_config():
     repo_root = Path(__file__).resolve().parents[1]
     sweep_spec_path = (
-        repo_root / "config" / "sweeps" / "hk_selected__pit_quarterly_financial_linear.yml"
+        repo_root / "configs" / "experiments" / "sweeps" / "hk_selected__pit_quarterly_financial_linear.yml"
     )
 
     payload = yaml.safe_load(sweep_spec_path.read_text(encoding="utf-8"))
     base_config_ref = payload["base_config"]
     resolved_base = repo_root / base_config_ref
 
-    assert base_config_ref == "config/hk_selected__pit_quarterly_financial_ml.yml"
+    assert base_config_ref == "configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml"
     assert resolved_base.exists()
     assert payload["run_name_prefix"] == "hk_finmlq_"
     assert payload["tag"] == "hk_pit_quarterly_financial_linear"

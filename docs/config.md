@@ -70,7 +70,6 @@ csml init-config --market default --out configs/
 * `default` 现在是港股优先的 starter 模板。它用静态港股股票池，不依赖 PIT universe 文件。
 * `--config default` 里的 `default` 是内置别名，不等于仓库里的 `configs/presets/default.yml`。
 * 新项目优先从 `default` 或 `hk` 开始。只有确实需要多市场对照时，再切到 `cn/us`。
-* `configs/experiments/variants/hk_selected__xgb_regressor.yml` 已移除。旧配置请直接改成 `configs/experiments/variants/hk_selected__xgb_regressor.yml`，或继续沿用 `configs/experiments/baseline/hk_selected.yml`。
 * 新文档和新实验更建议直接用 `configs/experiments/variants/hk_selected__xgb_regressor.yml`。
 * `configs/experiments/baseline/hk_selected.yml` 继续保留，主要用于兼容旧文档、旧脚本和旧 sweep 配置。
 * `configs/local/` 目录用于存放本地覆盖配置（已 gitignored）。

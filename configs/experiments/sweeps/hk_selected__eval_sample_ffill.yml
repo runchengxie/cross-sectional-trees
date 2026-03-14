@@ -1,5 +1,5 @@
 # HK eval follow-up sweep: same sample design, but backtest exits use ffill.
-base_config: config/hk_selected__baseline_eval_sample_ffill.yml
+base_config: configs/experiments/variants/hk_selected__xgb_regressor.yml
 run_name_prefix: hk_evalb_
 tag: hk_eval_sample_ffill
 sweeps_dir: artifacts/sweeps

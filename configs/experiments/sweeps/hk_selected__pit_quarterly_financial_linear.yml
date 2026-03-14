@@ -1,8 +1,8 @@
 # Linear sweep spec for the HK quarterly PIT financial baseline.
 # Use with:
-#   csml sweep-linear --sweep-config config/sweeps/hk_selected__pit_quarterly_financial_linear.yml
+#   csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__pit_quarterly_financial_linear.yml
 
-base_config: config/hk_selected__pit_quarterly_financial_ml.yml
+base_config: configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml
 run_name_prefix: hk_finmlq_
 tag: hk_pit_quarterly_financial_linear
 sweeps_dir: artifacts/sweeps
