@@ -16,8 +16,6 @@
 | `pit` | 使用按日期的股票池文件 | 长历史回测，需要严谨的时点信息 |
 | `static` | 使用固定股票池文件 | 当期研究，不关心历史变化 |
 
----
-
 ## 什么时候用什么模式
 
 ### 用 `static` 的情况
@@ -58,8 +56,6 @@ universe:
   by_date_file: artifacts/assets/universe/hk_connect_by_date.csv
 ```
 
----
-
 ## PIT 股票池文件格式
 
 `by_date_file` 应该是 CSV，格式如下：
@@ -71,8 +67,6 @@ trade_date,ts_code,stock_ticker
 2024-01-03,00700.HK,00700
 2024-01-03,09988.HK,09988
 ```
-
----
 
 ## 生成 PIT 股票池
 
@@ -93,8 +87,6 @@ csml universe index-components \
 ```
 
 更多用法见 `docs/cli.md` 的「universe」命令部分。
-
----
 
 ## 相关文档
 

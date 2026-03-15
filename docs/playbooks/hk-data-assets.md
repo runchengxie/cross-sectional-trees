@@ -215,6 +215,19 @@ csml backup-data \
 * 公开仓库更适合上传 `manifest.yml`、配置、说明文件和汇总 CSV
 * 原始 provider 缓存和原始数据是否适合公开，要先看你的使用边界和合规要求
 
+如果你想自动打包并上传到 GitHub Release（私有仓库场景），可以用：
+
+```bash
+python3 scripts/release_assets.py \
+  --tag hk_assets_20260312 \
+  --preset hk_full \
+  --mode copy \
+  --overwrite
+```
+
+这个脚本会调用 `package_assets.py` 生成 bundle、写 `README.md`、打包成 tar.gz，
+并用 `gh release create/upload` 上传到 GitHub Release。只想打包不上传时加 `--skip-upload`。
+
 ## 9. 跨机器打包与共享资产
 
 如果你需要把离线资产带到另一台机器或共享给他人，建议用仓库内置的打包脚本，把常用资产聚合成一个可搬运的 bundle。

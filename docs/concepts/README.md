@@ -17,8 +17,6 @@
 | [universe-modes.md](universe-modes.md) | auto/pit/static 三种股票池模式的区别 |
 | [data-sources.md](data-sources.md) | 数据 provider（tushare/rqdata/eodhd）怎么选 |
 
----
-
 ## 什么时候该看这些文档
 
 - 想改配置里的模型类型 → 看 [model-selection.md](model-selection.md)
