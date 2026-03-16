@@ -65,7 +65,7 @@ uv sync --extra dev --extra rqdata
   * `configs/experiments/baseline/` - 基线配置
   * `configs/experiments/variants/` - 模型变体配置
   * `configs/experiments/sweeps/` - 批量实验配置
-* `configs/local/` - 本地覆盖配置目录；约定上用于个人文件，历史仓库中可能仍有已跟踪快照
+* `configs/local/` - 本地覆盖配置目录；约定上用于个人文件，默认不纳入版本控制
 * 支持 `extends` 机制减少配置复制，参考 `configs/catalog.csv` 索引表。
 * 研究对比时，优先保持 `universe`、`label`、`features`、`eval`、`backtest` 不变，只替换模型相关参数。
 * HK 线性模型批跑优先使用 `configs/experiments/baseline/hk_selected.yml` 作为基线配置。

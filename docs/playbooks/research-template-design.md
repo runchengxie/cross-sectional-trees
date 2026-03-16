@@ -154,12 +154,13 @@
 * `configs/experiments/`
 
 这类文件更适合描述实验目的，而不是沉淀成仓库默认入口。
+如果一个配置需要被团队复用或在文档里当作正式入口，应该收回到 `configs/experiments/`。
 
 例如：
 
-* `configs/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank.yml`
-* `configs/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank_ffill.yml`
-* `configs/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank_strict.yml`
+* `configs/local/my_quarterly_pit_core_hybrid_xgb_ranker.yml`
+* `configs/local/my_quarterly_pit_core_hybrid_xgb_ranker_ffill.yml`
+* `configs/local/my_quarterly_pit_core_hybrid_xgb_ranker_strict.yml`
 
 ## 7. 新建模板时必须同步什么
 
