@@ -45,6 +45,17 @@
 - RQData：仅 `market=hk` 且 `endpoint=get_factor`；若未显式指定 `fundamentals.fields`，默认请求 `hk_total_market_val`、`pe_ratio_ttm`、`pb_ratio_ttm`。如需标准列名可通过 `fundamentals.column_map` 映射为 `market_cap`/`pe_ttm`/`pb`。
 - EODHD：不支持 provider 基本面，请改用 `fundamentals.source=file`。
 
+## `fundamentals.provider_overlay`
+
+当主基本面走 `fundamentals.source=file` 且文件是稀疏 PIT 财报时，推荐把日频估值放到 `fundamentals.provider_overlay`，让 pipeline 直接把 provider 估值并到 daily panel：
+
+- 主 `fundamentals.file` 继续负责 PIT 财报，并可按 `ts_code` 做 `ffill`。
+- `provider_overlay` 目前只支持 `source=provider`。
+- overlay 行按 `trade_date + ts_code` 精确 merge，不做额外 `ffill`，避免把日频估值先压到稀疏 PIT 日期再向后传播。
+- 如果 overlay 数据缺少 `valuation_trade_date`，pipeline 会自动把 provider 行自己的 `trade_date` 记成 `valuation_trade_date`。
+
+对 HK + RQData，这条路径最适合 `market_cap / pe_ttm / pb` 这类日频估值字段。
+
 ## Symbol 与市场规则
 
 内部统一格式：`00001.HK`（5 位补零 + `.HK`）。

@@ -169,6 +169,7 @@ backtest:
 | `enabled` | 开启基本面 | `true` / `false` |
 | `source` | 数据来源 | `provider` / `file` |
 | `ffill` | 财报沿用 | `true` / `false` |
+| `provider_overlay.enabled` | 在 `source=file` 基础上叠加 provider 日频估值 | `true` / `false` |
 
 ### `features.missing`
 
@@ -176,6 +177,47 @@ backtest:
 |---|------|--------|
 | `method` | 填补方法 | `none` / `zero` / `cross_sectional_median` |
 | `add_indicators` | 添加缺失标记 | `true` / `false` |
+
+### `fundamentals.provider_overlay`
+
+当主基本面走 `fundamentals.source=file` 且文件是稀疏 PIT 财报时，可以把 provider 的日频估值单独作为第二路输入并到 daily panel，而不是先写回 PIT 文件再 `ffill`。
+
+```yaml
+fundamentals:
+  enabled: true
+  source: file
+  file: artifacts/assets/.../pipeline_fundamentals.parquet
+  ffill: true
+  provider_overlay:
+    enabled: true
+    source: provider
+    provider: rqdata
+    endpoint: get_factor
+    fields:
+      - hk_total_market_val
+      - pe_ratio_ttm
+      - pb_ratio_ttm
+    column_map:
+      trade_date: trade_date
+      ts_code: ts_code
+      market_cap: hk_total_market_val
+      pe_ttm: pe_ratio_ttm
+      pb: pb_ratio_ttm
+    features:
+      - market_cap
+      - pe_ttm
+      - pb
+    auto_add_features: true
+    required: true
+```
+
+约定：
+
+- `provider_overlay` 目前只支持 `source=provider`。
+- 主 `fundamentals.file` 仍按原逻辑做按 `ts_code` 的 `ffill`，适合 PIT 财报。
+- `provider_overlay` 按 `trade_date + ts_code` 精确并到 daily panel，不做额外 `ffill`。
+- 如果 overlay 数据里没有 `valuation_trade_date`，pipeline 会把 provider 行本身的 `trade_date` 记为 `valuation_trade_date`，并在需要时计算 `valuation_age_days`。
+- `log_market_cap` 仍由顶层 `fundamentals.log_market_cap` 控制；只要 panel 里出现了 `market_cap`，就可以派生 `log_mcap`。
 
 ## 路径迁移（旧仓库升级）
 

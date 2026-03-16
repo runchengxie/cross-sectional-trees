@@ -107,6 +107,185 @@ def _resolve_fundamentals_cache_dir(
     return base_dir / "fundamentals" / normalize_market(market)
 
 
+def _load_fundamentals_frames(
+    *,
+    source: str,
+    file_path: Optional[Path],
+    data_interface: DataInterface,
+    symbols: list[str],
+    start_date: str,
+    end_date: str,
+    data_cfg: Mapping[str, Any],
+    fundamentals_cfg: Mapping[str, Any],
+    market: str,
+    item_label: str,
+) -> tuple[list[pd.DataFrame], Optional[Path]]:
+    frames: list[pd.DataFrame] = []
+    cache_dir: Optional[Path] = None
+    if source == "file":
+        if file_path is None:
+            return frames, cache_dir
+        if file_path.suffix.lower() in {".parquet", ".pq"}:
+            frames.append(pd.read_parquet(file_path))
+        else:
+            frames.append(pd.read_csv(file_path))
+        return frames, cache_dir
+
+    cache_dir = _resolve_fundamentals_cache_dir(data_cfg, fundamentals_cfg, market)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    for symbol in symbols:
+        logger.info("Fetching %s for %s (%s) ...", item_label, symbol, market)
+        try:
+            frame = data_interface.fetch_fundamentals(
+                symbol,
+                start_date,
+                end_date,
+                fundamentals_cfg,
+                cache_dir=cache_dir,
+            )
+        except Exception as exc:
+            logger.warning("Skipping %s for %s after retries (%s).", item_label, symbol, exc)
+            frame = pd.DataFrame()
+        if frame is not None and not frame.empty:
+            frames.append(frame)
+    return frames, cache_dir
+
+
+def _prepare_fundamentals_frame(
+    frame: pd.DataFrame,
+    column_map: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    fund_df = frame.copy()
+    column_map = column_map or {}
+    if column_map:
+        rename_map = {
+            source: standard
+            for standard, source in column_map.items()
+            if source in fund_df.columns and standard != source
+        }
+        if rename_map:
+            fund_df = fund_df.rename(columns=rename_map)
+    if "trade_date" not in fund_df.columns and "date" in fund_df.columns:
+        fund_df = fund_df.rename(columns={"date": "trade_date"})
+    if "ts_code" not in fund_df.columns and "symbol" in fund_df.columns:
+        fund_df = fund_df.rename(columns={"symbol": "ts_code"})
+    if "trade_date" not in fund_df.columns or "ts_code" not in fund_df.columns:
+        sys.exit("Fundamentals data must include trade_date and ts_code columns.")
+    fund_df["trade_date"] = pd.to_datetime(fund_df["trade_date"], errors="coerce")
+    fund_df = fund_df[fund_df["trade_date"].notna()].copy()
+    fund_df["trade_date"] = fund_df["trade_date"].dt.normalize()
+    if "valuation_trade_date" in fund_df.columns:
+        valuation_trade_date = pd.to_datetime(
+            fund_df["valuation_trade_date"], errors="coerce"
+        )
+        fund_df["valuation_trade_date"] = valuation_trade_date.dt.normalize()
+    fund_df["ts_code"] = fund_df["ts_code"].astype(str).str.strip()
+    fund_df = fund_df.drop_duplicates(subset=["trade_date", "ts_code"]).copy()
+    return fund_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+
+
+def _derive_requested_fundamental_fields(
+    fund_df: pd.DataFrame,
+    requested_feature_names: set[str],
+) -> pd.DataFrame:
+    fund_df = fund_df.copy()
+    if (
+        "sales" in requested_feature_names
+        or "delta_sales" in requested_feature_names
+        or "growth_sales" in requested_feature_names
+        or "profit_margin" in requested_feature_names
+        or "operating_margin" in requested_feature_names
+        or "cfo_margin" in requested_feature_names
+    ):
+        revenue = (
+            pd.to_numeric(fund_df["revenue"], errors="coerce")
+            if "revenue" in fund_df.columns
+            else pd.Series(np.nan, index=fund_df.index, dtype=float)
+        )
+        operating_revenue = (
+            pd.to_numeric(fund_df["operating_revenue"], errors="coerce")
+            if "operating_revenue" in fund_df.columns
+            else pd.Series(np.nan, index=fund_df.index, dtype=float)
+        )
+        fund_df["sales"] = revenue.combine_first(operating_revenue)
+    if (
+        "debt" in requested_feature_names
+        or "delta_debt" in requested_feature_names
+        or "growth_debt" in requested_feature_names
+        or "debt_to_assets" in requested_feature_names
+        or "debt_to_equity" in requested_feature_names
+        or "net_debt_to_assets" in requested_feature_names
+    ):
+        short_term_debt = (
+            pd.to_numeric(fund_df["short_term_debt"], errors="coerce")
+            if "short_term_debt" in fund_df.columns
+            else pd.Series(np.nan, index=fund_df.index, dtype=float)
+        )
+        long_term_loans = (
+            pd.to_numeric(fund_df["long_term_loans"], errors="coerce")
+            if "long_term_loans" in fund_df.columns
+            else pd.Series(np.nan, index=fund_df.index, dtype=float)
+        )
+        debt = short_term_debt.fillna(0.0) + long_term_loans.fillna(0.0)
+        fund_df["debt"] = debt.where(~(short_term_debt.isna() & long_term_loans.isna()))
+    if "days_since_report" in requested_feature_names:
+        fund_df["report_trade_date"] = fund_df["trade_date"]
+    delta_base_features = sorted(
+        {
+            feat.removeprefix("delta_")
+            for feat in requested_feature_names
+            if feat.startswith("delta_")
+        }
+    )
+    for base_feature in delta_base_features:
+        if base_feature not in fund_df.columns:
+            continue
+        base_series = pd.to_numeric(fund_df[base_feature], errors="coerce")
+        fund_df[f"delta_{base_feature}"] = base_series.groupby(fund_df["ts_code"]).diff()
+    growth_base_features = sorted(
+        {
+            feat.removeprefix("growth_")
+            for feat in requested_feature_names
+            if feat.startswith("growth_")
+        }
+    )
+    for base_feature in growth_base_features:
+        if base_feature not in fund_df.columns:
+            continue
+        current = pd.to_numeric(fund_df[base_feature], errors="coerce")
+        previous = current.groupby(fund_df["ts_code"]).shift()
+        scale = ((current.abs() + previous.abs()) / 2.0).where(
+            lambda values: values.notna() & (values != 0)
+        )
+        growth = (current - previous) / scale
+        fund_df[f"growth_{base_feature}"] = growth.replace([np.inf, -np.inf], np.nan)
+    return fund_df
+
+
+def _merge_fundamentals_panel(
+    panel_df: pd.DataFrame,
+    fund_df: pd.DataFrame,
+    *,
+    ffill: bool,
+    ffill_limit: Optional[int],
+    merge_label: str,
+) -> tuple[pd.DataFrame, list[str]]:
+    fundamentals_cols = [col for col in fund_df.columns if col not in {"trade_date", "ts_code"}]
+    overlap_cols = sorted(set(fundamentals_cols).intersection(panel_df.columns))
+    if overlap_cols:
+        sys.exit(
+            f"{merge_label} columns already exist in panel and would be overwritten: {overlap_cols}"
+        )
+    merged = panel_df.merge(fund_df, on=["trade_date", "ts_code"], how="left")
+    if ffill and fundamentals_cols:
+        merged.sort_values(["ts_code", "trade_date"], inplace=True)
+        merged[fundamentals_cols] = merged.groupby("ts_code")[fundamentals_cols].ffill(
+            limit=ffill_limit
+        )
+    return merged, fundamentals_cols
+
+
 def _warn_if_delay_exit_lag(
     *,
     label_prefix: str,
@@ -1156,6 +1335,31 @@ def run(config_ref: str | Path | None = None) -> None:
         if fundamentals_cfg.get("provider")
         else provider
     )
+    provider_overlay_cfg = fundamentals_cfg.get("provider_overlay")
+    if provider_overlay_cfg is None:
+        provider_overlay_cfg = {}
+    if not isinstance(provider_overlay_cfg, Mapping):
+        sys.exit("fundamentals.provider_overlay must be a mapping when provided.")
+    FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = bool(provider_overlay_cfg.get("enabled", False))
+    FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE = str(
+        provider_overlay_cfg.get("source", "provider")
+    ).strip().lower()
+    if FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE not in {"provider"}:
+        sys.exit("fundamentals.provider_overlay.source must be 'provider'.")
+    FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES = normalize_symbol_list(
+        provider_overlay_cfg.get("features")
+    )
+    FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD = bool(
+        provider_overlay_cfg.get("auto_add_features", True)
+    )
+    FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED = bool(
+        provider_overlay_cfg.get("required", False)
+    )
+    FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER = (
+        resolve_provider({"provider": provider_overlay_cfg.get("provider")})
+        if provider_overlay_cfg.get("provider")
+        else provider
+    )
 
     feature_list = features_cfg.get("list") or []
     FEATURES = normalize_symbol_list(feature_list) if feature_list else [
@@ -1184,6 +1388,14 @@ def run(config_ref: str | Path | None = None) -> None:
     ]
     if FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
         FEATURES = list(dict.fromkeys(FEATURES + FUNDAMENTALS_FEATURES))
+    if (
+        FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED
+        and FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD
+        and FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES
+    ):
+        FEATURES = list(
+            dict.fromkeys(FEATURES + FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES)
+        )
     WF_FEATURE_TOP_K = min(WF_FEATURE_TOP_K, max(1, len(FEATURES)))
     feature_params = features_cfg.get("params", {})
     cs_cfg = features_cfg.get("cross_sectional") or {}
@@ -1299,6 +1511,7 @@ def run(config_ref: str | Path | None = None) -> None:
     fundamentals_cols: list[str] = []
     fund_cache_dir: Optional[Path] = None
     fundamentals_file_path: Optional[Path] = None
+    provider_overlay_cache_dir: Optional[Path] = None
     if FUNDAMENTALS_ENABLED:
         if FUNDAMENTALS_SOURCE == "provider" and not fundamentals_provider_supported(
             FUNDAMENTALS_PROVIDER, MARKET
@@ -1333,9 +1546,54 @@ def run(config_ref: str | Path | None = None) -> None:
                     sys.exit(message)
                 logger.warning("%s Fundamentals disabled.", message)
                 FUNDAMENTALS_ENABLED = False
+    if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED:
+        if not FUNDAMENTALS_ENABLED or FUNDAMENTALS_SOURCE != "file":
+            message = (
+                "fundamentals.provider_overlay requires fundamentals.enabled=true "
+                "and fundamentals.source=file."
+            )
+            if FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED:
+                sys.exit(message)
+            logger.warning("%s Provider overlay disabled.", message)
+            FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = False
+        elif not fundamentals_provider_supported(
+            FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER, MARKET
+        ):
+            message = (
+                "fundamentals.provider_overlay currently supports only Tushare and "
+                "RQData market=hk."
+            )
+            if FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED:
+                sys.exit(message)
+            logger.warning("%s Provider overlay disabled.", message)
+            FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = False
+        elif (
+            FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER == "tushare"
+            and not (
+                provider_overlay_cfg.get("endpoint")
+                or data_cfg.get("fundamentals_endpoint")
+            )
+        ):
+            message = (
+                "fundamentals.provider_overlay.endpoint is required for provider=tushare."
+            )
+            if FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED:
+                sys.exit(message)
+            logger.warning("%s Provider overlay disabled.", message)
+            FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = False
 
     if not FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
         FEATURES = [feat for feat in FEATURES if feat not in FUNDAMENTALS_FEATURES]
+    if (
+        not FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED
+        and FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD
+        and FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES
+    ):
+        FEATURES = [
+            feat
+            for feat in FEATURES
+            if feat not in FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES
+        ]
 
     # -----------------------------------------------------------------------------
     # 2. Data download
@@ -1412,167 +1670,100 @@ def run(config_ref: str | Path | None = None) -> None:
         df = df[df["amount"] >= MIN_TURNOVER].copy()
 
     if FUNDAMENTALS_ENABLED:
-        fundamentals_frames = []
-        if FUNDAMENTALS_SOURCE == "file":
-            fund_path = fundamentals_file_path or Path(FUNDAMENTALS_FILE).expanduser()
-            if fund_path.suffix.lower() in {".parquet", ".pq"}:
-                fundamentals_frames.append(pd.read_parquet(fund_path))
-            else:
-                fundamentals_frames.append(pd.read_csv(fund_path))
-        else:
-            fund_cache_dir = _resolve_fundamentals_cache_dir(data_cfg, fundamentals_cfg, MARKET)
-            fund_cache_dir.mkdir(parents=True, exist_ok=True)
+        requested_feature_names = set(FEATURES)
+        fundamentals_frames, fund_cache_dir = _load_fundamentals_frames(
+            source=FUNDAMENTALS_SOURCE,
+            file_path=fundamentals_file_path,
+            data_interface=data_interface,
+            symbols=symbols_for_data,
+            start_date=START_DATE,
+            end_date=END_DATE,
+            data_cfg=data_cfg,
+            fundamentals_cfg=fundamentals_cfg,
+            market=MARKET,
+            item_label="fundamentals",
+        )
 
-            def fetch_fundamentals_with_retry(symbol: str) -> pd.DataFrame:
-                return data_interface.fetch_fundamentals(
-                    symbol,
-                    START_DATE,
-                    END_DATE,
-                    fundamentals_cfg,
-                    cache_dir=fund_cache_dir,
-                )
-
-            for symbol in symbols_for_data:
-                logger.info("Fetching fundamentals for %s (%s) ...", symbol, MARKET)
-                try:
-                    fdata = fetch_fundamentals_with_retry(symbol)
-                except Exception as exc:
-                    logger.warning("Skipping fundamentals for %s after retries (%s).", symbol, exc)
-                    fdata = pd.DataFrame()
-                if fdata is not None and not fdata.empty:
-                    fundamentals_frames.append(fdata)
-
-        if FUNDAMENTALS_ENABLED and fundamentals_frames:
+        if fundamentals_frames:
             fund_df = pd.concat(fundamentals_frames, ignore_index=True)
-            column_map = fundamentals_cfg.get("column_map") or {}
-            if column_map:
-                rename_map = {
-                    source: standard
-                    for standard, source in column_map.items()
-                    if source in fund_df.columns and standard != source
-                }
-                if rename_map:
-                    fund_df = fund_df.rename(columns=rename_map)
-            if "trade_date" not in fund_df.columns:
-                if "date" in fund_df.columns:
-                    fund_df = fund_df.rename(columns={"date": "trade_date"})
-            if "ts_code" not in fund_df.columns:
-                if "symbol" in fund_df.columns:
-                    fund_df = fund_df.rename(columns={"symbol": "ts_code"})
-            if "trade_date" not in fund_df.columns or "ts_code" not in fund_df.columns:
-                sys.exit("Fundamentals data must include trade_date and ts_code columns.")
-            fund_df["trade_date"] = pd.to_datetime(fund_df["trade_date"], errors="coerce")
-            fund_df = fund_df[fund_df["trade_date"].notna()].copy()
-            fund_df["trade_date"] = fund_df["trade_date"].dt.normalize()
-            if "valuation_trade_date" in fund_df.columns:
-                valuation_trade_date = pd.to_datetime(
-                    fund_df["valuation_trade_date"], errors="coerce"
-                )
-                fund_df["valuation_trade_date"] = valuation_trade_date.dt.normalize()
-            fund_df["ts_code"] = fund_df["ts_code"].astype(str).str.strip()
-            fund_df = fund_df.drop_duplicates(subset=["trade_date", "ts_code"]).copy()
-            fund_df = fund_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
-            requested_feature_names = set(FEATURES)
-            if (
-                "sales" in requested_feature_names
-                or "delta_sales" in requested_feature_names
-                or "growth_sales" in requested_feature_names
-                or "profit_margin" in requested_feature_names
-                or "operating_margin" in requested_feature_names
-                or "cfo_margin" in requested_feature_names
-            ):
-                revenue = (
-                    pd.to_numeric(fund_df["revenue"], errors="coerce")
-                    if "revenue" in fund_df.columns
-                    else pd.Series(np.nan, index=fund_df.index, dtype=float)
-                )
-                operating_revenue = (
-                    pd.to_numeric(fund_df["operating_revenue"], errors="coerce")
-                    if "operating_revenue" in fund_df.columns
-                    else pd.Series(np.nan, index=fund_df.index, dtype=float)
-                )
-                fund_df["sales"] = revenue.combine_first(operating_revenue)
-            if (
-                "debt" in requested_feature_names
-                or "delta_debt" in requested_feature_names
-                or "growth_debt" in requested_feature_names
-                or "debt_to_assets" in requested_feature_names
-                or "debt_to_equity" in requested_feature_names
-                or "net_debt_to_assets" in requested_feature_names
-            ):
-                short_term_debt = (
-                    pd.to_numeric(fund_df["short_term_debt"], errors="coerce")
-                    if "short_term_debt" in fund_df.columns
-                    else pd.Series(np.nan, index=fund_df.index, dtype=float)
-                )
-                long_term_loans = (
-                    pd.to_numeric(fund_df["long_term_loans"], errors="coerce")
-                    if "long_term_loans" in fund_df.columns
-                    else pd.Series(np.nan, index=fund_df.index, dtype=float)
-                )
-                debt = short_term_debt.fillna(0.0) + long_term_loans.fillna(0.0)
-                fund_df["debt"] = debt.where(~(short_term_debt.isna() & long_term_loans.isna()))
-            if "days_since_report" in requested_feature_names:
-                fund_df["report_trade_date"] = fund_df["trade_date"]
-            delta_base_features = sorted(
-                {
-                    feat.removeprefix("delta_")
-                    for feat in requested_feature_names
-                    if feat.startswith("delta_")
-                }
+            fund_df = _prepare_fundamentals_frame(
+                fund_df, fundamentals_cfg.get("column_map")
             )
-            for base_feature in delta_base_features:
-                if base_feature not in fund_df.columns:
-                    continue
-                base_series = pd.to_numeric(fund_df[base_feature], errors="coerce")
-                fund_df[f"delta_{base_feature}"] = base_series.groupby(fund_df["ts_code"]).diff()
-            growth_base_features = sorted(
-                {
-                    feat.removeprefix("growth_")
-                    for feat in requested_feature_names
-                    if feat.startswith("growth_")
-                }
+            fund_df = _derive_requested_fundamental_fields(
+                fund_df, requested_feature_names
             )
-            for base_feature in growth_base_features:
-                if base_feature not in fund_df.columns:
-                    continue
-                current = pd.to_numeric(fund_df[base_feature], errors="coerce")
-                previous = current.groupby(fund_df["ts_code"]).shift()
-                scale = ((current.abs() + previous.abs()) / 2.0).where(
-                    lambda values: values.notna() & (values != 0)
-                )
-                growth = (current - previous) / scale
-                fund_df[f"growth_{base_feature}"] = growth.replace([np.inf, -np.inf], np.nan)
-            fundamentals_cols = [
-                col for col in fund_df.columns if col not in {"trade_date", "ts_code"}
-            ]
-            df = df.merge(fund_df, on=["trade_date", "ts_code"], how="left")
-            if FUNDAMENTALS_FFILL and fundamentals_cols:
-                df.sort_values(["ts_code", "trade_date"], inplace=True)
-                df[fundamentals_cols] = df.groupby("ts_code")[fundamentals_cols].ffill(
-                    limit=FUNDAMENTALS_FFILL_LIMIT
-                )
-            if "days_since_report" in FEATURES and "report_trade_date" in df.columns:
-                report_trade_date = pd.to_datetime(df["report_trade_date"], errors="coerce")
-                df["days_since_report"] = (df["trade_date"] - report_trade_date).dt.days
-            if "valuation_age_days" in FEATURES and "valuation_trade_date" in df.columns:
-                valuation_trade_date = pd.to_datetime(df["valuation_trade_date"], errors="coerce")
-                df["valuation_age_days"] = (df["trade_date"] - valuation_trade_date).dt.days
-            if FUNDAMENTALS_LOG_MCAP and FUNDAMENTALS_MCAP_COL in df.columns:
-                df[FUNDAMENTALS_LOG_MCAP_COL] = np.where(
-                    df[FUNDAMENTALS_MCAP_COL] > 0,
-                    np.log(df[FUNDAMENTALS_MCAP_COL]),
-                    np.nan,
-                )
-                if FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_LOG_MCAP_COL not in FEATURES:
-                    FEATURES = list(dict.fromkeys(FEATURES + [FUNDAMENTALS_LOG_MCAP_COL]))
+            df, fundamentals_cols = _merge_fundamentals_panel(
+                df,
+                fund_df,
+                ffill=FUNDAMENTALS_FFILL,
+                ffill_limit=FUNDAMENTALS_FFILL_LIMIT,
+                merge_label="Fundamentals",
+            )
             logger.info(
                 "Merged fundamentals: %s rows, %s columns.",
                 len(fund_df),
                 len(fundamentals_cols),
             )
-        elif FUNDAMENTALS_ENABLED:
+        else:
             logger.warning("Fundamentals enabled but no data was loaded.")
+
+        if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED:
+            overlay_frames, provider_overlay_cache_dir = _load_fundamentals_frames(
+                source=FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE,
+                file_path=None,
+                data_interface=data_interface,
+                symbols=symbols_for_data,
+                start_date=START_DATE,
+                end_date=END_DATE,
+                data_cfg=data_cfg,
+                fundamentals_cfg=provider_overlay_cfg,
+                market=MARKET,
+                item_label="provider valuation overlay",
+            )
+            if overlay_frames:
+                overlay_df = pd.concat(overlay_frames, ignore_index=True)
+                overlay_df = _prepare_fundamentals_frame(
+                    overlay_df, provider_overlay_cfg.get("column_map")
+                )
+                overlay_value_cols = [
+                    col
+                    for col in overlay_df.columns
+                    if col in {"market_cap", "pe_ttm", "pb", FUNDAMENTALS_MCAP_COL}
+                ]
+                if overlay_value_cols and "valuation_trade_date" not in overlay_df.columns:
+                    overlay_df["valuation_trade_date"] = overlay_df["trade_date"]
+                df, overlay_cols = _merge_fundamentals_panel(
+                    df,
+                    overlay_df,
+                    ffill=False,
+                    ffill_limit=None,
+                    merge_label="Provider overlay",
+                )
+                logger.info(
+                    "Merged provider overlay: %s rows, %s columns.",
+                    len(overlay_df),
+                    len(overlay_cols),
+                )
+            else:
+                logger.warning("Provider overlay enabled but no overlay data was loaded.")
+
+        if "days_since_report" in FEATURES and "report_trade_date" in df.columns:
+            report_trade_date = pd.to_datetime(df["report_trade_date"], errors="coerce")
+            df["days_since_report"] = (df["trade_date"] - report_trade_date).dt.days
+        if "valuation_age_days" in FEATURES and "valuation_trade_date" in df.columns:
+            valuation_trade_date = pd.to_datetime(df["valuation_trade_date"], errors="coerce")
+            df["valuation_age_days"] = (df["trade_date"] - valuation_trade_date).dt.days
+        if FUNDAMENTALS_LOG_MCAP and FUNDAMENTALS_MCAP_COL in df.columns:
+            df[FUNDAMENTALS_LOG_MCAP_COL] = np.where(
+                df[FUNDAMENTALS_MCAP_COL] > 0,
+                np.log(df[FUNDAMENTALS_MCAP_COL]),
+                np.nan,
+            )
+            if (
+                (FUNDAMENTALS_AUTO_ADD or FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD)
+                and FUNDAMENTALS_LOG_MCAP_COL not in FEATURES
+            ):
+                FEATURES = list(dict.fromkeys(FEATURES + [FUNDAMENTALS_LOG_MCAP_COL]))
 
     label_next_rebalance_map = None
     label_horizon_gap = None
@@ -3766,6 +3957,25 @@ def run(config_ref: str | Path | None = None) -> None:
                 "features": FUNDAMENTALS_FEATURES,
                 "log_market_cap": FUNDAMENTALS_LOG_MCAP,
                 "market_cap_col": FUNDAMENTALS_MCAP_COL,
+                "provider_overlay": {
+                    "enabled": FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED,
+                    "source": (
+                        FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE
+                        if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED
+                        else None
+                    ),
+                    "provider": (
+                        FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER
+                        if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED
+                        else None
+                    ),
+                    "cache_dir": (
+                        str(provider_overlay_cache_dir)
+                        if provider_overlay_cache_dir
+                        else None
+                    ),
+                    "features": FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES,
+                },
             },
             "walk_forward": {
                 "enabled": WF_ENABLED,

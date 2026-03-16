@@ -130,6 +130,33 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 1. 这些键固定存在，但部分值会是 `null`/空对象（例如未启用 `final_oos`、未启用 `live`）。
 1. 消费脚本建议优先读 `summary.json` 里保存的文件路径，不要硬编码文件名。
 
+`summary.json -> fundamentals` 当前会额外记录一层 `provider_overlay` 摘要：
+
+```json
+{
+  "enabled": true,
+  "source": "file",
+  "provider": "rqdata",
+  "file": "artifacts/assets/.../pipeline_fundamentals.parquet",
+  "cache_dir": null,
+  "features": ["revenue", "net_profit"],
+  "log_market_cap": true,
+  "market_cap_col": "market_cap",
+  "provider_overlay": {
+    "enabled": true,
+    "source": "provider",
+    "provider": "rqdata",
+    "cache_dir": "artifacts/cache/fundamentals/hk",
+    "features": ["market_cap", "pe_ttm", "pb"]
+  }
+}
+```
+
+说明：
+
+1. `provider_overlay` 只表示运行时是否启用了第二路 provider 估值 merge，不等于这些列在每个 `trade_date` 都有值。
+1. 审 provider 估值链路时，优先看 `config.used.yml` 与这里的 `fundamentals.provider_overlay`，再决定是按 file 还是按 overlay 口径复现。
+
 ## 稳定性契约（给下游脚本）
 
 稳定 contract（版本演进时尽量保持不变）：
