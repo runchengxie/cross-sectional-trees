@@ -62,6 +62,12 @@ def _resolve_extends(
             package=package,
             search_paths=search_paths,
         )
+        base_data = _resolve_extends(
+            base_data,
+            package=package,
+            search_paths=search_paths,
+            _visited=_visited,
+        )
         base_configs.append(base_data)
 
     del data[EXTENDS_KEY]

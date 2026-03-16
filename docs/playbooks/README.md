@@ -16,7 +16,8 @@
 
 1. 先看 [hk-selected.md](./hk-selected.md)，先选频率和数据路线。
 2. 如果你选的是 PIT 财务路线，再看 [hk-data-assets.md](./hk-data-assets.md) 准备资产。
-3. 如果你要派生本地配置，或判断某个实验值不值得沉淀成仓库模板，再看 [research-template-design.md](./research-template-design.md)。
+3. 如果你已经准备做正式对比，再看 `docs/concepts/benchmark-protocol.md` 确认 benchmark 阶梯。
+4. 如果你要派生本地配置，或判断某个实验值不值得沉淀成仓库模板，再看 [research-template-design.md](./research-template-design.md)。
 
 补充：
 

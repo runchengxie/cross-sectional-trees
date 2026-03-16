@@ -3,7 +3,7 @@
 
 extends:
   - presets/hk.yml
-  - presets/models/xgb_ranker.yml
+  - configs/presets/models/xgb_ranker.yml
 
 # Only override what's different from base presets
 label:

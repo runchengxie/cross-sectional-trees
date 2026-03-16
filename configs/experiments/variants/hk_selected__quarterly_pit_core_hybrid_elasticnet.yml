@@ -1,0 +1,8 @@
+## Same quarterly hybrid research unit as the strong benchmark, but switch to
+## elasticnet as a sparser linear challenger.
+extends:
+  - configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
+  - configs/presets/models/elasticnet.yml
+
+eval:
+  run_name: hk_sel_q_benchmark_pit_core_hybrid_elasticnet

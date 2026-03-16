@@ -41,18 +41,29 @@ csml run --config hk
 
 ## 阶段三：正式研究
 
-### 3.1 先有基线
+### 3.1 先有 benchmark 阶梯
 
-先用一条基线跑通，然后再对照模型或调参：
+先把 benchmark 顺序跑通，再对照模型或调参：
 
 ```bash
-csml run --config <baseline.yml>
+csml run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
+csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
+csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
+
 csml summarize --runs-dir artifacts/runs --sort-by score
 ```
 
+这三条配置固定了同一季度研究单元，用来回答“alpha 到底来自 price-only、core PIT，还是 hybrid 增量”。完整分层见 `docs/concepts/benchmark-protocol.md`。
+
 ### 3.2 模型对比
 
-只在同一研究单元里换模型。模型选择建议见 `docs/concepts/model-selection.md`。
+只在同一研究单元里换模型。官方 challenger 入口见：
+
+* `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml`
+* `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml`
+* `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml`
+
+模型选择建议见 `docs/concepts/model-selection.md`，完整 benchmark protocol 见 `docs/concepts/benchmark-protocol.md`。
 
 ### 3.3 HK selected 研究
 

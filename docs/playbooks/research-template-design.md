@@ -78,14 +78,13 @@
 
 例如：
 
-* 季度 `Q` + PIT 财务 + 慢量价 的四模型 PK
+* 季度 `Q` + PIT 财务 + 慢量价 的标准 benchmark protocol
 
 更合适的做法是：
 
-* 保留 `configs/hk_selected__pit_quarterly_hybrid.yml` 作为路线基线
-* 先在 `configs/local/` 派生三条基线，把 PIT 体检跑到绿灯
-* 再在 `configs/local/` 派生四份模型配置
-* 不要把四份实验文件都沉淀进仓库根目录
+* 直接使用仓库里的三条官方 benchmark 配置和同一 hybrid 单元上的 challenger
+* 只有在你要试更细的参数、exit policy 或 universe 时，才继续派生到 `configs/local/`
+* 不要把一次性的实验快照继续沉淀成新的仓库模板
 
 ## 4. 什么时候新建仓库模板
 
@@ -119,17 +118,17 @@
 
 月度 `M` + provider 基本面 这条路线符合这些条件，所以仓库里已经维护了：
 
-* `configs/hk_selected__ridge_a1.yml`
-* `configs/hk_selected__elasticnet_a0.1_l0.5.yml`
-* `configs/hk_selected__xgb_regressor.yml`
-* `configs/hk_selected__xgb_ranker_pairwise.yml`
+* `configs/experiments/variants/hk_selected__ridge_a1.yml`
+* `configs/experiments/variants/hk_selected__elasticnet_a0.1_l0.5.yml`
+* `configs/experiments/variants/hk_selected__xgb_regressor.yml`
+* `configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`
 
-季度路线当前还在优先维护“路线基线”，所以更适合：
+季度路线现在已经有一套官方 benchmark protocol，所以更适合：
 
-* 先保留 1 份到 2 份稳定基线
-* 再让用户按需要派生四模型实验文件
+* 保留稳定的 feature benchmark 和 hybrid challenger 入口
+* 更细的实验继续在本地派生
 
-这样 `configs/` 不会很快变成一串难以分辨的实验快照。
+这样 `configs/` 不会很快变成一串难以分辨的实验快照，同时也不会让正式 benchmark 只存在于 `configs/local/`。
 
 ## 6. 命名和放置建议
 
@@ -143,9 +142,9 @@
 
 例如：
 
-* `hk_selected__baseline.yml`
-* `hk_selected__provider_quarterly_valuation.yml`
-* `hk_selected__pit_quarterly_hybrid.yml`
+* `configs/experiments/baseline/hk_selected.yml`
+* `configs/experiments/baseline/hk_selected__quarterly_price_only.yml`
+* `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`
 
 ### 本地派生配置
 
@@ -158,9 +157,9 @@
 
 例如：
 
-* `configs/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml`
-* `configs/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml`
-* `configs/local/hk_sel_q_pk_pit_core_hybrid_en.yml`
+* `configs/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank.yml`
+* `configs/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank_ffill.yml`
+* `configs/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank_strict.yml`
 
 ## 7. 新建模板时必须同步什么
 

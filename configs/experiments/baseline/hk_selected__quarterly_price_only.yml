@@ -1,0 +1,56 @@
+## Quarterly benchmark 1/3.
+## Freeze the quarterly research unit and remove fundamentals so you can
+## measure the slow price/liquidity signal floor before adding PIT features.
+extends:
+  - presets/hk_quarterly_pit_hybrid.yml
+  - configs/presets/models/xgb_regressor.yml
+
+data:
+  start_date: '20150101'
+
+fundamentals:
+  enabled: false
+  source: file
+  file: artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+  column_map: {}
+  features: []
+  auto_add_features: false
+  allow_missing_features: true
+  required: false
+  ffill: false
+  ffill_limit: null
+  log_market_cap: false
+
+features:
+  list:
+    - ret_60
+    - ret_120
+    - ret_240
+    - rv_60
+    - rv_120
+    - volume_sma20_ratio
+    - volume_sma60_ratio
+    - log_vol
+    - vol
+  params:
+    ret_windows:
+      - 60
+      - 120
+      - 240
+    rv_windows:
+      - 60
+      - 120
+    volume_sma_windows:
+      - 20
+      - 60
+  cross_sectional:
+    method: rank
+    winsorize_pct: 0.01
+  missing: null
+
+model:
+  params:
+    learning_rate: 0.03
+
+eval:
+  run_name: hk_sel_q_benchmark_price_only_xgb_reg

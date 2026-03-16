@@ -14,13 +14,19 @@ presets/data/hk_rqdata.yml,preset_data,hk,rqdata,N/A,N/A,N/A,HK RQData data prov
 presets/label/monthly.yml,preset_label,N/A,N/A,M,N/A,N/A,Monthly rebalance label preset,
 presets/label/quarterly.yml,preset_label,N/A,N/A,Q,N/A,N/A,Quarterly rebalance label preset,
 presets/hk_quarterly_pit_hybrid.yml,preset,hk,selected,Q,hybrid,N/A,HK quarterly PIT hybrid base preset,
-experiments/template__quarterly_xgb_ranker.yml,template,hk,selected,Q,hybrid,xgb_ranker,Quarterly XGB ranker template,presets/hk.yml;presets/models/xgb_ranker.yml
+experiments/template__quarterly_xgb_ranker.yml,template,hk,selected,Q,hybrid,xgb_ranker,Quarterly XGB ranker template,presets/hk.yml;configs/presets/models/xgb_ranker.yml
 experiments/template__monthly_xgb_regressor.yml,template,hk,selected,M,price_only,xgb_regressor,Monthly XGB regressor template,presets/hk.yml;presets/models/xgb_regressor.yml
 experiments/baseline/hk_selected.yml,experiment,hk,selected,M,price_only,xgb_regressor,HK selected baseline,
+experiments/baseline/hk_selected__quarterly_price_only.yml,experiment,hk,selected,Q,price_only,xgb_regressor,Quarterly price-only feature benchmark,presets/hk_quarterly_pit_hybrid.yml;configs/presets/models/xgb_regressor.yml
+experiments/baseline/hk_selected__quarterly_pit_core.yml,experiment,hk,selected,Q,pit_core,xgb_regressor,Quarterly core PIT feature benchmark,presets/hk_quarterly_pit_hybrid.yml;configs/presets/models/xgb_regressor.yml
+experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml,experiment,hk,selected,Q,hybrid,xgb_regressor,Quarterly strong benchmark with core PIT and slow price features,presets/hk_quarterly_pit_hybrid.yml;configs/presets/models/xgb_regressor.yml
 experiments/variants/hk_selected__ridge_a1.yml,experiment,hk,selected,M,price_only,ridge,Ridge variant with alpha=1.0,
 experiments/variants/hk_selected__xgb_ranker_pairwise.yml,experiment,hk,selected,M,price_only,xgb_ranker,XGB ranker with pairwise objective,
 experiments/variants/hk_selected__elasticnet_a0.1_l0.5.yml,experiment,hk,selected,M,price_only,elasticnet,ElasticNet with alpha=0.1 l1_ratio=0.5,
 experiments/variants/hk_selected__xgb_regressor.yml,experiment,hk,selected,M,price_only,xgb_regressor,XGBoost regressor variant,
+experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml,experiment,hk,selected,Q,hybrid,ridge,Quarterly hybrid ridge sanity benchmark,configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml;configs/presets/models/ridge.yml
+experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml,experiment,hk,selected,Q,hybrid,xgb_ranker,Quarterly hybrid XGB ranker challenger,configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml;configs/presets/models/xgb_ranker.yml
+experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml,experiment,hk,selected,Q,hybrid,elasticnet,Quarterly hybrid ElasticNet challenger,configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml;configs/presets/models/elasticnet.yml
 experiments/variants/hk_selected__pit_quarterly_hybrid.yml,experiment,hk,selected,Q,hybrid,xgb_regressor,Quarterly rebalance with hybrid features,
 experiments/variants/hk_selected__pit_quarterly_financial_ml.yml,experiment,hk,selected,Q,financial_ml,xgb_regressor,Quarterly with financial ML features,
 experiments/variants/hk_selected__pit_quarterly_financial_linear.yml,experiment,hk,selected,Q,financial_linear,ridge,Quarterly linear model with financials,

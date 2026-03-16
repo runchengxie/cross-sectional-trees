@@ -9,8 +9,8 @@
 ## 三条阅读路径
 
 1. 我想先跑起来：`docs/get-started.md`
-2. 我想做正式研究：`docs/playbooks/README.md` → `docs/cookbook.md`
-3. 我想查某个细节：`docs/capabilities.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md`
+2. 我想做正式研究：`docs/playbooks/README.md` → `docs/cookbook.md` → `docs/concepts/benchmark-protocol.md`
+3. 我想查某个细节：`docs/capabilities.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md`、`docs/concepts/`
 
 ## 页面分工
 

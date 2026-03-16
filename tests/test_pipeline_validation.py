@@ -5,6 +5,7 @@ import pytest
 import yaml
 
 from csml import pipeline
+from csml.config_utils import resolve_pipeline_config
 from csml.data_interface import DataInterface
 
 
@@ -152,19 +153,19 @@ def test_pipeline_model_params_validation(tmp_path, no_client):
         pipeline.run(str(config_path))
 
 
-def test_hk_quarterly_templates_align_rebalance_frequencies():
+def test_hk_benchmark_protocol_configs_align_research_unit():
     repo_root = Path(__file__).resolve().parents[1]
     config_paths = [
-        repo_root / "config" / "hk_selected__provider_quarterly_valuation.yml",
-        repo_root / "config" / "hk_selected__baseline_pit_quarterly.yml",
-        repo_root / "config" / "hk_selected__pit_quarterly_hybrid.yml",
-        repo_root / "config" / "hk_selected__pit_quarterly_financial_ml.yml",
-        repo_root / "config" / "hk_selected__pit_quarterly_financial_linear.yml",
-        repo_root / "config" / "hk_connect__pit_quarterly_financial_ml.yml",
+        repo_root / "configs" / "experiments" / "baseline" / "hk_selected__quarterly_price_only.yml",
+        repo_root / "configs" / "experiments" / "baseline" / "hk_selected__quarterly_pit_core.yml",
+        repo_root / "configs" / "experiments" / "baseline" / "hk_selected__quarterly_pit_core_hybrid.yml",
+        repo_root / "configs" / "experiments" / "variants" / "hk_selected__quarterly_pit_core_hybrid_ridge.yml",
+        repo_root / "configs" / "experiments" / "variants" / "hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml",
+        repo_root / "configs" / "experiments" / "variants" / "hk_selected__quarterly_pit_core_hybrid_elasticnet.yml",
     ]
 
     payloads = [
-        yaml.safe_load(path.read_text(encoding="utf-8"))
+        resolve_pipeline_config(str(path)).data
         for path in config_paths
     ]
 
@@ -173,32 +174,36 @@ def test_hk_quarterly_templates_align_rebalance_frequencies():
         assert payload["label"]["rebalance_frequency"] == "Q"
         assert payload["eval"]["rebalance_frequency"] == "Q"
         assert payload["backtest"]["rebalance_frequency"] == "Q"
+        assert payload["backtest"]["benchmark_symbol"] == "02800.HK"
+        assert payload["eval"]["sample_on_rebalance_dates"] is True
+        assert payload["features"]["cross_sectional"]["method"] == "rank"
 
-    provider_cfg, pit_cfg, hybrid_cfg, financial_ml_cfg, financial_linear_cfg, hk_connect_ml_cfg = payloads
+    price_cfg, pit_cfg, hybrid_cfg, ridge_cfg, ranker_cfg, elasticnet_cfg = payloads
 
-    assert provider_cfg["fundamentals"]["source"] == "provider"
-    assert provider_cfg["features"]["list"] == ["pe_ttm"]
+    assert price_cfg["fundamentals"]["enabled"] is False
+    assert "ret_240" in price_cfg["features"]["list"]
+    assert "sales" not in price_cfg["features"]["list"]
+    assert price_cfg["features"]["missing"] is None
 
+    assert pit_cfg["fundamentals"]["enabled"] is True
     assert pit_cfg["fundamentals"]["source"] == "file"
-    assert "profit_margin" in pit_cfg["fundamentals"]["features"]
-    assert "accrual_ratio" in pit_cfg["fundamentals"]["features"]
+    assert "sales" in pit_cfg["features"]["list"]
+    assert "ret_240" not in pit_cfg["features"]["list"]
+    assert pit_cfg["features"]["missing"]["add_indicators"] is False
 
     assert hybrid_cfg["fundamentals"]["source"] == "file"
+    assert hybrid_cfg["model"]["type"] == "xgb_regressor"
     assert "ret_240" in hybrid_cfg["features"]["list"]
-    assert "rv_120" in hybrid_cfg["features"]["list"]
+    assert "sales" in hybrid_cfg["features"]["list"]
+    assert hybrid_cfg["features"]["missing"]["add_indicators"] is False
 
-    assert financial_ml_cfg["fundamentals"]["source"] == "file"
-    assert financial_ml_cfg["eval"]["sample_on_rebalance_dates"] is True
-    assert financial_ml_cfg["features"]["missing"]["method"] == "cross_sectional_median"
-    assert "growth_sales" in financial_ml_cfg["features"]["list"]
-    assert "days_since_report" in financial_ml_cfg["features"]["list"]
+    for variant_cfg in (ridge_cfg, ranker_cfg, elasticnet_cfg):
+        assert variant_cfg["fundamentals"] == hybrid_cfg["fundamentals"]
+        assert variant_cfg["features"] == hybrid_cfg["features"]
+        assert variant_cfg["universe"] == hybrid_cfg["universe"]
+        assert variant_cfg["backtest"] == hybrid_cfg["backtest"]
 
-    assert financial_linear_cfg["fundamentals"]["source"] == "file"
-    assert financial_linear_cfg["model"]["type"] == "ridge"
-    assert financial_linear_cfg["eval"]["sample_on_rebalance_dates"] is True
-    assert "growth_net_profit" in financial_linear_cfg["features"]["list"]
-
-    assert hk_connect_ml_cfg["fundamentals"]["source"] == "file"
-    assert hk_connect_ml_cfg["universe"]["by_date_file"].endswith("hk_connect_full_by_date.csv")
-    assert hk_connect_ml_cfg["eval"]["sample_on_rebalance_dates"] is True
-    assert "growth_sales" in hk_connect_ml_cfg["features"]["list"]
+    assert ridge_cfg["model"]["type"] == "ridge"
+    assert ranker_cfg["model"]["type"] == "xgb_ranker"
+    assert ranker_cfg["model"]["params"]["objective"] == "rank:pairwise"
+    assert elasticnet_cfg["model"]["type"] == "elasticnet"

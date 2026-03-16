@@ -1,0 +1,16 @@
+## Quarterly benchmark 3/3.
+## Strong benchmark for HK selected: keep the core PIT set, add slow
+## price/liquidity features, and use xgb_regressor as the default object to beat.
+extends:
+  - presets/hk_quarterly_pit_hybrid.yml
+  - configs/presets/models/xgb_regressor.yml
+
+data:
+  start_date: '20150101'
+
+model:
+  params:
+    learning_rate: 0.03
+
+eval:
+  run_name: hk_sel_q_benchmark_pit_core_hybrid_xgb_reg

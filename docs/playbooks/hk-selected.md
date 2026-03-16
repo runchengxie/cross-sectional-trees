@@ -4,16 +4,17 @@
 本页不解决什么：不展开参数定义与资产准备细节。
 适合谁：已经要做 HK selected 研究的人。
 读完你会得到什么：一条可执行的路线选择与比较顺序。
-相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/cli.md`、`docs/config.md`
+相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/cli.md`、`docs/config.md`
 
-任务摘要：先选频率，再选数据路线；走 PIT 路线先做覆盖率体检，最后在同一路线内比较模型。
+任务摘要：先选频率，再选数据路线；走 PIT 路线先做覆盖率体检，再按 benchmark protocol 跑特征阶梯，最后在同一路线内比较模型。
 
-本页把 HK selected 研究拆成四步：
+本页把 HK selected 研究拆成五步：
 
 1. 先选频率：`M` / `Q` / `Y`
 2. 再选数据路线：`纯量价` / `量价 + provider 基本面` / `量价 + PIT 财务`
 3. 如果走 PIT 路线，先过覆盖率体检
-4. 最后才在同一条路线里比较模型：`xgb_regressor` / `xgb_ranker` / `ridge` / `elasticnet`
+4. 按 benchmark protocol 先跑 `price-only -> PIT-only -> hybrid`
+5. 最后才在同一条路线里比较模型：`ridge` / `xgb_regressor` / `xgb_ranker` / `elasticnet`
 
 本页只讲研究路线、模板选择和比较顺序。
 
@@ -53,8 +54,8 @@ PIT 资产准备看：
 
 | 频率 | 纯量价 | 量价 + provider 基本面 | 量价 + PIT 财务 |
 | --- | --- | --- | --- |
-| 月度 `M` | 需要本地派生。可从 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 关掉 `fundamentals` 开始。 | 现成模板最完整：`configs/experiments/variants/hk_selected__xgb_regressor.yml`、`configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`、`configs/experiments/variants/hk_selected__ridge_a1.yml`、`configs/experiments/variants/hk_selected__elasticnet_a0.1_l0.5.yml`。 | 有现成起点：`configs/experiments/variants/hk_selected__baseline_pit_file.yml`。如果要四模型 PK，需要继续派生。 |
-| 季度 `Q` | 需要本地派生。可从 `configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml` 关掉 `fundamentals` 开始。 | 有现成估值对照：`configs/experiments/variants/hk_selected__provider_quarterly_valuation.yml`。如果要再叠加量价特征，需要继续派生。 | 现成模板最多：`configs/experiments/variants/hk_selected__baseline_pit_quarterly.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml`。 |
+| 月度 `M` | 需要本地派生。可从 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 关掉 `fundamentals` 开始。 | 现成模板最完整：`configs/experiments/variants/hk_selected__xgb_regressor.yml`、`configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`、`configs/experiments/variants/hk_selected__ridge_a1.yml`、`configs/experiments/variants/hk_selected__elasticnet_a0.1_l0.5.yml`。 | 需要本地派生；当前没有单独维护的月度 PIT benchmark 模板。 |
+| 季度 `Q` | 有官方 benchmark 起点：`configs/experiments/baseline/hk_selected__quarterly_price_only.yml`。 | 需要本地派生；当前没有单独维护的季度 provider 基本面对照模板。 | 有官方 benchmark 阶梯：`configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`，以及同一 hybrid 单元上的 challenger 模板。 |
 | 年度 `Y` | 代码支持，当前没有内置模板。建议从月度或季度配置派生。 | 代码支持，当前没有内置模板。建议从季度 provider 路线派生。 | 代码支持，当前没有内置模板。建议从季度 PIT 路线派生。 |
 
 读表时记住两点：
@@ -70,7 +71,7 @@ PIT 资产准备看：
 | --- | --- | --- | --- |
 | 纯量价 | 从 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 派生，设 `fundamentals.enabled=false` | 否 | 先看技术面和量价本身有没有稳定信号 |
 | 量价 + provider 基本面 | `configs/experiments/variants/hk_selected__xgb_regressor.yml` 及其显式模型模板 | 否 | 日常基线、四模型 PK、估值与技术面的混合信号 |
-| 量价 + PIT 财务 | `configs/experiments/variants/hk_selected__baseline_pit_file.yml` | 是 | 想保留月度调仓，同时把财报字段并进模型 |
+| 量价 + PIT 财务 | 需要本地派生 | 是 | 想保留月度调仓，同时把财报字段并进模型 |
 
 月度路线当前最适合做四模型比较。原因很简单：
 
@@ -91,9 +92,9 @@ PIT 资产准备看：
 
 | 数据路线 | 起点配置 | 需要本地 PIT 文件 | 更适合回答的问题 |
 | --- | --- | --- | --- |
-| 纯量价 | 从 `configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml` 派生，设 `fundamentals.enabled=false` | 否 | 低频调仓下，慢量价特征本身有没有方向 |
-| 量价 + provider 基本面 | `configs/experiments/variants/hk_selected__provider_quarterly_valuation.yml` 是现成估值对照；如果要叠加量价特征，需要继续派生 | 否 | 低频估值字段本身有没有方向；是否值得再叠加量价 |
-| 量价 + PIT 财务 | `configs/experiments/variants/hk_selected__baseline_pit_quarterly.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml` | 是 | 财报披露节奏对齐后，慢基本面、财务质量和慢量价特征有没有 alpha |
+| 纯量价 | `configs/experiments/baseline/hk_selected__quarterly_price_only.yml` | 否 | 低频调仓下，慢量价特征本身有没有方向 |
+| 量价 + provider 基本面 | 需要本地派生；可从 `configs/experiments/baseline/hk_selected.yml` 切到 `Q` 并保留 provider fundamentals | 否 | 低频估值字段本身有没有方向；是否值得再叠加量价 |
+| 量价 + PIT 财务 | `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`，以及同一 hybrid 单元上的模型 challenger | 是 | 财报披露节奏对齐后，core PIT 和慢量价特征有没有 alpha |
 
 ### 4.1 季度 PIT 的默认研究流程
 
@@ -102,7 +103,7 @@ PIT 资产准备看：
 1. 准备 `pipeline_fundamentals.parquet`
 2. 先跑 `csml rqdata inspect-hk-pit-coverage`
 3. 如果 `Fill Dependence` 还是红灯，先缩窄 PIT 特征，再重跑体检
-4. 先做三条基线：`季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价`
+4. 先做三条 benchmark：`季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价`
 5. 确认基线稳定后，再做四模型 PK
 
 这条流程的重点是先判断数据和信号，再判断模型。
@@ -117,9 +118,6 @@ PIT 资产准备看：
 
 核心发现：去掉 `*_missing` 指示器后，模型真正学到了基本面信号，而非依赖"哪些公司财报缺了"这个捷径。
 
-本文下面出现的 `configs/experiments/variants/local/*.yml` 只是推荐的本地派生命名。  
-前提是你已经从仓库模板复制到 `configs/experiments/variants/local/`，然后按这条流程收窄成自己的季度研究单元。
-
 如果体检结果说明 source-level 覆盖很差，先回到资产准备。  
 如果源头覆盖还可以，但 selected features 的 complete-case 结果很差，先缩窄特征集。  
 如果 `季度 core PIT + 慢量价` 没有明显优于 `季度纯量价`，先不要急着继续调模型。
@@ -128,7 +126,7 @@ PIT 资产准备看：
 
 ```bash
 csml rqdata inspect-hk-pit-coverage \
-  --config configs/experiments/variants/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
+  --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
   --mode both
 ```
 
@@ -142,39 +140,32 @@ csml rqdata inspect-hk-pit-coverage \
 `Fill Dependence` 是黄灯时，先看 `Worst Features`，删掉最拖后腿的一两个字段，再重跑体检。  
 `Fill Dependence` 是绿灯时，再继续跑三条基线和四模型 PK。
 
-如果你按本文派生到 `configs/experiments/variants/local/`，建议把三条基线和四模型 PK 命名成这样：
+仓库现在已经把这套 benchmark protocol 的标准入口沉淀成正式配置：
 
-* `configs/experiments/variants/local/hk_sel_q_price_only_xgb_reg.yml`：季度纯量价基线
-* `configs/experiments/variants/local/hk_sel_pit_q_core_xgb_reg.yml`：季度 core PIT 基线
-* `configs/experiments/variants/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml`：季度 core PIT + 慢量价基线
-* `configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_xgb_reg.yml`
-* `configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml`
-* `configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_ridge.yml`
-* `configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_en.yml`
+* `configs/experiments/baseline/hk_selected__quarterly_price_only.yml`
+* `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`
+* `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`
+* `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml`
+* `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml`
+* `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml`
 
-**推荐配置**（2026-03 实验结论）：
+**推荐配置**（2026-03）：
 
-当前实验表明，季度 PIT 路线的最佳配置是：
+对默认 benchmark protocol，当前更稳妥的设置是：
 
-* `configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank.yml`
+* 保留 `features.missing.add_indicators: false`
+* 先把 `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml` 当作强 benchmark
+* 再用 `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml` 作为 primary challenger
 
-配置要点：
-* `features.missing.add_indicators: false`（去掉缺失指示器）
-* `model.type: xgb_ranker`
-* 结果：IC 0.097，Sharpe 1.009，Score 0.959，Periods 10
+如果你还想看更宽的 PIT 财报路线，仓库里另外还有这几份季度模板：
 
-详细实验结果见 [runs_summary.csv](artifacts/runs/hk_sel_q_pk_pit_core_hybrid_nomiss_summary.csv)。
-
-仓库里现成季度模板的分工是：
-
-* `configs/experiments/variants/hk_selected__baseline_pit_quarterly.yml`：简单 PIT 财报基线，模型是 `xgb_regressor`
-* `configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`：更丰富的财务主项、增长和质量特征，模型是 `xgb_regressor`
-* `configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`：和上一份尽量保持同一套财务特征，但模型换成 `ridge`
-* `configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml`：PIT 财务 + 慢量价特征，模型是 `xgb_regressor`
+* `configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`
+* `configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`
+* `configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml`
 
 这里最容易混淆的点是：
 
-* 这四份文件是四条季度实验路线。
+* 这三份文件是三条季度实验路线。
 * 它们不是“四种模型”的一一对应模板。
 * 如果你要做严格的四模型 PK，应该先选其中一条作为路线基线，再只改 `model`。
 
@@ -208,10 +199,10 @@ csml rqdata inspect-hk-pit-coverage \
 
 1. 先把数据路线和特征口径定住。
 2. 先跑完 `季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价` 这三条基线。
-3. 再选定研究矩阵里的一个单元。
-4. 复制一份基线配置到本地，例如放到 `configs/experiments/variants/local/`。
+3. 再选定研究矩阵里的一个单元；对标准季度 PIT protocol，直接用官方 hybrid benchmark。
+4. 标准四模型 PK 直接使用官方 hybrid benchmark 和三个 challenger 模板；只有更细的实验再复制到 `configs/local/`。
 5. 保持下面这些块尽量不变：
-   `universe`、`fundamentals`、`features`、`label`、`backtest`
+   `universe`、`fundamentals`、`features`、`label`、`eval`、`backtest`
 6. 只改两类内容：
    `model`
    `eval.run_name`
@@ -222,18 +213,18 @@ csml rqdata inspect-hk-pit-coverage \
 1. **一定要设置 `features.missing.add_indicators: false`**，去掉 `*_missing` 指示器
 2. **优先使用 `xgb_ranker`**，在基本面路线上表现显著优于 `xgb_regressor`
 
-模型块可以直接参考现成模板：
+模型 benchmark 现在有现成模板：
 
-* `xgb_regressor`：`configs/experiments/variants/hk_selected__xgb_regressor.yml`
-* `xgb_ranker`：`configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`
-* `ridge`：`configs/experiments/variants/hk_selected__ridge_a1.yml`
-* `elasticnet`：`configs/experiments/variants/hk_selected__elasticnet_a0.1_l0.5.yml`
+* `xgb_regressor`：`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`
+* `xgb_ranker`：`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml`
+* `ridge`：`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml`
+* `elasticnet`：`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml`
 
 如果你现在要做“季度 + 量价 + PIT 财务”的四模型 PK，更稳妥的起点是：
 
 * 先跑完 `季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价`
-* 用 `configs/experiments/variants/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml` 固定研究单元
-* 再派生四份 `hk_sel_q_pk_pit_core_hybrid_*.yml`
+* 用 `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml` 固定研究单元
+* 再只切到同一单元上的 `ridge`、`xgb_ranker`、`elasticnet`
 * 只改 `model` 和 `eval.run_name`
 
 这一步更适合放在下面这些条件都满足之后：
@@ -250,20 +241,19 @@ csml rqdata inspect-hk-pit-coverage \
 示例：
 
 ```bash
-# 三条基线
-csml run --config configs/experiments/variants/local/hk_sel_q_price_only_xgb_reg.yml
-csml run --config configs/experiments/variants/local/hk_sel_pit_q_core_xgb_reg.yml
-csml run --config configs/experiments/variants/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml
+# 三条 benchmark
+csml run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
+csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
+csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
 
-# 四模型 PK（推荐使用 _nomiss 版本，即 add_indicators: false）
-csml run --config configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_reg.yml
-csml run --config configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank.yml
-csml run --config configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_nomiss_ridge.yml
-csml run --config configs/experiments/variants/local/hk_sel_q_pk_pit_core_hybrid_nomiss_en.yml
+# 同一 hybrid 单元上的 challenger
+csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml
+csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml
+csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml
 
 csml summarize \
   --runs-dir artifacts/runs \
-  --run-name-prefix hk_sel_q_pk_pit_core_hybrid_nomiss \
+  --run-name-prefix hk_sel_q_benchmark_ \
   --sort-by score
 ```
 
@@ -283,9 +273,9 @@ csml summarize \
 
 ```bash
 csml rqdata mirror-hk-pit-financials \
-  --config configs/experiments/variants/hk_selected__xgb_regressor.yml \
+  --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
   --name hk_selected_pit_2011_2025_latest \
-  --fields-file configs/experiments/variants/rqdata_assets/hk_financial_fields_starter.txt \
+  --fields-file configs/field_profiles/hk_financial_fields_starter.txt \
   --start-quarter 2011q1 \
   --end-quarter 2025q4 \
   --date 20260312
@@ -295,7 +285,7 @@ csml rqdata build-hk-pit-fundamentals \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 
 csml rqdata inspect-hk-pit-coverage \
-  --config configs/experiments/variants/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml \
+  --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
   --mode both
 ```
 

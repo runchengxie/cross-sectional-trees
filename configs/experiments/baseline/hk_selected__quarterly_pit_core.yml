@@ -1,0 +1,50 @@
+## Quarterly benchmark 2/3.
+## Keep the same quarterly research unit, then add only the denser PIT core
+## features so the incremental value over price-only stays interpretable.
+extends:
+  - presets/hk_quarterly_pit_hybrid.yml
+  - configs/presets/models/xgb_regressor.yml
+
+data:
+  start_date: '20150101'
+
+features:
+  list:
+    - sales
+    - growth_sales
+    - basic_earnings_per_share
+    - growth_basic_earnings_per_share
+    - net_profit
+    - growth_net_profit
+    - cash_flow_from_operating_activities
+    - growth_cash_flow_from_operating_activities
+    - profit_margin
+    - cfo_margin
+    - cfo_to_profit
+    - days_since_report
+  cross_sectional:
+    method: rank
+    winsorize_pct: 0.01
+  missing:
+    method: cross_sectional_median
+    add_indicators: false
+    features:
+      - sales
+      - growth_sales
+      - basic_earnings_per_share
+      - growth_basic_earnings_per_share
+      - net_profit
+      - growth_net_profit
+      - cash_flow_from_operating_activities
+      - growth_cash_flow_from_operating_activities
+      - profit_margin
+      - cfo_margin
+      - cfo_to_profit
+      - days_since_report
+
+model:
+  params:
+    learning_rate: 0.03
+
+eval:
+  run_name: hk_sel_q_benchmark_pit_core_xgb_reg

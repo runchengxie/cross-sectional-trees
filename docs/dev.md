@@ -123,7 +123,7 @@ scripts/run_tests.sh all \
 
 ### 季度 provider / PIT 路线要看哪些测试
 
-如果你改的是 `configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml` 或它们依赖的 pipeline 行为，建议至少理解这几组测试：
+如果你改的是 `configs/experiments/baseline/hk_selected__quarterly_price_only.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`、`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_*.yml`，或者 `configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml` 及其依赖的 pipeline 行为，建议至少理解这几组测试：
 
 1. `tests/test_pipeline_validation.py`：配置模板烟雾检查，确认季度模板的 `label/eval/backtest.rebalance_frequency` 一致，`fundamentals.source` 没写反。
 1. `tests/test_pipeline_filters.py`：provider/file 两路基本面并入、PIT 文件读取、披露日后的 `ffill`，以及慢财报派生因子是否按披露节奏生效。

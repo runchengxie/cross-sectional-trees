@@ -4,7 +4,7 @@
 本页不解决什么：不展开参数定义与配置细节。
 适合谁：需要在模型之间做选择的人。
 读完你会得到什么：模型选择的快速决策与对比视角。
-相关页面：`docs/config.md`、`docs/cookbook.md`
+相关页面：`docs/config.md`、`docs/cookbook.md`、`docs/concepts/benchmark-protocol.md`
 
 这个文档帮助你在 `xgb_regressor`、`xgb_ranker`、`ridge`、`elasticnet` 这四个模型之间做选择。
 
@@ -38,7 +38,10 @@
 
 ### 用 ridge 做基线
 
-如果你想快速验证"这套特征和标签有没有稳定关系"，先用 `ridge`：
+如果你想快速验证"这套特征和标签有没有稳定关系"，先用 `ridge`。
+如果你想按仓库默认顺序做完整 benchmark，对应入口见 `docs/concepts/benchmark-protocol.md`。
+
+最小配置示意：
 
 ```yaml
 model:
