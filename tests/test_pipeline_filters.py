@@ -161,6 +161,123 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
 
 
 @pytest.mark.slow
+def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
+    tmp_path, monkeypatch
+):
+    dates = pd.date_range("2020-01-01", periods=15, freq="B")
+    symbols = ["AAA", "BBB"]
+    frames = _build_frames(symbols, dates, include_amount=False)
+
+    universe_path = tmp_path / "universe_by_date.csv"
+    pd.DataFrame(
+        {
+            "trade_date": ["20200101", "20200101", "20200113", "20200113", "20200116"],
+            "ts_code": ["AAA", "BBB", "AAA", "BBB", "BBB"],
+        }
+    ).to_csv(universe_path, index=False)
+
+    captured: dict[str, pd.DataFrame | None] = {}
+
+    def fake_backtest_topk(data, *args, pricing_data=None, **kwargs):
+        captured["data"] = data.copy()
+        captured["pricing_data"] = pricing_data.copy() if pricing_data is not None else None
+        return None
+
+    monkeypatch.setattr(pipeline, "backtest_topk", fake_backtest_topk)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "us",
+        "data": {
+            "provider": "eodhd",
+            "start_date": "20200101",
+            "end_date": "20200131",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "pit",
+            "symbols": symbols,
+            "by_date_file": str(universe_path),
+            "min_symbols_per_date": 1,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "provider",
+            "required": False,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["vol"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.5,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "pit_backtest_pricing",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {
+            "enabled": True,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "transaction_cost_bps": 0,
+            "exit_mode": "rebalance",
+            "exit_price_policy": "delay",
+        },
+    }
+
+    _run_pipeline(tmp_path, monkeypatch, config, frames)
+
+    assert captured["pricing_data"] is not None
+    selection_df = captured["data"]
+    pricing_df = captured["pricing_data"]
+    assert selection_df is not None
+    assert pricing_df is not None
+
+    dropped_date = pd.Timestamp("2020-01-17")
+    selection_symbols = selection_df.loc[
+        selection_df["trade_date"] == dropped_date, "ts_code"
+    ].tolist()
+    pricing_symbols = pricing_df.loc[
+        pricing_df["trade_date"] == dropped_date, "ts_code"
+    ].tolist()
+
+    assert "AAA" not in selection_symbols
+    assert "AAA" in pricing_symbols
+
+
+@pytest.mark.slow
 def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch):
     dates = pd.date_range("2025-01-01", periods=12, freq="B")
     symbols = ["00005.HK", "00011.HK"]

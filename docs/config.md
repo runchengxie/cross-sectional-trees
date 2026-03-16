@@ -162,6 +162,11 @@ backtest:
 | `exit_price_policy` | 退出价格策略 | `strict` / `ffill` / `delay` |
 | `rebalance_frequency` | 再平衡频率 | `M` / `Q` / `Y` |
 
+说明：
+
+* 若同时启用 `universe.by_date_file`，选股样本仍按 PIT universe 过滤。
+* 回测的 entry/exit 定价与 `tradable` 检查会使用未经过 `universe_by_date` 过滤的日线价格面板，避免已持仓股票在持有期内因 universe 变化而“消失”。
+
 ### `fundamentals`
 
 | 键 | 说明 | 常见值 |

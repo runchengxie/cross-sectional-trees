@@ -236,6 +236,7 @@ def backtest_topk(
     exit_price_policy: Literal["strict", "ffill", "delay"] = "strict",
     exit_fallback_policy: Literal["ffill", "none"] = "ffill",
     execution: Optional[ExecutionModel] = None,
+    pricing_data: Optional[pd.DataFrame] = None,
 ):
     if execution is None:
         if exit_price_policy not in {"strict", "ffill", "delay"}:
@@ -248,15 +249,21 @@ def backtest_topk(
         exit_policy = execution.exit_policy
         cost_model = execution.cost_model
     weighting_mode = normalize_weighting_mode(weighting)
-    trade_dates = sorted(data["trade_date"].unique())
+    pricing_source = pricing_data if pricing_data is not None else data
+    if pricing_source.empty:
+        return None
+    pricing_source = pricing_source.drop_duplicates(subset=["trade_date", "ts_code"]).copy()
+    trade_dates = sorted(pricing_source["trade_date"].unique())
     if len(trade_dates) < 2:
         return None
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
-    price_table = data.pivot(index="trade_date", columns="ts_code", values=price_col)
+    price_table = pricing_source.pivot(index="trade_date", columns="ts_code", values=price_col)
     day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
     tradable_table = None
-    if tradable_col and tradable_col in data.columns:
-        tradable_table = data.pivot(index="trade_date", columns="ts_code", values=tradable_col)
+    if tradable_col and tradable_col in pricing_source.columns:
+        tradable_table = pricing_source.pivot(
+            index="trade_date", columns="ts_code", values=tradable_col
+        )
         tradable_table = tradable_table.fillna(False).astype(bool)
 
     net_returns = []

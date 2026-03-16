@@ -2032,6 +2032,16 @@ def run(config_ref: str | Path | None = None) -> None:
             indicator_features.append(indicator_name)
         FEATURES = list(dict.fromkeys(FEATURES + indicator_features))
 
+    backtest_pricing_cols = ["trade_date", "ts_code", PRICE_COL]
+    if BACKTEST_TRADABLE_COL and BACKTEST_TRADABLE_COL in df.columns:
+        backtest_pricing_cols.append(BACKTEST_TRADABLE_COL)
+    backtest_pricing_cols = list(dict.fromkeys(backtest_pricing_cols))
+    backtest_pricing_df = (
+        df[backtest_pricing_cols]
+        .drop_duplicates(subset=["trade_date", "ts_code"])
+        .copy()
+    )
+
     cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + meta_cols + [TARGET]
     cols = list(dict.fromkeys(cols))
     df = df[cols].copy()
@@ -2624,10 +2634,13 @@ def run(config_ref: str | Path | None = None) -> None:
                         short_k=BACKTEST_SHORT_K,
                         buffer_exit=BACKTEST_BUFFER_EXIT,
                         buffer_entry=BACKTEST_BUFFER_ENTRY,
-                        tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in test_full_w.columns else None,
+                        tradable_col=BACKTEST_TRADABLE_COL
+                        if BACKTEST_TRADABLE_COL in backtest_pricing_df.columns
+                        else None,
                         exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
                         exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
                         execution=execution_model,
+                        pricing_data=backtest_pricing_df,
                     )
                 except ValueError:
                     bt_result_w = None
@@ -3181,11 +3194,12 @@ def run(config_ref: str | Path | None = None) -> None:
                     buffer_exit=BACKTEST_BUFFER_EXIT,
                     buffer_entry=BACKTEST_BUFFER_ENTRY,
                     tradable_col=BACKTEST_TRADABLE_COL
-                    if BACKTEST_TRADABLE_COL in eval_df_full.columns
+                    if BACKTEST_TRADABLE_COL in backtest_pricing_df.columns
                     else None,
                     exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
                     exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
                     execution=execution_model,
+                    pricing_data=backtest_pricing_df,
                 )
             except ValueError as exc:
                 logger.warning("%sBacktest skipped: %s", label_prefix, exc)

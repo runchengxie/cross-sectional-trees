@@ -215,6 +215,63 @@ def test_backtest_exit_delay_uses_next_available_price():
     assert period_info[0]["exit_delay_steps"] == 1
 
 
+def test_backtest_can_exit_with_raw_pricing_data_after_selection_filter():
+    filtered_df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(["2020-01-01", "2020-01-01", "2020-01-02"]),
+            "ts_code": ["A", "B", "B"],
+            "pred": [2.0, 1.0, 1.0],
+            "close": [100.0, 100.0, 100.0],
+        }
+    )
+    pricing_df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
+            ),
+            "ts_code": ["A", "B", "A", "B"],
+            "close": [100.0, 100.0, 110.0, 100.0],
+        }
+    )
+    rebalance_dates = [pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")]
+
+    assert (
+        backtest_topk(
+            filtered_df,
+            pred_col="pred",
+            price_col="close",
+            rebalance_dates=rebalance_dates,
+            top_k=1,
+            shift_days=0,
+            cost_bps=0,
+            trading_days_per_year=252,
+            exit_mode="rebalance",
+            exit_price_policy="strict",
+        )
+        is None
+    )
+
+    result = backtest_topk(
+        filtered_df,
+        pred_col="pred",
+        price_col="close",
+        rebalance_dates=rebalance_dates,
+        top_k=1,
+        shift_days=0,
+        cost_bps=0,
+        trading_days_per_year=252,
+        exit_mode="rebalance",
+        exit_price_policy="strict",
+        pricing_data=pricing_df,
+    )
+    assert result is not None
+    stats, net_series, _, _, period_info = result
+    assert np.isclose(net_series.iloc[0], 0.10)
+    assert stats["periods_with_delayed_exit"] == 0
+    assert period_info[0]["planned_exit_date"] == pd.Timestamp("2020-01-02")
+    assert period_info[0]["exit_date"] == pd.Timestamp("2020-01-02")
+
+
 def test_backtest_buffer_reduces_turnover():
     df = pd.DataFrame(
         {
