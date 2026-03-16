@@ -1464,6 +1464,11 @@ def run(config_ref: str | Path | None = None) -> None:
             fund_df["trade_date"] = pd.to_datetime(fund_df["trade_date"], errors="coerce")
             fund_df = fund_df[fund_df["trade_date"].notna()].copy()
             fund_df["trade_date"] = fund_df["trade_date"].dt.normalize()
+            if "valuation_trade_date" in fund_df.columns:
+                valuation_trade_date = pd.to_datetime(
+                    fund_df["valuation_trade_date"], errors="coerce"
+                )
+                fund_df["valuation_trade_date"] = valuation_trade_date.dt.normalize()
             fund_df["ts_code"] = fund_df["ts_code"].astype(str).str.strip()
             fund_df = fund_df.drop_duplicates(subset=["trade_date", "ts_code"]).copy()
             fund_df = fund_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
@@ -1550,6 +1555,9 @@ def run(config_ref: str | Path | None = None) -> None:
             if "days_since_report" in FEATURES and "report_trade_date" in df.columns:
                 report_trade_date = pd.to_datetime(df["report_trade_date"], errors="coerce")
                 df["days_since_report"] = (df["trade_date"] - report_trade_date).dt.days
+            if "valuation_age_days" in FEATURES and "valuation_trade_date" in df.columns:
+                valuation_trade_date = pd.to_datetime(df["valuation_trade_date"], errors="coerce")
+                df["valuation_age_days"] = (df["trade_date"] - valuation_trade_date).dt.days
             if FUNDAMENTALS_LOG_MCAP and FUNDAMENTALS_MCAP_COL in df.columns:
                 df[FUNDAMENTALS_LOG_MCAP_COL] = np.where(
                     df[FUNDAMENTALS_MCAP_COL] > 0,

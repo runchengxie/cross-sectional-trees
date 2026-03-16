@@ -289,6 +289,23 @@ csml rqdata inspect-hk-pit-coverage \
   --mode both
 ```
 
+如果你要做“PIT 财务 + provider valuation”叠加实验，先不要把日频估值精确 merge 到稀疏 PIT 文件后直接解释结果。更稳妥的顺序是先生成一份带 `valuation_trade_date` 的 asof merged fundamentals 文件，再跑 G4 fixed 和审计脚本：
+
+```bash
+uv run python scripts/merge_hk_selected_provider_valuation_into_pit.py \
+  --merge-mode asof \
+  --pit-file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet \
+  --output artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals_with_provider_valuation_asof.parquet \
+  --overwrite
+
+csml run --config configs/local/hk_selected__quarterly_4way_g4_fixed_price_provider_valuation_pit_core_xgb_ranker.yml
+
+uv run python scripts/audit_hk_selected_provider_valuation.py \
+  --run-dir artifacts/runs/<run_dir>
+```
+
+这样至少能先把 file-source 路径上的覆盖率和 `valuation_age_days` 分布单独看清楚，再决定要不要继续解释 G4 类实验。
+
 更完整的资产准备顺序看：
 
 * [hk-data-assets.md](./hk-data-assets.md)

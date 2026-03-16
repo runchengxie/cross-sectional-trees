@@ -824,6 +824,121 @@ def test_pipeline_hk_file_fundamentals_supports_sales_delta_and_report_age(tmp_p
 
 
 @pytest.mark.slow
+def test_pipeline_hk_file_fundamentals_recomputes_valuation_age_days(
+    tmp_path, monkeypatch
+):
+    dates = pd.date_range("2025-03-10", periods=35, freq="B")
+    symbols = ["00005.HK", "00011.HK"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    basic_df = pd.DataFrame(
+        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+    )
+
+    fundamentals_path = tmp_path / "pit_fundamentals_with_provider.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2025-03-20", "2025-04-10", "2025-03-20", "2025-04-10"]
+            ),
+            "ts_code": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
+            "market_cap": [1000.0, 1100.0, 1500.0, 1550.0],
+            "pe_ttm": [8.0, 8.5, 10.0, 10.2],
+            "pb": [1.1, 1.15, 1.4, 1.45],
+            "valuation_trade_date": pd.to_datetime(
+                ["2025-03-18", "2025-04-09", "2025-03-19", "2025-04-08"]
+            ),
+            "valuation_age_days": [999.0, 999.0, 999.0, 999.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20250310",
+            "end_date": "20250430",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 2,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "file",
+            "file": str(fundamentals_path),
+            "column_map": {},
+            "features": ["market_cap", "pe_ttm", "pb"],
+            "auto_add_features": False,
+            "allow_missing_features": False,
+            "ffill": True,
+            "required": True,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["market_cap", "valuation_age_days"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "hk-file-fundamentals-valuation-age",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
+    dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
+    dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
+
+    report_row = dataset[
+        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
+    ]
+    after_report_row = dataset[
+        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-11")
+    ]
+
+    assert report_row["valuation_age_days"].iloc[0] == pytest.approx(1.0)
+    assert after_report_row["valuation_age_days"].iloc[0] == pytest.approx(2.0)
+    assert report_row["valuation_age_days"].iloc[0] != pytest.approx(999.0)
+
+
+@pytest.mark.slow
 def test_pipeline_hk_file_fundamentals_supports_growth_and_structure_ratios(
     tmp_path, monkeypatch
 ):
