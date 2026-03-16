@@ -15,7 +15,6 @@ presets/label/monthly.yml,preset_label,N/A,N/A,M,N/A,N/A,Monthly rebalance label
 presets/label/quarterly.yml,preset_label,N/A,N/A,Q,N/A,N/A,Quarterly rebalance label preset,
 presets/hk_quarterly_pit_hybrid.yml,preset,hk,selected,Q,hybrid,N/A,HK quarterly PIT hybrid base preset,
 experiments/template__quarterly_xgb_ranker.yml,template,hk,selected,Q,hybrid,xgb_ranker,Quarterly XGB ranker template,presets/hk.yml;configs/presets/models/xgb_ranker.yml
-experiments/template__monthly_xgb_regressor.yml,template,hk,selected,M,price_only,xgb_regressor,Monthly XGB regressor template,presets/hk.yml;presets/models/xgb_regressor.yml
 experiments/baseline/hk_selected.yml,experiment,hk,selected,M,price_only,xgb_regressor,HK selected baseline,
 experiments/baseline/hk_selected__quarterly_price_only.yml,experiment,hk,selected,Q,price_only,xgb_regressor,Quarterly price-only feature benchmark,presets/hk_quarterly_pit_hybrid.yml;configs/presets/models/xgb_regressor.yml
 experiments/baseline/hk_selected__quarterly_pit_core.yml,experiment,hk,selected,Q,pit_core,xgb_regressor,Quarterly core PIT feature benchmark,presets/hk_quarterly_pit_hybrid.yml;configs/presets/models/xgb_regressor.yml
@@ -36,24 +35,3 @@ experiments/sweeps/hk_selected__pit_quarterly_linear.yml,sweep,hk,selected,Q,pri
 experiments/sweeps/hk_selected__eval_sample.yml,sweep,hk,selected,M,price_only,xgb_regressor,Evaluation sample sweep,
 experiments/sweeps/hk_selected__eval_sample_ffill.yml,sweep,hk,selected,M,price_only,xgb_regressor,Evaluation sample with ffill,
 experiments/sweeps/hk_selected__pit_quarterly_financial_linear.yml,sweep,hk,selected,Q,financial_linear,linear,Quarterly financial linear sweep,
-# Local experiments (user-specific, not committed to version control)
-local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank.yml,local,hk,selected,Q,hybrid,xgb_ranker,Quarterly hybrid ranker (nomiss),
-local/hk_sel_q_pk_pit_core_hybrid_nomiss_ridge.yml,local,hk,selected,Q,hybrid,ridge,Quarterly hybrid ridge baseline,
-local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank_v2.yml,local,hk,selected,Q,hybrid,xgb_ranker,Quarterly hybrid ranker v2,
-local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_reg.yml,local,hk,selected,Q,hybrid,xgb_regressor,Quarterly hybrid regressor,
-local/hk_sel_q_pk_pit_core_hybrid_xgb_rank.yml,local,hk,selected,Q,hybrid,xgb_ranker,Quarterly hybrid ranker (with miss),
-local/hk_sel_q_pk_price_only_xgb_rank.yml,local,hk,selected,Q,price_only,xgb_ranker,Quarterly price-only ranker,
-local/hk_sel_pit_q_hybrid_xgb_rank.yml,local,hk,selected,Q,hybrid,xgb_ranker,PIT hybrid ranker,
-local/hk_sel_pit_q_hybrid_ridge.yml,local,hk,selected,Q,hybrid,ridge,PIT hybrid ridge,
-local/hk_sel_pit_q_hybrid_xgb_reg.yml,local,hk,selected,Q,hybrid,xgb_regressor,PIT hybrid regressor,
-local/hk_sel_pit_q_hybrid_en.yml,local,hk,selected,Q,hybrid,elasticnet,PIT hybrid elasticnet,
-local/hk_sel_q_pk_pit_core_hybrid_xgb_reg.yml,local,hk,selected,Q,hybrid,xgb_regressor,Quarterly hybrid regressor (with miss),
-local/hk_sel_q_pk_pit_core_hybrid_ridge.yml,local,hk,selected,Q,hybrid,ridge,Quarterly hybrid ridge (with miss),
-local/hk_sel_q_pk_pit_core_hybrid_en.yml,local,hk,selected,Q,hybrid,elasticnet,Quarterly hybrid elasticnet (with miss),
-local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank_ffill.yml,local,hk,selected,Q,hybrid,xgb_ranker,Quarterly hybrid ranker with ffill,
-local/hk_sel_q_pk_pit_core_hybrid_nomiss_xgb_rank_strict.yml,local,hk,selected,Q,hybrid,xgb_ranker,Quarterly hybrid ranker strict,
-local/hk_all_q_pk_pit_core_hybrid_nomiss_xgb_rank.yml,local,hk,all_assets,Q,hybrid,xgb_ranker,Quarterly all-assets hybrid ranker,
-local/hk_all_q_pk_pit_core_hybrid_nomiss_xgb_rank_ffill.yml,local,hk,all_assets,Q,hybrid,xgb_ranker,Quarterly all-assets hybrid ranker ffill,
-local/hk_sel_q_price_only_xgb_reg.yml,local,hk,selected,Q,price_only,xgb_regressor,Quarterly price-only regressor,
-local/hk_sel_q_pk_price_only_xgb_reg.yml,local,hk,selected,Q,price_only,xgb_regressor,Quarterly price-only with PK regressor,
-local/hk_sel_pit_q_core_xgb_reg.yml,local,hk,selected,Q,price_only,xgb_regressor,PIT core regressor,

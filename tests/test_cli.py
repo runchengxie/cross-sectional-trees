@@ -6,6 +6,7 @@ from csml.project_tools import alloc as alloc_tool
 from csml.project_tools import holdings as holdings_tool
 from csml.project_tools import run_grid as grid_tool
 from csml.project_tools import linear_sweep as sweep_tool
+from csml.research_tools import summarize_runs as summarize_tool
 
 
 def test_cli_parses_run_command():
@@ -107,6 +108,8 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
             "2026-01-01",
             "--latest-n",
             "3",
+            "--exclude-flag-constant-prediction",
+            "--exclude-flag-zero-feature-importance",
         ]
     )
     assert summarize.command == "summarize"
@@ -115,6 +118,8 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
     assert summarize.since == "2026-01-01"
     assert summarize.latest_n == 3
     assert summarize.short_sample_periods == 24
+    assert summarize.exclude_flag_constant_prediction is True
+    assert summarize.exclude_flag_zero_feature_importance is True
 
     backup = parser.parse_args(
         [
@@ -273,6 +278,7 @@ def test_append_passthrough_strips_leading_separator():
     argv: list[str] = []
     cli._append_passthrough(argv, ["--", "--start-date", "20250101"])
     assert argv == ["--start-date", "20250101"]
+    parser = cli.build_parser()
 
     details = parser.parse_args(
         [
@@ -341,7 +347,7 @@ def test_append_passthrough_strips_leading_separator():
             "rqdata",
             "inspect-hk-pit-coverage",
             "--config",
-            "configs/presets/local/hk_sel_pit_q_hybrid_xgb_reg.yml",
+            "configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml",
             "--mode",
             "trainable",
             "--min-symbols",
@@ -354,7 +360,7 @@ def test_append_passthrough_strips_leading_separator():
     )
     assert pit_coverage.command == "rqdata"
     assert pit_coverage.rq_command == "inspect-hk-pit-coverage"
-    assert pit_coverage.config == "configs/presets/local/hk_sel_pit_q_hybrid_xgb_reg.yml"
+    assert pit_coverage.config == "configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml"
     assert pit_coverage.mode == "trainable"
     assert pit_coverage.min_symbols == 10
     assert pit_coverage.format == "json"
@@ -398,7 +404,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
             "universe",
             "hk-connect",
             "--config",
-            "configs/presets/universe.hk_connect.yml",
+            "configs/presets/universe/hk_connect.yml",
             "--",
             "--mode",
             "daily",
@@ -408,7 +414,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     )
     assert hk_connect.command == "universe"
     assert hk_connect.uni_command == "hk-connect"
-    assert hk_connect.config == "configs/presets/universe.hk_connect.yml"
+    assert hk_connect.config == "configs/presets/universe/hk_connect.yml"
     assert hk_connect.args == ["--", "--mode", "daily", "--start-date", "20250101"]
     assert callable(hk_connect.func)
 
@@ -417,7 +423,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
             "universe",
             "hk-daily-assets",
             "--config",
-            "configs/presets/universe.hk_all_assets.yml",
+            "configs/presets/universe/hk_all_assets.yml",
             "--",
             "--start-date",
             "20000104",
@@ -427,7 +433,7 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     )
     assert hk_daily_assets.command == "universe"
     assert hk_daily_assets.uni_command == "hk-daily-assets"
-    assert hk_daily_assets.config == "configs/presets/universe.hk_all_assets.yml"
+    assert hk_daily_assets.config == "configs/presets/universe/hk_all_assets.yml"
     assert hk_daily_assets.args == ["--", "--start-date", "20000104", "--end-date", "20251231"]
     assert callable(hk_daily_assets.func)
 
@@ -600,6 +606,34 @@ def test_cli_handle_grid_passes_through_args(monkeypatch):
     ]
 
 
+def test_cli_handle_summarize_passes_namespace_to_runner(monkeypatch):
+    calls: list[SimpleNamespace] = []
+    monkeypatch.setattr(summarize_tool, "run", lambda args: calls.append(args))
+
+    args = SimpleNamespace(
+        runs_dir=["artifacts/runs"],
+        output="artifacts/runs/runs_summary.csv",
+        run_name_prefix=["hk_sel_q_benchmark_"],
+        since="2026-01-01",
+        latest_n=5,
+        short_sample_periods=24,
+        high_turnover_threshold=0.7,
+        score_drawdown_weight=0.5,
+        score_cost_weight=10.0,
+        exclude_flag_short_sample=False,
+        exclude_flag_high_turnover=False,
+        exclude_flag_negative_long_short=False,
+        exclude_flag_relative_end_date=False,
+        exclude_flag_constant_prediction=True,
+        exclude_flag_zero_feature_importance=True,
+        sort_by="score",
+        log_level="INFO",
+    )
+
+    assert cli._handle_summarize(args) == 0
+    assert calls == [args]
+
+
 def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(sweep_tool, "main", lambda argv: calls.append(argv))
@@ -627,9 +661,9 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
     assert calls == [
         [
             "--sweep-config",
-            "configs/presets/sweeps/hk_selected__linear_a.yml",
+            "configs/experiments/sweeps/hk_selected__linear_a.yml",
             "--config",
-            "configs/presets/hk_selected__baseline.yml",
+            "configs/experiments/baseline/hk_selected.yml",
             "--run-name-prefix",
             "hk_sel_",
             "--sweeps-dir",

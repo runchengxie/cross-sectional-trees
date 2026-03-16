@@ -42,11 +42,17 @@ def _resolve_path(path_text: str | Path) -> Path:
 
 
 def load_yaml_config(path: str | Path | None) -> dict:
-    # Now loads from configs/presets/ instead of packaged csml.config
+    project_root = Path(__file__).resolve().parents[3]
+    configs_dir = project_root / "configs"
     resolved = resolve_config(
         path,
-        package=None,  # Use project configs/
+        package=None,
         default_name="universe/hk_all_assets.yml",
+        search_paths=[
+            str(project_root),
+            str(configs_dir),
+            str(configs_dir / "presets"),
+        ],
     )
     return resolved.data
 

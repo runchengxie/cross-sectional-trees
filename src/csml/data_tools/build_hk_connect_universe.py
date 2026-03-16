@@ -90,11 +90,17 @@ def normalize_date_token(value: object, label: str) -> str | None:
 
 
 def load_yaml_config(path: str | Path | None) -> dict:
-    # Now loads from configs/presets/ instead of packaged csml.config
+    project_root = Path(__file__).resolve().parents[3]
+    configs_dir = project_root / "configs"
     resolved = resolve_config(
         path,
-        package=None,  # Use project configs/
+        package=None,
         default_name="universe/hk_connect.yml",
+        search_paths=[
+            str(project_root),
+            str(configs_dir),
+            str(configs_dir / "presets"),
+        ],
     )
     return resolved.data
 

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml.project_tools import summarize_runs
+from csml.research_tools import summarize_runs
 
 
 def _write_run(run_dir, summary, config) -> None:
@@ -80,6 +80,13 @@ def test_summarize_runs_collects_metrics_and_flags(tmp_path):
                 "avg_turnover": 0.5,
                 "avg_cost_drag": 0.01,
             },
+            "active": {
+                "tracking_error": 0.12,
+                "information_ratio": 0.8,
+                "beta": 0.9,
+                "alpha": 0.04,
+                "corr": 0.7,
+            },
         },
     }
     config_a = {
@@ -148,6 +155,11 @@ def test_summarize_runs_collects_metrics_and_flags(tmp_path):
     assert float(row_a["backtest_periods_per_year"]) == pytest.approx(12.0)
     assert float(row_a["backtest_skew"]) == pytest.approx(0.2)
     assert float(row_a["backtest_kurtosis_excess"]) == pytest.approx(0.1)
+    assert float(row_a["backtest_tracking_error"]) == pytest.approx(0.12)
+    assert float(row_a["backtest_information_ratio"]) == pytest.approx(0.8)
+    assert float(row_a["backtest_beta"]) == pytest.approx(0.9)
+    assert float(row_a["backtest_alpha"]) == pytest.approx(0.04)
+    assert float(row_a["backtest_corr"]) == pytest.approx(0.7)
     assert float(row_a["score"]) == pytest.approx(1.85)
 
     row_b = result[result["run_name"] == "beta"].iloc[0]
@@ -254,6 +266,43 @@ def test_summarize_runs_flags_degenerate_models_and_drops_score(tmp_path):
     assert _as_bool(deg_row["flag_zero_feature_importance"]) is True
     assert pd.isna(deg_row["score"])
     assert pd.isna(deg_row["dsr"])
+
+
+def test_summarize_runs_can_exclude_degenerate_flags(tmp_path):
+    runs_dir = tmp_path / "runs"
+
+    bad_run = runs_dir / "bad_20260105_120000_deadbeef"
+    bad_summary = {
+        "run": {"name": "bad", "timestamp": "20260105_120000", "config_hash": "deadbeef"},
+        "data": {"market": "hk", "provider": "rqdata"},
+        "eval": {"constant_prediction": True, "zero_feature_importance": True, "long_short": 0.01},
+        "backtest": {"stats": {"periods": 36, "sharpe": 1.0, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+    }
+    _write_run(bad_run, bad_summary, {"market": "hk"})
+
+    good_run = runs_dir / "good_20260106_120000_abcd1234"
+    good_summary = {
+        "run": {"name": "good", "timestamp": "20260106_120000", "config_hash": "abcd1234"},
+        "data": {"market": "hk", "provider": "rqdata"},
+        "eval": {"long_short": 0.02},
+        "backtest": {"stats": {"periods": 36, "sharpe": 1.1, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+    }
+    _write_run(good_run, good_summary, {"market": "hk"})
+
+    output_csv = tmp_path / "filtered.csv"
+    summarize_runs.main(
+        [
+            "--runs-dir",
+            str(runs_dir),
+            "--output",
+            str(output_csv),
+            "--exclude-flag-constant-prediction",
+            "--exclude-flag-zero-feature-importance",
+        ]
+    )
+
+    result = pd.read_csv(output_csv)
+    assert list(result["run_name"]) == ["good"]
 
 
 def test_summarize_runs_default_output_and_recursive_scan(tmp_path):

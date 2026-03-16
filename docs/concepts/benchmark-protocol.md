@@ -142,8 +142,10 @@ csml summarize \
 * `eval.ic_mean`
 * `eval.long_short`
 * `backtest.sharpe`
-* `backtest.information_ratio`
-* `backtest.tracking_error`
+* `summary.json -> backtest.active.information_ratio`
+* `summary.json -> backtest.active.tracking_error`
+* `runs_summary.csv -> backtest_information_ratio`
+* `runs_summary.csv -> backtest_tracking_error`
 * `flag_constant_prediction`
 * `flag_zero_feature_importance`
 

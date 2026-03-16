@@ -22,16 +22,58 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+@dataclass(frozen=True)
+class LoadedConfigRef:
+    data: dict
+    path: Path | None
+    source: str
+
+
+def _iter_search_candidates(
+    ref: str,
+    *,
+    current_path: Path | None,
+    search_paths: list[str] | None,
+) -> list[Path]:
+    path = Path(ref).expanduser()
+    candidates: list[Path] = []
+
+    if path.is_absolute():
+        candidates.append(path)
+        return candidates
+
+    if current_path is not None:
+        candidates.append((current_path.parent / path).resolve())
+
+    candidates.append((Path.cwd() / path).resolve())
+
+    for search_dir in search_paths or []:
+        search_root = Path(search_dir)
+        candidates.append((search_root / path).resolve())
+        if path.name and path.name != str(path):
+            candidates.append((search_root / path.name).resolve())
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        deduped.append(candidate)
+    return deduped
+
+
 def _resolve_extends(
     data: dict,
     *,
     package: str,
     search_paths: list[str] | None = None,
-    _visited: set[str] | None = None,
+    current_path: Path | None = None,
+    _stack: set[str] | None = None,
 ) -> dict:
     """Recursively resolve extends directive."""
-    if _visited is None:
-        _visited = set()
+    if _stack is None:
+        _stack = set()
 
     if EXTENDS_KEY not in data:
         return data
@@ -52,22 +94,28 @@ def _resolve_extends(
         if not extends_ref:
             continue
 
-        visited_key = f"{package}:{extends_ref}"
-        if visited_key in _visited:
-            raise SystemExit(f"Circular extends detected: {extends_ref}")
-        _visited.add(visited_key)
-
-        base_data = _load_config_by_ref(
+        base_config = _load_config_by_ref(
             extends_ref,
             package=package,
             search_paths=search_paths,
+            current_path=current_path,
         )
-        base_data = _resolve_extends(
-            base_data,
-            package=package,
-            search_paths=search_paths,
-            _visited=_visited,
-        )
+        if base_config is None:
+            raise SystemExit(f"Config file not found for extends: {extends_ref}")
+        if base_config.source in _stack:
+            raise SystemExit(f"Circular extends detected: {extends_ref}")
+
+        _stack.add(base_config.source)
+        try:
+            base_data = _resolve_extends(
+                base_config.data,
+                package=package,
+                search_paths=search_paths,
+                current_path=base_config.path,
+                _stack=_stack,
+            )
+        finally:
+            _stack.remove(base_config.source)
         base_configs.append(base_data)
 
     del data[EXTENDS_KEY]
@@ -85,24 +133,31 @@ def _load_config_by_ref(
     *,
     package: str,
     search_paths: list[str] | None = None,
-) -> dict:
+    current_path: Path | None = None,
+) -> LoadedConfigRef | None:
     """Load a single config by reference (path, alias, or package file)."""
-    path = Path(ref)
+    for candidate_path in _iter_search_candidates(
+        ref,
+        current_path=current_path,
+        search_paths=search_paths,
+    ):
+        if candidate_path.exists():
+            resolved_path = candidate_path.resolve()
+            return LoadedConfigRef(
+                data=load_yaml_path(resolved_path),
+                path=resolved_path,
+                source=str(resolved_path),
+            )
 
-    if path.exists():
-        return load_yaml_path(path)
+    candidate = Path(ref).name
+    if package is not None and _package_has_file(package, candidate):
+        return LoadedConfigRef(
+            data=load_yaml_package(package, candidate),
+            path=None,
+            source=f"package:{package}/{candidate}",
+        )
 
-    if search_paths:
-        for search_dir in search_paths:
-            search_path = Path(search_dir) / path.name
-            if search_path.exists():
-                return load_yaml_path(search_path)
-
-    candidate = path.name
-    if _package_has_file(package, candidate):
-        return load_yaml_package(package, candidate)
-
-    raise SystemExit(f"Config file not found for extends: {ref}")
+    return None
 
 
 @dataclass(frozen=True)
@@ -170,33 +225,54 @@ def resolve_config(
     search_paths: list[str] | None = None,
 ) -> ResolvedConfig:
     """Resolve pipeline config with extends support."""
+    search_paths = list(search_paths or [])
+
     if ref is None or str(ref).strip() == "":
         if package is None:
-            # Load from filesystem
-            base_data = None
-            for search_dir in search_paths:
-                search_path = Path(search_dir) / default_name
-                if search_path.exists():
-                    base_data = load_yaml_path(search_path)
-                    break
-            if base_data is None:
+            default_ref = _load_config_by_ref(
+                default_name,
+                package=package,
+                search_paths=search_paths,
+            )
+            if default_ref is None:
                 raise SystemExit(f"Default config not found: {default_name}")
+            base_data = default_ref.data
+            resolved_path = default_ref.path
         else:
             base_data = load_yaml_package(package, default_name)
-        base_data = _resolve_extends(base_data, package=package, search_paths=search_paths)
+            resolved_path = None
+        base_data = _resolve_extends(
+            base_data,
+            package=package,
+            search_paths=search_paths,
+            current_path=resolved_path,
+        )
         label = Path(default_name).stem
-        source = f"{default_name}" if package is None else f"package:{package}/{default_name}"
-        return ResolvedConfig(data=base_data, label=label, path=None, source=source)
+        source = (
+            default_ref.source
+            if package is None
+            else f"package:{package}/{default_name}"
+        )
+        return ResolvedConfig(data=base_data, label=label, path=resolved_path, source=source)
 
     ref_text = str(ref).strip()
-    path = Path(ref_text)
-    if path.exists():
-        data = load_yaml_path(path)
-        data = _resolve_extends(data, package=package, search_paths=search_paths)
-        return ResolvedConfig(data=data, label=path.stem, path=path, source=str(path))
+    explicit = _load_config_by_ref(
+        ref_text,
+        package=package,
+        search_paths=search_paths,
+    )
+    if explicit is not None:
+        data = _resolve_extends(
+            explicit.data,
+            package=package,
+            search_paths=search_paths,
+            current_path=explicit.path,
+        )
+        label = Path(ref_text).stem if explicit.path is None else explicit.path.stem
+        return ResolvedConfig(data=data, label=label, path=explicit.path, source=explicit.source)
 
     alias = _resolve_alias(ref_text, aliases)
-    if alias is None:
+    if alias is None and package is not None:
         candidate = Path(ref_text).name
         if candidate and _package_has_file(package, candidate):
             alias = candidate
@@ -204,20 +280,27 @@ def resolve_config(
     if alias:
         if package is None:
             # Load from filesystem search_paths
-            base_data = None
-            for search_dir in search_paths:
-                search_path = Path(search_dir) / alias
-                if search_path.exists():
-                    base_data = load_yaml_path(search_path)
-                    break
-            if base_data is None:
+            alias_ref = _load_config_by_ref(
+                alias,
+                package=package,
+                search_paths=search_paths,
+            )
+            if alias_ref is None:
                 raise SystemExit(f"Config file not found: {alias}")
+            base_data = alias_ref.data
+            resolved_path = alias_ref.path
         else:
             base_data = load_yaml_package(package, alias)
-        base_data = _resolve_extends(base_data, package=package, search_paths=search_paths)
+            resolved_path = None
+        base_data = _resolve_extends(
+            base_data,
+            package=package,
+            search_paths=search_paths,
+            current_path=resolved_path,
+        )
         label = Path(alias).stem
         source = f"{alias}" if package is None else f"package:{package}/{alias}"
-        return ResolvedConfig(data=base_data, label=label, path=None, source=source)
+        return ResolvedConfig(data=base_data, label=label, path=resolved_path, source=source)
 
     raise SystemExit(f"Config file not found: {ref_text}")
 
@@ -244,9 +327,10 @@ def resolve_pipeline_config(ref: str | Path | None) -> ResolvedConfig:
     project_root = Path(__file__).parent.parent.parent
     configs_dir = project_root / "configs"
     search_paths = [
+        str(project_root),
+        str(configs_dir),
         str(configs_dir / "presets"),
         str(configs_dir / "experiments"),
-        str(configs_dir),
     ]
     return resolve_config(
         ref,
@@ -262,17 +346,17 @@ def resolve_pipeline_filename(ref: str) -> str:
     project_root = Path(__file__).parent.parent.parent
     configs_dir = project_root / "configs"
     search_paths = [
+        str(project_root),
+        str(configs_dir),
         str(configs_dir / "presets"),
         str(configs_dir / "experiments"),
-        str(configs_dir),
     ]
 
     alias = _resolve_alias(ref, PIPELINE_ALIASES)
     if alias:
         return alias
-    candidate = Path(ref).name
-    for search_dir in search_paths:
-        search_path = Path(search_dir) / candidate
-        if search_path.exists():
-            return candidate
+    path = Path(ref)
+    for candidate in _iter_search_candidates(ref, current_path=None, search_paths=search_paths):
+        if candidate.exists():
+            return path.name
     raise SystemExit(f"Unknown config name: {ref}")

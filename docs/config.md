@@ -12,9 +12,9 @@
 |------|---------|---------|
 | 第一次跑通 | `default` | 无 |
 | 港股 PIT 正式研究 | `hk` | 可能需要 PIT 资产 |
-| 季度 PIT 财报 | `configs/experiments/variants/hk_selected__pit_quarterly_*` | 需要本地 `pipeline_fundamentals.parquet` |
-| 多模型对照 | `configs/experiments/variants/hk_selected__xgb_regressor.yml` | 当前推荐的默认起点 |
-| 本地实验 | `configs/local/*.yml` | 自己派生 |
+| 季度 benchmark protocol | `configs/experiments/baseline/hk_selected__quarterly_*.yml` + `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_*.yml` | 需要本地 `pipeline_fundamentals.parquet` |
+| 更宽的季度实验路线 | `configs/experiments/variants/hk_selected__pit_quarterly_*` | 适合继续派生专题路线 |
+| 本地实验 | `configs/local/*.yml` 或自建实验目录 | 仅作个人派生，不当作官方入口 |
 
 > **注意**：`csml run --config default` 里的 `default` 是内置别名，不等于仓库里的 `configs/presets/default.yml`。
 
@@ -34,7 +34,7 @@ configs/
 │   ├── baseline/      # 基线配置
 │   ├── variants/      # 模型变体配置
 │   └── sweeps/        # 批量实验配置
-└── local/             # 本地覆盖配置（gitignored）
+└── local/             # 本地覆盖/历史实验快照目录（避免新增官方模板）
 ```
 
 ## 顶层配置块

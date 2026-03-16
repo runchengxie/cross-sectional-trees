@@ -100,7 +100,7 @@ csml holdings --run-dir artifacts/runs/<run_dir> --format csv
 跑 live 快照。
 
 ```bash
-csml snapshot --config configs/local/hk_live.local.yml
+csml snapshot --config path/to/live.yml
 ```
 
 ### csml alloc
@@ -108,7 +108,7 @@ csml snapshot --config configs/local/hk_live.local.yml
 手数分配。
 
 ```bash
-csml alloc --config configs/local/hk_live.local.yml --source live --top-n 20 --cash 1000000
+csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
 ```
 
 
@@ -187,7 +187,7 @@ csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit
 检查 PIT 覆盖率。
 
 ```bash
-csml rqdata inspect-hk-pit-coverage --config configs/local/hk_sel_pit_q_core_hybrid_xgb_reg.yml --mode both
+csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml --mode both
 ```
 
 详见 `docs/concepts/pit-coverage.md`。

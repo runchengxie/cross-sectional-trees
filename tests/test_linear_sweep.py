@@ -216,7 +216,7 @@ def test_linear_sweep_reads_sweep_config_and_cli_overrides(tmp_path, monkeypatch
     assert jobs[0]["run_name"] == "cli_ridge_a0.5"
 
 
-def test_linear_sweep_requires_existing_base_config(tmp_path, monkeypatch):
+def test_linear_sweep_resolves_repo_relative_base_config_outside_repo_root(tmp_path, monkeypatch):
     sweep_spec = {
         "base_config": "configs/experiments/baseline/hk_selected.yml",
         "run_name_prefix": "legacy_",
@@ -235,8 +235,13 @@ def test_linear_sweep_requires_existing_base_config(tmp_path, monkeypatch):
     sweep_config_path.write_text(yaml.safe_dump(sweep_spec, sort_keys=False), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(SystemExit, match="Config file not found: configs/experiments/baseline/hk_selected.yml"):
-        linear_sweep.main(["--sweep-config", str(sweep_config_path)])
+    linear_sweep.main(["--sweep-config", str(sweep_config_path)])
+
+    jobs_csv = tmp_path / "sweeps" / "legacy_spec" / "jobs.csv"
+    assert jobs_csv.exists()
+    rows = _read_csv(jobs_csv)
+    assert len(rows) == 1
+    assert rows[0]["run_name"] == "legacy_ridge_a1"
 
 
 def test_repo_quarterly_pit_sweep_spec_points_to_existing_base_config():

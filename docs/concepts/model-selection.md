@@ -61,7 +61,7 @@ model:
 model:
   type: xgb_ranker
   params:
-    objective: rank pairwise
+    objective: rank:pairwise
 ```
 
 但它训练更慢，调参更复杂，适合你已经有一个稳定基线后做对比实验，不适合作为默认起点。

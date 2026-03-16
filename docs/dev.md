@@ -39,7 +39,7 @@ csml run --config default
 
 * `default` 现在是 HK starter 模板。
 * 跑 `default` 或 `hk` 模板前，先安装 `--extra rqdata`。
-* 如果你要复现仓库里的 PIT 港股研究路线，继续用 `configs/presets/hk.yml` 或 `configs/experiments/variants/hk_selected__*.yml`。
+* 如果你要复现仓库里的 PIT 港股研究路线，优先用 `configs/presets/hk.yml`，以及 `configs/experiments/baseline/` + `configs/experiments/variants/` 下的 HK selected 官方模板。
 * `cn/us` 相关改动主要属于兼容维护。日常开发优先验证 `default`、`hk` 和 HK selected 路线。
 
 ## 测试
@@ -133,7 +133,7 @@ scripts/run_tests.sh all \
 1. `tests/test_cli.py`：PIT 资产命令和 `sweep-linear` 命令参数解析。
 1. `tests/test_linear_sweep.py`：季度 PIT 线性 sweep 配置是否能被正确读取，生成的 jobs 和 base config 是否匹配。
 1. `tests/test_data_providers_cache.py`：RQData 日线缓存、上市日裁剪和空区间处理，避免低频研究被脏缓存干扰。
-1. `tests/test_summarize_runs.py`：`summary.json` 下游汇总字段是否完整，便于后续比较 `long_short`、`Top-K` 胜率、walk-forward 和净回测。
+1. `tests/test_summarize_runs.py`：`summary.json` 下游汇总字段是否完整，尤其是 `backtest.active` 的 benchmark 指标能否进入 `runs_summary.csv`。
 
 ## 提交前检查建议
 

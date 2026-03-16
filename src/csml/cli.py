@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from .config_utils import read_package_text, resolve_pipeline_config, resolve_pipeline_filename
+from .config_utils import resolve_pipeline_config, resolve_pipeline_filename
 
 
 def _format_bytes(value: float) -> str:

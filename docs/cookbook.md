@@ -84,13 +84,13 @@ csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_
 ### 4.1 生成 live 快照
 
 ```bash
-csml snapshot --config configs/local/hk_live.local.yml
+csml snapshot --config path/to/live.yml
 ```
 
 ### 4.2 手数分配
 
 ```bash
-csml alloc --config configs/local/hk_live.local.yml --source live --top-n 20 --cash 1000000
+csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
 ```
 
 ### 4.3 归档研究

@@ -80,6 +80,11 @@ FIELDNAMES = [
     "backtest_max_drawdown",
     "backtest_avg_turnover",
     "backtest_avg_cost_drag",
+    "backtest_tracking_error",
+    "backtest_information_ratio",
+    "backtest_beta",
+    "backtest_alpha",
+    "backtest_corr",
     "dsr",
     "dsr_sr0",
     "dsr_n_trials",
@@ -633,6 +638,14 @@ def _extract_row(source_runs_dir: Path, summary_path: Path, args: argparse.Names
     else:
         row["status"] = "no_backtest"
 
+    backtest_active = _get_nested(summary, "backtest", "active")
+    if isinstance(backtest_active, dict):
+        row["backtest_tracking_error"] = backtest_active.get("tracking_error")
+        row["backtest_information_ratio"] = backtest_active.get("information_ratio")
+        row["backtest_beta"] = backtest_active.get("beta")
+        row["backtest_alpha"] = backtest_active.get("alpha")
+        row["backtest_corr"] = backtest_active.get("corr")
+
     _apply_flags_and_score(row, args)
     if errors:
         row["error"] = "; ".join(errors)
@@ -733,6 +746,16 @@ def add_summarize_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPars
         help="Exclude rows where data.end_date uses relative tokens such as today/t-1",
     )
     parser.add_argument(
+        "--exclude-flag-constant-prediction",
+        action="store_true",
+        help="Exclude rows where flag_constant_prediction=true",
+    )
+    parser.add_argument(
+        "--exclude-flag-zero-feature-importance",
+        action="store_true",
+        help="Exclude rows where flag_zero_feature_importance=true",
+    )
+    parser.add_argument(
         "--sort-by",
         default="timestamp",
         choices=["timestamp", "score", "dsr"],
@@ -798,6 +821,14 @@ def run(args: argparse.Namespace) -> Path:
     if args.exclude_flag_relative_end_date:
         candidates = [
             item for item in candidates if not _is_true_flag(item[1].get("flag_relative_end_date"))
+        ]
+    if args.exclude_flag_constant_prediction:
+        candidates = [
+            item for item in candidates if not _is_true_flag(item[1].get("flag_constant_prediction"))
+        ]
+    if args.exclude_flag_zero_feature_importance:
+        candidates = [
+            item for item in candidates if not _is_true_flag(item[1].get("flag_zero_feature_importance"))
         ]
     if not candidates:
         raise SystemExit("No runs matched current summarize filters.")
