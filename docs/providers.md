@@ -68,6 +68,7 @@ EODHD：HK symbol 最终为 `<code>.HK`，`data.eodhd.hk_symbol_mode` 支持 `st
 
 - 日线与 instruments 离线：用 `csml rqdata mirror-hk-daily` + `csml rqdata export-hk-instruments` 生成资产，并在配置里设置 `data.rqdata.daily_asset_dir` 与 `data.rqdata.instruments_file`（daily 目录需要包含 `data/` 子目录）。两者齐全时 pipeline 会直接读本地资产并跳过 `rqdatac.init`。
 - 财务镜像与平面 fundamentals：用 `csml rqdata mirror-hk-pit-financials` / `mirror-hk-financial-details`，再用 `build-hk-pit-fundamentals` 生成供 pipeline 读取的平面文件。
+- 参考数据归档：用 `csml rqdata mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` 归档复权、分红和股本原料；这几类资产当前不会被 pipeline 自动直读，更适合离线研究和后续派生。
 - 镜像资产默认写到 `artifacts/assets/rqdata/`，与 `artifacts/cache/` 的查询缓存是两套目录。
 - 默认研究口径是港股通 PIT universe；若需要更广覆盖，优先用 `configs/presets/universe/hk_all_assets.yml` 或 `csml universe hk-daily-assets` 先生成更宽的 universe，再做镜像。
 - 详细流程见 `docs/playbooks/hk-data-assets.md`，命令清单见 `docs/cli.md`，输出路径见 `docs/outputs.md`。

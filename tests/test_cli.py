@@ -302,6 +302,74 @@ def test_append_passthrough_strips_leading_separator():
     assert details.end_quarter == "2025q4"
     assert callable(details.func)
 
+    ex_factors = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-ex-factors",
+            "--symbol",
+            "00005.HK",
+            "--start-date",
+            "20100101",
+            "--end-date",
+            "20260317",
+            "--batch-size",
+            "5",
+            "--resume",
+        ]
+    )
+    assert ex_factors.command == "rqdata"
+    assert ex_factors.rq_command == "mirror-hk-ex-factors"
+    assert ex_factors.symbol == ["00005.HK"]
+    assert ex_factors.start_date == "20100101"
+    assert ex_factors.end_date == "20260317"
+    assert ex_factors.batch_size == 5
+    assert ex_factors.resume is True
+    assert callable(ex_factors.func)
+
+    dividends = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-dividends",
+            "--by-date-file",
+            "artifacts/assets/universe/hk_connect_full_by_date.csv",
+            "--start-date",
+            "20100101",
+            "--end-date",
+            "20260317",
+        ]
+    )
+    assert dividends.command == "rqdata"
+    assert dividends.rq_command == "mirror-hk-dividends"
+    assert dividends.by_date_file == "artifacts/assets/universe/hk_connect_full_by_date.csv"
+    assert dividends.start_date == "20100101"
+    assert dividends.end_date == "20260317"
+    assert callable(dividends.func)
+
+    shares = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-shares",
+            "--config",
+            "configs/presets/hk.yml",
+            "--field",
+            "free_float",
+            "--start-date",
+            "20100101",
+            "--end-date",
+            "20260317",
+            "--name",
+            "shares_demo",
+        ]
+    )
+    assert shares.command == "rqdata"
+    assert shares.rq_command == "mirror-hk-shares"
+    assert shares.config == "configs/presets/hk.yml"
+    assert shares.field == ["free_float"]
+    assert shares.start_date == "20100101"
+    assert shares.end_date == "20260317"
+    assert shares.name == "shares_demo"
+    assert callable(shares.func)
+
     pit_fundamentals = parser.parse_args(
         [
             "rqdata",

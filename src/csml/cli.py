@@ -278,6 +278,27 @@ def _handle_rqdata_mirror_hk_financial_details(args) -> int:
     return rqdata_assets.mirror_hk_financial_details(args, rqdatac)
 
 
+def _handle_rqdata_mirror_hk_ex_factors(args) -> int:
+    from .data_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_ex_factors(args, rqdatac)
+
+
+def _handle_rqdata_mirror_hk_dividends(args) -> int:
+    from .data_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_dividends(args, rqdatac)
+
+
+def _handle_rqdata_mirror_hk_shares(args) -> int:
+    from .data_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_shares(args, rqdatac)
+
+
 def _handle_rqdata_build_hk_pit_fundamentals(args) -> int:
     from .data_tools import rqdata_assets
 
@@ -591,6 +612,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_financial_mirror_args(rq_details)
     rq_details.set_defaults(func=_handle_rqdata_mirror_hk_financial_details)
+
+    rq_ex_factors = rq_sub.add_parser(
+        "mirror-hk-ex-factors",
+        help="Mirror HK ex-factor history into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_ex_factors_mirror_args(rq_ex_factors)
+    rq_ex_factors.set_defaults(func=_handle_rqdata_mirror_hk_ex_factors)
+
+    rq_dividends = rq_sub.add_parser(
+        "mirror-hk-dividends",
+        help="Mirror HK dividend history into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_dividends_mirror_args(rq_dividends)
+    rq_dividends.set_defaults(func=_handle_rqdata_mirror_hk_dividends)
+
+    rq_shares = rq_sub.add_parser(
+        "mirror-hk-shares",
+        help="Mirror HK share-capital history into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_shares_mirror_args(rq_shares)
+    rq_shares.set_defaults(func=_handle_rqdata_mirror_hk_shares)
 
     rq_pit_fundamentals = rq_sub.add_parser(
         "build-hk-pit-fundamentals",

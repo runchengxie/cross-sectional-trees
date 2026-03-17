@@ -26,6 +26,7 @@ DEFAULT_OUT_ROOT = DEFAULT_RQDATA_ASSETS_DIR.as_posix()
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_PIPELINE_FUNDAMENTALS_NAME = "pipeline_fundamentals.parquet"
 DEFAULT_HK_INSTRUMENTS_FILENAME_PREFIX = "hk_instruments"
+DEFAULT_HK_INSTRUMENTS_DIR = DEFAULT_RQDATA_ASSETS_DIR / "hk" / "instruments"
 DEFAULT_MIRROR_MAX_ATTEMPTS = 3
 DEFAULT_MIRROR_BACKOFF_SECONDS = 1.0
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = 30.0
@@ -36,6 +37,15 @@ DEFAULT_HK_DAILY_FIELDS = (
     "close",
     "volume",
     "total_turnover",
+)
+DEFAULT_HK_SHARES_FIELDS = (
+    "total",
+    "circulation_a",
+    "management_circulation",
+    "non_circulation_a",
+    "total_a",
+    "total_hk",
+    "total_hk1",
 )
 PIT_METADATA_COLUMNS = (
     "quarter",
@@ -148,6 +158,41 @@ class DailyMirrorAuditRecord:
     error: str | None
 
 
+@dataclass(frozen=True)
+class DatedMirrorEntry:
+    ts_code: str
+    order_book_id: str
+    path: Path
+    rows: int
+    total_bytes: int
+    min_date: str | None
+    max_date: str | None
+
+
+@dataclass(frozen=True)
+class DatedMirrorAuditRecord:
+    ts_code: str
+    order_book_id: str
+    status: str
+    attempts: int
+    rows: int
+    total_bytes: int
+    min_date: str | None
+    max_date: str | None
+    started_at: str | None
+    finished_at: str | None
+    file_mtime: str | None
+    dropped_fields: str | None
+    error: str | None
+
+
+@dataclass(frozen=True)
+class DatedRequestGroup:
+    ts_code: str
+    request_ids: tuple[str, ...]
+    order_book_ids: tuple[str, ...]
+
+
 class MirrorFetchError(RuntimeError):
     def __init__(self, message: str, *, attempts: int):
         super().__init__(message)
@@ -156,6 +201,9 @@ class MirrorFetchError(RuntimeError):
 
 class MirrorQuotaError(MirrorFetchError):
     pass
+
+
+_HK_INSTRUMENTS_FRAME_CACHE: dict[Path, pd.DataFrame] = {}
 
 
 def _resolve_path(path_text: str | Path) -> Path:
@@ -378,6 +426,27 @@ def _resolve_daily_fields(args) -> tuple[list[str], dict]:
     return fields, metadata
 
 
+def _resolve_default_plus_explicit_fields(
+    args,
+    *,
+    default_fields: Sequence[str],
+    source_label: str,
+) -> tuple[list[str], dict]:
+    explicit_fields: list[str] = []
+    if getattr(args, "field", None):
+        explicit_fields.extend(str(item).strip() for item in args.field if str(item).strip())
+    for path_text in getattr(args, "fields_file", None) or []:
+        explicit_fields.extend(_load_text_list(path_text, label="Fields file"))
+    fields = _dedupe_preserve_order([*default_fields, *explicit_fields], strip=False)
+    metadata = {
+        "count": len(fields),
+        "base_fields": list(default_fields),
+        "fields_file": [str(_resolve_path(path_text)) for path_text in (args.fields_file or [])],
+        "source": source_label if explicit_fields else "default",
+    }
+    return fields, metadata
+
+
 def _resolve_symbols_from_config(config_ref: str) -> tuple[list[str], dict]:
     resolved = resolve_pipeline_config(config_ref)
     cfg = resolved.data
@@ -495,6 +564,286 @@ def _default_hk_instruments_out_path() -> Path:
         / "instruments"
         / f"{DEFAULT_HK_INSTRUMENTS_FILENAME_PREFIX}_{timestamp}.parquet"
     )
+
+
+def _candidate_hk_instruments_snapshot_paths(out_root: str | Path) -> list[Path]:
+    instruments_dir = _resolve_path(out_root) / "hk" / "instruments"
+    if not instruments_dir.exists():
+        return []
+    paths = [path for path in instruments_dir.glob("*.parquet") if path.is_file()]
+    return sorted(
+        paths,
+        key=lambda path: (
+            0 if "all_instruments" in path.name.lower() else 1,
+            -path.stat().st_mtime,
+            path.name,
+        ),
+    )
+
+
+def _load_cached_hk_instruments_frame(path: Path) -> pd.DataFrame:
+    cached = _HK_INSTRUMENTS_FRAME_CACHE.get(path)
+    if cached is not None:
+        return cached.copy()
+
+    frame = pd.read_parquet(path)
+    instruments = _normalize_frame_columns(frame.copy())
+    if "ts_code" not in instruments.columns or "order_book_id" not in instruments.columns:
+        raise ValueError(f"HK instruments snapshot is missing ts_code/order_book_id: {path}")
+
+    instruments["ts_code"] = instruments["ts_code"].map(_normalize_hk_symbol)
+    instruments["order_book_id"] = instruments["order_book_id"].astype(str).str.strip()
+    if "unique_id" in instruments.columns:
+        instruments["unique_id"] = instruments["unique_id"].astype(str).str.strip()
+        instruments.loc[instruments["unique_id"] == "", "unique_id"] = pd.NA
+    else:
+        instruments["unique_id"] = pd.NA
+    _HK_INSTRUMENTS_FRAME_CACHE[path] = instruments.copy()
+    return instruments
+
+
+def _build_default_dated_request_groups(
+    symbols: Sequence[str],
+) -> tuple[list[DatedRequestGroup], dict[str, dict[str, str | None]], dict[str, object]]:
+    groups: list[DatedRequestGroup] = []
+    metadata: dict[str, dict[str, str | None]] = {}
+    for symbol in symbols:
+        order_book_id = _to_rqdata_symbol("hk", symbol)
+        groups.append(
+            DatedRequestGroup(
+                ts_code=symbol,
+                request_ids=(order_book_id,),
+                order_book_ids=(order_book_id,),
+            )
+        )
+        metadata[order_book_id] = {
+            "ts_code": symbol,
+            "order_book_id": order_book_id,
+            "unique_id": None,
+        }
+    return groups, metadata, {"mode": "default_order_book_id", "file": None}
+
+
+def _resolve_hk_dated_request_groups(
+    symbols: Sequence[str],
+    *,
+    start_date: str,
+    end_date: str,
+    out_root: str,
+) -> tuple[list[DatedRequestGroup], dict[str, dict[str, str | None]], dict[str, object]]:
+    default_groups, default_metadata, default_info = _build_default_dated_request_groups(symbols)
+    snapshot_paths = _candidate_hk_instruments_snapshot_paths(out_root)
+    if not snapshot_paths:
+        return default_groups, default_metadata, default_info
+
+    start_ts = pd.to_datetime(start_date, errors="coerce")
+    end_ts = pd.to_datetime(end_date, errors="coerce")
+    if pd.isna(start_ts) or pd.isna(end_ts):
+        return default_groups, default_metadata, default_info
+
+    for path in snapshot_paths:
+        try:
+            instruments = _load_cached_hk_instruments_frame(path)
+        except Exception:
+            continue
+
+        subset = instruments[instruments["ts_code"].isin(symbols)].copy()
+        if subset.empty:
+            continue
+
+        if "listed_date" in subset.columns:
+            subset["listed_date_parsed"] = pd.to_datetime(subset["listed_date"], errors="coerce")
+        else:
+            subset["listed_date_parsed"] = pd.NaT
+        if "de_listed_date" in subset.columns:
+            delisted_text = subset["de_listed_date"].astype(str).str.strip()
+            delisted_text = delisted_text.mask(delisted_text == "0000-00-00")
+            subset["de_listed_date_parsed"] = pd.to_datetime(delisted_text, errors="coerce")
+        else:
+            subset["de_listed_date_parsed"] = pd.NaT
+
+        overlap_mask = (
+            subset["listed_date_parsed"].isna() | (subset["listed_date_parsed"] <= end_ts)
+        ) & (
+            subset["de_listed_date_parsed"].isna() | (subset["de_listed_date_parsed"] >= start_ts)
+        )
+        overlapping = subset[overlap_mask].copy()
+        effective = overlapping if not overlapping.empty else subset
+
+        groups: list[DatedRequestGroup] = []
+        metadata: dict[str, dict[str, str | None]] = {}
+        for symbol in symbols:
+            symbol_rows = effective[effective["ts_code"] == symbol].copy()
+            if symbol_rows.empty:
+                fallback_order_book_id = _to_rqdata_symbol("hk", symbol)
+                groups.append(
+                    DatedRequestGroup(
+                        ts_code=symbol,
+                        request_ids=(fallback_order_book_id,),
+                        order_book_ids=(fallback_order_book_id,),
+                    )
+                )
+                metadata[fallback_order_book_id] = {
+                    "ts_code": symbol,
+                    "order_book_id": fallback_order_book_id,
+                    "unique_id": None,
+                }
+                continue
+
+            symbol_rows = symbol_rows.sort_values(
+                ["listed_date_parsed", "order_book_id", "unique_id"],
+                kind="mergesort",
+            )
+            request_ids: list[str] = []
+            order_book_ids: list[str] = []
+            for row in symbol_rows.itertuples(index=False):
+                order_book_id = str(getattr(row, "order_book_id") or "").strip()
+                unique_id = str(getattr(row, "unique_id") or "").strip() or None
+                request_id = unique_id or order_book_id
+                if not request_id:
+                    continue
+                request_ids.append(request_id)
+                order_book_ids.append(order_book_id or request_id)
+                metadata[request_id] = {
+                    "ts_code": symbol,
+                    "order_book_id": order_book_id or request_id,
+                    "unique_id": unique_id,
+                }
+                metadata[order_book_id or request_id] = {
+                    "ts_code": symbol,
+                    "order_book_id": order_book_id or request_id,
+                    "unique_id": unique_id,
+                }
+
+            request_ids = _dedupe_preserve_order(request_ids)
+            order_book_ids = _dedupe_preserve_order(order_book_ids)
+            if not request_ids:
+                fallback_order_book_id = _to_rqdata_symbol("hk", symbol)
+                request_ids = [fallback_order_book_id]
+                order_book_ids = [fallback_order_book_id]
+                metadata[fallback_order_book_id] = {
+                    "ts_code": symbol,
+                    "order_book_id": fallback_order_book_id,
+                    "unique_id": None,
+                }
+
+            groups.append(
+                DatedRequestGroup(
+                    ts_code=symbol,
+                    request_ids=tuple(request_ids),
+                    order_book_ids=tuple(order_book_ids),
+                )
+            )
+
+        return (
+            groups,
+            metadata,
+            {
+                "mode": "local_hk_instruments_snapshot",
+                "file": str(path),
+                "symbols_resolved": len(groups),
+            },
+        )
+
+    return default_groups, default_metadata, default_info
+
+
+def _uses_hk_unique_ids(request_ids: Sequence[str]) -> bool:
+    for request_id in request_ids:
+        prefix = str(request_id or "").strip().split(".", 1)[0]
+        if "_" in prefix:
+            return True
+    return False
+
+
+def _normalize_hk_dated_payload(
+    payload,
+    *,
+    request_id_metadata: Mapping[str, Mapping[str, str | None]],
+) -> pd.DataFrame | pd.Series | None:
+    if payload is None:
+        return None
+    if isinstance(payload, (pd.DataFrame, pd.Series)):
+        frame = payload.copy()
+    else:
+        frame = pd.DataFrame(payload)
+    if isinstance(frame, pd.Series):
+        return frame
+    if frame.empty and len(frame.columns) == 0:
+        return frame
+
+    normalized = _normalize_frame_columns(frame)
+    if "order_book_id" not in normalized.columns:
+        return normalized
+
+    raw_request_ids = normalized["order_book_id"].astype(str).str.strip()
+    canonical_order_book_ids = raw_request_ids.map(
+        lambda value: (request_id_metadata.get(value) or {}).get("order_book_id")
+    )
+    unique_ids = raw_request_ids.map(
+        lambda value: (request_id_metadata.get(value) or {}).get("unique_id")
+    )
+
+    if "unique_id" not in normalized.columns:
+        unique_series = unique_ids.where(unique_ids.notna(), raw_request_ids.where(raw_request_ids.str.contains("_")))
+        if unique_series.notna().any():
+            normalized["unique_id"] = unique_series
+    else:
+        existing_unique_ids = normalized["unique_id"].astype(str).str.strip()
+        existing_unique_ids = existing_unique_ids.mask(existing_unique_ids == "")
+        normalized["unique_id"] = existing_unique_ids.where(existing_unique_ids.notna(), unique_ids)
+
+    normalized["order_book_id"] = canonical_order_book_ids.where(
+        canonical_order_book_ids.notna(),
+        raw_request_ids,
+    )
+    return normalized
+
+
+def _fetch_hk_ex_factors_direct(request_ids: Sequence[str], *, start_date: str, end_date: str) -> pd.DataFrame:
+    from rqdatac.client import get_client
+
+    payload = get_client().execute(
+        "get_ex_factor",
+        list(request_ids),
+        int(start_date),
+        int(end_date),
+        market="hk",
+    )
+    return pd.DataFrame(payload or [])
+
+
+def _fetch_hk_dividends_direct(request_ids: Sequence[str], *, start_date: str, end_date: str) -> pd.DataFrame:
+    from rqdatac.client import get_client
+
+    payload = get_client().execute(
+        "get_dividend",
+        list(request_ids),
+        int(start_date),
+        int(end_date),
+        market="hk",
+    )
+    return pd.DataFrame(payload or [])
+
+
+def _fetch_hk_shares_direct(
+    request_ids: Sequence[str],
+    *,
+    fields: Sequence[str],
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame:
+    from rqdatac.client import get_client
+
+    payload = get_client().execute(
+        "get_shares_v2",
+        list(request_ids),
+        list(fields),
+        start_date=int(start_date),
+        end_date=int(end_date),
+        market="hk",
+    )
+    return pd.DataFrame(payload or [])
 
 
 def _default_snapshot_name(dataset_name: str, start_quarter: str, end_quarter: str, statements: str) -> str:
@@ -1015,6 +1364,156 @@ def _write_daily_audit_csv(path: Path, records: Sequence[DailyMirrorAuditRecord]
     pd.DataFrame(rows).to_csv(path, index=False)
 
 
+def _prepare_dated_asset_frame(
+    frame: pd.DataFrame | pd.Series | None,
+    *,
+    symbol_map: Mapping[str, str],
+    date_column: str,
+    sort_columns: Sequence[str] = (),
+) -> pd.DataFrame:
+    normalized = _prepare_asset_frame(frame, symbol_map=symbol_map)
+    if normalized.empty:
+        return normalized
+    if date_column not in normalized.columns:
+        raise ValueError(f"RQData payload is missing {date_column}.")
+
+    preferred = [column for column in ["ts_code", "order_book_id", date_column] if column in normalized.columns]
+    remaining = [column for column in normalized.columns if column not in preferred]
+    work = normalized.loc[:, preferred + remaining].copy()
+    ordered_sort_cols = [
+        column for column in ["ts_code", date_column, *sort_columns] if column in work.columns
+    ]
+    if ordered_sort_cols:
+        work = work.sort_values(ordered_sort_cols).reset_index(drop=True)
+    return work
+
+
+def _dated_entry_from_symbol_frame(
+    out_path: Path,
+    symbol_frame: pd.DataFrame,
+    *,
+    date_column: str,
+) -> DatedMirrorEntry:
+    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    order_book_id = (
+        str(symbol_frame["order_book_id"].iloc[0])
+        if "order_book_id" in symbol_frame.columns
+        else _to_rqdata_symbol("hk", ts_code)
+    )
+    min_date, max_date = _series_bounds_as_date(symbol_frame, date_column)
+    return DatedMirrorEntry(
+        ts_code=ts_code,
+        order_book_id=order_book_id,
+        path=out_path,
+        rows=int(len(symbol_frame)),
+        total_bytes=int(out_path.stat().st_size),
+        min_date=min_date,
+        max_date=max_date,
+    )
+
+
+def _write_dated_symbol_frame(
+    data_dir: Path,
+    symbol_frame: pd.DataFrame,
+    *,
+    date_column: str,
+) -> DatedMirrorEntry:
+    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    out_path = data_dir / f"{ts_code}.parquet"
+    symbol_frame.to_parquet(out_path, index=False)
+    return _dated_entry_from_symbol_frame(out_path, symbol_frame, date_column=date_column)
+
+
+def _load_dated_symbol_frame(path: Path, *, date_column: str, fields: Sequence[str]) -> pd.DataFrame:
+    columns = ["ts_code", "order_book_id", date_column, *_field_columns_for_audit(fields)]
+    requested = []
+    seen: set[str] = set()
+    for column in columns:
+        if column and column not in seen:
+            requested.append(column)
+            seen.add(column)
+    try:
+        frame = pd.read_parquet(path, columns=requested)
+    except Exception:
+        frame = pd.read_parquet(path)
+    return _normalize_frame_columns(frame)
+
+
+def _load_existing_dated_entry(
+    path: Path,
+    *,
+    date_column: str,
+    fields: Sequence[str],
+) -> tuple[DatedMirrorEntry, pd.DataFrame]:
+    frame = _ensure_requested_fields(_load_dated_symbol_frame(path, date_column=date_column, fields=fields), fields)
+    if frame.empty:
+        ts_code = path.stem
+        order_book_id = _to_rqdata_symbol("hk", ts_code)
+        entry = DatedMirrorEntry(
+            ts_code=ts_code,
+            order_book_id=order_book_id,
+            path=path,
+            rows=0,
+            total_bytes=int(path.stat().st_size),
+            min_date=None,
+            max_date=None,
+        )
+        return entry, frame
+    return _dated_entry_from_symbol_frame(path, frame, date_column=date_column), frame
+
+
+def _dated_audit_record(
+    *,
+    ts_code: str,
+    order_book_id: str,
+    status: str,
+    attempts: int,
+    started_at: str | None,
+    finished_at: str | None,
+    file_mtime: str | None,
+    dropped_fields: Sequence[str] | None = None,
+    error: str | None,
+    entry: DatedMirrorEntry | None = None,
+) -> DatedMirrorAuditRecord:
+    return DatedMirrorAuditRecord(
+        ts_code=ts_code,
+        order_book_id=order_book_id,
+        status=status,
+        attempts=attempts,
+        rows=entry.rows if entry else 0,
+        total_bytes=entry.total_bytes if entry else 0,
+        min_date=entry.min_date if entry else None,
+        max_date=entry.max_date if entry else None,
+        started_at=started_at,
+        finished_at=finished_at,
+        file_mtime=file_mtime,
+        dropped_fields=",".join(str(item) for item in (dropped_fields or []) if str(item).strip()) or None,
+        error=error,
+    )
+
+
+def _write_dated_audit_csv(path: Path, records: Sequence[DatedMirrorAuditRecord]) -> None:
+    rows = [
+        {
+            "ts_code": item.ts_code,
+            "order_book_id": item.order_book_id,
+            "status": item.status,
+            "attempts": item.attempts,
+            "rows": item.rows,
+            "total_bytes": item.total_bytes,
+            "min_date": item.min_date,
+            "max_date": item.max_date,
+            "started_at": item.started_at,
+            "finished_at": item.finished_at,
+            "file_mtime": item.file_mtime,
+            "dropped_fields": item.dropped_fields,
+            "error": item.error,
+        }
+        for item in records
+    ]
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
 def _validate_resume_inputs(
     *,
     output_dir: Path,
@@ -1079,6 +1578,41 @@ def _validate_daily_resume_inputs(
             ("frequency", frequency),
             ("adjust_type", adjust_type),
             ("skip_suspended", skip_suspended),
+        ]
+        for key, expected in checks:
+            actual = query.get(key) if isinstance(query, Mapping) else None
+            if actual not in {None, expected}:
+                raise SystemExit(
+                    f"Resume target query mismatch for {key}: expected {expected!r}, got {actual!r}."
+                )
+
+    existing_fields = _load_existing_text_list(output_dir / "fields.txt", strip=False)
+    if existing_fields and list(existing_fields) != list(fields):
+        raise SystemExit("Resume target fields.txt does not match the requested field list.")
+    existing_symbols = _load_existing_text_list(output_dir / "symbols.txt")
+    if existing_symbols and list(existing_symbols) != list(symbols):
+        raise SystemExit("Resume target symbols.txt does not match the requested symbol list.")
+
+
+def _validate_dated_resume_inputs(
+    *,
+    output_dir: Path,
+    dataset_name: str,
+    fields: Sequence[str],
+    symbols: Sequence[str],
+    start_date: str,
+    end_date: str,
+) -> None:
+    manifest = _load_manifest(output_dir / "manifest.yml")
+    if manifest and manifest.get("dataset") not in {None, dataset_name}:
+        raise SystemExit(
+            f"Resume target dataset mismatch: expected {dataset_name!r}, got {manifest.get('dataset')!r}."
+        )
+    if manifest:
+        query = manifest.get("query") if isinstance(manifest.get("query"), Mapping) else {}
+        checks = [
+            ("start_date", start_date),
+            ("end_date", end_date),
         ]
         for key, expected in checks:
             actual = query.get(key) if isinstance(query, Mapping) else None
@@ -1254,6 +1788,94 @@ def _build_daily_manifest(
                 "total_bytes": item.total_bytes,
                 "min_trade_date": item.min_trade_date,
                 "max_trade_date": item.max_trade_date,
+            }
+            for item in entries
+        ],
+        "missing_symbols": list(missing_symbols),
+        "failed_symbols": [item.ts_code for item in audit_records if item.status == "failed"],
+        "quota_blocked_symbols": [
+            item.ts_code for item in audit_records if item.status == "quota_blocked"
+        ],
+        "totals": {
+            "symbols_requested": len(symbols_requested),
+            "symbols_written": len(entries),
+            "symbols_newly_written": int(status_counts.get("written", 0)),
+            "symbols_skipped_existing": int(status_counts.get("skipped_existing", 0)),
+            "symbols_missing_remote": int(status_counts.get("missing_remote", 0)),
+            "symbols_failed": int(status_counts.get("failed", 0)),
+            "symbols_quota_blocked": int(status_counts.get("quota_blocked", 0)),
+            "files": len(entries),
+            "rows": sum(item.rows for item in entries),
+            "bytes": sum(item.total_bytes for item in entries),
+        },
+        "git": _git_metadata(Path.cwd().resolve()),
+    }
+
+
+def _build_dated_manifest(
+    *,
+    dataset_name: str,
+    api_name: str,
+    output_dir: Path,
+    fields: Sequence[str],
+    field_metadata: Mapping[str, object],
+    symbol_metadata: Mapping[str, object],
+    symbols_requested: Sequence[str],
+    entries: Sequence[DatedMirrorEntry],
+    missing_symbols: Sequence[str],
+    start_date: str,
+    end_date: str,
+    date_column: str,
+    batches: Sequence[Mapping[str, object]],
+    columns: Sequence[str],
+    audit_file: Path,
+    audit_records: Sequence[DatedMirrorAuditRecord],
+    field_coverage: Sequence[Mapping[str, object]],
+    started_at: str,
+    finished_at: str,
+    status: str,
+    error: str | None,
+    config_ref: str | None,
+) -> dict:
+    status_counts = Counter(item.status for item in audit_records)
+    return {
+        "name": output_dir.name,
+        "created_at": finished_at,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "status": status,
+        "error": error,
+        "dataset": dataset_name,
+        "api": api_name,
+        "market": "hk",
+        "config_ref": config_ref,
+        "repo_root": str(Path.cwd().resolve()),
+        "output_dir": str(output_dir),
+        "query": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "date_column": date_column,
+            "fields_count": len(fields),
+            "fields": list(fields),
+            "fields_file": list(field_metadata.get("fields_file") or []),
+            "field_source": field_metadata.get("source"),
+            "base_fields": list(field_metadata.get("base_fields") or []),
+        },
+        "symbol_source": dict(symbol_metadata),
+        "columns": list(columns),
+        "audit_file": str(audit_file),
+        "status_counts": dict(status_counts),
+        "field_coverage": list(field_coverage),
+        "batches": list(batches),
+        "entries": [
+            {
+                "ts_code": item.ts_code,
+                "order_book_id": item.order_book_id,
+                "path": str(item.path),
+                "rows": item.rows,
+                "total_bytes": item.total_bytes,
+                "min_date": item.min_date,
+                "max_date": item.max_date,
             }
             for item in entries
         ],
@@ -1765,6 +2387,489 @@ def mirror_hk_daily(args, rqdatac) -> int:
     return result_code
 
 
+def _mirror_dated_dataset(
+    *,
+    args,
+    rqdatac,
+    dataset_name: str,
+    api_name: str,
+    date_column: str,
+    fields: Sequence[str],
+    field_metadata: Mapping[str, object],
+    fetch_batch,
+    sort_columns: Sequence[str] = (),
+    resolve_request_groups=None,
+    normalize_payload=None,
+) -> int:
+    symbols, symbol_metadata = _resolve_symbols(args)
+    start_date = _normalize_absolute_date(args.start_date, label="--start-date")
+    end_date = _normalize_absolute_date(args.end_date, label="--end-date")
+    if start_date > end_date:
+        raise SystemExit("--start-date must be <= --end-date.")
+
+    resume = bool(getattr(args, "resume", False))
+    skip_existing = bool(getattr(args, "skip_existing", False) or resume)
+    max_attempts = max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
+    backoff_seconds = float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS))
+    max_backoff_seconds = float(
+        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+    )
+    output_dir = _prepare_daily_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        dataset_name=dataset_name,
+        start_date=start_date,
+        end_date=end_date,
+        name=getattr(args, "name", None),
+        resume=resume,
+    )
+    data_dir = output_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    audit_path = output_dir / "audit.csv"
+
+    if resolve_request_groups is not None:
+        request_groups, request_id_metadata, request_group_metadata = resolve_request_groups(
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+            args=args,
+        )
+    else:
+        request_groups, request_id_metadata, request_group_metadata = _build_default_dated_request_groups(symbols)
+    if request_group_metadata:
+        symbol_metadata = dict(symbol_metadata)
+        symbol_metadata["request_groups"] = dict(request_group_metadata)
+
+    request_ids_by_symbol = {group.ts_code: list(group.request_ids) for group in request_groups}
+    primary_order_book_id_by_symbol = {
+        group.ts_code: (
+            next((item for item in group.order_book_ids if str(item).strip()), None)
+            or next((item for item in group.request_ids if str(item).strip()), None)
+            or _to_rqdata_symbol("hk", group.ts_code)
+        )
+        for group in request_groups
+    }
+    symbol_map: dict[str, str] = {}
+    for group in request_groups:
+        for request_id in (*group.request_ids, *group.order_book_ids):
+            text = str(request_id or "").strip()
+            if text:
+                symbol_map[text] = group.ts_code
+
+    entries_by_symbol: dict[str, DatedMirrorEntry] = {}
+    audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
+    batches: list[dict[str, object]] = []
+    columns: list[str] = []
+    field_coverage = _field_coverage_template(fields)
+    started_at = _timestamp_now()
+    status = "completed"
+    error: str | None = None
+    result_code = 0
+    quota_blocked = False
+
+    def _payload_to_frame(payload):
+        if normalize_payload is None:
+            return payload
+        return normalize_payload(payload, request_id_metadata=request_id_metadata)
+
+    def _record_entry(
+        *,
+        symbol: str,
+        entry: DatedMirrorEntry,
+        symbol_frame: pd.DataFrame,
+        record_status: str,
+        attempts: int,
+        started_at_value: str | None,
+        finished_at_value: str | None,
+        dropped_fields: Sequence[str] | None = None,
+        error_text: str | None = None,
+    ) -> None:
+        nonlocal columns
+        entries_by_symbol[symbol] = entry
+        if not columns and not symbol_frame.empty:
+            columns = symbol_frame.columns.tolist()
+        _update_field_coverage(field_coverage, symbol_frame, fields=fields)
+        audit_by_symbol[symbol] = _dated_audit_record(
+            ts_code=symbol,
+            order_book_id=entry.order_book_id,
+            status=record_status,
+            attempts=attempts,
+            started_at=started_at_value,
+            finished_at=finished_at_value,
+            file_mtime=_path_mtime_iso(entry.path),
+            dropped_fields=dropped_fields,
+            error=error_text,
+            entry=entry,
+        )
+
+    def _record_non_entry(
+        *,
+        symbol: str,
+        order_book_id: str,
+        record_status: str,
+        attempts: int,
+        started_at_value: str | None,
+        finished_at_value: str | None,
+        dropped_fields: Sequence[str] | None = None,
+        error_text: str | None = None,
+    ) -> None:
+        audit_by_symbol[symbol] = _dated_audit_record(
+            ts_code=symbol,
+            order_book_id=order_book_id,
+            status=record_status,
+            attempts=attempts,
+            started_at=started_at_value,
+            finished_at=finished_at_value,
+            file_mtime=None,
+            dropped_fields=dropped_fields,
+            error=error_text,
+            entry=None,
+        )
+
+    def _fetch_single_symbol_with_field_fallback(
+        request_ids: Sequence[str],
+    ) -> tuple[pd.DataFrame, int, list[str]]:
+        active_fields = list(fields)
+        dropped_fields: list[str] = []
+        total_attempts = 0
+        request_ids = [str(item).strip() for item in request_ids if str(item).strip()]
+        while True:
+            label = f"{dataset_name} fetch failed for {', '.join(request_ids)}"
+            try:
+                payload, attempts = _retry_fetch(
+                    label,
+                    lambda: fetch_batch(request_ids, active_fields, start_date, end_date),
+                    max_attempts=max_attempts,
+                    backoff_seconds=backoff_seconds,
+                    max_backoff_seconds=max_backoff_seconds,
+                )
+            except MirrorQuotaError as exc:
+                raise MirrorQuotaError(str(exc), attempts=total_attempts + exc.attempts) from exc
+            except MirrorFetchError as exc:
+                invalid_field = _extract_invalid_field_name(str(exc))
+                total_attempts += exc.attempts
+                if invalid_field and invalid_field in active_fields and len(active_fields) > 1:
+                    active_fields = [field for field in active_fields if field != invalid_field]
+                    dropped_fields.append(invalid_field)
+                    continue
+                raise MirrorFetchError(str(exc), attempts=total_attempts) from exc
+            total_attempts += attempts
+            prepared = _prepare_dated_asset_frame(
+                _payload_to_frame(payload),
+                symbol_map=symbol_map,
+                date_column=date_column,
+                sort_columns=sort_columns,
+            )
+            prepared = _ensure_requested_fields(prepared, fields)
+            return prepared, total_attempts, dropped_fields
+
+    def _process_batch(batch_symbols: list[str]) -> None:
+        nonlocal status, error, result_code, quota_blocked, columns
+        if not batch_symbols or quota_blocked:
+            return
+        batch_request_ids = [
+            request_id
+            for symbol in batch_symbols
+            for request_id in request_ids_by_symbol.get(symbol, ())
+            if str(request_id).strip()
+        ]
+        if not batch_request_ids:
+            return
+        batch_started_at = _timestamp_now()
+        dropped_fields: list[str] = []
+        try:
+            if len(batch_symbols) == 1:
+                payload, attempts, dropped_fields = _fetch_single_symbol_with_field_fallback(
+                    batch_request_ids
+                )
+            else:
+                label = f"{dataset_name} fetch failed for {', '.join(batch_symbols)}"
+                payload, attempts = _retry_fetch(
+                    label,
+                    lambda: fetch_batch(batch_request_ids, fields, start_date, end_date),
+                    max_attempts=max_attempts,
+                    backoff_seconds=backoff_seconds,
+                    max_backoff_seconds=max_backoff_seconds,
+                )
+        except MirrorQuotaError as exc:
+            batch_finished_at = _timestamp_now()
+            quota_blocked = True
+            status = "stopped_quota"
+            error = str(exc)
+            result_code = max(result_code, 2)
+            for symbol in batch_symbols:
+                if symbol in audit_by_symbol:
+                    continue
+                _record_non_entry(
+                    symbol=symbol,
+                    order_book_id=primary_order_book_id_by_symbol[symbol],
+                    record_status="quota_blocked",
+                    attempts=exc.attempts,
+                    started_at_value=batch_started_at,
+                    finished_at_value=batch_finished_at,
+                    dropped_fields=dropped_fields,
+                    error_text=str(exc),
+                )
+            batches.append(
+                {
+                    "order_book_ids": len(batch_request_ids),
+                    "rows": 0,
+                    "symbols_written": 0,
+                    "symbols_missing_remote": len(batch_symbols),
+                    "status": "quota_blocked",
+                    "attempts": exc.attempts,
+                    "dropped_fields": list(dropped_fields),
+                    "error": str(exc),
+                }
+            )
+            return
+        except MirrorFetchError as exc:
+            batch_finished_at = _timestamp_now()
+            if len(batch_symbols) > 1:
+                batches.append(
+                    {
+                        "order_book_ids": len(batch_request_ids),
+                        "rows": 0,
+                        "symbols_written": 0,
+                        "symbols_missing_remote": 0,
+                        "status": "split_after_error",
+                        "attempts": exc.attempts,
+                        "error": str(exc),
+                    }
+                )
+                for symbol in batch_symbols:
+                    _process_batch([symbol])
+                    if quota_blocked:
+                        break
+                return
+
+            symbol = batch_symbols[0]
+            _record_non_entry(
+                symbol=symbol,
+                order_book_id=primary_order_book_id_by_symbol[symbol],
+                record_status="failed",
+                attempts=exc.attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                dropped_fields=dropped_fields,
+                error_text=str(exc),
+            )
+            batches.append(
+                {
+                    "order_book_ids": len(batch_request_ids),
+                    "rows": 0,
+                    "symbols_written": 0,
+                    "symbols_missing_remote": 0,
+                    "status": "failed",
+                    "attempts": exc.attempts,
+                    "dropped_fields": list(dropped_fields),
+                    "error": str(exc),
+                }
+            )
+            if status == "completed":
+                status = "completed_with_failures"
+            result_code = max(result_code, 1)
+            return
+
+        batch_finished_at = _timestamp_now()
+        prepared = _prepare_dated_asset_frame(
+            _payload_to_frame(payload),
+            symbol_map=symbol_map,
+            date_column=date_column,
+            sort_columns=sort_columns,
+        )
+        prepared = _ensure_requested_fields(prepared, fields)
+        if prepared.empty:
+            for symbol in batch_symbols:
+                _record_non_entry(
+                    symbol=symbol,
+                    order_book_id=primary_order_book_id_by_symbol[symbol],
+                    record_status="missing_remote",
+                    attempts=attempts,
+                    started_at_value=batch_started_at,
+                    finished_at_value=batch_finished_at,
+                    dropped_fields=dropped_fields,
+                )
+            batches.append(
+                {
+                    "order_book_ids": len(batch_request_ids),
+                    "rows": 0,
+                    "symbols_written": 0,
+                    "symbols_missing_remote": len(batch_symbols),
+                    "status": "empty",
+                    "attempts": attempts,
+                    "dropped_fields": list(dropped_fields),
+                }
+            )
+            return
+
+        if not columns:
+            columns = prepared.columns.tolist()
+
+        batch_rows = int(len(prepared))
+        batch_symbols_written = 0
+        batch_symbols_missing = 0
+        for symbol in batch_symbols:
+            symbol_frame = prepared[prepared["ts_code"] == symbol].reset_index(drop=True)
+            if symbol_frame.empty:
+                batch_symbols_missing += 1
+                _record_non_entry(
+                    symbol=symbol,
+                    order_book_id=primary_order_book_id_by_symbol[symbol],
+                    record_status="missing_remote",
+                    attempts=attempts,
+                    started_at_value=batch_started_at,
+                    finished_at_value=batch_finished_at,
+                    dropped_fields=dropped_fields,
+                )
+                continue
+            entry = _write_dated_symbol_frame(data_dir, symbol_frame, date_column=date_column)
+            _record_entry(
+                symbol=symbol,
+                entry=entry,
+                symbol_frame=symbol_frame,
+                record_status="written",
+                attempts=attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                dropped_fields=dropped_fields,
+            )
+            batch_symbols_written += 1
+
+        batches.append(
+            {
+                "order_book_ids": len(batch_request_ids),
+                "rows": batch_rows,
+                "symbols_written": batch_symbols_written,
+                "symbols_missing_remote": batch_symbols_missing,
+                "status": "completed",
+                "attempts": attempts,
+                "dropped_fields": list(dropped_fields),
+            }
+        )
+
+    try:
+        if resume:
+            _validate_dated_resume_inputs(
+                output_dir=output_dir,
+                dataset_name=dataset_name,
+                fields=fields,
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+        _write_text_list(output_dir / "fields.txt", list(fields))
+        _write_text_list(output_dir / "symbols.txt", symbols)
+
+        pending_symbols: list[str] = []
+        for symbol in symbols:
+            out_path = data_dir / f"{symbol}.parquet"
+            if skip_existing and out_path.exists():
+                try:
+                    entry, symbol_frame = _load_existing_dated_entry(
+                        out_path,
+                        date_column=date_column,
+                        fields=fields,
+                    )
+                except Exception:
+                    pending_symbols.append(symbol)
+                    continue
+                _record_entry(
+                    symbol=symbol,
+                    entry=entry,
+                    symbol_frame=symbol_frame,
+                    record_status="skipped_existing",
+                    attempts=0,
+                    started_at_value=None,
+                    finished_at_value=_path_mtime_iso(out_path),
+                )
+                continue
+            pending_symbols.append(symbol)
+
+        for batch_symbols in _chunked(
+            pending_symbols,
+            getattr(args, "batch_size", DEFAULT_BATCH_SIZE),
+        ):
+            _process_batch(batch_symbols)
+            if quota_blocked:
+                break
+
+        if quota_blocked:
+            quota_finished_at = _timestamp_now()
+            for symbol in pending_symbols:
+                if symbol in audit_by_symbol:
+                    continue
+                _record_non_entry(
+                    symbol=symbol,
+                    order_book_id=primary_order_book_id_by_symbol[symbol],
+                    record_status="quota_blocked",
+                    attempts=0,
+                    started_at_value=None,
+                    finished_at_value=quota_finished_at,
+                    error_text=error,
+                )
+        elif result_code == 1 and status == "completed":
+            status = "completed_with_failures"
+    except Exception as exc:
+        status = "failed"
+        error = str(exc)
+        result_code = max(result_code, 1)
+        raise
+    finally:
+        finished_at = _timestamp_now()
+        for symbol in symbols:
+            if symbol in audit_by_symbol:
+                continue
+            _record_non_entry(
+                symbol=symbol,
+                order_book_id=primary_order_book_id_by_symbol[symbol],
+                record_status="failed",
+                attempts=0,
+                started_at_value=None,
+                finished_at_value=finished_at,
+                error_text=error or "missing audit status",
+            )
+        audit_records = [audit_by_symbol[symbol] for symbol in symbols]
+        _write_dated_audit_csv(audit_path, audit_records)
+        manifest = _build_dated_manifest(
+            dataset_name=dataset_name,
+            api_name=api_name,
+            output_dir=output_dir,
+            fields=fields,
+            field_metadata=field_metadata,
+            symbol_metadata=symbol_metadata,
+            symbols_requested=symbols,
+            entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
+            missing_symbols=[item.ts_code for item in audit_records if item.status == "missing_remote"],
+            start_date=start_date,
+            end_date=end_date,
+            date_column=date_column,
+            batches=batches,
+            columns=columns,
+            audit_file=audit_path,
+            audit_records=audit_records,
+            field_coverage=list(field_coverage.values()),
+            started_at=started_at,
+            finished_at=finished_at,
+            status=status,
+            error=error,
+            config_ref=getattr(args, "config", None),
+        )
+        _write_manifest(output_dir / "manifest.yml", manifest)
+
+    totals = {
+        "files": len(entries_by_symbol),
+        "symbols": len(entries_by_symbol),
+        "rows": sum(item.rows for item in entries_by_symbol.values()),
+        "bytes": sum(item.total_bytes for item in entries_by_symbol.values()),
+    }
+    print(
+        f"Wrote {dataset_name} mirror to {output_dir} "
+        f"({totals['symbols']} symbols, {totals['files']} files, {totals['rows']} rows, {totals['bytes']} bytes, status={status})"
+    )
+    return result_code
+
+
 def _mirror_dataset(
     *,
     args,
@@ -2242,6 +3347,106 @@ def mirror_hk_financial_details(args, rqdatac) -> int:
             end_quarter=end_quarter,
             market="hk",
             **kwargs,
+        ),
+    )
+
+
+def mirror_hk_ex_factors(args, rqdatac) -> int:
+    return _mirror_dated_dataset(
+        args=args,
+        rqdatac=rqdatac,
+        dataset_name="ex_factors",
+        api_name="rqdatac.get_ex_factor",
+        date_column="ex_date",
+        fields=[],
+        field_metadata={"count": 0, "fields_file": [], "source": "api_payload", "base_fields": []},
+        sort_columns=("announcement_date", "ex_end_date"),
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
+            symbols,
+            start_date=start_date,
+            end_date=end_date,
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        ),
+        normalize_payload=_normalize_hk_dated_payload,
+        fetch_batch=lambda order_book_ids, fields, start_date, end_date: (
+            _fetch_hk_ex_factors_direct(order_book_ids, start_date=start_date, end_date=end_date)
+            if _uses_hk_unique_ids(order_book_ids)
+            else rqdatac.get_ex_factor(
+                order_book_ids,
+                start_date=start_date,
+                end_date=end_date,
+                market="hk",
+            )
+        ),
+    )
+
+
+def mirror_hk_dividends(args, rqdatac) -> int:
+    return _mirror_dated_dataset(
+        args=args,
+        rqdatac=rqdatac,
+        dataset_name="dividends",
+        api_name="rqdatac.get_dividend",
+        date_column="declaration_announcement_date",
+        fields=[],
+        field_metadata={"count": 0, "fields_file": [], "source": "api_payload", "base_fields": []},
+        sort_columns=("ex_dividend_date", "payable_date"),
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
+            symbols,
+            start_date=start_date,
+            end_date=end_date,
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        ),
+        normalize_payload=_normalize_hk_dated_payload,
+        fetch_batch=lambda order_book_ids, fields, start_date, end_date: (
+            _fetch_hk_dividends_direct(order_book_ids, start_date=start_date, end_date=end_date)
+            if _uses_hk_unique_ids(order_book_ids)
+            else rqdatac.get_dividend(
+                order_book_ids,
+                start_date=start_date,
+                end_date=end_date,
+                market="hk",
+            )
+        ),
+    )
+
+
+def mirror_hk_shares(args, rqdatac) -> int:
+    fields, field_metadata = _resolve_default_plus_explicit_fields(
+        args,
+        default_fields=DEFAULT_HK_SHARES_FIELDS,
+        source_label="default_plus_explicit",
+    )
+    return _mirror_dated_dataset(
+        args=args,
+        rqdatac=rqdatac,
+        dataset_name="shares",
+        api_name="rqdatac.get_shares",
+        date_column="date",
+        fields=fields,
+        field_metadata=field_metadata,
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
+            symbols,
+            start_date=start_date,
+            end_date=end_date,
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        ),
+        normalize_payload=_normalize_hk_dated_payload,
+        fetch_batch=lambda order_book_ids, selected_fields, start_date, end_date: (
+            _fetch_hk_shares_direct(
+                order_book_ids,
+                fields=list(selected_fields),
+                start_date=start_date,
+                end_date=end_date,
+            )
+            if _uses_hk_unique_ids(order_book_ids)
+            else rqdatac.get_shares(
+                order_book_ids,
+                start_date=start_date,
+                end_date=end_date,
+                fields=list(selected_fields),
+                market="hk",
+            )
         ),
     )
 
@@ -3783,6 +4988,115 @@ def add_hk_daily_mirror_args(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=DEFAULT_MIRROR_MAX_BACKOFF_SECONDS,
         help=f"Maximum retry backoff in seconds. Default: {DEFAULT_MIRROR_MAX_BACKOFF_SECONDS}.",
+    )
+
+
+def add_hk_dated_mirror_args(
+    parser: argparse.ArgumentParser,
+    *,
+    supports_fields: bool = False,
+    field_help: str | None = None,
+    fields_file_help: str | None = None,
+) -> None:
+    parser.add_argument("--config", help="Optional config path or alias for rqdata.init and default universe.")
+    parser.add_argument("--username", help="Override RQData username")
+    parser.add_argument("--password", help="Override RQData password")
+    parser.add_argument("--start-date", required=True, help="Date range start, for example 20000101.")
+    parser.add_argument("--end-date", required=True, help="Date range end, for example 20260317.")
+    if supports_fields:
+        parser.add_argument(
+            "--field",
+            action="append",
+            default=[],
+            help=field_help or "Extra field name. Repeatable.",
+        )
+        parser.add_argument(
+            "--fields-file",
+            action="append",
+            default=[],
+            help=fields_file_help or "Text file with one extra field per line. Repeatable.",
+        )
+    parser.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="HK symbol to mirror, for example 00005.HK. Repeatable.",
+    )
+    parser.add_argument(
+        "--symbols-file",
+        help="Text file with one HK symbol per line. If provided, this takes precedence over config universe symbols.",
+    )
+    parser.add_argument(
+        "--by-date-file",
+        help="Universe-by-date CSV. If provided, this takes precedence over config universe symbols.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Optional cap on the resolved symbol count after dedupe.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help=f"Number of order_book_ids per RQData request. Default: {DEFAULT_BATCH_SIZE}.",
+    )
+    parser.add_argument(
+        "--out-root",
+        default=DEFAULT_OUT_ROOT,
+        help=f"Mirror root directory. Default: {DEFAULT_OUT_ROOT}",
+    )
+    parser.add_argument(
+        "--name",
+        help="Optional snapshot folder name. Default: auto-generated from range + timestamp.",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume into an existing snapshot directory. Requires matching fields, symbols, and query settings.",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip symbols whose parquet files already exist under data/. Implied by --resume.",
+    )
+    parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=DEFAULT_MIRROR_MAX_ATTEMPTS,
+        help=f"Retry attempts per request batch. Default: {DEFAULT_MIRROR_MAX_ATTEMPTS}.",
+    )
+    parser.add_argument(
+        "--backoff-seconds",
+        type=float,
+        default=DEFAULT_MIRROR_BACKOFF_SECONDS,
+        help=f"Initial retry backoff in seconds. Default: {DEFAULT_MIRROR_BACKOFF_SECONDS}.",
+    )
+    parser.add_argument(
+        "--max-backoff-seconds",
+        type=float,
+        default=DEFAULT_MIRROR_MAX_BACKOFF_SECONDS,
+        help=f"Maximum retry backoff in seconds. Default: {DEFAULT_MIRROR_MAX_BACKOFF_SECONDS}.",
+    )
+
+
+def add_hk_ex_factors_mirror_args(parser: argparse.ArgumentParser) -> None:
+    add_hk_dated_mirror_args(parser)
+
+
+def add_hk_dividends_mirror_args(parser: argparse.ArgumentParser) -> None:
+    add_hk_dated_mirror_args(parser)
+
+
+def add_hk_shares_mirror_args(parser: argparse.ArgumentParser) -> None:
+    add_hk_dated_mirror_args(
+        parser,
+        supports_fields=True,
+        field_help=(
+            "Extra shares field name. The documented total/circulation/HK share fields "
+            "are included by default. Repeatable."
+        ),
+        fields_file_help="Text file with one extra shares field per line. Repeatable.",
     )
 
 

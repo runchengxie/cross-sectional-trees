@@ -174,6 +174,38 @@ csml rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connect_
 csml rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest --fields-file configs/field_profiles/hk_financial_fields_starter.txt --start-quarter 2011q1 --end-quarter 2025q4 --date 20260310
 ```
 
+### csml rqdata mirror-hk-financial-details
+
+拉取港股财报细项数据。
+
+```bash
+csml rqdata mirror-hk-financial-details --symbol 00005.HK --field revenue --start-quarter 2024q1 --end-quarter 2025q4
+```
+
+### csml rqdata mirror-hk-ex-factors
+
+拉取港股复权因子历史。
+
+```bash
+csml rqdata mirror-hk-ex-factors --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_ex_factors_latest
+```
+
+### csml rqdata mirror-hk-dividends
+
+拉取港股分红历史。
+
+```bash
+csml rqdata mirror-hk-dividends --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_dividends_latest
+```
+
+### csml rqdata mirror-hk-shares
+
+拉取港股股本历史。
+
+```bash
+csml rqdata mirror-hk-shares --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_shares_latest
+```
+
 ### csml rqdata build-hk-pit-fundamentals
 
 构建 pipeline 可读的基本面文件。

@@ -18,14 +18,20 @@ PRESETS = {
         "daily_snapshot": "hk_all_2000_20260312_daily_final_latest",
         "instruments_file": "hk_all_instruments_20260312.parquet",
         "pit_snapshot": "hk_all_2000_2025_full_market_latest",
+        "ex_factors_snapshot": None,
+        "dividends_snapshot": None,
+        "shares_snapshot": None,
         "universe_by_date": "hk_all_full_by_date.csv",
         "universe_symbols": "hk_all_full_symbols.txt",
         "universe_meta": "hk_all_full_by_date.meta.yml",
     },
     "hk_connect": {
-        "daily_snapshot": "hk_connect_full_2000_20260311_daily_latest",
+        "daily_snapshot": "hk_all_2000_20260312_daily_final_latest",
         "instruments_file": "hk_connect_full_20260312.parquet",
-        "pit_snapshot": "hk_connect_full_2000_2025_full_latest",
+        "pit_snapshot": "hk_connect_full_2010_2025_full_latest",
+        "ex_factors_snapshot": None,
+        "dividends_snapshot": None,
+        "shares_snapshot": None,
         "universe_by_date": "hk_connect_full_by_date.csv",
         "universe_symbols": "hk_connect_full_symbols.txt",
         "universe_meta": "hk_connect_full_by_date.meta.yml",
@@ -114,6 +120,9 @@ def format_manifest(
     daily_snapshot: str,
     instruments_file: str,
     pit_snapshot: str | None,
+    ex_factors_snapshot: str | None,
+    dividends_snapshot: str | None,
+    shares_snapshot: str | None,
     universe_by_date: str,
     universe_symbols: str,
     universe_meta: str | None,
@@ -141,6 +150,30 @@ def format_manifest(
                 f"    path: {yaml_quote(f'rqdata/hk/pit_financials/{pit_snapshot}')}",
             ]
         )
+    if ex_factors_snapshot:
+        lines.extend(
+            [
+                "  ex_factors:",
+                f"    snapshot: {yaml_quote(ex_factors_snapshot)}",
+                f"    path: {yaml_quote(f'rqdata/hk/ex_factors/{ex_factors_snapshot}')}",
+            ]
+        )
+    if dividends_snapshot:
+        lines.extend(
+            [
+                "  dividends:",
+                f"    snapshot: {yaml_quote(dividends_snapshot)}",
+                f"    path: {yaml_quote(f'rqdata/hk/dividends/{dividends_snapshot}')}",
+            ]
+        )
+    if shares_snapshot:
+        lines.extend(
+            [
+                "  shares:",
+                f"    snapshot: {yaml_quote(shares_snapshot)}",
+                f"    path: {yaml_quote(f'rqdata/hk/shares/{shares_snapshot}')}",
+            ]
+        )
     lines.extend(
         [
             "  universe:",
@@ -165,10 +198,14 @@ def main() -> int:
     parser.add_argument("--overwrite", action="store_true", help="Overwrite destination.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-pit", action="store_true", help="Skip PIT assets.")
+    parser.add_argument("--no-reference", action="store_true", help="Skip reference assets (ex_factors/dividends/shares).")
     parser.add_argument("--as-of", dest="as_of", default=None)
     parser.add_argument("--daily-snapshot", default=None)
     parser.add_argument("--instruments-file", default=None)
     parser.add_argument("--pit-snapshot", default=None)
+    parser.add_argument("--ex-factors-snapshot", default=None)
+    parser.add_argument("--dividends-snapshot", default=None)
+    parser.add_argument("--shares-snapshot", default=None)
     parser.add_argument("--universe-by-date", default=None)
     parser.add_argument("--universe-symbols", default=None)
     parser.add_argument("--universe-meta", default=None)
@@ -178,6 +215,14 @@ def main() -> int:
     daily_snapshot = args.daily_snapshot or preset["daily_snapshot"]
     instruments_file = args.instruments_file or preset["instruments_file"]
     pit_snapshot = None if args.no_pit else (args.pit_snapshot or preset["pit_snapshot"])
+    if args.no_reference:
+        ex_factors_snapshot = None
+        dividends_snapshot = None
+        shares_snapshot = None
+    else:
+        ex_factors_snapshot = args.ex_factors_snapshot or preset.get("ex_factors_snapshot")
+        dividends_snapshot = args.dividends_snapshot or preset.get("dividends_snapshot")
+        shares_snapshot = args.shares_snapshot or preset.get("shares_snapshot")
     universe_by_date = args.universe_by_date or preset["universe_by_date"]
     universe_symbols = args.universe_symbols or preset["universe_symbols"]
     universe_meta = args.universe_meta if args.universe_meta is not None else preset["universe_meta"]
@@ -204,6 +249,24 @@ def main() -> int:
             ASSETS_ROOT / "rqdata" / "hk" / "pit_financials",
             pit_snapshot,
         )
+    ex_factors_dir = None
+    if ex_factors_snapshot:
+        ex_factors_dir = resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "ex_factors",
+            ex_factors_snapshot,
+        )
+    dividends_dir = None
+    if dividends_snapshot:
+        dividends_dir = resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "dividends",
+            dividends_snapshot,
+        )
+    shares_dir = None
+    if shares_snapshot:
+        shares_dir = resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "shares",
+            shares_snapshot,
+        )
     universe_root = ASSETS_ROOT / "universe"
     universe_by_date_path = resolve_snapshot_path(universe_root, universe_by_date)
     universe_symbols_path = resolve_snapshot_path(universe_root, universe_symbols)
@@ -215,6 +278,12 @@ def main() -> int:
     ensure_exists(instruments_path, "Instruments file")
     if pit_dir:
         ensure_exists(pit_dir, "PIT snapshot directory")
+    if ex_factors_dir:
+        ensure_exists(ex_factors_dir, "Ex-factors snapshot directory")
+    if dividends_dir:
+        ensure_exists(dividends_dir, "Dividends snapshot directory")
+    if shares_dir:
+        ensure_exists(shares_dir, "Shares snapshot directory")
     ensure_exists(universe_by_date_path, "Universe by-date file")
     ensure_exists(universe_symbols_path, "Universe symbols file")
     if universe_meta_path and not universe_meta_path.exists():
@@ -243,6 +312,18 @@ def main() -> int:
     if pit_dir:
         actions.append(
             ("pit_financials", pit_dir, dest / "rqdata" / "hk" / "pit_financials" / pit_dir.name)
+        )
+    if ex_factors_dir:
+        actions.append(
+            ("ex_factors", ex_factors_dir, dest / "rqdata" / "hk" / "ex_factors" / ex_factors_dir.name)
+        )
+    if dividends_dir:
+        actions.append(
+            ("dividends", dividends_dir, dest / "rqdata" / "hk" / "dividends" / dividends_dir.name)
+        )
+    if shares_dir:
+        actions.append(
+            ("shares", shares_dir, dest / "rqdata" / "hk" / "shares" / shares_dir.name)
         )
     if universe_meta_path:
         actions.append(
@@ -283,6 +364,21 @@ def main() -> int:
                     dest / "rqdata" / "hk" / "pit_financials" / pit_dir.name,
                     dest / "rqdata" / "hk" / "pit_financials" / "latest",
                 )
+            if ex_factors_dir:
+                create_relative_symlink(
+                    dest / "rqdata" / "hk" / "ex_factors" / ex_factors_dir.name,
+                    dest / "rqdata" / "hk" / "ex_factors" / "latest",
+                )
+            if dividends_dir:
+                create_relative_symlink(
+                    dest / "rqdata" / "hk" / "dividends" / dividends_dir.name,
+                    dest / "rqdata" / "hk" / "dividends" / "latest",
+                )
+            if shares_dir:
+                create_relative_symlink(
+                    dest / "rqdata" / "hk" / "shares" / shares_dir.name,
+                    dest / "rqdata" / "hk" / "shares" / "latest",
+                )
         except OSError as exc:
             print(f"Warning: could not create latest symlinks ({exc})", file=sys.stderr)
 
@@ -296,6 +392,9 @@ def main() -> int:
         daily_snapshot=daily_dir.name,
         instruments_file=instruments_path.name,
         pit_snapshot=pit_dir.name if pit_dir else None,
+        ex_factors_snapshot=ex_factors_dir.name if ex_factors_dir else None,
+        dividends_snapshot=dividends_dir.name if dividends_dir else None,
+        shares_snapshot=shares_dir.name if shares_dir else None,
         universe_by_date=universe_by_date_path.name,
         universe_symbols=universe_symbols_path.name,
         universe_meta=universe_meta_path.name if universe_meta_path else None,

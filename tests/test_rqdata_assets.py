@@ -276,6 +276,103 @@ class _FakeRQDailyMirrorClient:
         return pd.DataFrame()
 
 
+class _FakeRQExFactorClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_ex_factor(self, order_book_ids, start_date=None, end_date=None, market="hk"):
+        self.calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "start_date": start_date,
+                "end_date": end_date,
+                "market": market,
+            }
+        )
+        rows = [
+            {
+                "order_book_id": "00005.XHKG",
+                "ex_date": pd.Timestamp("2025-03-19"),
+                "announcement_date": pd.Timestamp("2025-03-10"),
+                "ex_factor": 0.98,
+                "ex_cum_factor": 1.25,
+                "ex_end_date": pd.Timestamp("2025-03-21"),
+            },
+            {
+                "order_book_id": "00005.XHKG",
+                "ex_date": pd.Timestamp("2025-09-19"),
+                "announcement_date": pd.Timestamp("2025-09-10"),
+                "ex_factor": 0.97,
+                "ex_cum_factor": 1.21,
+                "ex_end_date": pd.Timestamp("2025-09-23"),
+            },
+        ]
+        frame = pd.DataFrame(rows).set_index("ex_date")
+        frame.index.name = "ex_date"
+        return frame
+
+
+class _FakeRQDividendClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_dividend(self, order_book_ids, start_date=None, end_date=None, market="hk"):
+        self.calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "start_date": start_date,
+                "end_date": end_date,
+                "market": market,
+            }
+        )
+        return pd.DataFrame(
+            {
+                "book_closure_date": [pd.Timestamp("2025-03-24"), pd.Timestamp("2025-09-24")],
+                "ex_dividend_date": [pd.Timestamp("2025-03-19"), pd.Timestamp("2025-09-19")],
+                "payable_date": [pd.Timestamp("2025-04-10"), pd.Timestamp("2025-10-10")],
+                "dividend_cash_before_tax": [0.5, 0.6],
+                "round_lot": [400, 400],
+            },
+            index=pd.MultiIndex.from_tuples(
+                [
+                    ("00005.XHKG", pd.Timestamp("2025-03-10")),
+                    ("00005.XHKG", pd.Timestamp("2025-09-10")),
+                ],
+                names=["order_book_id", "declaration_announcement_date"],
+            ),
+        )
+
+
+class _FakeRQSharesClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_shares(self, order_book_ids, start_date=None, end_date=None, fields=None, market="hk"):
+        self.calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "start_date": start_date,
+                "end_date": end_date,
+                "fields": list(fields or []),
+                "market": market,
+            }
+        )
+        return pd.DataFrame(
+            {
+                "total": [5_000_000_000, 5_100_000_000],
+                "total_hk": [4_900_000_000, 5_000_000_000],
+                "total_hk1": [4_800_000_000, 4_900_000_000],
+            },
+            index=pd.MultiIndex.from_tuples(
+                [
+                    ("00005.XHKG", pd.Timestamp("2025-01-31")),
+                    ("00005.XHKG", pd.Timestamp("2025-06-30")),
+                ],
+                names=["order_book_id", "date"],
+            ),
+        )
+
+
 class _FlakyRQPitClient:
     def __init__(self):
         self.calls: list[dict] = []
@@ -545,6 +642,204 @@ def test_mirror_hk_daily_writes_manifest_and_assets(tmp_path, monkeypatch):
     assert manifest["totals"]["symbols_requested"] == 2
     assert manifest["totals"]["symbols_written"] == 2
     assert manifest["missing_symbols"] == []
+
+
+def test_mirror_hk_ex_factors_writes_manifest_and_assets(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FakeRQExFactorClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20251231",
+        symbol=["00005.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=5,
+        out_root="artifacts/assets/rqdata",
+        name="ex_factor_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_ex_factors(args, client) == 0
+
+    assert client.calls == [
+        {
+            "order_book_ids": ["00005.XHKG"],
+            "start_date": "20250101",
+            "end_date": "20251231",
+            "market": "hk",
+        }
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "ex_factors" / "ex_factor_demo"
+    frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert frame["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert frame["order_book_id"].tolist() == ["00005.XHKG", "00005.XHKG"]
+    assert frame["ex_factor"].tolist() == [0.98, 0.97]
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "ex_factors"
+    assert manifest["api"] == "rqdatac.get_ex_factor"
+    assert manifest["query"]["start_date"] == "20250101"
+    assert manifest["query"]["end_date"] == "20251231"
+    assert manifest["query"]["date_column"] == "ex_date"
+    assert manifest["totals"]["symbols_written"] == 1
+
+
+def test_mirror_hk_dividends_tracks_missing_symbols(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FakeRQDividendClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20251231",
+        symbol=["00005.HK", "00011.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=20,
+        out_root="artifacts/assets/rqdata",
+        name="dividend_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_dividends(args, client) == 0
+
+    assert client.calls == [
+        {
+            "order_book_ids": ["00005.XHKG", "00011.XHKG"],
+            "start_date": "20250101",
+            "end_date": "20251231",
+            "market": "hk",
+        }
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "dividends" / "dividend_demo"
+    frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert frame["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert frame["dividend_cash_before_tax"].tolist() == [0.5, 0.6]
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "dividends"
+    assert manifest["totals"]["symbols_requested"] == 2
+    assert manifest["totals"]["symbols_written"] == 1
+    assert manifest["missing_symbols"] == ["00011.HK"]
+
+
+def test_mirror_hk_shares_uses_default_fields(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FakeRQSharesClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20251231",
+        field=[],
+        fields_file=[],
+        symbol=["00005.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=5,
+        out_root="artifacts/assets/rqdata",
+        name="shares_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_shares(args, client) == 0
+
+    assert client.calls == [
+        {
+            "order_book_ids": ["00005.XHKG"],
+            "start_date": "20250101",
+            "end_date": "20251231",
+            "fields": list(rqdata_assets.DEFAULT_HK_SHARES_FIELDS),
+            "market": "hk",
+        }
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "shares" / "shares_demo"
+    frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert frame["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert frame["total_hk1"].tolist() == [4_800_000_000, 4_900_000_000]
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "shares"
+    assert manifest["query"]["fields"] == list(rqdata_assets.DEFAULT_HK_SHARES_FIELDS)
+    assert manifest["query"]["date_column"] == "date"
+    assert manifest["totals"]["symbols_written"] == 1
+
+
+def test_resolve_hk_dated_request_groups_uses_local_unique_ids(tmp_path):
+    instruments_dir = tmp_path / "rqdata" / "hk" / "instruments"
+    instruments_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "ts_code": "00013.HK",
+                "order_book_id": "00013.XHKG",
+                "unique_id": "00013_01.XHKG",
+                "listed_date": "1978-01-03",
+                "de_listed_date": "2015-06-03",
+            },
+            {
+                "ts_code": "00013.HK",
+                "order_book_id": "00013.XHKG",
+                "unique_id": "00013_02.XHKG",
+                "listed_date": "2021-06-30",
+                "de_listed_date": "0000-00-00",
+            },
+            {
+                "ts_code": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "unique_id": "00005_01.XHKG",
+                "listed_date": "1980-01-02",
+                "de_listed_date": "0000-00-00",
+            },
+        ]
+    ).to_parquet(instruments_dir / "hk_all_instruments_20260317.parquet", index=False)
+
+    groups, metadata, info = rqdata_assets._resolve_hk_dated_request_groups(
+        ["00013.HK", "00005.HK"],
+        start_date="20140101",
+        end_date="20251231",
+        out_root=str(tmp_path / "rqdata"),
+    )
+
+    assert info["mode"] == "local_hk_instruments_snapshot"
+    assert [group.ts_code for group in groups] == ["00013.HK", "00005.HK"]
+    assert groups[0].request_ids == ("00013_01.XHKG", "00013_02.XHKG")
+    assert groups[0].order_book_ids == ("00013.XHKG",)
+    assert groups[1].request_ids == ("00005_01.XHKG",)
+    assert metadata["00013_02.XHKG"]["order_book_id"] == "00013.XHKG"
+    assert metadata["00005_01.XHKG"]["unique_id"] == "00005_01.XHKG"
 
 
 def test_resolve_fields_supports_field_profile(monkeypatch):

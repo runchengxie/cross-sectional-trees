@@ -4,7 +4,7 @@
 本页不解决什么：不展开研究路线选择与参数定义。
 适合谁：准备做 HK PIT 或本地资产归档的人。
 读完你会得到什么：一条可执行的数据准备顺序与资产关系说明。
-相关页面：`docs/playbooks/hk-selected.md`、`docs/playbooks/research-template-design.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`
+相关页面：`docs/playbooks/hk-selected.md`、`docs/playbooks/hk-rqdata-status.md`、`docs/playbooks/research-template-design.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`
 
 任务摘要：先有股票池与 instrument，再落地日线与 PIT 资产，最后构建平面 fundamentals 与备份。
 
@@ -17,6 +17,7 @@
 * 股票池使用港股通 PIT universe
 
 如果你还没选好研究路线，先看 [hk-selected.md](./hk-selected.md)。
+如果你想先确认“哪些 HK RQData 接口已经接了、哪些本地已经有资产、哪些今天还能下”，继续看 [hk-rqdata-status.md](./hk-rqdata-status.md)。
 如果你在判断该不该新建模板，继续看 [research-template-design.md](./research-template-design.md)。
 
 ## 1. 先分清几层数据
@@ -28,6 +29,7 @@
 | instrument 快照 | `csml rqdata export-hk-instruments` | `artifacts/assets/rqdata/hk/instruments/` | 保留 `listed_date`、`de_listed_date`、`round_lot` 等元数据 |
 | 日线缓存 | pipeline 首次拉取时自动写入 | `artifacts/cache/hk_rqdata_daily_<ts_code>.parquet` | 保留按 symbol 分开的日频行情缓存 |
 | PIT 财务镜像 | `csml rqdata mirror-hk-pit-financials` | `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/` | 保留按 symbol 分开的原始 PIT 财务资产 |
+| 参考数据镜像 | `csml rqdata mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 保留复权、分红和股本原料，给后续派生研究使用 |
 | 平面 fundamentals 文件 | `csml rqdata build-hk-pit-fundamentals` | `<pit_snapshot>/pipeline_fundamentals.parquet` | 给 pipeline 直接读取的财务文件 |
 | 本地快照备份 | `csml backup-data` | `artifacts/snapshots/<name>/` | 把缓存、股票池和配置一起归档 |
 
@@ -39,8 +41,9 @@
 2. 再导出一份 HK instrument 快照。
 3. 如果你要跑研究或做持仓回溯，再让 pipeline 把日线缓存落到 `artifacts/cache/`。
 4. 如果你要做 PIT 财报研究，再镜像 `pit_financials`。
-5. 用 `build-hk-pit-fundamentals` 生成研究用平面文件。
-6. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
+5. 如果你要保留复权、分红和股本原料，再镜像 `ex_factors`、`dividends` 和 `shares`。
+6. 用 `build-hk-pit-fundamentals` 生成研究用平面文件。
+7. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
 
 ## 3. 股票池与下载历史的关系和处理
 
@@ -156,6 +159,38 @@ csml rqdata mirror-hk-pit-financials \
 * 如果 hit quota，中断后可以继续 `--resume`。
 * 当前这套 HK PIT 财务镜像实测最早返回到 `2000q4`，不是连续从 `2000q1` 开始。
 
+如果你的目标是把总回报、市值或股息相关原料也一并冻住，推荐在 PIT 之后顺手补三类轻量资产：
+
+```bash
+csml rqdata mirror-hk-ex-factors \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260317 \
+  --name hk_connect_ex_factors_latest \
+  --resume
+
+csml rqdata mirror-hk-dividends \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260317 \
+  --name hk_connect_dividends_latest \
+  --resume
+
+csml rqdata mirror-hk-shares \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260317 \
+  --name hk_connect_shares_latest \
+  --resume
+```
+
+补充：
+
+* 这三类参考数据主要用于离线归档和后续派生，不会被 pipeline 自动直读。
+* `mirror-hk-shares` 默认会拉一组常用股本字段；如需额外列，再补 `--field` / `--fields-file`。
+* 这三类命令会优先复用 `artifacts/assets/rqdata/hk/instruments/` 下最近的 HK instruments 快照来解析 `unique_id`，所以先准备 instrument 快照更稳。
+* 如果你在试用期内赶时间，优先级仍然低于 instrument、日线和 PIT core。
+
 ## 6. 平面 fundamentals 文件怎么生成
 
 镜像目录准备好后，再执行：
@@ -249,6 +284,24 @@ python3 scripts/package_assets.py \
 * `--preset hk_full`：全市场口径，包含日线、instrument、PIT 与 universe 资产。
 * `--mode copy`：生成独立可搬运目录；本机调试时也可以用 `--mode symlink`。
 * bundle 内会写 `manifest.yml`，并为关键入口生成 `latest` 软链接，方便配置引用。
+
+如果你也想把复权、分红和股本原料一起打进去，可以再补这几个参数：
+
+```bash
+python3 scripts/package_assets.py \
+  --preset hk_connect \
+  --ex-factors-snapshot hk_connect_full_2010_20260317_ex_factors_latest \
+  --dividends-snapshot hk_connect_full_2010_20260317_dividends_latest \
+  --shares-snapshot hk_connect_full_2010_20260317_shares_latest \
+  --dest /home/richard/code/csml_assets/hk_connect_ref_20260317 \
+  --mode copy \
+  --overwrite
+```
+
+补充：
+
+* 不传这些参数时，bundle 只包含日线、instrument、PIT 和 universe。
+* 传了 reference snapshot 后，bundle 会额外生成 `rqdata/hk/ex_factors/latest`、`rqdata/hk/dividends/latest` 和 `rqdata/hk/shares/latest` 入口。
 
 在其他项目里使用有两种常见方式：
 

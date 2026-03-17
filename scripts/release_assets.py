@@ -71,6 +71,9 @@ def _format_readme(bundle_dir: Path, manifest: dict) -> str:
     daily_snapshot = _manifest_value(manifest, "assets", "daily", "snapshot")
     instruments_file = _manifest_value(manifest, "assets", "instruments", "file")
     pit_snapshot = _manifest_value(manifest, "assets", "pit_financials", "snapshot")
+    ex_factors_snapshot = _manifest_value(manifest, "assets", "ex_factors", "snapshot")
+    dividends_snapshot = _manifest_value(manifest, "assets", "dividends", "snapshot")
+    shares_snapshot = _manifest_value(manifest, "assets", "shares", "snapshot")
     universe_by_date = _manifest_value(manifest, "assets", "universe", "by_date")
     universe_symbols = _manifest_value(manifest, "assets", "universe", "symbols")
     universe_meta = _manifest_value(manifest, "assets", "universe", "meta")
@@ -95,6 +98,12 @@ def _format_readme(bundle_dir: Path, manifest: dict) -> str:
         lines.append(f"- rqdata/hk/instruments/{instruments_file}")
     if pit_snapshot:
         lines.append(f"- rqdata/hk/pit_financials/{pit_snapshot}/")
+    if ex_factors_snapshot:
+        lines.append(f"- rqdata/hk/ex_factors/{ex_factors_snapshot}/")
+    if dividends_snapshot:
+        lines.append(f"- rqdata/hk/dividends/{dividends_snapshot}/")
+    if shares_snapshot:
+        lines.append(f"- rqdata/hk/shares/{shares_snapshot}/")
     if universe_by_date:
         lines.append(f"- universe/{universe_by_date}")
     if universe_symbols:
@@ -114,6 +123,12 @@ def _format_readme(bundle_dir: Path, manifest: dict) -> str:
     )
     if pit_snapshot:
         lines.append("- rqdata/hk/pit_financials/latest")
+    if ex_factors_snapshot:
+        lines.append("- rqdata/hk/ex_factors/latest")
+    if dividends_snapshot:
+        lines.append("- rqdata/hk/dividends/latest")
+    if shares_snapshot:
+        lines.append("- rqdata/hk/shares/latest")
     if universe_meta:
         lines.append("- universe/latest_meta.yml")
 
@@ -143,6 +158,9 @@ def _format_release_notes(bundle_dir: Path, manifest: dict) -> str:
     daily_snapshot = _manifest_value(manifest, "assets", "daily", "snapshot")
     instruments_file = _manifest_value(manifest, "assets", "instruments", "file")
     pit_snapshot = _manifest_value(manifest, "assets", "pit_financials", "snapshot")
+    ex_factors_snapshot = _manifest_value(manifest, "assets", "ex_factors", "snapshot")
+    dividends_snapshot = _manifest_value(manifest, "assets", "dividends", "snapshot")
+    shares_snapshot = _manifest_value(manifest, "assets", "shares", "snapshot")
     universe_by_date = _manifest_value(manifest, "assets", "universe", "by_date")
     universe_symbols = _manifest_value(manifest, "assets", "universe", "symbols")
     universe_meta = _manifest_value(manifest, "assets", "universe", "meta")
@@ -153,6 +171,12 @@ def _format_release_notes(bundle_dir: Path, manifest: dict) -> str:
         lines.append(f"- instruments: {instruments_file}")
     if pit_snapshot:
         lines.append(f"- pit_financials: {pit_snapshot}")
+    if ex_factors_snapshot:
+        lines.append(f"- ex_factors: {ex_factors_snapshot}")
+    if dividends_snapshot:
+        lines.append(f"- dividends: {dividends_snapshot}")
+    if shares_snapshot:
+        lines.append(f"- shares: {shares_snapshot}")
     if universe_by_date:
         lines.append(f"- universe by_date: {universe_by_date}")
     if universe_symbols:
