@@ -8,7 +8,7 @@
 
 最后核对时间：`2026-03-18`（Asia/Shanghai）  
 核对环境：当前仓库工作区 + 当前这台机器上的 RQData 试用账号  
-当日 quota 快照：`TRIAL`，`remaining_days=9`，`bytes_used=3.21 MB / 1.00 GB`
+当日 quota 快照：`TRIAL`，`remaining_days=9`，`bytes_used=5.23 MB / 1.00 GB`
 
 ## 先看结论
 
@@ -20,6 +20,9 @@
 * `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_latest/`
 * `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/`
 * `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2010_2025_full_latest/`
+* `artifacts/assets/rqdata/hk/ex_factors/hk_connect_full_2010_20260318_ex_factors_latest/`
+* `artifacts/assets/rqdata/hk/dividends/hk_connect_full_2010_20260318_dividends_latest/`
+* `artifacts/assets/rqdata/hk/shares/hk_connect_full_2010_20260318_shares_latest/`
 * `artifacts/assets/universe/hk_connect_full_by_date.csv`
 * `artifacts/assets/universe/hk_all_full_by_date.csv`
 
@@ -32,11 +35,14 @@
 * `csml rqdata mirror-hk-dividends`
 * `csml rqdata mirror-hk-shares`
 
-当前最值得继续补全量的仍然是：
+这轮已经补齐的 reference snapshot：
 
 * `get_ex_factor`
+  `930` 个请求 symbol 中写入 `766` 个，`missing_remote=164`，`failed=0`
 * `get_dividend`
+  `930` 个请求 symbol 中写入 `728` 个，`missing_remote=202`，`failed=0`
 * `get_shares`
+  `930` 个请求 symbol 中写入 `907` 个，`missing_remote=23`，`failed=0`
 
 当前不建议当作“已打通”的：
 
@@ -86,15 +92,15 @@ HK 这条链路里，三个 ID 不能混：
 | --- | --- | --- | --- | --- |
 | `all_instruments` | 已接，`csml rqdata export-hk-instruments` | 已有稳定资产 | `ok`，`3453` 行，约 `0.55s` | 现在是 HK symbol 映射主数据源。 |
 | `instruments` | 无单独镜像命令 | 间接覆盖，大部分常用字段已在 instrument 快照里 | `ok`，单 symbol 约 `0.39s` | 需要补少量明细字段时可直接调用。 |
-| `get_ex_factor` | 已接，`mirror-hk-ex-factors` | 只有 probe 资产，暂无全量 snapshot | CLI probe `ok`，`4` 行 | 2026-03-17 旧 probe 曾超时；2026-03-18 复测已打通。 |
+| `get_ex_factor` | 已接，`mirror-hk-ex-factors` | 已有稳定 snapshot | CLI probe `ok`，全量 snapshot `completed` | `930` 请求，`766` 写入，`164` `missing_remote`，`0` failed。 |
 | `get_exchange_rate` | 未接入 | 无 | 未验证 | 只有做跨币种标准化时才值得补。 |
-| `get_shares` | 已接，`mirror-hk-shares` | 只有 probe 资产，暂无全量 snapshot | raw probe `ok`，CLI probe `ok` | 这条已经可扩成全量下载。 |
+| `get_shares` | 已接，`mirror-hk-shares` | 已有稳定 snapshot | raw probe `ok`，全量 snapshot `completed` | `930` 请求，`907` 写入，`23` `missing_remote`，`0` failed。 |
 | `get_industry` | 未接入 | 无 | 未验证 | 次优先级。 |
 | `get_industry_change` | 未接入 | 无 | 未验证 | 如果做行业归属回放再补。 |
 | `get_instrument_industry` | 未接入 | 无 | 未验证 | 同上。 |
 | `get_industry_mapping` | 未接入 | 无 | 未验证 | 更像字典表。 |
 | `get_turnover_rate` | 未接入 | 无 | 未验证 | 当前日线里已有 `total_turnover`，先不急。 |
-| `get_dividend` | 已接，`mirror-hk-dividends` | 只有 probe 资产，暂无全量 snapshot | CLI probe `ok`，`4` 行 | 2026-03-17 旧 probe 超时；2026-03-18 复测已打通。 |
+| `get_dividend` | 已接，`mirror-hk-dividends` | 已有稳定 snapshot | CLI probe `ok`，全量 snapshot `completed` | `930` 请求，`728` 写入，`202` `missing_remote`，`0` failed。 |
 | `hk.get_southbound_eligible_secs` | 无原始镜像命令，但 `csml universe hk-connect` 已使用 | 已有稳定 universe 资产 | raw probe `ok`，`613` 个 symbol，约 `0.64s` | 当前研究层面已经够用，暂不急着再做 raw mirror。 |
 
 ## 行情
@@ -151,14 +157,14 @@ HK 这条链路里，三个 ID 不能混：
 
 推荐按这个顺序继续：
 
-1. 不动 `daily`、`pit_financials`、`instruments` 这三条主线，它们已经是稳定资产。
-2. 把 `ex_factors`、`dividends`、`shares` 从单 symbol probe 扩成 `hk_connect_full_by_date.csv` 范围的正式 snapshot。
+1. 不动 `daily`、`pit_financials`、`instruments`、`ex_factors`、`dividends`、`shares` 这六条主线，它们现在都已有稳定资产。
+2. 优先做打包，把这三类 reference snapshot 挂进 `hk_connect` bundle，避免后续机器切换时重复下载。
 3. `financial_details` 先不要全量跑。先再找 1 到 3 个确定有值的 field/sample 验证出“哪种查询能稳定出行”。
 4. `exchange_rate`、行业、公告、`factor_names` 保持未接入，等研究真正需要再升格。
 
 ## 正式全量下载命令
 
-下面这组命令就是当前建议直接采用的正式 snapshot 命名。
+下面这组命令已经在当前机器上成功执行完，对应 snapshot 已落盘。保留在这里主要是为了复跑和 `--resume`。
 
 命名约定：
 

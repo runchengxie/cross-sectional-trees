@@ -299,6 +299,20 @@ def _handle_rqdata_mirror_hk_shares(args) -> int:
     return rqdata_assets.mirror_hk_shares(args, rqdatac)
 
 
+def _handle_rqdata_mirror_hk_instrument_industry(args) -> int:
+    from .data_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_instrument_industry(args, rqdatac)
+
+
+def _handle_rqdata_mirror_hk_industry_changes(args) -> int:
+    from .data_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_industry_changes(args, rqdatac)
+
+
 def _handle_rqdata_build_hk_pit_fundamentals(args) -> int:
     from .data_tools import rqdata_assets
 
@@ -633,6 +647,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_shares_mirror_args(rq_shares)
     rq_shares.set_defaults(func=_handle_rqdata_mirror_hk_shares)
+
+    rq_instrument_industry = rq_sub.add_parser(
+        "mirror-hk-instrument-industry",
+        help="Mirror HK instrument-industry snapshots into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_instrument_industry_mirror_args(rq_instrument_industry)
+    rq_instrument_industry.set_defaults(func=_handle_rqdata_mirror_hk_instrument_industry)
+
+    rq_industry_changes = rq_sub.add_parser(
+        "mirror-hk-industry-changes",
+        help="Mirror HK industry membership intervals into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_industry_changes_mirror_args(rq_industry_changes)
+    rq_industry_changes.set_defaults(func=_handle_rqdata_mirror_hk_industry_changes)
 
     rq_pit_fundamentals = rq_sub.add_parser(
         "build-hk-pit-fundamentals",

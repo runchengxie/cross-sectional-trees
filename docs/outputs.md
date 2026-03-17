@@ -42,8 +42,10 @@ artifacts/
 * `ex_factors`
 * `dividends`
 * `shares`
+* `instrument_industry`
+* `industry_changes`
 
-这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends` 和 `csml rqdata mirror-hk-shares` 生成。
+这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
 如果你继续执行 `csml rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
 
 ## RQData 资产镜像目录
@@ -69,6 +71,8 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * `fields.txt`：本次拉取的字段名清单。
 * `symbols.txt`：本次拉取的 symbol 清单。
 * `data/<ts_code>.parquet`：按 symbol 分开的原始镜像文件。
+* `dates.txt`：仅 `instrument_industry` 会写，表示本次行业快照实际查询的日期列表。
+* `industries.txt` / `industry_catalog.parquet`：仅 `industry_changes` 会写，表示本次枚举的行业代码和映射表。
 
 字段约定：
 
@@ -78,6 +82,8 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * `ex_factors` 保留 `rqdatac.get_ex_factor` 返回的字段名，并额外写入 `ts_code`。
 * `dividends` 保留 `rqdatac.get_dividend` 返回的字段名，并额外写入 `ts_code`、`order_book_id`。
 * `shares` 保留 `rqdatac.get_shares` 返回的字段名，并额外写入 `ts_code`、`order_book_id`。
+* `instrument_industry` 保留 `rqdatac.get_instrument_industry` 返回的行业列，并额外写入 `ts_code`、`order_book_id`、`date`。
+* `industry_changes` 保留 `start_date` / `cancel_date`，并额外写入 `ts_code`、`order_book_id`、`industry_code`、`industry_name`、`industry_level`、`industry_source` 和完整行业层级列。
 
 补充：
 

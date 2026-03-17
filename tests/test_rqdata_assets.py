@@ -373,6 +373,104 @@ class _FakeRQSharesClient:
         )
 
 
+class _FakeRQIndustryClient:
+    def __init__(self):
+        self.instrument_calls: list[dict] = []
+        self.mapping_calls: list[dict] = []
+        self.change_calls: list[dict] = []
+
+    def get_instrument_industry(self, order_book_ids, source="citics_2019", level=1, date=None, market="hk"):
+        self.instrument_calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "source": source,
+                "level": level,
+                "date": date,
+                "market": market,
+            }
+        )
+        rows: list[dict] = []
+        index: list[str] = []
+        for order_book_id in order_book_ids:
+            if order_book_id == "00005.XHKG":
+                rows.append(
+                    {
+                        "first_industry_code": "40",
+                        "first_industry_name": "银行",
+                        "second_industry_code": "4020",
+                        "second_industry_name": "全国性股份制银行Ⅱ",
+                        "third_industry_code": "402010",
+                        "third_industry_name": "全国性股份制银行Ⅲ",
+                    }
+                )
+                index.append(order_book_id)
+            elif order_book_id == "00700.XHKG":
+                rows.append(
+                    {
+                        "first_industry_code": "63",
+                        "first_industry_name": "传媒",
+                        "second_industry_code": "6340",
+                        "second_industry_name": "互联网媒体",
+                        "third_industry_code": "634020",
+                        "third_industry_name": "社交与互动媒体",
+                    }
+                )
+                index.append(order_book_id)
+        if not rows:
+            return pd.DataFrame()
+        return pd.DataFrame(rows, index=pd.Index(index, name="order_book_id"))
+
+    def get_industry_mapping(self, source="citics_2019", date=None, market="hk"):
+        self.mapping_calls.append({"source": source, "date": date, "market": market})
+        return pd.DataFrame(
+            [
+                {
+                    "first_industry_code": "40",
+                    "first_industry_name": "银行",
+                    "second_industry_code": "4020",
+                    "second_industry_name": "全国性股份制银行Ⅱ",
+                    "third_industry_code": "402010",
+                    "third_industry_name": "全国性股份制银行Ⅲ",
+                },
+                {
+                    "first_industry_code": "63",
+                    "first_industry_name": "传媒",
+                    "second_industry_code": "6340",
+                    "second_industry_name": "互联网媒体",
+                    "third_industry_code": "634020",
+                    "third_industry_name": "社交与互动媒体",
+                },
+            ]
+        )
+
+    def get_industry_change(self, industry, source="citics_2019", level=None, market="hk"):
+        self.change_calls.append(
+            {
+                "industry": industry,
+                "source": source,
+                "level": level,
+                "market": market,
+            }
+        )
+        if industry == "40":
+            return pd.DataFrame(
+                {
+                    "start_date": [pd.Timestamp("2000-01-03")],
+                    "cancel_date": [pd.Timestamp("2200-12-31")],
+                },
+                index=pd.Index(["00005.XHKG"], name="order_book_id"),
+            )
+        if industry == "63":
+            return pd.DataFrame(
+                {
+                    "start_date": [pd.Timestamp("2004-06-16")],
+                    "cancel_date": [pd.Timestamp("2200-12-31")],
+                },
+                index=pd.Index(["00700.XHKG"], name="order_book_id"),
+            )
+        return pd.DataFrame()
+
+
 class _FlakyRQPitClient:
     def __init__(self):
         self.calls: list[dict] = []
@@ -795,6 +893,141 @@ def test_mirror_hk_shares_uses_default_fields(tmp_path, monkeypatch):
     assert manifest["query"]["fields"] == list(rqdata_assets.DEFAULT_HK_SHARES_FIELDS)
     assert manifest["query"]["date_column"] == "date"
     assert manifest["totals"]["symbols_written"] == 1
+
+
+def test_mirror_hk_instrument_industry_writes_snapshot_assets(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+    (repo_root / "artifacts" / "assets" / "universe").mkdir(parents=True)
+    (repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_by_date.csv").write_text(
+        "\n".join(
+            [
+                "trade_date,ts_code,selected",
+                "20250131,00005.HK,1",
+                "20250131,00700.HK,1",
+                "20250228,00005.HK,1",
+                "20250228,00700.HK,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    client = _FakeRQIndustryClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20250228",
+        symbol=[],
+        symbols_file=None,
+        by_date_file="artifacts/assets/universe/hk_connect_full_by_date.csv",
+        limit=None,
+        batch_size=20,
+        out_root="artifacts/assets/rqdata",
+        name="industry_snapshot_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+        source="citics_2019",
+        level="0",
+        rebalance_frequency="M",
+    )
+
+    assert rqdata_assets.mirror_hk_instrument_industry(args, client) == 0
+
+    assert client.instrument_calls == [
+        {
+            "order_book_ids": ["00005.XHKG", "00700.XHKG"],
+            "source": "citics_2019",
+            "level": 0,
+            "date": "20250131",
+            "market": "hk",
+        },
+        {
+            "order_book_ids": ["00005.XHKG", "00700.XHKG"],
+            "source": "citics_2019",
+            "level": 0,
+            "date": "20250228",
+            "market": "hk",
+        },
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instrument_industry" / "industry_snapshot_demo"
+    frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert frame["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert frame["date"].dt.strftime("%Y%m%d").tolist() == ["20250131", "20250228"]
+    assert frame["first_industry_name"].tolist() == ["银行", "银行"]
+    assert (output_dir / "dates.txt").read_text(encoding="utf-8") == "20250131\n20250228\n"
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "instrument_industry"
+    assert manifest["api"] == "rqdatac.get_instrument_industry"
+    assert manifest["query"]["source"] == "citics_2019"
+    assert manifest["query"]["level"] == 0
+    assert manifest["query"]["rebalance_frequency"] == "M"
+    assert manifest["totals"]["symbols_written"] == 2
+
+
+def test_mirror_hk_industry_changes_writes_symbol_assets(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FakeRQIndustryClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20251231",
+        symbol=["00005.HK", "00700.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=20,
+        out_root="artifacts/assets/rqdata",
+        name="industry_changes_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+        source="citics_2019",
+        level="1",
+        mapping_date="20251231",
+    )
+
+    assert rqdata_assets.mirror_hk_industry_changes(args, client) == 0
+
+    assert client.mapping_calls == [
+        {"source": "citics_2019", "date": "20251231", "market": "hk"}
+    ]
+    assert client.change_calls == [
+        {"industry": "40", "source": "citics_2019", "level": 1, "market": "hk"},
+        {"industry": "63", "source": "citics_2019", "level": 1, "market": "hk"},
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "industry_changes" / "industry_changes_demo"
+    frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert frame["ts_code"].tolist() == ["00005.HK"]
+    assert frame["industry_code"].tolist() == ["40"]
+    assert frame["industry_name"].tolist() == ["银行"]
+    assert frame["cancel_date"].dt.strftime("%Y%m%d").tolist() == ["22001231"]
+    assert (output_dir / "industries.txt").read_text(encoding="utf-8") == "40\n63\n"
+    assert (output_dir / "industry_catalog.parquet").exists()
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "industry_changes"
+    assert manifest["api"] == "rqdatac.get_industry_change"
+    assert manifest["query"]["source"] == "citics_2019"
+    assert manifest["query"]["level"] == 1
+    assert manifest["query"]["mapping_date"] == "20251231"
+    assert manifest["totals"]["symbols_written"] == 2
 
 
 def test_resolve_hk_dated_request_groups_uses_local_unique_ids(tmp_path):

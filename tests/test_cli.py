@@ -370,6 +370,56 @@ def test_append_passthrough_strips_leading_separator():
     assert shares.name == "shares_demo"
     assert callable(shares.func)
 
+    instrument_industry = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-instrument-industry",
+            "--by-date-file",
+            "artifacts/assets/universe/hk_connect_full_by_date.csv",
+            "--start-date",
+            "20250101",
+            "--end-date",
+            "20251231",
+            "--level",
+            "0",
+            "--rebalance-frequency",
+            "M",
+        ]
+    )
+    assert instrument_industry.command == "rqdata"
+    assert instrument_industry.rq_command == "mirror-hk-instrument-industry"
+    assert instrument_industry.by_date_file == "artifacts/assets/universe/hk_connect_full_by_date.csv"
+    assert instrument_industry.start_date == "20250101"
+    assert instrument_industry.end_date == "20251231"
+    assert instrument_industry.level == "0"
+    assert instrument_industry.rebalance_frequency == "M"
+    assert callable(instrument_industry.func)
+
+    industry_changes = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-industry-changes",
+            "--symbol",
+            "00005.HK",
+            "--start-date",
+            "20250101",
+            "--end-date",
+            "20251231",
+            "--level",
+            "1",
+            "--mapping-date",
+            "20251231",
+        ]
+    )
+    assert industry_changes.command == "rqdata"
+    assert industry_changes.rq_command == "mirror-hk-industry-changes"
+    assert industry_changes.symbol == ["00005.HK"]
+    assert industry_changes.start_date == "20250101"
+    assert industry_changes.end_date == "20251231"
+    assert industry_changes.level == "1"
+    assert industry_changes.mapping_date == "20251231"
+    assert callable(industry_changes.func)
+
     pit_fundamentals = parser.parse_args(
         [
             "rqdata",

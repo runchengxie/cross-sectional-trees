@@ -206,6 +206,22 @@ csml rqdata mirror-hk-dividends --by-date-file artifacts/assets/universe/hk_conn
 csml rqdata mirror-hk-shares --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_shares_latest
 ```
 
+### csml rqdata mirror-hk-instrument-industry
+
+拉取港股股票在若干快照日期上的行业分类。
+
+```bash
+csml rqdata mirror-hk-instrument-industry --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260318 --level 0 --rebalance-frequency M --name hk_connect_instrument_industry_latest
+```
+
+### csml rqdata mirror-hk-industry-changes
+
+拉取港股行业纳入剔除区间，并按 symbol 落盘。
+
+```bash
+csml rqdata mirror-hk-industry-changes --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260318 --level 1 --mapping-date 20260318 --name hk_connect_industry_changes_latest
+```
+
 ### csml rqdata build-hk-pit-fundamentals
 
 构建 pipeline 可读的基本面文件。
