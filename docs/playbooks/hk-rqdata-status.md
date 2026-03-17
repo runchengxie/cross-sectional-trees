@@ -156,6 +156,96 @@ HK 这条链路里，三个 ID 不能混：
 3. `financial_details` 先不要全量跑。先再找 1 到 3 个确定有值的 field/sample 验证出“哪种查询能稳定出行”。
 4. `exchange_rate`、行业、公告、`factor_names` 保持未接入，等研究真正需要再升格。
 
+## 正式全量下载命令
+
+下面这组命令就是当前建议直接采用的正式 snapshot 命名。
+
+命名约定：
+
+* universe 固定用 `hk_connect_full_by_date.csv`
+* reference 数据统一回溯到 `20100101`
+* 本轮快照日期固定写成 `20260318`
+* 中断后直接用同一条命令重跑，保留 `--resume`
+
+建议执行顺序：
+
+1. `ex_factors`
+2. `dividends`
+3. `shares`
+4. 全部完成后再打包
+
+### 1. Ex Factors
+
+```bash
+csml rqdata mirror-hk-ex-factors \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260318 \
+  --batch-size 10 \
+  --name hk_connect_full_2010_20260318_ex_factors_latest \
+  --resume
+```
+
+### 2. Dividends
+
+```bash
+csml rqdata mirror-hk-dividends \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260318 \
+  --batch-size 10 \
+  --name hk_connect_full_2010_20260318_dividends_latest \
+  --resume
+```
+
+### 3. Shares
+
+`shares` 通常比前两类更重一点，先用更小的 `batch-size`。
+
+```bash
+csml rqdata mirror-hk-shares \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260318 \
+  --batch-size 5 \
+  --name hk_connect_full_2010_20260318_shares_latest \
+  --resume
+```
+
+### 4. 打包
+
+三类 reference snapshot 都完成后，再把它们挂进 `hk_connect` bundle：
+
+```bash
+python3 scripts/package_assets.py \
+  --preset hk_connect \
+  --dest ../csml_assets/hk_connect_20260318 \
+  --mode copy \
+  --overwrite \
+  --ex-factors-snapshot hk_connect_full_2010_20260318_ex_factors_latest \
+  --dividends-snapshot hk_connect_full_2010_20260318_dividends_latest \
+  --shares-snapshot hk_connect_full_2010_20260318_shares_latest
+```
+
+如果你只想先验证 bundle manifest，而不真正复制文件：
+
+```bash
+python3 scripts/package_assets.py \
+  --preset hk_connect \
+  --dest /tmp/hk_connect_20260318_bundle_probe \
+  --mode copy \
+  --dry-run \
+  --ex-factors-snapshot hk_connect_full_2010_20260318_ex_factors_latest \
+  --dividends-snapshot hk_connect_full_2010_20260318_dividends_latest \
+  --shares-snapshot hk_connect_full_2010_20260318_shares_latest
+```
+
+执行时的最小检查点：
+
+* 每跑完一条先看 `manifest.yml`
+* 重点看 `totals.symbols_written`、`symbols_failed`、`symbols_missing_remote`
+* 中断或 hit quota 时，不改 `--name`，直接原命令 `--resume`
+
 ## 如何刷新这页
 
 最小检查顺序：
