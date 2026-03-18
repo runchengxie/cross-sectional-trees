@@ -33,6 +33,8 @@
   全市场 `industry_changes` 和月频、季频 `instrument_industry` 已经落盘
 * `universe`
   `artifacts/assets/universe/hk_connect_full_by_date.csv`
+  `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
+  `artifacts/assets/universe/hk_connect_full_research_symbols.txt`
   `artifacts/assets/universe/hk_all_full_by_date.csv`
 * `bundles / backup`
   `artifacts/snapshots/bundles/hk_full_ref_20260318/`
@@ -56,6 +58,10 @@
   当前全市场 instruments alias，指向 `hk_all_instruments_20260318.parquet`
 * `artifacts/assets/rqdata/hk/instruments/hk_connect_full_latest.parquet`
   当前 `hk_connect` instruments alias，指向 `hk_connect_full_20260318.parquet`
+* `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
+  当前 `hk_connect` 的 research-ready PIT universe，已在 `2026-03-18` 重建并对齐到 `2026-03-17`
+* `artifacts/assets/universe/hk_connect_full_research_symbols.txt`
+  当前 `hk_connect` 的 research-ready PIT symbol 集合，对应 `622` 个 symbol
 * `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_core_2024_2025_latest/`
   当前保留的 `financial_details` 有效 probe，只用于验证接口行为和资产结构
 
@@ -91,6 +97,7 @@
 * 当前全市场日线 snapshot 覆盖 `3203` 个 symbol，日期范围是 `2000-01-04` 到 `2026-03-11`。
 * `hk_connect` 的独立日线 snapshot 也保留了，但属于兼容资产，不再是默认入口。
 * `hk_connect_full_by_date.csv` 已在 `2026-03-18` 刷新到最近完整交易日 `2026-03-17`。
+* `hk_connect_full_research_by_date.csv` 也已在 `2026-03-18` 重新派生，当前覆盖 `622` 个带 PIT fundamentals 的 symbol。
 
 ## 财务
 
