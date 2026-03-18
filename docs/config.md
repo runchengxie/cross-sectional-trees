@@ -204,7 +204,7 @@ fundamentals:
       - pb_ratio_ttm
     column_map:
       trade_date: trade_date
-      ts_code: ts_code
+      symbol: ts_code
       market_cap: hk_total_market_val
       pe_ttm: pe_ratio_ttm
       pb: pb_ratio_ttm
@@ -219,8 +219,9 @@ fundamentals:
 约定：
 
 - `provider_overlay` 目前只支持 `source=provider`。
-- 主 `fundamentals.file` 仍按原逻辑做按 `ts_code` 的 `ffill`，适合 PIT 财报。
-- `provider_overlay` 按 `trade_date + ts_code` 精确并到 daily panel，不做额外 `ffill`。
+- 研究主链路内部以 `symbol` 为 canonical 标的列；旧配置里的 `column_map.ts_code` 仍然兼容。
+- 主 `fundamentals.file` 仍按原逻辑做按 `symbol` 的 `ffill`，适合 PIT 财报。
+- `provider_overlay` 按 `trade_date + symbol` 精确并到 daily panel，不做额外 `ffill`。
 - 如果 overlay 数据里没有 `valuation_trade_date`，pipeline 会把 provider 行本身的 `trade_date` 记为 `valuation_trade_date`，并在需要时计算 `valuation_age_days`。
 - `log_market_cap` 仍由顶层 `fundamentals.log_market_cap` 控制；只要 panel 里出现了 `market_cap`，就可以派生 `log_mcap`。
 
@@ -245,7 +246,7 @@ industry:
 约定：
 
 - `industry` 目前只支持 `source=file`。
-- join 主键固定是 `trade_date + ts_code`。
+- join 主键固定是 `trade_date + symbol`；旧文件里的 `ts_code` / `stock_ticker` / `order_book_id` 会自动兼容。
 - 如果 `keep_columns` 为空，默认保留文件里的全部非主键列。
 - 这些行业列不会自动加入模型 `features`，但会保留在 `dataset.parquet`、`eval_scored.parquet`，也可以直接被 `eval.bucket_ic.schemes` 引用。
 - 这条链路只负责把行业标签接进 panel；自动行业中性化或行业约束还需要你在后续研究逻辑里显式实现。

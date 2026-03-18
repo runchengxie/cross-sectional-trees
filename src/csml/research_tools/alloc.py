@@ -388,7 +388,7 @@ def _prepare_selection(
         prepared = prepared[prepared["side"] == side].copy()
     if prepared.empty:
         raise SystemExit(f"No holdings available for --side={side}.")
-    prepared.sort_values(["side", "rank", "ts_code"], inplace=True, na_position="last")
+    prepared.sort_values(["side", "rank", "symbol"], inplace=True, na_position="last")
     prepared = prepared.head(top_n).copy()
     if prepared.empty:
         raise SystemExit("No holdings available after --top-n filtering.")
@@ -401,7 +401,7 @@ def _allocate_equal_weight(
     *,
     cash: float,
     buffer_bps: float,
-    ts_to_order_book_id: dict[str, str],
+    symbol_to_order_book_id: dict[str, str],
     price_map: dict[str, float],
     lot_map: dict[str, int],
 ) -> tuple[pd.DataFrame, float, float, float]:
@@ -412,8 +412,8 @@ def _allocate_equal_weight(
 
     rows: list[dict] = []
     for _, row in selection.iterrows():
-        ts_code = str(row["ts_code"])
-        order_book_id = ts_to_order_book_id[ts_code]
+        symbol = str(row["symbol"])
+        order_book_id = symbol_to_order_book_id[symbol]
         price = float(price_map[order_book_id])
         round_lot = max(1, int(lot_map.get(order_book_id, 1)))
         lot_cost = price * round_lot
@@ -423,8 +423,9 @@ def _allocate_equal_weight(
         rank_value = row.get("rank")
         rows.append(
             {
-                "ts_code": ts_code,
-                "stock_ticker": ts_code,
+                "symbol": symbol,
+                "ts_code": symbol,
+                "stock_ticker": symbol,
                 "order_book_id": order_book_id,
                 "side": str(row.get("side", "long")),
                 "rank": int(rank_value) if pd.notna(rank_value) else None,
@@ -645,7 +646,7 @@ def main(argv: list[str] | None = None) -> None:
             )
 
     prepared = _prepare_selection(selection, side=args.side, top_n=args.top_n)
-    symbols = [str(value) for value in prepared["ts_code"].tolist()]
+    symbols = [str(value) for value in prepared["symbol"].tolist()]
     market = _resolve_market(cfg, symbols) or payload_market
 
     rqdatac = _init_rqdatac(args.config, args.username, args.password)
@@ -655,11 +656,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     end_date = price_date.strftime("%Y%m%d")
 
-    ts_to_order_book_id: dict[str, str] = {}
+    symbol_to_order_book_id: dict[str, str] = {}
     order_book_ids: list[str] = []
     for symbol in symbols:
         order_book_id = _to_rq_order_book_id(symbol, market)
-        ts_to_order_book_id[symbol] = order_book_id
+        symbol_to_order_book_id[symbol] = order_book_id
         if order_book_id not in order_book_ids:
             order_book_ids.append(order_book_id)
 
@@ -677,7 +678,7 @@ def main(argv: list[str] | None = None) -> None:
         prepared,
         cash=float(args.cash),
         buffer_bps=float(args.buffer_bps),
-        ts_to_order_book_id=ts_to_order_book_id,
+        symbol_to_order_book_id=symbol_to_order_book_id,
         price_map=price_map,
         lot_map=lot_map,
     )

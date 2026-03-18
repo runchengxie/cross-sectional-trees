@@ -71,25 +71,26 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * `audit.csv`：逐 symbol 下载状态，便于区分 `written`、`skipped_existing`、`missing_remote`、`failed` 和 `quota_blocked`。
 * `fields.txt`：本次拉取的字段名清单。
 * `symbols.txt`：本次拉取的 symbol 清单。
-* `data/<ts_code>.parquet`：按 symbol 分开的原始镜像文件。
+* `data/<symbol>.parquet`：按 symbol 分开的原始镜像文件；历史文档里常写成 `data/<ts_code>.parquet`，但文件名实际就是仓库归一后的 symbol 值。
 * `dates.txt`：仅 `instrument_industry` 会写，表示本次行业快照实际查询的日期列表。
 * `industries.txt` / `industry_catalog.parquet`：仅 `industry_changes` 会写，表示本次枚举的行业代码和映射表。
 
 字段约定：
 
-* `daily` 保留 `rqdatac.get_price` 返回的日频字段名，并额外写入 `trade_date`、`ts_code`、`order_book_id`。
-* `pit_financials` 保留 `rqdatac.get_pit_financials_ex` 的字段名，并额外写入 `ts_code`、`order_book_id`。
-* `financial_details` 保留 `rqdatac.hk.get_detailed_financial_items` 的字段名，并额外写入 `ts_code`、`order_book_id`。
-* `ex_factors` 保留 `rqdatac.get_ex_factor` 返回的字段名，并额外写入 `ts_code`。
-* `dividends` 保留 `rqdatac.get_dividend` 返回的字段名，并额外写入 `ts_code`、`order_book_id`。
-* `shares` 保留 `rqdatac.get_shares` 返回的字段名，并额外写入 `ts_code`、`order_book_id`。
-* `instrument_industry` 保留 `rqdatac.get_instrument_industry` 返回的行业列，并额外写入 `ts_code`、`order_book_id`、`date`。
-* `industry_changes` 保留 `start_date` / `cancel_date`，并额外写入 `ts_code`、`order_book_id`、`industry_code`、`industry_name`、`industry_level`、`industry_source` 和完整行业层级列。
+* `daily` 保留 `rqdatac.get_price` 返回的日频字段名，并额外写入 `trade_date`、legacy `ts_code`（仓库归一后的 symbol alias）和 `order_book_id`。
+* `pit_financials` 保留 `rqdatac.get_pit_financials_ex` 的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
+* `financial_details` 保留 `rqdatac.hk.get_detailed_financial_items` 的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
+* `ex_factors` 保留 `rqdatac.get_ex_factor` 返回的字段名，并额外写入 legacy `ts_code`。
+* `dividends` 保留 `rqdatac.get_dividend` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
+* `shares` 保留 `rqdatac.get_shares` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
+* `instrument_industry` 保留 `rqdatac.get_instrument_industry` 返回的行业列，并额外写入 legacy `ts_code`、`order_book_id`、`date`。
+* `industry_changes` 保留 `start_date` / `cancel_date`，并额外写入 legacy `ts_code`、`order_book_id`、`industry_code`、`industry_name`、`industry_level`、`industry_source` 和完整行业层级列。
 
 补充：
 
 * `manifest.yml` 的 `status` 会记录本次镜像是否完整完成。
 * 这类镜像目录供下游项目复用，不属于 `artifacts/cache/` 的 query cache。
+* 对 RQData 来说，原生标识是 `order_book_id`；这里的 `ts_code` 只是仓库历史兼容列，值等于本仓库归一后的 symbol。
 
 ## PIT fundamentals 平面文件
 
@@ -107,7 +108,7 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 
 字段约定：
 
-* 固定列：`trade_date`、`ts_code`
+* 固定列：`trade_date`、`ts_code`（legacy symbol alias；研究主链路读入后会自动映射到 `symbol`）
 * 值列：你在命令里选中的 PIT 财报字段；如果没显式传字段，默认沿用源资产 `manifest.yml` 里的字段列表
 * `trade_date` 默认等于原始 PIT 行的 `info_date`
 * 传 `--keep-meta` 时，会额外保留 `quarter`、`info_date`、`fiscal_year`、`standard`、`if_adjusted`、`rice_create_tm`、`order_book_id`
@@ -133,7 +134,7 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 
 字段约定：
 
-* 固定列：`trade_date`、`ts_code`
+* 固定列：`trade_date`、`ts_code`（legacy symbol alias；研究主链路读入后会自动映射到 `symbol`）
 * 区间元数据列：通常还会保留 `order_book_id`、`start_date`、`cancel_date`
 * 行业值列：如果源资产里有，会保留 `industry_code`、`industry_name`、`industry_level`、`industry_source` 以及完整行业层级列
 * `trade_date` 永远是字符串 `YYYYMMDD`
@@ -228,7 +229,8 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 稳定 contract（版本演进时尽量保持不变）：
 
 1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/fundamentals/industry/walk_forward`）。
-1. 持仓主键列语义：`trade_date`、`entry_date`、`ts_code`、`stock_ticker`、`weight`、`signal`、`rank`、`side`。
+1. 研究主链路内部 canonical 标的列是 `symbol`；run artifacts / CLI 输出会继续双写 `symbol`、`ts_code`、`stock_ticker`。
+1. 持仓主键列语义：`trade_date`、`entry_date`、`symbol`、`ts_code`、`stock_ticker`、`weight`、`signal`、`rank`、`side`。
 1. `weight` 的解释取决于 `backtest.weighting`：`equal` 时等权，`signal` 时为信号 softmax 后的目标权重。
 1. `summary.json` 内记录的文件路径优先级高于固定文件名推断。
 
@@ -279,8 +281,9 @@ best-effort（可能为空、缺失或未产出文件）：
 | `entry_date` | 实际入场日（考虑 `shift_days`） |
 | `next_entry_date` | 下一次入场日（最后一期为空） |
 | `holding_window` | `entry_date -> next_entry_date`（最后一期为 `entry_date`） |
-| `ts_code` | 标的代码（内部标准格式） |
-| `stock_ticker` | 标的代码（外部通用别名，等价于 `ts_code`） |
+| `symbol` | 标的代码（内部 canonical 列名） |
+| `ts_code` | 标的代码旧别名（兼容列，值与 `symbol` 一致） |
+| `stock_ticker` | 标的代码外部通用别名（兼容列，值与 `symbol` 一致） |
 | `weight` | 目标权重；`backtest.weighting=equal` 时等权，`signal` 时为信号 softmax 权重 |
 | `signal` | 该标的预测信号值 |
 | `rank` | 当期截面排序名次 |
@@ -292,8 +295,8 @@ best-effort（可能为空、缺失或未产出文件）：
 
 兼容说明：
 
-1. 项目内部仍以 `ts_code` 作为主字段。
-1. 对外消费（CLI JSON/CSV）可使用 `stock_ticker`，其值与 `ts_code` 一致。
+1. 项目研究主链路内部已经改为以 `symbol` 作为主字段。
+1. 对外消费仍可继续使用 `ts_code` 或 `stock_ticker`；它们的值与 `symbol` 一致。
 
 ### `positions_by_rebalance_oos.csv` / `positions_current_oos.csv`
 
@@ -306,8 +309,9 @@ best-effort（可能为空、缺失或未产出文件）：
 | 列名 | 说明 |
 | --- | --- |
 | `entry_date` / `entry_date_prev` | 当前与上一期入场日 |
-| `ts_code` / `side` | 标的与方向 |
-| `stock_ticker` | 标的代码外部别名（等价于 `ts_code`） |
+| `symbol` / `side` | 标的与方向 |
+| `ts_code` | 标的代码旧别名（兼容列，等价于 `symbol`） |
+| `stock_ticker` | 标的代码外部别名（等价于 `symbol`） |
 | `weight` / `weight_prev` | 当前与上一期权重（缺失补 0） |
 | `signal` / `signal_prev` | 当前与上一期信号 |
 | `rank` / `rank_prev` | 当前与上一期 rank |
@@ -325,7 +329,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 格式约定：
 
-1. Parquet 以 `(trade_date, ts_code)` 为 MultiIndex。
+1. Parquet 以 `(trade_date, symbol)` 为 MultiIndex。
 1. 列顺序为：`price_col` + `features` + `extra_cols` + `label` + `is_tradable`（若存在）。
 1. 若启用了本地 `industry.file` join，行业列会进入 `extra_cols` 并保留在 `dataset.parquet`。
 1. 对应 schema 会写入 `summary.json -> dataset.schema`。

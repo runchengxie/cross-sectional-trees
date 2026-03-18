@@ -7,17 +7,17 @@ from csml.project_tools.symbols import ensure_symbol_columns
 def test_ensure_symbol_columns_accepts_stock_ticker_only():
     frame = pd.DataFrame({"stock_ticker": ["AAA", " BBB ", ""], "weight": [0.3, 0.4, 0.3]})
     out = ensure_symbol_columns(frame, context="positions.csv")
+    assert out["symbol"].tolist() == ["AAA", "BBB", ""]
     assert out["ts_code"].tolist() == ["AAA", "BBB", ""]
     assert out["stock_ticker"].tolist() == ["AAA", "BBB", ""]
-    assert out["symbol"].tolist() == ["AAA", "BBB", ""]
 
 
 def test_ensure_symbol_columns_accepts_symbol_only():
     frame = pd.DataFrame({"symbol": ["AAA", " BBB ", ""], "weight": [0.3, 0.4, 0.3]})
     out = ensure_symbol_columns(frame, context="positions.csv")
+    assert out["symbol"].tolist() == ["AAA", "BBB", ""]
     assert out["ts_code"].tolist() == ["AAA", "BBB", ""]
     assert out["stock_ticker"].tolist() == ["AAA", "BBB", ""]
-    assert out["symbol"].tolist() == ["AAA", "BBB", ""]
 
 
 def test_load_universe_by_date_accepts_stock_ticker_column(tmp_path):
@@ -31,9 +31,11 @@ def test_load_universe_by_date_accepts_stock_ticker_column(tmp_path):
     ).to_csv(path, index=False)
 
     out = pipeline.load_universe_by_date(path, market="us")
-    assert list(out.columns) == ["trade_date", "ts_code"]
+    assert list(out.columns) == ["trade_date", "symbol", "ts_code", "stock_ticker"]
     assert len(out) == 1
+    assert out.iloc[0]["symbol"] == "AAA"
     assert out.iloc[0]["ts_code"] == "AAA"
+    assert out.iloc[0]["stock_ticker"] == "AAA"
 
 
 def test_load_universe_by_date_parses_integer_yyyymmdd_dates(tmp_path):
@@ -51,7 +53,9 @@ def test_load_universe_by_date_parses_integer_yyyymmdd_dates(tmp_path):
         pd.Timestamp("2020-01-02"),
         pd.Timestamp("2020-01-31"),
     ]
+    assert out["symbol"].tolist() == ["00005.HK", "00011.HK"]
     assert out["ts_code"].tolist() == ["00005.HK", "00011.HK"]
+    assert out["stock_ticker"].tolist() == ["00005.HK", "00011.HK"]
 
 
 def test_annotate_positions_window_adds_stock_ticker_alias():
@@ -67,7 +71,9 @@ def test_annotate_positions_window_adds_stock_ticker_alias():
         }
     )
     out = pipeline._annotate_positions_window(frame)
+    assert "symbol" in out.columns
     assert "stock_ticker" in out.columns
+    assert out["symbol"].tolist() == out["ts_code"].tolist()
     assert out["stock_ticker"].tolist() == out["ts_code"].tolist()
 
 
@@ -84,5 +90,7 @@ def test_build_rebalance_diff_includes_stock_ticker_alias():
     )
     diff = pipeline._build_rebalance_diff(frame)
     assert not diff.empty
+    assert "symbol" in diff.columns
     assert "stock_ticker" in diff.columns
+    assert diff["symbol"].tolist() == diff["ts_code"].tolist()
     assert diff["stock_ticker"].tolist() == diff["ts_code"].tolist()

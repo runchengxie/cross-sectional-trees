@@ -149,6 +149,7 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
         "positions",
         "live",
         "fundamentals",
+        "industry",
         "walk_forward",
     }
     assert set(summary["positions"]["window_fields"].keys()) == {
@@ -170,6 +171,7 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
         "entry_date",
         "next_entry_date",
         "holding_window",
+        "symbol",
         "ts_code",
         "stock_ticker",
         "weight",

@@ -49,9 +49,10 @@
 
 当主基本面走 `fundamentals.source=file` 且文件是稀疏 PIT 财报时，推荐把日频估值放到 `fundamentals.provider_overlay`，让 pipeline 直接把 provider 估值并到 daily panel：
 
-- 主 `fundamentals.file` 继续负责 PIT 财报，并可按 `ts_code` 做 `ffill`。
+- 研究主链路内部以 `symbol` 为 canonical 标的列；旧文件里的 `ts_code` / `stock_ticker` / `order_book_id` 会自动兼容。
+- 主 `fundamentals.file` 继续负责 PIT 财报，并可按 `symbol` 做 `ffill`。
 - `provider_overlay` 目前只支持 `source=provider`。
-- overlay 行按 `trade_date + ts_code` 精确 merge，不做额外 `ffill`，避免把日频估值先压到稀疏 PIT 日期再向后传播。
+- overlay 行按 `trade_date + symbol` 精确 merge，不做额外 `ffill`，避免把日频估值先压到稀疏 PIT 日期再向后传播。
 - 如果 overlay 数据缺少 `valuation_trade_date`，pipeline 会自动把 provider 行自己的 `trade_date` 记成 `valuation_trade_date`。
 
 对 HK + RQData，这条路径最适合 `market_cap / pe_ttm / pb` 这类日频估值字段。
@@ -60,7 +61,7 @@
 
 如果你已经本地生成了 `industry_labels_<freq>.parquet`，可以用顶层 `industry.file` 直接把行业标签并到 panel：
 
-- join 主键固定是 `trade_date + ts_code`。
+- join 主键固定是 `trade_date + symbol`；旧文件里的 `ts_code` / `stock_ticker` / `order_book_id` 会自动映射到 `symbol`。
 - 导入列默认保留全部非主键列，也可用 `industry.keep_columns` 缩小范围。
 - 这些列不会自动加入模型特征，但会保留到 `dataset.parquet`、`eval_scored.parquet`，适合做行业暴露检查和 `eval.bucket_ic.schemes: [industry_name]` 这类拆解。
 - 这条链路不会自动做行业中性化，它只是把标签接进研究数据面板。
@@ -68,6 +69,8 @@
 ## Symbol 与市场规则
 
 内部统一格式：`00001.HK`（5 位补零 + `.HK`）。
+
+研究主链路内部 canonical 列名是 `symbol`；`ts_code` 和 `stock_ticker` 会继续双写到 run artifacts / CLI 输出，作为兼容别名。
 
 RQData：内部 `00001.HK` 会转换为 `00001.XHKG` 调接口；非 HK 市场直接使用原值。
 

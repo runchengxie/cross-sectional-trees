@@ -27,7 +27,7 @@
 | 港股通 PIT 股票池 | `csml universe hk-connect` | `artifacts/assets/universe/` | 决定某只股票在哪些日期属于研究股票池 |
 | HK 全市场 by-date 股票池 | `csml universe hk-daily-assets` | `artifacts/assets/universe/` | 用本地日线镜像派生更长历史的 HK 全市场研究股票池 |
 | instrument 快照 | `csml rqdata export-hk-instruments` | `artifacts/assets/rqdata/hk/instruments/` | 保留 `listed_date`、`de_listed_date`、`round_lot` 等元数据 |
-| 日线缓存 | pipeline 首次拉取时自动写入 | `artifacts/cache/hk_rqdata_daily_<ts_code>.parquet` | 保留按 symbol 分开的日频行情缓存 |
+| 日线缓存 | pipeline 首次拉取时自动写入 | `artifacts/cache/hk_rqdata_daily_<symbol>.parquet` | 保留按 symbol 分开的日频行情缓存 |
 | PIT 财务镜像 | `csml rqdata mirror-hk-pit-financials` | `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/` | 保留按 symbol 分开的原始 PIT 财务资产 |
 | 参考数据镜像 | `csml rqdata mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 保留复权、分红和股本原料，给后续派生研究使用 |
 | 行业资产镜像 | `csml rqdata mirror-hk-instrument-industry` / `mirror-hk-industry-changes` | `artifacts/assets/rqdata/hk/instrument_industry/` 等 | 保留行业快照和行业变更区间，给行业中性和暴露回放使用 |
@@ -92,7 +92,7 @@ csml rqdata mirror-hk-daily \
 
 * 默认字段集是 `open/high/low/close/volume/total_turnover`
 * 输出到 `artifacts/assets/rqdata/hk/daily/<snapshot>/`
-* 目录里会写 `manifest.yml`、`audit.csv`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`
+* 目录里会写 `manifest.yml`、`audit.csv`、`fields.txt`、`symbols.txt` 和 `data/<symbol>.parquet`
 * 当前实现按 symbol 单独请求，更适合 quota 中断后续跑
 * RQData 当前会把早于 `2000-01-04` 的 HK 日线请求自动裁到 `2000-01-04`
 
@@ -100,7 +100,7 @@ csml rqdata mirror-hk-daily \
 
 1. pipeline 按 symbol 调 `fetch_daily`
 2. 命中 `data.cache_mode=symbol`
-3. 自动把结果写到 `artifacts/cache/hk_rqdata_daily_<ts_code>.parquet`
+3. 自动把结果写到 `artifacts/cache/hk_rqdata_daily_<symbol>.parquet`
 
 这个缓存逻辑已经比较成熟，特点是：
 
@@ -159,7 +159,7 @@ csml rqdata mirror-hk-pit-financials \
 补充：
 
 * `--by-date-file` 先解析 symbol 集合，再按 symbol 全区间拉财务历史。
-* PIT 财务镜像目录会写 `manifest.yml`、`audit.csv`、`fields.txt`、`symbols.txt` 和 `data/<ts_code>.parquet`。
+* PIT 财务镜像目录会写 `manifest.yml`、`audit.csv`、`fields.txt`、`symbols.txt` 和 `data/<symbol>.parquet`。
 * 如果 hit quota，中断后可以继续 `--resume`。
 * 当前这套 HK PIT 财务镜像实测最早返回到 `2000q4`，不是连续从 `2000q1` 开始。
 
@@ -220,7 +220,7 @@ csml rqdata mirror-hk-industry-changes \
 补充：
 
 * `mirror-hk-instrument-industry` 会按 `by_date_file` 或日期区间解析快照日期，并把这些日期写到 `dates.txt`。
-* `mirror-hk-industry-changes` 会先用 `get_industry_mapping` 枚举行业代码，再把每个 symbol 的行业区间写到 `data/<ts_code>.parquet`。
+* `mirror-hk-industry-changes` 会先用 `get_industry_mapping` 枚举行业代码，再把每个 symbol 的行业区间写到 `data/<symbol>.parquet`。
 * 这两类资产当前也不会被 pipeline 自动直读，更适合离线研究、行业中性和归因检查。
 * 如果你更关心“切换日真相层”，优先保留 `industry_changes`；`instrument_industry` 的月频、季频更像便捷快照层。
 
@@ -237,7 +237,7 @@ csml rqdata build-hk-pit-fundamentals \
 这一步会做几件事：
 
 * 按 `info_date` 生成 `trade_date`
-* 去掉 `trade_date + ts_code` 重复行
+* 去掉 `trade_date + symbol` 重复行（旧资产中的 `ts_code` 会自动兼容）
 * 输出给 pipeline 直接读取的平面 fundamentals 文件
 
 如果你同时传：
@@ -271,7 +271,7 @@ csml rqdata build-hk-industry-labels \
 
 * 读取 `industry_changes` 里的 `start_date` / `cancel_date` 区间。
 * 选一个本地日期网格来源：`source_universe_by_date` 或 `daily_asset_dir`。
-* 按 `start_date <= trade_date < cancel_date` 给每个 `trade_date + ts_code` 命中行业标签。
+* 按 `start_date <= trade_date < cancel_date` 给每个 `trade_date + symbol` 命中行业标签。
 * 写出 `industry_labels_<freq>.parquet` 和配套 manifest。
 
 使用建议：

@@ -5581,7 +5581,7 @@ def inspect_hk_pit_coverage(args) -> int:
     frame = _normalize_frame_columns(frame)
     if "trade_date" not in frame.columns or "ts_code" not in frame.columns:
         raise SystemExit(
-            f"Fundamentals file must include trade_date and ts_code columns: {fundamentals_file}"
+            f"Fundamentals file must include trade_date and symbol/ts_code columns: {fundamentals_file}"
         )
 
     trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")
@@ -5915,7 +5915,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
             continue
         if "ts_code" not in frame.columns or "info_date" not in frame.columns:
             raise SystemExit(
-                f"PIT asset file must include ts_code and info_date columns: {data_file}"
+                f"PIT asset file must include symbol/ts_code and info_date columns: {data_file}"
             )
         missing_fields = [field for field in fields if field not in frame.columns]
         if missing_fields:
@@ -5939,7 +5939,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
         if work.empty:
             continue
 
-        # Early dedup per file: keep only the latest row per ts_code before appending.
+        # Early dedup per file: keep only the latest row per symbol before appending.
         # This reduces memory usage from O(total_rows) to O(num_symbols * num_files).
         if "trade_date" in work.columns and "ts_code" in work.columns:
             work = work.sort_values("trade_date").drop_duplicates(subset=["ts_code"], keep="last")
@@ -5973,7 +5973,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
         )
         if duplicate_rows_seen and getattr(args, "duplicate_policy", "keep-last") == "error":
             raise SystemExit(
-                "Duplicate trade_date + ts_code rows found in PIT asset. "
+                "Duplicate trade_date + symbol rows found in PIT asset. "
                 "Retry with --duplicate-policy keep-last if you want automatic deduplication."
             )
         deduped = combined.drop_duplicates(subset=["trade_date", "ts_code"], keep="last")
@@ -6594,7 +6594,7 @@ def add_hk_pit_fundamentals_build_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--symbols-out",
-        help="Optional text file output with one ts_code per line for symbols present in the derived fundamentals file.",
+        help="Optional text file output with one symbol per line for names present in the derived fundamentals file (legacy ts_code-compatible).",
     )
     parser.add_argument(
         "--keep-meta",
@@ -6605,7 +6605,7 @@ def add_hk_pit_fundamentals_build_args(parser: argparse.ArgumentParser) -> None:
         "--duplicate-policy",
         choices=["keep-last", "error"],
         default="keep-last",
-        help="How to handle duplicate trade_date + ts_code rows after mapping trade_date=info_date.",
+        help="How to handle duplicate trade_date + symbol rows after mapping trade_date=info_date.",
     )
     parser.add_argument(
         "--force",
@@ -6652,7 +6652,7 @@ def add_hk_industry_labels_build_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--symbols-out",
-        help="Optional text file output with one ts_code per line for symbols present in the derived label file.",
+        help="Optional text file output with one symbol per line for names present in the derived label file (legacy ts_code-compatible).",
     )
     parser.add_argument(
         "--force",

@@ -43,6 +43,11 @@ from .data_providers import (
     normalize_market,
     resolve_provider,
 )
+from .data_tools.symbols import (
+    PROVIDER_SYMBOL_PRIORITY,
+    ensure_symbol_columns,
+    normalize_symbol_standard_name,
+)
 from .dataset import DatasetSchema, build_dataset
 from .execution import build_execution_model, describe_execution_model, BpsCostModel
 from .metrics import (
@@ -162,18 +167,25 @@ def _prepare_panel_join_frame(
     column_map = column_map or {}
     if column_map:
         rename_map = {
-            source: standard
+            source: normalize_symbol_standard_name(standard)
             for standard, source in column_map.items()
-            if source in join_df.columns and standard != source
+            if (
+                source in join_df.columns
+                and normalize_symbol_standard_name(standard) != source
+                and normalize_symbol_standard_name(standard) not in join_df.columns
+            )
         }
         if rename_map:
             join_df = join_df.rename(columns=rename_map)
     if "trade_date" not in join_df.columns and "date" in join_df.columns:
         join_df = join_df.rename(columns={"date": "trade_date"})
-    if "ts_code" not in join_df.columns and "symbol" in join_df.columns:
-        join_df = join_df.rename(columns={"symbol": "ts_code"})
-    if "trade_date" not in join_df.columns or "ts_code" not in join_df.columns:
-        sys.exit(f"{item_label} data must include trade_date and ts_code columns.")
+    join_df = ensure_symbol_columns(
+        join_df,
+        context=f"{item_label} data",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
+    if "trade_date" not in join_df.columns or "symbol" not in join_df.columns:
+        sys.exit(f"{item_label} data must include trade_date and symbol columns.")
     join_df["trade_date"] = pd.to_datetime(join_df["trade_date"], errors="coerce")
     join_df = join_df[join_df["trade_date"].notna()].copy()
     join_df["trade_date"] = join_df["trade_date"].dt.normalize()
@@ -186,9 +198,10 @@ def _prepare_panel_join_frame(
         if date_col in join_df.columns:
             parsed = pd.to_datetime(join_df[date_col], errors="coerce")
             join_df[date_col] = parsed.dt.normalize()
-    join_df["ts_code"] = join_df["ts_code"].astype(str).str.strip()
-    join_df = join_df.drop_duplicates(subset=["trade_date", "ts_code"]).copy()
-    return join_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+    join_df["symbol"] = join_df["symbol"].astype(str).str.strip()
+    join_df = join_df.drop(columns=[col for col in ("ts_code", "stock_ticker") if col in join_df.columns])
+    join_df = join_df.drop_duplicates(subset=["trade_date", "symbol"]).copy()
+    return join_df.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
 
 
 def _select_panel_join_columns(
@@ -202,7 +215,7 @@ def _select_panel_join_columns(
     missing = [column for column in keep_columns if column not in frame.columns]
     if missing:
         sys.exit(f"{item_label} columns not found in join data: {missing}")
-    selected = ["trade_date", "ts_code"] + keep_columns
+    selected = ["trade_date", "symbol"] + keep_columns
     return frame.loc[:, list(dict.fromkeys(selected))].copy()
 
 
@@ -263,7 +276,7 @@ def _derive_requested_fundamental_fields(
         if base_feature not in fund_df.columns:
             continue
         base_series = pd.to_numeric(fund_df[base_feature], errors="coerce")
-        fund_df[f"delta_{base_feature}"] = base_series.groupby(fund_df["ts_code"]).diff()
+        fund_df[f"delta_{base_feature}"] = base_series.groupby(fund_df["symbol"]).diff()
     growth_base_features = sorted(
         {
             feat.removeprefix("growth_")
@@ -275,7 +288,7 @@ def _derive_requested_fundamental_fields(
         if base_feature not in fund_df.columns:
             continue
         current = pd.to_numeric(fund_df[base_feature], errors="coerce")
-        previous = current.groupby(fund_df["ts_code"]).shift()
+        previous = current.groupby(fund_df["symbol"]).shift()
         scale = ((current.abs() + previous.abs()) / 2.0).where(
             lambda values: values.notna() & (values != 0)
         )
@@ -292,16 +305,18 @@ def _merge_fundamentals_panel(
     ffill_limit: Optional[int],
     merge_label: str,
 ) -> tuple[pd.DataFrame, list[str]]:
-    fundamentals_cols = [col for col in fund_df.columns if col not in {"trade_date", "ts_code"}]
+    fundamentals_cols = [
+        col for col in fund_df.columns if col not in {"trade_date", "symbol", "ts_code", "stock_ticker"}
+    ]
     overlap_cols = sorted(set(fundamentals_cols).intersection(panel_df.columns))
     if overlap_cols:
         sys.exit(
             f"{merge_label} columns already exist in panel and would be overwritten: {overlap_cols}"
         )
-    merged = panel_df.merge(fund_df, on=["trade_date", "ts_code"], how="left")
+    merged = panel_df.merge(fund_df, on=["trade_date", "symbol"], how="left")
     if ffill and fundamentals_cols:
-        merged.sort_values(["ts_code", "trade_date"], inplace=True)
-        merged[fundamentals_cols] = merged.groupby("ts_code")[fundamentals_cols].ffill(
+        merged.sort_values(["symbol", "trade_date"], inplace=True)
+        merged[fundamentals_cols] = merged.groupby("symbol")[fundamentals_cols].ffill(
             limit=ffill_limit
         )
     return merged, fundamentals_cols
@@ -717,30 +732,9 @@ def save_parquet(frame: pd.DataFrame, path: Path) -> None:
 def _ensure_symbol_alias(frame: pd.DataFrame) -> pd.DataFrame:
     if frame is None or frame.empty:
         return frame
-    has_ts_code = "ts_code" in frame.columns
-    has_stock_ticker = "stock_ticker" in frame.columns
-    if not has_ts_code and not has_stock_ticker:
+    if not any(col in frame.columns for col in ("symbol", "ts_code", "stock_ticker", "order_book_id")):
         return frame
-
-    out = frame.copy()
-    ts_series = (
-        out["ts_code"].where(out["ts_code"].notna(), "").astype(str).str.strip()
-        if has_ts_code
-        else pd.Series([""] * len(out), index=out.index, dtype="object")
-    )
-    if has_stock_ticker:
-        ticker_series = out["stock_ticker"].where(out["stock_ticker"].notna(), "").astype(str).str.strip()
-        merged = ticker_series.where(ticker_series != "", ts_series)
-    else:
-        merged = ts_series
-
-    out["ts_code"] = merged
-    if "stock_ticker" in out.columns:
-        out["stock_ticker"] = merged
-    else:
-        ts_idx = out.columns.get_loc("ts_code")
-        out.insert(ts_idx + 1, "stock_ticker", merged)
-    return out
+    return ensure_symbol_columns(frame, context="Pipeline output")
 
 
 def save_json(payload: dict, path: Path) -> None:
@@ -788,6 +782,7 @@ def _annotate_positions_window(frame: pd.DataFrame) -> pd.DataFrame:
 def _build_rebalance_diff(frame: pd.DataFrame) -> pd.DataFrame:
     if frame is None or frame.empty or "entry_date" not in frame.columns:
         return pd.DataFrame()
+    frame = ensure_symbol_columns(frame, context="Rebalance diff")
     entry_compact = _coerce_yyyymmdd(frame["entry_date"])
     entry_dt = pd.to_datetime(entry_compact, format="%Y%m%d", errors="coerce")
     unique_entries = sorted(entry_dt.dropna().unique())
@@ -808,14 +803,14 @@ def _build_rebalance_diff(frame: pd.DataFrame) -> pd.DataFrame:
         if "rank" not in df.columns:
             df["rank"] = np.nan
 
-    current = current[["ts_code", "side", "weight", "signal", "rank"]].rename(
+    current = current[["symbol", "side", "weight", "signal", "rank"]].rename(
         columns={
             "weight": "weight",
             "signal": "signal",
             "rank": "rank",
         }
     )
-    previous = previous[["ts_code", "side", "weight", "signal", "rank"]].rename(
+    previous = previous[["symbol", "side", "weight", "signal", "rank"]].rename(
         columns={
             "weight": "weight_prev",
             "signal": "signal_prev",
@@ -824,7 +819,7 @@ def _build_rebalance_diff(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
     merged = current.merge(
-        previous, on=["ts_code", "side"], how="outer", indicator=True
+        previous, on=["symbol", "side"], how="outer", indicator=True
     )
     merged["weight"] = merged["weight"].fillna(0.0)
     merged["weight_prev"] = merged["weight_prev"].fillna(0.0)
@@ -840,7 +835,7 @@ def _build_rebalance_diff(frame: pd.DataFrame) -> pd.DataFrame:
     merged["entry_date"] = latest_entry.strftime("%Y%m%d")
     merged["entry_date_prev"] = prev_entry.strftime("%Y%m%d")
     merged.drop(columns=["_merge"], inplace=True)
-    merged.sort_values(["change", "side", "ts_code"], inplace=True)
+    merged.sort_values(["change", "side", "symbol"], inplace=True)
     return _ensure_symbol_alias(merged)
 
 
@@ -924,15 +919,15 @@ def load_universe_by_date(path: Path, market: str) -> pd.DataFrame:
     columns = {col.lower(): col for col in df.columns}
     date_col = columns.get("trade_date") or columns.get("date") or columns.get("rebalance_date")
     symbol_col = (
-        columns.get("ts_code")
+        columns.get("symbol")
+        or columns.get("ts_code")
         or columns.get("stock_ticker")
-        or columns.get("symbol")
         or columns.get("order_book_id")
     )
     if not date_col or not symbol_col:
         sys.exit("Universe-by-date file must include date + symbol columns.")
 
-    df = df.rename(columns={date_col: "trade_date", symbol_col: "ts_code"})
+    df = df.rename(columns={date_col: "trade_date", symbol_col: "symbol"})
     selected_col = (
         columns.get("selected")
         or columns.get("selected_bool")
@@ -945,11 +940,13 @@ def load_universe_by_date(path: Path, market: str) -> pd.DataFrame:
     df["trade_date"] = normalize_date_like_series(df["trade_date"])
     df = df[df["trade_date"].notna()].copy()
     df["trade_date"] = df["trade_date"].dt.normalize()
-    df["ts_code"] = df["ts_code"].astype(str).str.strip()
-    df["ts_code"] = df["ts_code"].apply(lambda s: normalize_universe_symbol(s, market))
-    df = df[df["ts_code"] != ""].copy()
-    df = df.drop_duplicates(subset=["trade_date", "ts_code"])
-    return df[["trade_date", "ts_code"]].copy()
+    df = ensure_symbol_columns(df, context="Universe-by-date file")
+    df["symbol"] = df["symbol"].astype(str).str.strip()
+    df["symbol"] = df["symbol"].apply(lambda s: normalize_universe_symbol(s, market))
+    df = df[df["symbol"] != ""].copy()
+    df = _ensure_symbol_alias(df)
+    df = df.drop_duplicates(subset=["trade_date", "symbol"])
+    return df[["trade_date", "symbol", "ts_code", "stock_ticker"]].copy()
 
 
 def apply_universe_by_date(data: pd.DataFrame, universe: pd.DataFrame) -> pd.DataFrame:
@@ -974,8 +971,8 @@ def apply_universe_by_date(data: pd.DataFrame, universe: pd.DataFrame) -> pd.Dat
     universe_map = universe.rename(columns={"trade_date": "rebalance_date"})
     data = data.merge(date_map, on="trade_date", how="inner")
     data = data.merge(
-        universe_map[["rebalance_date", "ts_code"]],
-        on=["rebalance_date", "ts_code"],
+        universe_map[["rebalance_date", "symbol"]],
+        on=["rebalance_date", "symbol"],
         how="inner",
     )
     return data.drop(columns=["rebalance_date"])
@@ -1138,7 +1135,7 @@ def run(config_ref: str | Path | None = None) -> None:
             resolve_repo_path(by_date_file),
             MARKET,
         )
-        symbols_from_universe = sorted(universe_by_date["ts_code"].unique().tolist())
+        symbols_from_universe = sorted(universe_by_date["symbol"].unique().tolist())
         if symbols:
             symbols = sorted(set(symbols) | set(symbols_from_universe))
         else:
@@ -1675,15 +1672,16 @@ def run(config_ref: str | Path | None = None) -> None:
         sys.exit("No data returned - check symbols and date range.")
 
     df = pd.concat(frames, ignore_index=True)
+    df = ensure_symbol_columns(df, context="Daily panel")
     df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
-    df.sort_values(["ts_code", "trade_date"], inplace=True)
+    df.sort_values(["symbol", "trade_date"], inplace=True)
 
     benchmark_df = None
     if benchmark_symbol:
         if benchmark_symbol in symbols:
             logger.info("Benchmark symbol %s removed from modeling universe.", benchmark_symbol)
-        benchmark_df = df[df["ts_code"] == benchmark_symbol].copy()
-        df = df[df["ts_code"] != benchmark_symbol].copy()
+        benchmark_df = df[df["symbol"] == benchmark_symbol].copy()
+        df = df[df["symbol"] != benchmark_symbol].copy()
 
     basic_df = None
     if DROP_ST or MIN_LISTED_DAYS > 0:
@@ -1691,6 +1689,8 @@ def run(config_ref: str | Path | None = None) -> None:
             if MARKET != "cn" and DROP_ST:
                 logger.info("drop_st is CN-specific; attempting basic data for market '%s'.", MARKET)
             basic_df = data_interface.load_basic(symbols_for_data)
+            if basic_df is not None and not basic_df.empty:
+                basic_df = ensure_symbol_columns(basic_df, context="Basic data")
         except Exception as exc:
             logger.warning("Basic data load failed (%s); skipping ST/listed filters.", exc)
             basic_df = None
@@ -1698,14 +1698,14 @@ def run(config_ref: str | Path | None = None) -> None:
     if DROP_ST and basic_df is not None and "name" in basic_df.columns:
         st_codes = basic_df[
             basic_df["name"].str.contains("ST", case=False, na=False)
-        ]["ts_code"]
-        df = df[~df["ts_code"].isin(st_codes)].copy()
+        ]["symbol"]
+        df = df[~df["symbol"].isin(st_codes)].copy()
 
     if MIN_LISTED_DAYS > 0 and basic_df is not None and "list_date" in basic_df.columns:
         list_dates = basic_df.copy()
         list_dates["list_date"] = pd.to_datetime(list_dates["list_date"], format="%Y%m%d", errors="coerce")
-        list_date_map = list_dates.set_index("ts_code")["list_date"].to_dict()
-        df["list_date"] = df["ts_code"].map(list_date_map)
+        list_date_map = list_dates.set_index("symbol")["list_date"].to_dict()
+        df["list_date"] = df["symbol"].map(list_date_map)
         df = df[df["list_date"].notna()].copy()
         df = df[df["trade_date"] >= df["list_date"] + pd.Timedelta(days=MIN_LISTED_DAYS)].copy()
 
@@ -2089,7 +2089,7 @@ def run(config_ref: str | Path | None = None) -> None:
         return group
 
 
-    df = df.groupby("ts_code", group_keys=False).apply(add_features)
+    df = df.groupby("symbol", group_keys=False).apply(add_features)
 
     missing_features = [feat for feat in FEATURES if feat not in df.columns]
     if missing_features:
@@ -2110,7 +2110,7 @@ def run(config_ref: str | Path | None = None) -> None:
             logger.warning("Bucket IC columns missing in data: %s", missing_bucket_cols)
         bucket_cols = [col for col in bucket_cols if col in df.columns]
         if bucket_cols:
-            eval_extra_df = df[["trade_date", "ts_code"] + bucket_cols].copy()
+            eval_extra_df = df[["trade_date", "symbol"] + bucket_cols].copy()
 
     missing_fill_features = FEATURE_MISSING_FEATURES or FEATURES
     missing_fill_features = [
@@ -2130,18 +2130,20 @@ def run(config_ref: str | Path | None = None) -> None:
             indicator_features.append(indicator_name)
         FEATURES = list(dict.fromkeys(FEATURES + indicator_features))
 
-    backtest_pricing_cols = ["trade_date", "ts_code", PRICE_COL]
+    df = _ensure_symbol_alias(df)
+
+    backtest_pricing_cols = ["trade_date", "symbol", "ts_code", "stock_ticker", PRICE_COL]
     if BACKTEST_TRADABLE_COL and BACKTEST_TRADABLE_COL in df.columns:
         backtest_pricing_cols.append(BACKTEST_TRADABLE_COL)
     backtest_pricing_cols = list(dict.fromkeys(backtest_pricing_cols))
     backtest_pricing_df = (
         df[backtest_pricing_cols]
-        .drop_duplicates(subset=["trade_date", "ts_code"])
+        .drop_duplicates(subset=["trade_date", "symbol"])
         .copy()
     )
 
     passthrough_cols = list(dict.fromkeys(industry_cols))
-    cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + passthrough_cols + meta_cols + [TARGET]
+    cols = ["trade_date", "symbol", "ts_code", "stock_ticker", PRICE_COL] + FEATURES + passthrough_cols + meta_cols + [TARGET]
     cols = list(dict.fromkeys(cols))
     df = df[cols].copy()
 
@@ -2189,27 +2191,27 @@ def run(config_ref: str | Path | None = None) -> None:
 
     dataset_schema = DatasetSchema(
         date_col="trade_date",
-        instrument_col="ts_code",
+        instrument_col="symbol",
         price_col=PRICE_COL,
         label_col=TARGET,
         tradable_col="is_tradable" if "is_tradable" in df_features.columns else None,
         feature_cols=FEATURES,
-        extra_cols=passthrough_cols,
+        extra_cols=["ts_code", "stock_ticker", *passthrough_cols],
     )
     dataset = build_dataset(df_features, dataset_schema)
     df_features = dataset.frame
     df_full = df_features.dropna().reset_index(drop=True)
     if eval_extra_df is not None and not eval_extra_df.empty:
-        eval_extra_df = eval_extra_df.drop_duplicates(subset=["trade_date", "ts_code"])
+        eval_extra_df = eval_extra_df.drop_duplicates(subset=["trade_date", "symbol"])
         extra_eval_cols = [
             col
             for col in eval_extra_df.columns
-            if col not in {"trade_date", "ts_code"} and col not in df_full.columns
+            if col not in {"trade_date", "symbol"} and col not in df_full.columns
         ]
         if extra_eval_cols:
             df_full = df_full.merge(
-                eval_extra_df[["trade_date", "ts_code"] + extra_eval_cols],
-                on=["trade_date", "ts_code"],
+                eval_extra_df[["trade_date", "symbol"] + extra_eval_cols],
+                on=["trade_date", "symbol"],
                 how="left",
             )
     (
@@ -2233,7 +2235,7 @@ def run(config_ref: str | Path | None = None) -> None:
         df_model_all = df_full_sorted
 
     # Drop dates with too few symbols for evaluation (model sample only)
-    date_counts = df_model_all.groupby("trade_date")["ts_code"].nunique()
+    date_counts = df_model_all.groupby("trade_date")["symbol"].nunique()
     valid_dates = date_counts[date_counts >= MIN_SYMBOLS_PER_DATE].index
     dropped_date_counts = date_counts[date_counts < MIN_SYMBOLS_PER_DATE].sort_index()
     (
@@ -2687,7 +2689,7 @@ def run(config_ref: str | Path | None = None) -> None:
             else None
         )
 
-        k_w = min(TOP_K, eval_df_w["ts_code"].nunique())
+        k_w = min(TOP_K, eval_df_w["symbol"].nunique())
         if k_w > 0 and rebalance_dates_w:
             turnover_series_w = estimate_turnover(
                 eval_df_w,
@@ -2954,7 +2956,7 @@ def run(config_ref: str | Path | None = None) -> None:
 
                 live_dates = sorted(df_live["trade_date"].unique())
                 live_rebalance = get_rebalance_dates(live_dates, BACKTEST_REBALANCE_FREQUENCY)
-                live_counts = df_live.groupby("trade_date")["ts_code"].nunique()
+                live_counts = df_live.groupby("trade_date")["symbol"].nunique()
                 live_valid_dates = set(
                     live_counts[live_counts >= MIN_SYMBOLS_PER_DATE].index
                 )
@@ -3173,7 +3175,7 @@ def run(config_ref: str | Path | None = None) -> None:
         else:
             logger.info("%sQuantile returns not available - insufficient symbols per date.", label_prefix)
 
-        k = min(TOP_K, eval_df["ts_code"].nunique()) if not eval_df.empty else 0
+        k = min(TOP_K, eval_df["symbol"].nunique()) if not eval_df.empty else 0
         if k > 0 and rebalance_dates_eval:
             turnover_series = estimate_turnover(
                 eval_df,
@@ -3395,7 +3397,9 @@ def run(config_ref: str | Path | None = None) -> None:
 
         scored_cols = [
             "trade_date",
+            "symbol",
             "ts_code",
+            "stock_ticker",
             PRICE_COL,
             TARGET,
             "pred",

@@ -479,7 +479,7 @@ def main(argv: list[str] | None = None) -> None:
     if "rank" not in selection.columns:
         selection["rank"] = np.nan
 
-    selection.sort_values(["side", "rank", "ts_code"], inplace=True, na_position="last")
+    selection.sort_values(["side", "rank", "symbol"], inplace=True, na_position="last")
 
     data_end_date = None
     if isinstance(summary, dict):

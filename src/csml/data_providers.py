@@ -12,6 +12,12 @@ from typing import Iterable, Mapping, Optional
 
 import pandas as pd
 
+from .data_tools.symbols import (
+    PROVIDER_SYMBOL_PRIORITY,
+    ensure_symbol_columns,
+    normalize_symbol_standard_name,
+)
+
 
 DEFAULT_DAILY_ENDPOINTS = {
     "cn": "daily",
@@ -39,10 +45,10 @@ DEFAULT_BASIC_PARAMS = {
 
 FUNDAMENTAL_COLUMN_CANDIDATES = {
     "trade_date": ["trade_date", "date", "trade_dt", "trade_day"],
-    "ts_code": ["ts_code", "symbol", "ticker", "code", "sec_code", "tscode", "order_book_id"],
+    "symbol": ["symbol", "ts_code", "ticker", "code", "sec_code", "tscode", "order_book_id"],
 }
 
-FUNDAMENTAL_REQUIRED_COLUMNS = ("trade_date", "ts_code")
+FUNDAMENTAL_REQUIRED_COLUMNS = ("trade_date", "symbol")
 
 DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS = {
     "market_cap": "hk_total_market_val",
@@ -53,21 +59,21 @@ DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS = {
 DEFAULT_COLUMN_MAPS = {
     "cn": {
         "trade_date": "trade_date",
-        "ts_code": "ts_code",
+        "symbol": "ts_code",
         "close": "close",
         "vol": "vol",
         "amount": "amount",
     },
     "hk": {
         "trade_date": "trade_date",
-        "ts_code": "ts_code",
+        "symbol": "ts_code",
         "close": "close",
         "vol": "vol",
         "amount": "amount",
     },
     "us": {
         "trade_date": "trade_date",
-        "ts_code": "ts_code",
+        "symbol": "ts_code",
         "close": "close",
         "vol": "vol",
         "amount": "amount",
@@ -76,13 +82,13 @@ DEFAULT_COLUMN_MAPS = {
 
 COLUMN_CANDIDATES = {
     "trade_date": ["trade_date", "date", "trade_dt", "trade_day"],
-    "ts_code": ["ts_code", "symbol", "ticker", "code", "sec_code", "tscode"],
+    "symbol": ["symbol", "ts_code", "ticker", "code", "sec_code", "tscode"],
     "close": ["close", "close_price", "adj_close", "close_adj", "cls"],
     "vol": ["vol", "volume", "trade_vol", "volume_traded"],
     "amount": ["amount", "turnover", "total_turnover", "trade_value", "value"],
 }
 
-REQUIRED_DAILY_COLUMNS = ("trade_date", "close", "vol")
+REQUIRED_DAILY_COLUMNS = ("trade_date", "symbol", "close", "vol")
 _RQDATA_LISTED_DATE_CACHE: dict[tuple[str, str], pd.Timestamp | None] = {}
 
 
@@ -179,8 +185,8 @@ def _prepare_rqdata_daily_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
         date_index = df.index
     df = df.reset_index(drop=True)
     df["trade_date"] = pd.to_datetime(date_index).strftime("%Y%m%d")
-    df["ts_code"] = symbol
-    return df
+    df["symbol"] = symbol
+    return ensure_symbol_columns(df, context="RQData daily frame", priority=PROVIDER_SYMBOL_PRIORITY)
 
 
 def _prepare_rqdata_fundamentals_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
@@ -193,8 +199,13 @@ def _prepare_rqdata_fundamentals_frame(df: pd.DataFrame, symbol: str) -> pd.Data
         date_index = pd.to_datetime(df.index, errors="coerce")
     df = df.reset_index(drop=True)
     df["trade_date"] = date_index.strftime("%Y%m%d")
-    df["ts_code"] = symbol
-    return df[df["trade_date"].notna()].copy()
+    df["symbol"] = symbol
+    df = df[df["trade_date"].notna()].copy()
+    return ensure_symbol_columns(
+        df,
+        context="RQData fundamentals frame",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
 
 
 def _rqdata_default_fields(rq_cfg: Optional[Mapping]) -> Optional[list[str]]:
@@ -555,12 +566,16 @@ def _load_basic_eodhd(
     if not code_col:
         return pd.DataFrame()
     df_basic = pd.DataFrame()
-    df_basic["ts_code"] = df[code_col].map(lambda c: _eodhd_code_to_internal_symbol(market, c))
+    df_basic["symbol"] = df[code_col].map(lambda c: _eodhd_code_to_internal_symbol(market, c))
     if name_col:
         df_basic["name"] = df[name_col]
     if symbols:
-        df_basic = df_basic[df_basic["ts_code"].isin(list(symbols))].copy()
-    return df_basic
+        df_basic = df_basic[df_basic["symbol"].isin(list(symbols))].copy()
+    return ensure_symbol_columns(
+        df_basic,
+        context="EODHD basic data",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
 
 
 def _load_basic_rqdata(
@@ -600,7 +615,7 @@ def _load_basic_rqdata(
             order_book_id = getattr(ins, "order_book_id", None)
             rows.append(
                 {
-                    "ts_code": symbol_map.get(order_book_id, order_book_id),
+                    "symbol": symbol_map.get(order_book_id, order_book_id),
                     "name": getattr(ins, "symbol", None),
                     "list_date": getattr(ins, "listed_date", None),
                 }
@@ -608,19 +623,28 @@ def _load_basic_rqdata(
         df_basic = pd.DataFrame(rows)
         if "list_date" in df_basic.columns:
             df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
-        return df_basic
+        return ensure_symbol_columns(
+            df_basic,
+            context="RQData basic data",
+            priority=PROVIDER_SYMBOL_PRIORITY,
+        )
 
     df_basic = client.all_instruments("CS", market=rq_market)
     if df_basic is None or df_basic.empty:
         return df_basic
     df_basic = df_basic.copy()
     if "order_book_id" in df_basic.columns:
-        df_basic["ts_code"] = df_basic["order_book_id"]
+        df_basic["symbol"] = df_basic["order_book_id"]
     if "listed_date" in df_basic.columns:
         df_basic["list_date"] = df_basic["listed_date"]
     if "symbol" in df_basic.columns and "name" not in df_basic.columns:
         df_basic["name"] = df_basic["symbol"]
-    df_basic = df_basic[["ts_code", "name", "list_date"]].copy()
+    df_basic = ensure_symbol_columns(
+        df_basic,
+        context="RQData all instruments",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
+    df_basic = df_basic[["symbol", "name", "list_date", "ts_code", "stock_ticker"]].copy()
     if "list_date" in df_basic.columns:
         df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
     return df_basic
@@ -632,15 +656,20 @@ def _merge_column_map(market: str, data_cfg: Mapping) -> dict[str, str]:
     if isinstance(cfg_map, Mapping):
         for key, value in cfg_map.items():
             if value:
-                merged[str(key)] = str(value)
+                merged[normalize_symbol_standard_name(key)] = str(value)
     return merged
 
 
 def _apply_column_map(df: pd.DataFrame, column_map: Mapping[str, str]) -> pd.DataFrame:
     rename_map = {}
     for standard, source in column_map.items():
-        if source in df.columns and standard != source:
-            rename_map[source] = standard
+        normalized_standard = normalize_symbol_standard_name(standard)
+        if (
+            source in df.columns
+            and normalized_standard != source
+            and normalized_standard not in df.columns
+        ):
+            rename_map[source] = normalized_standard
     if rename_map:
         df = df.rename(columns=rename_map)
     return df
@@ -675,9 +704,14 @@ def _standardize_fundamentals_frame(
 ) -> pd.DataFrame:
     df = _apply_column_map(df, column_map)
     df = _infer_fundamental_columns(df)
-    if "ts_code" not in df.columns:
+    if "symbol" not in df.columns:
         df = df.copy()
-        df["ts_code"] = symbol
+        df["symbol"] = symbol
+    df = ensure_symbol_columns(
+        df,
+        context="Fundamentals data",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
     missing = [col for col in FUNDAMENTAL_REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         raise ValueError(f"Fundamentals data missing required columns: {missing}")
@@ -692,9 +726,14 @@ def _standardize_daily_frame(
 ) -> pd.DataFrame:
     df = _apply_column_map(df, _merge_column_map(market, data_cfg))
     df = _infer_missing_columns(df)
-    if "ts_code" not in df.columns:
+    if "symbol" not in df.columns:
         df = df.copy()
-        df["ts_code"] = symbol
+        df["symbol"] = symbol
+    df = ensure_symbol_columns(
+        df,
+        context="Daily data",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
     missing = [col for col in REQUIRED_DAILY_COLUMNS if col not in df.columns]
     if missing:
         raise ValueError(f"Daily data missing required columns: {missing}")
@@ -799,23 +838,29 @@ def _load_basic_from_local_asset(
     if work is None or work.empty:
         return pd.DataFrame()
     work = work.copy()
-    if "ts_code" not in work.columns and "order_book_id" in work.columns:
-        work["ts_code"] = work["order_book_id"]
-    if "symbol" in work.columns and "name" not in work.columns:
-        work["name"] = work["symbol"]
+    if "order_book_id" in work.columns and "symbol" not in work.columns and "ts_code" not in work.columns:
+        work["symbol"] = work["order_book_id"]
+    code_name_col = "symbol" if "symbol" in work.columns and "ts_code" not in work.columns else None
+    if code_name_col and "name" not in work.columns:
+        work["name"] = work[code_name_col]
     if "listed_date" in work.columns and "list_date" not in work.columns:
         work["list_date"] = work["listed_date"]
-    required = ["ts_code", "name", "list_date"]
+    work = ensure_symbol_columns(
+        work,
+        context="Local RQData instruments file",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
+    required = ["symbol", "name", "list_date"]
     missing = [column for column in required if column not in work.columns]
     if missing:
         raise SystemExit(
             f"Local RQData instruments file is missing required columns {missing}: {instruments_file}"
         )
-    work = work[required].copy()
-    work["ts_code"] = work["ts_code"].astype(str).str.strip()
+    work = work[["symbol", "name", "list_date", "ts_code", "stock_ticker"]].copy()
+    work["symbol"] = work["symbol"].astype(str).str.strip()
     work["list_date"] = pd.to_datetime(work["list_date"], errors="coerce").dt.strftime("%Y%m%d")
     if symbols:
-        work = work[work["ts_code"].isin(list(symbols))].copy()
+        work = work[work["symbol"].isin(list(symbols))].copy()
     return work.reset_index(drop=True)
 
 
@@ -917,7 +962,14 @@ def fetch_daily(
     if cache_mode in {"range", "window"}:
         cache_file = cache_dir / f"{prefix}_daily_{symbol}_{start_date}_{end_date}.parquet"
         if cache_file.exists():
-            return pd.read_parquet(cache_file)
+            cached = pd.read_parquet(cache_file)
+            if cached is None or cached.empty:
+                return cached
+            return ensure_symbol_columns(
+                cached,
+                context="Cached daily data",
+                priority=PROVIDER_SYMBOL_PRIORITY,
+            )
         df = _fetch_daily_from_provider(provider, market, symbol, start_date, end_date, client, data_cfg)
         if df is None or df.empty:
             return df
@@ -932,6 +984,12 @@ def fetch_daily(
     if cache_file.exists():
         cached = pd.read_parquet(cache_file)
         cached = _ensure_trade_date_str(cached)
+        if cached is not None and not cached.empty:
+            cached = ensure_symbol_columns(
+                cached,
+                context="Cached daily data",
+                priority=PROVIDER_SYMBOL_PRIORITY,
+            )
         if cached is not None and not cached.empty and "trade_date" in cached.columns:
             trade_dates = sorted(cached["trade_date"].unique().tolist())
             if not trade_dates:
@@ -995,10 +1053,15 @@ def fetch_daily(
     merged = _ensure_trade_date_str(merged)
     if merged is None or merged.empty:
         return pd.DataFrame()
+    merged = ensure_symbol_columns(
+        merged,
+        context="Daily data",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
 
     if updated:
-        merged = merged.drop_duplicates(subset=["ts_code", "trade_date"], keep="last")
-        merged.sort_values(["ts_code", "trade_date"], inplace=True)
+        merged = merged.drop_duplicates(subset=["symbol", "trade_date"], keep="last")
+        merged.sort_values(["symbol", "trade_date"], inplace=True)
         # Ensure buffers are writable before parquet serialization.
         merged = merged.copy(deep=True)
         merged.to_parquet(cache_file)
@@ -1020,7 +1083,14 @@ def load_basic(
     tag = _cache_tag(data_cfg)
     cache_file = _basic_cache_file(cache_dir, market, provider, symbols, tag=tag)
     if cache_file.exists():
-        return pd.read_parquet(cache_file)
+        cached = pd.read_parquet(cache_file)
+        if cached is None or cached.empty:
+            return cached
+        return ensure_symbol_columns(
+            cached,
+            context="Cached basic data",
+            priority=PROVIDER_SYMBOL_PRIORITY,
+        )
 
     if provider == "rqdata":
         df_basic = _load_basic_rqdata(market, symbols, client, data_cfg)
@@ -1047,9 +1117,15 @@ def load_basic(
 
     if df_basic is None or df_basic.empty:
         return df_basic
+    df_basic = ensure_symbol_columns(
+        df_basic,
+        context="Basic data",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
 
-    if symbols and "ts_code" in df_basic.columns:
-        df_basic = df_basic[df_basic["ts_code"].isin(list(symbols))].copy()
+    if symbols:
+        if "symbol" in df_basic.columns:
+            df_basic = df_basic[df_basic["symbol"].isin(list(symbols))].copy()
 
     # Ensure buffers are writable before parquet serialization.
     df_basic = df_basic.copy(deep=True)
@@ -1087,7 +1163,14 @@ def fetch_fundamentals(
         fundamentals_cfg,
     )
     if cache_file.exists():
-        return pd.read_parquet(cache_file)
+        cached = pd.read_parquet(cache_file)
+        if cached is None or cached.empty:
+            return cached
+        return ensure_symbol_columns(
+            cached,
+            context="Cached fundamentals data",
+            priority=PROVIDER_SYMBOL_PRIORITY,
+        )
 
     if provider == "rqdata":
         if market != "hk":
@@ -1158,6 +1241,11 @@ def fetch_fundamentals(
 
     column_map = fundamentals_cfg.get("column_map") or {}
     df = _standardize_fundamentals_frame(df, column_map, symbol)
+    df = ensure_symbol_columns(
+        df,
+        context="Fundamentals data",
+        priority=PROVIDER_SYMBOL_PRIORITY,
+    )
     df = df.copy(deep=True)
     df.to_parquet(cache_file)
     return df

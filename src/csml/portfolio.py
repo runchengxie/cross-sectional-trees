@@ -5,6 +5,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from .data_tools.symbols import ensure_symbol_columns
+
 
 def normalize_weighting_mode(weighting: str | None) -> str:
     mode = str(weighting or "equal").strip().lower()
@@ -48,7 +50,7 @@ def build_position_weights(
         raise ValueError("side must be one of: long, short.")
 
     signal = pd.to_numeric(
-        day.set_index("ts_code").reindex(holdings)[pred_col],
+        day.set_index("symbol").reindex(holdings)[pred_col],
         errors="coerce",
     )
     if side == "short":
@@ -127,7 +129,7 @@ def select_holdings(
         return [], pd.Series(dtype=float)
 
     ranked = day.sort_values(pred_col, ascending=ascending)
-    ranked_codes = ranked["ts_code"].tolist()
+    ranked_codes = ranked["symbol"].tolist()
     candidate_order = apply_rebalance_buffer(
         ranked_codes,
         prev_holdings,
@@ -173,24 +175,46 @@ def build_positions_by_rebalance(
     short_k: Optional[int] = None,
     tradable_col: Optional[str] = None,
 ) -> pd.DataFrame:
+    if data is not None and not data.empty:
+        data = ensure_symbol_columns(data, context="Portfolio data")
     weighting_mode = normalize_weighting_mode(weighting)
     if data.empty or not rebalance_dates or top_k <= 0:
         return pd.DataFrame(
-            columns=["rebalance_date", "entry_date", "ts_code", "weight", "signal", "rank", "side"]
+            columns=[
+                "rebalance_date",
+                "entry_date",
+                "symbol",
+                "ts_code",
+                "stock_ticker",
+                "weight",
+                "signal",
+                "rank",
+                "side",
+            ]
         )
 
     trade_dates = sorted(data["trade_date"].unique())
     if len(trade_dates) < 2:
         return pd.DataFrame(
-            columns=["rebalance_date", "entry_date", "ts_code", "weight", "signal", "rank", "side"]
+            columns=[
+                "rebalance_date",
+                "entry_date",
+                "symbol",
+                "ts_code",
+                "stock_ticker",
+                "weight",
+                "signal",
+                "rank",
+                "side",
+            ]
         )
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
-    price_table = data.pivot(index="trade_date", columns="ts_code", values=price_col)
+    price_table = data.pivot(index="trade_date", columns="symbol", values=price_col)
     day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
 
     tradable_table = None
     if tradable_col and tradable_col in data.columns:
-        tradable_table = data.pivot(index="trade_date", columns="ts_code", values=tradable_col)
+        tradable_table = data.pivot(index="trade_date", columns="symbol", values=tradable_col)
         tradable_table = tradable_table.fillna(False).astype(bool)
 
     results: list[dict[str, object]] = []
@@ -236,15 +260,17 @@ def build_positions_by_rebalance(
             )
             if weights.empty:
                 continue
-            ranked_codes = day.sort_values(pred_col, ascending=False)["ts_code"].tolist()
+            ranked_codes = day.sort_values(pred_col, ascending=False)["symbol"].tolist()
             rank_map = {code: idx + 1 for idx, code in enumerate(ranked_codes)}
-            signal_map = day.set_index("ts_code")[pred_col].to_dict()
+            signal_map = day.set_index("symbol")[pred_col].to_dict()
             for code in holdings:
                 results.append(
                     {
                         "rebalance_date": reb_date.strftime("%Y%m%d"),
                         "entry_date": entry_date.strftime("%Y%m%d"),
+                        "symbol": code,
                         "ts_code": code,
+                        "stock_ticker": code,
                         "weight": float(weights.get(code, 0.0)),
                         "signal": float(signal_map.get(code, np.nan)),
                         "rank": int(rank_map.get(code, 0)),
@@ -302,18 +328,20 @@ def build_positions_by_rebalance(
         )
         if long_weights.empty or short_weights.empty:
             continue
-        long_ranked = day.sort_values(pred_col, ascending=False)["ts_code"].tolist()
-        short_ranked = day.sort_values(pred_col, ascending=True)["ts_code"].tolist()
+        long_ranked = day.sort_values(pred_col, ascending=False)["symbol"].tolist()
+        short_ranked = day.sort_values(pred_col, ascending=True)["symbol"].tolist()
         long_rank_map = {code: idx + 1 for idx, code in enumerate(long_ranked)}
         short_rank_map = {code: idx + 1 for idx, code in enumerate(short_ranked)}
-        signal_map = day.set_index("ts_code")[pred_col].to_dict()
+        signal_map = day.set_index("symbol")[pred_col].to_dict()
 
         for code in long_holdings:
             results.append(
                 {
                     "rebalance_date": reb_date.strftime("%Y%m%d"),
                     "entry_date": entry_date.strftime("%Y%m%d"),
+                    "symbol": code,
                     "ts_code": code,
+                    "stock_ticker": code,
                     "weight": float(long_weights.get(code, 0.0)),
                     "signal": float(signal_map.get(code, np.nan)),
                     "rank": int(long_rank_map.get(code, 0)),
@@ -325,7 +353,9 @@ def build_positions_by_rebalance(
                 {
                     "rebalance_date": reb_date.strftime("%Y%m%d"),
                     "entry_date": entry_date.strftime("%Y%m%d"),
+                    "symbol": code,
                     "ts_code": code,
+                    "stock_ticker": code,
                     "weight": float(-short_weights.get(code, 0.0)),
                     "signal": float(signal_map.get(code, np.nan)),
                     "rank": int(short_rank_map.get(code, 0)),
@@ -338,9 +368,19 @@ def build_positions_by_rebalance(
 
     if not results:
         return pd.DataFrame(
-            columns=["rebalance_date", "entry_date", "ts_code", "weight", "signal", "rank", "side"]
+            columns=[
+                "rebalance_date",
+                "entry_date",
+                "symbol",
+                "ts_code",
+                "stock_ticker",
+                "weight",
+                "signal",
+                "rank",
+                "side",
+            ]
         )
 
     output = pd.DataFrame(results)
-    output.sort_values(["entry_date", "side", "rank", "ts_code"], inplace=True)
+    output.sort_values(["entry_date", "side", "rank", "symbol"], inplace=True)
     return output.reset_index(drop=True)

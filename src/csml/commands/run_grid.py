@@ -15,6 +15,7 @@ import yaml
 from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR
 from ..backtest import backtest_topk
 from ..config_utils import resolve_pipeline_config
+from ..data_tools.symbols import ensure_symbol_columns
 from ..metrics import daily_ic_series, estimate_turnover, quantile_returns, summarize_ic
 from ..rebalance import get_rebalance_dates
 
@@ -136,7 +137,7 @@ def _resolve_rebalance_dates(
     trade_dates = sorted(pd.to_datetime(scored_data["trade_date"].unique()))
     rebalance_dates = get_rebalance_dates(trade_dates, frequency)
     if min_symbols_per_date > 1:
-        counts = scored_data.groupby("trade_date")["ts_code"].nunique()
+        counts = scored_data.groupby("trade_date")["symbol"].nunique()
         valid_dates = set(counts[counts >= min_symbols_per_date].index)
         rebalance_dates = [date for date in rebalance_dates if date in valid_dates]
     return rebalance_dates
@@ -348,6 +349,7 @@ def main(argv: list[str] | None = None) -> None:
     scored_data = pd.read_parquet(scored_path)
     if scored_data.empty:
         raise SystemExit("Scored data is empty; cannot run grid.")
+    scored_data = ensure_symbol_columns(scored_data, context="Grid scored data")
     scored_data["trade_date"] = pd.to_datetime(scored_data["trade_date"])
 
     eval_signal_col = str(_get_nested(summary, "eval", "scored_signal_col") or "signal_eval")
@@ -361,7 +363,7 @@ def main(argv: list[str] | None = None) -> None:
 
     target_col = str(base_run_cfg.get("label", {}).get("target_col", "future_return"))
     price_col = str(base_run_cfg.get("data", {}).get("price_col", "close"))
-    for required in ("trade_date", "ts_code", target_col, price_col, eval_signal_col):
+    for required in ("trade_date", "symbol", target_col, price_col, eval_signal_col):
         if required not in scored_data.columns:
             raise SystemExit(f"Missing required column in scored data: {required}")
 
@@ -468,7 +470,7 @@ def main(argv: list[str] | None = None) -> None:
                 else None
             )
 
-            k = min(int(top_k), eval_slice["ts_code"].nunique()) if not eval_slice.empty else 0
+            k = min(int(top_k), eval_slice["symbol"].nunique()) if not eval_slice.empty else 0
             if k > 0 and eval_rebalance_dates:
                 turnover = estimate_turnover(
                     eval_slice,
