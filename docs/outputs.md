@@ -80,6 +80,7 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * `daily` 保留 `rqdatac.get_price` 返回的日频字段名，并额外写入 `trade_date`、legacy `ts_code`（仓库归一后的 symbol alias）和 `order_book_id`。
 * `pit_financials` 保留 `rqdatac.get_pit_financials_ex` 的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
 * `financial_details` 保留 `rqdatac.hk.get_detailed_financial_items` 的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
+  当前实测最有用的是长表列 `field`、`amount`、`subject`、`currency`；`manifest.yml` 里的 `field_coverage` 也按这组长表记录统计。
 * `ex_factors` 保留 `rqdatac.get_ex_factor` 返回的字段名，并额外写入 legacy `ts_code`。
 * `dividends` 保留 `rqdatac.get_dividend` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
 * `shares` 保留 `rqdatac.get_shares` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。

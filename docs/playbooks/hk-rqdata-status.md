@@ -42,7 +42,7 @@
 当前不要当成稳定主线的：
 
 * `financial_details`
-  命令已经接入，但当前本机 probe 仍然停留在 `0` 行或 `missing_remote`，只适合继续小样本试。
+  命令已经接入，也确认了“小样本 + 显式字段”可写出有效数据；但还不适合升成全量宽表主线。
 * 旧失败 probe、空目录、老的中间 shard
   这些目录不代表“资产已完成”，清理时优先处理。
 
@@ -56,6 +56,8 @@
   当前全市场 instruments alias，指向 `hk_all_instruments_20260318.parquet`
 * `artifacts/assets/rqdata/hk/instruments/hk_connect_full_latest.parquet`
   当前 `hk_connect` instruments alias，指向 `hk_connect_full_20260318.parquet`
+* `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_core_2024_2025_latest/`
+  当前保留的 `financial_details` 有效 probe，只用于验证接口行为和资产结构
 
 如果你要写配置、文档示例或临时脚本，优先引用这些 alias，避免再次把日期写死到多个地方。
 
@@ -88,18 +90,21 @@
 
 * 当前全市场日线 snapshot 覆盖 `3203` 个 symbol，日期范围是 `2000-01-04` 到 `2026-03-11`。
 * `hk_connect` 的独立日线 snapshot 也保留了，但属于兼容资产，不再是默认入口。
+* `hk_connect_full_by_date.csv` 已在 `2026-03-18` 刷新到最近完整交易日 `2026-03-17`。
 
 ## 财务
 
 | API | 仓库接入 | 当前本地状态 | 建议 |
 | --- | --- | --- | --- |
 | `get_pit_financials_ex` | 已接，`mirror-hk-pit-financials` | 稳定 | 主线资产；full-market `743` 字段 snapshot 已完成。 |
-| `hk.get_detailed_financial_items` | 已接，`mirror-hk-financial-details` | 仅 probe，暂无稳定资产 | 继续小样本试，不要直接升成全量计划。 |
+| `hk.get_detailed_financial_items` | 已接，`mirror-hk-financial-details` | 小样本 probe 可用，暂无稳定全量资产 | 继续显式 `symbol + field` 小样本试，不要直接升成全量计划。 |
 
 补充：
 
 * `hk_all_2000_2025_full_market_latest` 是当前更完整的全市场 PIT snapshot。
 * `hk_all_2000_2025_full_latest` 仍在目录里，但更像旧版全市场 snapshot，不建议再拿它当默认入口。
+* `financial_details` 当前确认可用的 probe 是 `hk_financial_details_probe_core_2024_2025_latest/`，样本为 `00386.HK`、`00939.HK`、`01211.HK`，字段为 `operating_revenue`、`net_profit`。
+* 之前那类 `743` 字段宽表 probe 会在多只股票上触发 server error，不应再作为默认试法。
 
 ## 因子与公告
 

@@ -1366,9 +1366,20 @@ def _update_field_coverage(
     fields: Sequence[str],
 ) -> None:
     for field in _field_columns_for_audit(fields):
-        if field not in coverage or field not in frame.columns:
+        if field not in coverage:
             continue
-        nonnull_rows = int(frame[field].notna().sum())
+        if field in frame.columns:
+            nonnull_rows = int(frame[field].notna().sum())
+            if nonnull_rows == 0 and {"field", "amount"}.issubset(frame.columns):
+                mask = frame["field"].astype(str) == str(field)
+                mask = mask & frame["amount"].notna()
+                nonnull_rows = int(mask.sum())
+        elif {"field", "amount"}.issubset(frame.columns):
+            mask = frame["field"].astype(str) == str(field)
+            mask = mask & frame["amount"].notna()
+            nonnull_rows = int(mask.sum())
+        else:
+            continue
         coverage[field]["nonnull_rows"] = int(coverage[field]["nonnull_rows"]) + nonnull_rows
         if nonnull_rows > 0:
             coverage[field]["symbols_with_values"] = int(coverage[field]["symbols_with_values"]) + 1
@@ -5903,6 +5914,8 @@ def build_hk_pit_fundamentals_file(args) -> int:
     input_rows = 0
     dropped_missing_info_date = 0
     dropped_all_missing_fields = 0
+    precombine_duplicate_rows_seen = 0
+    precombine_duplicate_rows_dropped = 0
     cached_frames: dict[Path, pd.DataFrame] = {data_files[0]: first_frame}
     keep_meta = bool(getattr(args, "keep_meta", False))
 
@@ -5939,10 +5952,17 @@ def build_hk_pit_fundamentals_file(args) -> int:
         if work.empty:
             continue
 
-        # Early dedup per file: keep only the latest row per symbol before appending.
-        # This reduces memory usage from O(total_rows) to O(num_symbols * num_files).
+        # Early dedup per file: keep only the latest row for each symbol + trade_date pair.
+        # Different info_date values must survive into the combined frame.
         if "trade_date" in work.columns and "ts_code" in work.columns:
-            work = work.sort_values("trade_date").drop_duplicates(subset=["ts_code"], keep="last")
+            local_duplicate_rows_seen = int(
+                work.duplicated(subset=["trade_date", "ts_code"], keep=False).sum()
+            )
+            work = work.sort_values(["trade_date", "rice_create_tm"] if "rice_create_tm" in work.columns else ["trade_date"])
+            deduped_work = work.drop_duplicates(subset=["ts_code", "trade_date"], keep="last")
+            precombine_duplicate_rows_seen += local_duplicate_rows_seen
+            precombine_duplicate_rows_dropped += int(len(work) - len(deduped_work))
+            work = deduped_work
 
         combined_frames.append(work)
 
@@ -5971,13 +5991,14 @@ def build_hk_pit_fundamentals_file(args) -> int:
         duplicate_rows_seen = int(
             combined.duplicated(subset=["trade_date", "ts_code"], keep=False).sum()
         )
+        duplicate_rows_seen += precombine_duplicate_rows_seen
         if duplicate_rows_seen and getattr(args, "duplicate_policy", "keep-last") == "error":
             raise SystemExit(
                 "Duplicate trade_date + symbol rows found in PIT asset. "
                 "Retry with --duplicate-policy keep-last if you want automatic deduplication."
             )
         deduped = combined.drop_duplicates(subset=["trade_date", "ts_code"], keep="last")
-        duplicate_rows_dropped = int(len(combined) - len(deduped))
+        duplicate_rows_dropped = precombine_duplicate_rows_dropped + int(len(combined) - len(deduped))
         output_df = deduped.loc[:, [col for col in output_columns if col in deduped.columns]].copy()
         output_df = output_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
     else:

@@ -1299,6 +1299,13 @@ def test_mirror_hk_financial_details_tracks_missing_symbols(tmp_path, monkeypatc
     assert manifest["totals"]["symbols_requested"] == 2
     assert manifest["totals"]["symbols_written"] == 1
     assert manifest["missing_symbols"] == ["00011.HK"]
+    assert manifest["field_coverage"] == [
+        {
+            "field": "revenue",
+            "nonnull_rows": 2,
+            "symbols_with_values": 1,
+        }
+    ]
 
 
 def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, monkeypatch):

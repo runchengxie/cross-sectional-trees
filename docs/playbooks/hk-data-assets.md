@@ -201,6 +201,26 @@ csml rqdata mirror-hk-shares \
 * 这三类命令会优先复用 `artifacts/assets/rqdata/hk/instruments/` 下最近的 HK instruments 快照来解析 `unique_id`，所以先准备 instrument 快照更稳。
 * 如果你在试用期内赶时间，优先级仍然低于 instrument、日线和 PIT core。
 
+`mirror-hk-financial-details` 目前建议只当 probe 用：
+
+```bash
+csml rqdata mirror-hk-financial-details \
+  --start-quarter 2024q1 \
+  --end-quarter 2025q4 \
+  --date 20260318 \
+  --field operating_revenue \
+  --field net_profit \
+  --symbol 00386.HK \
+  --symbol 00939.HK \
+  --symbol 01211.HK \
+  --name hk_financial_details_probe_core_2024_2025_latest
+```
+
+补充：
+
+* 目前更稳的做法是显式传 `--symbol` 和 `--field`，不要直接上 `--field-profile full`。
+* 这个接口当前更适合验证原始细项结构，不适合在试用额度里直接做全市场宽表镜像。
+
 如果你已经确定后面要做行业中性或行业暴露控制，推荐再补两类行业资产：
 
 ```bash
