@@ -235,14 +235,14 @@ csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit
 用本地 `industry_changes` 资产派生日频、月频或季频行业标签文件。
 
 ```bash
-csml rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest --source-universe-by-date artifacts/assets/universe/hk_all_full_by_date.csv --frequency M
-csml rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest --frequency D
+csml rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
+csml rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency D
 ```
 
 说明：
 
-* `--source-universe-by-date` 适合派生月频或季频文件，直接沿用你研究股票池里已有的日期和 symbol 网格。
-* `--daily-asset-dir` 适合派生日频文件，会用本地日线镜像里的实际 `trade_date + ts_code` 网格来落标签。
+* `--daily-asset-dir` 适合派生严格全市场档案上的 `D/M/Q` 标签，会用本地日线镜像里的实际 `trade_date + ts_code` 网格来落标签。
+* `--source-universe-by-date` 适合对齐研究股票池；月频或季频文件会直接沿用该 universe 里的日期和 symbol 网格。
 * `--frequency D|M|Q` 控制在源网格上怎么采样：`D` 保留全部日期，`M/Q` 保留每个 symbol 在当月或当季的最后一个交易日。
 * 默认输出到 `<asset-dir>/industry_labels_<freq>.parquet`，并同时写 `<asset-dir>/industry_labels_<freq>.manifest.yml`。
 

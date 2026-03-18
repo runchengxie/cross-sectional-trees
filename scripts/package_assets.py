@@ -16,22 +16,24 @@ ASSETS_ROOT = REPO_ROOT / "artifacts" / "assets"
 PRESETS = {
     "hk_full": {
         "daily_snapshot": "hk_all_2000_20260312_daily_final_latest",
-        "instruments_file": "hk_all_instruments_20260312.parquet",
+        "instruments_file": "hk_all_instruments_20260318.parquet",
         "pit_snapshot": "hk_all_2000_2025_full_market_latest",
-        "ex_factors_snapshot": None,
-        "dividends_snapshot": None,
-        "shares_snapshot": None,
+        "ex_factors_snapshot": "hk_all_2000_20260318_ex_factors_full_market_latest",
+        "dividends_snapshot": "hk_all_2000_20260318_dividends_full_market_latest",
+        "shares_snapshot": "hk_all_2000_20260318_shares_full_market_latest",
+        "industry_changes_snapshot": "hk_all_2000_20260318_industry_changes_full_market_latest",
         "universe_by_date": "hk_all_full_by_date.csv",
         "universe_symbols": "hk_all_full_symbols.txt",
         "universe_meta": "hk_all_full_by_date.meta.yml",
     },
     "hk_connect": {
         "daily_snapshot": "hk_all_2000_20260312_daily_final_latest",
-        "instruments_file": "hk_connect_full_20260312.parquet",
-        "pit_snapshot": "hk_connect_full_2010_2025_full_latest",
+        "instruments_file": "hk_connect_full_20260318.parquet",
+        "pit_snapshot": "hk_connect_full_2000_2025_full_latest",
         "ex_factors_snapshot": None,
         "dividends_snapshot": None,
         "shares_snapshot": None,
+        "industry_changes_snapshot": None,
         "universe_by_date": "hk_connect_full_by_date.csv",
         "universe_symbols": "hk_connect_full_symbols.txt",
         "universe_meta": "hk_connect_full_by_date.meta.yml",
@@ -57,7 +59,7 @@ def resolve_snapshot_path(base: Path, value: str) -> Path:
 
 
 def detect_as_of(text: str) -> str:
-    match = re.search(r"(\\d{8})", text)
+    match = re.search(r"(\d{8})", text)
     if match:
         return match.group(1)
     return datetime.now().strftime("%Y%m%d")
@@ -123,6 +125,7 @@ def format_manifest(
     ex_factors_snapshot: str | None,
     dividends_snapshot: str | None,
     shares_snapshot: str | None,
+    industry_changes_snapshot: str | None,
     universe_by_date: str,
     universe_symbols: str,
     universe_meta: str | None,
@@ -174,6 +177,14 @@ def format_manifest(
                 f"    path: {yaml_quote(f'rqdata/hk/shares/{shares_snapshot}')}",
             ]
         )
+    if industry_changes_snapshot:
+        lines.extend(
+            [
+                "  industry_changes:",
+                f"    snapshot: {yaml_quote(industry_changes_snapshot)}",
+                f"    path: {yaml_quote(f'rqdata/hk/industry_changes/{industry_changes_snapshot}')}",
+            ]
+        )
     lines.extend(
         [
             "  universe:",
@@ -206,9 +217,11 @@ def main() -> int:
     parser.add_argument("--ex-factors-snapshot", default=None)
     parser.add_argument("--dividends-snapshot", default=None)
     parser.add_argument("--shares-snapshot", default=None)
+    parser.add_argument("--industry-changes-snapshot", default=None)
     parser.add_argument("--universe-by-date", default=None)
     parser.add_argument("--universe-symbols", default=None)
     parser.add_argument("--universe-meta", default=None)
+    parser.add_argument("--no-industry", action="store_true", help="Skip industry_changes assets.")
     args = parser.parse_args()
 
     preset = PRESETS[args.preset]
@@ -223,6 +236,9 @@ def main() -> int:
         ex_factors_snapshot = args.ex_factors_snapshot or preset.get("ex_factors_snapshot")
         dividends_snapshot = args.dividends_snapshot or preset.get("dividends_snapshot")
         shares_snapshot = args.shares_snapshot or preset.get("shares_snapshot")
+    industry_changes_snapshot = (
+        None if args.no_industry else (args.industry_changes_snapshot or preset.get("industry_changes_snapshot"))
+    )
     universe_by_date = args.universe_by_date or preset["universe_by_date"]
     universe_symbols = args.universe_symbols or preset["universe_symbols"]
     universe_meta = args.universe_meta if args.universe_meta is not None else preset["universe_meta"]
@@ -267,6 +283,12 @@ def main() -> int:
             ASSETS_ROOT / "rqdata" / "hk" / "shares",
             shares_snapshot,
         )
+    industry_changes_dir = None
+    if industry_changes_snapshot:
+        industry_changes_dir = resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "industry_changes",
+            industry_changes_snapshot,
+        )
     universe_root = ASSETS_ROOT / "universe"
     universe_by_date_path = resolve_snapshot_path(universe_root, universe_by_date)
     universe_symbols_path = resolve_snapshot_path(universe_root, universe_symbols)
@@ -284,6 +306,8 @@ def main() -> int:
         ensure_exists(dividends_dir, "Dividends snapshot directory")
     if shares_dir:
         ensure_exists(shares_dir, "Shares snapshot directory")
+    if industry_changes_dir:
+        ensure_exists(industry_changes_dir, "Industry changes snapshot directory")
     ensure_exists(universe_by_date_path, "Universe by-date file")
     ensure_exists(universe_symbols_path, "Universe symbols file")
     if universe_meta_path and not universe_meta_path.exists():
@@ -324,6 +348,14 @@ def main() -> int:
     if shares_dir:
         actions.append(
             ("shares", shares_dir, dest / "rqdata" / "hk" / "shares" / shares_dir.name)
+        )
+    if industry_changes_dir:
+        actions.append(
+            (
+                "industry_changes",
+                industry_changes_dir,
+                dest / "rqdata" / "hk" / "industry_changes" / industry_changes_dir.name,
+            )
         )
     if universe_meta_path:
         actions.append(
@@ -379,6 +411,11 @@ def main() -> int:
                     dest / "rqdata" / "hk" / "shares" / shares_dir.name,
                     dest / "rqdata" / "hk" / "shares" / "latest",
                 )
+            if industry_changes_dir:
+                create_relative_symlink(
+                    dest / "rqdata" / "hk" / "industry_changes" / industry_changes_dir.name,
+                    dest / "rqdata" / "hk" / "industry_changes" / "latest",
+                )
         except OSError as exc:
             print(f"Warning: could not create latest symlinks ({exc})", file=sys.stderr)
 
@@ -395,6 +432,7 @@ def main() -> int:
         ex_factors_snapshot=ex_factors_dir.name if ex_factors_dir else None,
         dividends_snapshot=dividends_dir.name if dividends_dir else None,
         shares_snapshot=shares_dir.name if shares_dir else None,
+        industry_changes_snapshot=industry_changes_dir.name if industry_changes_dir else None,
         universe_by_date=universe_by_date_path.name,
         universe_symbols=universe_symbols_path.name,
         universe_meta=universe_meta_path.name if universe_meta_path else None,

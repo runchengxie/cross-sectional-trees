@@ -233,7 +233,7 @@ fundamentals:
 industry:
   enabled: true
   source: file
-  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest/industry_labels_m.parquet
+  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet
   keep_columns:
     - industry_code
     - industry_name

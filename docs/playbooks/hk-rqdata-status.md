@@ -6,7 +6,7 @@
 读完你会得到什么：当前有效资产清单、接口接入状态，以及下一步应该补哪里的结论。  
 相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
-最后核对时间：`2026-03-18`（Asia/Shanghai）
+最后核对时间：`2026-03-19`（Asia/Shanghai）
 
 重要说明：
 
@@ -28,9 +28,11 @@
   `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/`
   `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/`
 * `ex_factors / dividends / shares`
-  全市场和 `hk_connect` 两套 snapshot 都已经在本地
-* `industry_changes / instrument_industry`
-  全市场 `industry_changes` 和月频、季频 `instrument_industry` 已经落盘
+  全市场 alias 已切到 `2026-03-18` 的 `*_full_market_latest` snapshot；`hk_connect` 两套 snapshot 也都还在本地
+* `industry_changes`
+  严格全市场 `industry_changes` 已落盘，并已从本地 `daily` 网格派生 `industry_labels_d/m/q`
+* `instrument_industry`
+  当前稳定的是旧 `1547` symbol 口径的月频、季频快照；`3203` symbol 的 full-market 月频尝试目录已经改名成 `*_incomplete`，不要当成 latest 用
 * `universe`
   `artifacts/assets/universe/hk_connect_full_by_date.csv`
   `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
@@ -60,6 +62,14 @@
   当前全市场 instruments alias，指向 `hk_all_instruments_20260318.parquet`
 * `artifacts/assets/rqdata/hk/instruments/hk_connect_full_latest.parquet`
   当前 `hk_connect` instruments alias，指向 `hk_connect_full_20260318.parquet`
+* `artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest`
+  当前全市场 ex-factors alias，指向 `hk_all_2000_20260318_ex_factors_full_market_latest`
+* `artifacts/assets/rqdata/hk/dividends/hk_all_dividends_latest`
+  当前全市场 dividends alias，指向 `hk_all_2000_20260318_dividends_full_market_latest`
+* `artifacts/assets/rqdata/hk/shares/hk_all_shares_latest`
+  当前全市场 shares alias，指向 `hk_all_2000_20260318_shares_full_market_latest`
+* `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest`
+  当前全市场 industry_changes alias，指向 `hk_all_2000_20260318_industry_changes_full_market_latest`，目录下已经有 `industry_labels_d/m/q.parquet`
 * `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
   当前 `hk_connect` 的 research-ready PIT universe，已在 `2026-03-18` 重建并对齐到 `2026-03-17`
 * `artifacts/assets/universe/hk_connect_full_research_symbols.txt`
@@ -87,7 +97,7 @@
 | `get_exchange_rate` | 未接入离线 mirror | 无稳定资产 | 有跨币种需求再补。 |
 | `get_industry` | 无单独 mirror 命令 | 无独立稳定资产 | 优先级低于 `industry_changes`。 |
 | `get_industry_change` | 已接，`mirror-hk-industry-changes` | 稳定 | 行业切换真相层，优先保留。 |
-| `get_instrument_industry` | 已接，`mirror-hk-instrument-industry` | 稳定 | 便捷快照层，月频/季频都有。 |
+| `get_instrument_industry` | 已接，`mirror-hk-instrument-industry` | 稳定但仍是旧 research-universe 口径 | 便捷快照层；当前保留的月频/季频 latest 还是 `1547` symbol 版本。 |
 | `get_industry_mapping` | 间接覆盖 | 已写到 `industry_changes` 目录 | 作为字典表看待，不必单独升级。 |
 | `get_turnover_rate` | 未接入离线 mirror | 无稳定资产 | 当前优先级低。 |
 | `hk.get_southbound_eligible_secs` | 无 raw mirror，但 `csml universe hk-connect` 已使用 | 稳定 universe 已存在 | 研究层面已够用，暂不急着做原始镜像。 |
@@ -151,8 +161,12 @@
   `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`
 * `pit_financials`
   `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/`
+* `reference`
+  `artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest`
+  `artifacts/assets/rqdata/hk/dividends/hk_all_dividends_latest`
+  `artifacts/assets/rqdata/hk/shares/hk_all_shares_latest`
 * `industry`
-  `artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest/industry_labels_m.parquet`
+  `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet`
 * `universe`
   `artifacts/assets/universe/hk_all_full_by_date.csv`
   或 `artifacts/assets/universe/hk_connect_full_by_date.csv`

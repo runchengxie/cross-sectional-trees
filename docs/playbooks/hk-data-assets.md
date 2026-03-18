@@ -306,7 +306,16 @@ csml rqdata build-hk-pit-fundamentals \
 
 ```bash
 csml rqdata build-hk-industry-labels \
-  --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest \
+  --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest \
+  --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest \
+  --frequency M
+```
+
+如果你要严格对齐研究 universe，而不是“最宽全市场档案”，再改用 `source_universe_by_date`：
+
+```bash
+csml rqdata build-hk-industry-labels \
+  --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest \
   --source-universe-by-date artifacts/assets/universe/hk_all_full_by_date.csv \
   --frequency M
 ```
@@ -315,8 +324,8 @@ csml rqdata build-hk-industry-labels \
 
 ```bash
 csml rqdata build-hk-industry-labels \
-  --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest \
-  --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest \
+  --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest \
+  --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest \
   --frequency D
 ```
 
@@ -331,6 +340,7 @@ csml rqdata build-hk-industry-labels \
 
 * 你如果要精确回放切换日，`industry_changes` 仍然是主资产，不要只保留快照文件。
 * 你如果只是做行业中性、暴露控制或日常 merge，优先直接用 `industry_labels_<freq>`。
+* 如果你的目标是“严格全市场档案”，`M/Q` 也优先从 `daily` 资产取网格；`hk_all_full_by_date.csv` 会回到研究 universe 口径。
 * `M/Q` 只是对本地日期网格抽样，不是 provider 原生“月度接口”。
 
 如果你要直接把这份文件接进研究配置，可以加：
@@ -339,7 +349,7 @@ csml rqdata build-hk-industry-labels \
 industry:
   enabled: true
   source: file
-  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest/industry_labels_m.parquet
+  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet
   keep_columns:
     - industry_name
     - first_industry_name
@@ -462,7 +472,7 @@ csml rqdata mirror-hk-shares \
 csml rqdata quota --pretty
 
 csml rqdata mirror-hk-daily \
-  --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest/symbols.txt \
+  --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt \
   --start-date 20000104 \
   --end-date 20260317 \
   --name hk_all_2000_20260317_daily_final_latest
@@ -484,9 +494,10 @@ csml backup-data \
   --name hk_runtime_20260318_refresh \
   --include-path artifacts/assets/rqdata/hk/daily/hk_all_2000_20260317_daily_final_latest \
   --include-path artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest \
-  --include-path artifacts/assets/rqdata/hk/ex_factors/hk_all_2000_20260318_ex_factors_latest \
-  --include-path artifacts/assets/rqdata/hk/dividends/hk_all_2000_20260318_dividends_latest \
-  --include-path artifacts/assets/rqdata/hk/shares/hk_connect_full_2010_20260318_shares_latest
+  --include-path artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest \
+  --include-path artifacts/assets/rqdata/hk/dividends/hk_all_dividends_latest \
+  --include-path artifacts/assets/rqdata/hk/shares/hk_all_shares_latest \
+  --include-path artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest
 ```
 
 说明：
@@ -563,27 +574,26 @@ python3 scripts/package_assets.py \
 
 说明：
 
-* `--preset hk_full`：全市场口径，包含日线、instrument、PIT 与 universe 资产。
+* `--preset hk_full`：全市场口径，默认包含日线、instrument、PIT、`ex_factors`、`dividends`、`shares`、`industry_changes` 与 universe 资产。
 * `--mode copy`：生成独立可搬运目录；本机调试时也可以用 `--mode symlink`。
 * bundle 内会写 `manifest.yml`，并为关键入口生成 `latest` 软链接，方便配置引用。
 
-如果你也想把复权、分红和股本原料一起打进去，可以再补这几个参数：
+如果你只想保留旧的“瘦 bundle”，可以显式关掉 reference / industry：
 
 ```bash
 python3 scripts/package_assets.py \
-  --preset hk_connect \
-  --ex-factors-snapshot hk_connect_full_2010_20260317_ex_factors_latest \
-  --dividends-snapshot hk_connect_full_2010_20260317_dividends_latest \
-  --shares-snapshot hk_connect_full_2010_20260317_shares_latest \
-  --dest /home/richard/code/csml_assets/hk_connect_ref_20260317 \
+  --preset hk_full \
+  --no-reference \
+  --no-industry \
+  --dest /home/richard/code/csml_assets/hk_full_core_20260312 \
   --mode copy \
   --overwrite
 ```
 
 补充：
 
-* 不传这些参数时，bundle 只包含日线、instrument、PIT 和 universe。
-* 传了 reference snapshot 后，bundle 会额外生成 `rqdata/hk/ex_factors/latest`、`rqdata/hk/dividends/latest` 和 `rqdata/hk/shares/latest` 入口。
+* `hk_full` 现在默认会生成 `rqdata/hk/ex_factors/latest`、`rqdata/hk/dividends/latest`、`rqdata/hk/shares/latest` 和 `rqdata/hk/industry_changes/latest`。
+* `hk_connect` 预设仍然默认保留核心资产；如果你也想把 reference snapshot 打进去，可以继续手动传 `--ex-factors-snapshot`、`--dividends-snapshot`、`--shares-snapshot`。
 
 在其他项目里使用有两种常见方式：
 
