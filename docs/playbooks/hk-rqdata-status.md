@@ -109,7 +109,7 @@
 补充：
 
 * `hk_all_2000_2025_full_market_latest` 是当前更完整的全市场 PIT snapshot。
-* `hk_all_2000_2025_full_latest` 仍在目录里，但更像旧版全市场 snapshot，不建议再拿它当默认入口。
+* 旧的 `hk_all_2000_2025_full_latest` 空快照已经清理，不应再被配置、脚本或文档引用。
 * `financial_details` 当前确认可用的 probe 是 `hk_financial_details_probe_core_2024_2025_latest/`，样本为 `00386.HK`、`00939.HK`、`01211.HK`，字段为 `operating_revenue`、`net_profit`。
 * 之前那类 `743` 字段宽表 probe 会在多只股票上触发 server error，不应再作为默认试法。
 
