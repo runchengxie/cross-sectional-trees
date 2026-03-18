@@ -50,6 +50,12 @@
 8. 如果你要直接 join 行业标签，再用 `build-hk-industry-labels` 从 `industry_changes` 派生本地标签文件。
 9. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
 
+补充：
+
+* 默认 HK 月频研究配置现在读取 `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
+* `hk_selected` / 季频 PIT 模板现在读取 `artifacts/assets/universe/hk_selected_pit_research_by_date.csv`
+* 这两份 `research universe` 都建议用 `build-hk-pit-fundamentals` 和本地 flat file 一起派生，不要再手工维护
+
 ## 3. 股票池与下载历史的关系和处理
 
 这里要单独记住：

@@ -73,7 +73,7 @@ universe:
   require_by_date: true
   symbols: []
   symbols_file: null
-  by_date_file: "artifacts/assets/universe/universe_by_date.csv"
+  by_date_file: "artifacts/assets/universe/hk_connect_full_research_by_date.csv"
   min_symbols_per_date: 5
   min_listed_days: 0
   min_turnover: 0

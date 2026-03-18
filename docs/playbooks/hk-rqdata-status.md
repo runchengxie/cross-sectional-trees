@@ -25,8 +25,8 @@
   `artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest/`
 * `pit_financials`
   `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/`
-  `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2010_2025_full_latest/`
   `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/`
+  `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/`
 * `ex_factors / dividends / shares`
   全市场和 `hk_connect` 两套 snapshot 都已经在本地
 * `industry_changes / instrument_industry`
@@ -35,6 +35,8 @@
   `artifacts/assets/universe/hk_connect_full_by_date.csv`
   `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
   `artifacts/assets/universe/hk_connect_full_research_symbols.txt`
+  `artifacts/assets/universe/hk_selected_pit_research_by_date.csv`
+  `artifacts/assets/universe/hk_selected_pit_research_symbols.txt`
   `artifacts/assets/universe/hk_all_full_by_date.csv`
 * `bundles / backup`
   `artifacts/snapshots/bundles/hk_full_ref_20260318/`
@@ -61,7 +63,11 @@
 * `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
   当前 `hk_connect` 的 research-ready PIT universe，已在 `2026-03-18` 重建并对齐到 `2026-03-17`
 * `artifacts/assets/universe/hk_connect_full_research_symbols.txt`
-  当前 `hk_connect` 的 research-ready PIT symbol 集合，对应 `622` 个 symbol
+  当前 `hk_connect` 的 research-ready PIT symbol 集合，对应 `904` 个 symbol
+* `artifacts/assets/universe/hk_selected_pit_research_by_date.csv`
+  当前 `hk_selected` 这条实验线的 research-ready PIT universe，已在 `2026-03-18` 从本地 PIT flat file 重新派生
+* `artifacts/assets/universe/hk_selected_pit_research_symbols.txt`
+  当前 `hk_selected` 的 research-ready PIT symbol 集合，对应 `222` 个 symbol
 * `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_core_2024_2025_latest/`
   当前保留的 `financial_details` 有效 probe，只用于验证接口行为和资产结构
 
@@ -97,7 +103,8 @@
 * 当前全市场日线 snapshot 覆盖 `3203` 个 symbol，日期范围是 `2000-01-04` 到 `2026-03-11`。
 * `hk_connect` 的独立日线 snapshot 也保留了，但属于兼容资产，不再是默认入口。
 * `hk_connect_full_by_date.csv` 已在 `2026-03-18` 刷新到最近完整交易日 `2026-03-17`。
-* `hk_connect_full_research_by_date.csv` 也已在 `2026-03-18` 重新派生，当前覆盖 `622` 个带 PIT fundamentals 的 symbol。
+* `hk_connect_full_research_by_date.csv` 已在 `2026-03-18` 重新派生，当前覆盖 `904` 个带本地 PIT flat fundamentals 的 symbol。
+* `hk_selected_pit_research_by_date.csv` 也已在 `2026-03-18` 重新派生，当前覆盖 `222` 个 symbol，给 `hk_selected` 系列配置使用。
 
 ## 财务
 
@@ -110,6 +117,8 @@
 
 * `hk_all_2000_2025_full_market_latest` 是当前更完整的全市场 PIT snapshot。
 * 旧的 `hk_all_2000_2025_full_latest` 空快照已经清理，不应再被配置、脚本或文档引用。
+* `hk_connect_full_2000_2025_full_latest/pipeline_fundamentals.parquet` 已在 `2026-03-18` 用本地宽 PIT 镜像重建，当前是 `904` 个 symbol、`743` 个 value 字段，不再是早先那份窄版 flat file。
+* `hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 也已在 `2026-03-18` 重建，并同步派生出 `hk_selected_pit_research_*` 入口文件。
 * `financial_details` 当前确认可用的 probe 是 `hk_financial_details_probe_core_2024_2025_latest/`，样本为 `00386.HK`、`00939.HK`、`01211.HK`，字段为 `operating_revenue`、`net_profit`。
 * 之前那类 `743` 字段宽表 probe 会在多只股票上触发 server error，不应再作为默认试法。
 
@@ -147,6 +156,13 @@
 * `universe`
   `artifacts/assets/universe/hk_all_full_by_date.csv`
   或 `artifacts/assets/universe/hk_connect_full_by_date.csv`
+
+当前配置入口已经收口到两组 research universe：
+
+* `configs/presets/hk.yml`
+  默认使用 `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
+* `configs/presets/hk_quarterly_pit_hybrid.yml`
+  以及 `hk_selected` 系列实验配置，默认使用 `artifacts/assets/universe/hk_selected_pit_research_by_date.csv`
 
 ## 下一步建议
 
