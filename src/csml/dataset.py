@@ -15,10 +15,12 @@ class DatasetSchema:
     label_col: Optional[str]
     tradable_col: Optional[str]
     feature_cols: list[str]
+    extra_cols: list[str] | None = None
 
     def column_order(self) -> list[str]:
         cols: list[str] = [self.date_col, self.instrument_col, self.price_col]
         cols.extend(self.feature_cols)
+        cols.extend(self.extra_cols or [])
         if self.label_col:
             cols.append(self.label_col)
         if self.tradable_col:
@@ -33,6 +35,7 @@ class DatasetSchema:
             "label_col": self.label_col,
             "tradable_col": self.tradable_col,
             "feature_cols": list(self.feature_cols),
+            "extra_cols": list(self.extra_cols or []),
         }
 
 

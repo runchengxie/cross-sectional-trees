@@ -152,37 +152,58 @@ def _load_fundamentals_frames(
     return frames, cache_dir
 
 
-def _prepare_fundamentals_frame(
+def _prepare_panel_join_frame(
     frame: pd.DataFrame,
     column_map: Mapping[str, Any] | None = None,
+    *,
+    item_label: str,
 ) -> pd.DataFrame:
-    fund_df = frame.copy()
+    join_df = frame.copy()
     column_map = column_map or {}
     if column_map:
         rename_map = {
             source: standard
             for standard, source in column_map.items()
-            if source in fund_df.columns and standard != source
+            if source in join_df.columns and standard != source
         }
         if rename_map:
-            fund_df = fund_df.rename(columns=rename_map)
-    if "trade_date" not in fund_df.columns and "date" in fund_df.columns:
-        fund_df = fund_df.rename(columns={"date": "trade_date"})
-    if "ts_code" not in fund_df.columns and "symbol" in fund_df.columns:
-        fund_df = fund_df.rename(columns={"symbol": "ts_code"})
-    if "trade_date" not in fund_df.columns or "ts_code" not in fund_df.columns:
-        sys.exit("Fundamentals data must include trade_date and ts_code columns.")
-    fund_df["trade_date"] = pd.to_datetime(fund_df["trade_date"], errors="coerce")
-    fund_df = fund_df[fund_df["trade_date"].notna()].copy()
-    fund_df["trade_date"] = fund_df["trade_date"].dt.normalize()
-    if "valuation_trade_date" in fund_df.columns:
+            join_df = join_df.rename(columns=rename_map)
+    if "trade_date" not in join_df.columns and "date" in join_df.columns:
+        join_df = join_df.rename(columns={"date": "trade_date"})
+    if "ts_code" not in join_df.columns and "symbol" in join_df.columns:
+        join_df = join_df.rename(columns={"symbol": "ts_code"})
+    if "trade_date" not in join_df.columns or "ts_code" not in join_df.columns:
+        sys.exit(f"{item_label} data must include trade_date and ts_code columns.")
+    join_df["trade_date"] = pd.to_datetime(join_df["trade_date"], errors="coerce")
+    join_df = join_df[join_df["trade_date"].notna()].copy()
+    join_df["trade_date"] = join_df["trade_date"].dt.normalize()
+    if "valuation_trade_date" in join_df.columns:
         valuation_trade_date = pd.to_datetime(
-            fund_df["valuation_trade_date"], errors="coerce"
+            join_df["valuation_trade_date"], errors="coerce"
         )
-        fund_df["valuation_trade_date"] = valuation_trade_date.dt.normalize()
-    fund_df["ts_code"] = fund_df["ts_code"].astype(str).str.strip()
-    fund_df = fund_df.drop_duplicates(subset=["trade_date", "ts_code"]).copy()
-    return fund_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+        join_df["valuation_trade_date"] = valuation_trade_date.dt.normalize()
+    for date_col in ("start_date", "cancel_date"):
+        if date_col in join_df.columns:
+            parsed = pd.to_datetime(join_df[date_col], errors="coerce")
+            join_df[date_col] = parsed.dt.normalize()
+    join_df["ts_code"] = join_df["ts_code"].astype(str).str.strip()
+    join_df = join_df.drop_duplicates(subset=["trade_date", "ts_code"]).copy()
+    return join_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+
+
+def _select_panel_join_columns(
+    frame: pd.DataFrame,
+    *,
+    keep_columns: list[str] | None,
+    item_label: str,
+) -> pd.DataFrame:
+    if not keep_columns:
+        return frame
+    missing = [column for column in keep_columns if column not in frame.columns]
+    if missing:
+        sys.exit(f"{item_label} columns not found in join data: {missing}")
+    selected = ["trade_date", "ts_code"] + keep_columns
+    return frame.loc[:, list(dict.fromkeys(selected))].copy()
 
 
 def _derive_requested_fundamental_fields(
@@ -1360,6 +1381,22 @@ def run(config_ref: str | Path | None = None) -> None:
         if provider_overlay_cfg.get("provider")
         else provider
     )
+    industry_cfg = config.get("industry")
+    if industry_cfg is None:
+        industry_cfg = {}
+    if not isinstance(industry_cfg, Mapping):
+        sys.exit("industry must be a mapping when provided.")
+    INDUSTRY_ENABLED = bool(industry_cfg.get("enabled", False))
+    INDUSTRY_SOURCE = str(industry_cfg.get("source", "file")).strip().lower()
+    if INDUSTRY_SOURCE not in {"file"}:
+        sys.exit("industry.source must be 'file'.")
+    INDUSTRY_FILE = industry_cfg.get("file")
+    INDUSTRY_KEEP_COLUMNS = normalize_symbol_list(industry_cfg.get("keep_columns"))
+    INDUSTRY_FFILL = bool(industry_cfg.get("ffill", False))
+    INDUSTRY_FFILL_LIMIT = industry_cfg.get("ffill_limit")
+    if INDUSTRY_FFILL_LIMIT is not None:
+        INDUSTRY_FFILL_LIMIT = int(INDUSTRY_FFILL_LIMIT)
+    INDUSTRY_REQUIRED = bool(industry_cfg.get("required", False))
 
     feature_list = features_cfg.get("list") or []
     FEATURES = normalize_symbol_list(feature_list) if feature_list else [
@@ -1509,8 +1546,10 @@ def run(config_ref: str | Path | None = None) -> None:
         logger.info("Artifacts will be saved to %s", run_dir)
 
     fundamentals_cols: list[str] = []
+    industry_cols: list[str] = []
     fund_cache_dir: Optional[Path] = None
     fundamentals_file_path: Optional[Path] = None
+    industry_file_path: Optional[Path] = None
     provider_overlay_cache_dir: Optional[Path] = None
     if FUNDAMENTALS_ENABLED:
         if FUNDAMENTALS_SOURCE == "provider" and not fundamentals_provider_supported(
@@ -1546,6 +1585,21 @@ def run(config_ref: str | Path | None = None) -> None:
                     sys.exit(message)
                 logger.warning("%s Fundamentals disabled.", message)
                 FUNDAMENTALS_ENABLED = False
+    if INDUSTRY_ENABLED:
+        if not INDUSTRY_FILE:
+            message = "industry.file is required when industry.enabled=true."
+            if INDUSTRY_REQUIRED:
+                sys.exit(message)
+            logger.warning("%s Industry join disabled.", message)
+            INDUSTRY_ENABLED = False
+        else:
+            industry_file_path = resolve_repo_path(INDUSTRY_FILE)
+            if not industry_file_path.exists():
+                message = f"Industry file not found: {industry_file_path}"
+                if INDUSTRY_REQUIRED:
+                    sys.exit(message)
+                logger.warning("%s Industry join disabled.", message)
+                INDUSTRY_ENABLED = False
     if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED:
         if not FUNDAMENTALS_ENABLED or FUNDAMENTALS_SOURCE != "file":
             message = (
@@ -1686,8 +1740,10 @@ def run(config_ref: str | Path | None = None) -> None:
 
         if fundamentals_frames:
             fund_df = pd.concat(fundamentals_frames, ignore_index=True)
-            fund_df = _prepare_fundamentals_frame(
-                fund_df, fundamentals_cfg.get("column_map")
+            fund_df = _prepare_panel_join_frame(
+                fund_df,
+                fundamentals_cfg.get("column_map"),
+                item_label="Fundamentals",
             )
             fund_df = _derive_requested_fundamental_fields(
                 fund_df, requested_feature_names
@@ -1722,8 +1778,10 @@ def run(config_ref: str | Path | None = None) -> None:
             )
             if overlay_frames:
                 overlay_df = pd.concat(overlay_frames, ignore_index=True)
-                overlay_df = _prepare_fundamentals_frame(
-                    overlay_df, provider_overlay_cfg.get("column_map")
+                overlay_df = _prepare_panel_join_frame(
+                    overlay_df,
+                    provider_overlay_cfg.get("column_map"),
+                    item_label="Provider overlay",
                 )
                 overlay_value_cols = [
                     col
@@ -1764,6 +1822,46 @@ def run(config_ref: str | Path | None = None) -> None:
                 and FUNDAMENTALS_LOG_MCAP_COL not in FEATURES
             ):
                 FEATURES = list(dict.fromkeys(FEATURES + [FUNDAMENTALS_LOG_MCAP_COL]))
+
+    if INDUSTRY_ENABLED:
+        industry_frames, _ = _load_fundamentals_frames(
+            source=INDUSTRY_SOURCE,
+            file_path=industry_file_path,
+            data_interface=data_interface,
+            symbols=symbols_for_data,
+            start_date=START_DATE,
+            end_date=END_DATE,
+            data_cfg=data_cfg,
+            fundamentals_cfg=industry_cfg,
+            market=MARKET,
+            item_label="industry labels",
+        )
+        if industry_frames:
+            industry_df = pd.concat(industry_frames, ignore_index=True)
+            industry_df = _prepare_panel_join_frame(
+                industry_df,
+                industry_cfg.get("column_map"),
+                item_label="Industry",
+            )
+            industry_df = _select_panel_join_columns(
+                industry_df,
+                keep_columns=INDUSTRY_KEEP_COLUMNS,
+                item_label="Industry",
+            )
+            df, industry_cols = _merge_fundamentals_panel(
+                df,
+                industry_df,
+                ffill=INDUSTRY_FFILL,
+                ffill_limit=INDUSTRY_FFILL_LIMIT,
+                merge_label="Industry",
+            )
+            logger.info(
+                "Merged industry labels: %s rows, %s columns.",
+                len(industry_df),
+                len(industry_cols),
+            )
+        else:
+            logger.warning("Industry join enabled but no industry data was loaded.")
 
     label_next_rebalance_map = None
     label_horizon_gap = None
@@ -2042,7 +2140,8 @@ def run(config_ref: str | Path | None = None) -> None:
         .copy()
     )
 
-    cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + meta_cols + [TARGET]
+    passthrough_cols = list(dict.fromkeys(industry_cols))
+    cols = ["trade_date", "ts_code", PRICE_COL] + FEATURES + passthrough_cols + meta_cols + [TARGET]
     cols = list(dict.fromkeys(cols))
     df = df[cols].copy()
 
@@ -2095,13 +2194,24 @@ def run(config_ref: str | Path | None = None) -> None:
         label_col=TARGET,
         tradable_col="is_tradable" if "is_tradable" in df_features.columns else None,
         feature_cols=FEATURES,
+        extra_cols=passthrough_cols,
     )
     dataset = build_dataset(df_features, dataset_schema)
     df_features = dataset.frame
     df_full = df_features.dropna().reset_index(drop=True)
     if eval_extra_df is not None and not eval_extra_df.empty:
         eval_extra_df = eval_extra_df.drop_duplicates(subset=["trade_date", "ts_code"])
-        df_full = df_full.merge(eval_extra_df, on=["trade_date", "ts_code"], how="left")
+        extra_eval_cols = [
+            col
+            for col in eval_extra_df.columns
+            if col not in {"trade_date", "ts_code"} and col not in df_full.columns
+        ]
+        if extra_eval_cols:
+            df_full = df_full.merge(
+                eval_extra_df[["trade_date", "ts_code"] + extra_eval_cols],
+                on=["trade_date", "ts_code"],
+                how="left",
+            )
     (
         df_full_sorted,
         all_dates_full,
@@ -3283,7 +3393,18 @@ def run(config_ref: str | Path | None = None) -> None:
                                     bt_active_stats["alpha"] * 100,
                                 )
 
-        scored_cols = ["trade_date", "ts_code", PRICE_COL, TARGET, "pred", "signal_eval", "signal_backtest"]
+        scored_cols = [
+            "trade_date",
+            "ts_code",
+            PRICE_COL,
+            TARGET,
+            "pred",
+            "signal_eval",
+            "signal_backtest",
+        ]
+        scored_cols.extend(passthrough_cols)
+        scored_cols.extend(bucket_cols)
+        scored_cols = list(dict.fromkeys(scored_cols))
         if BACKTEST_TRADABLE_COL and BACKTEST_TRADABLE_COL in eval_df_full.columns:
             scored_cols.append(BACKTEST_TRADABLE_COL)
         result["scored_data"] = eval_df_full[scored_cols].copy()
@@ -3990,6 +4111,15 @@ def run(config_ref: str | Path | None = None) -> None:
                     ),
                     "features": FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES,
                 },
+            },
+            "industry": {
+                "enabled": INDUSTRY_ENABLED,
+                "source": INDUSTRY_SOURCE if INDUSTRY_ENABLED else None,
+                "file": str(INDUSTRY_FILE) if INDUSTRY_FILE else None,
+                "keep_columns": INDUSTRY_KEEP_COLUMNS,
+                "resolved_columns": passthrough_cols,
+                "ffill": INDUSTRY_FFILL,
+                "ffill_limit": INDUSTRY_FFILL_LIMIT,
             },
             "walk_forward": {
                 "enabled": WF_ENABLED,

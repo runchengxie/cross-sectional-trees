@@ -460,6 +460,33 @@ def test_append_passthrough_strips_leading_separator():
     assert pit_fundamentals.force is True
     assert callable(pit_fundamentals.func)
 
+    industry_labels = parser.parse_args(
+        [
+            "rqdata",
+            "build-hk-industry-labels",
+            "--asset-dir",
+            "artifacts/assets/rqdata/hk/industry_changes/demo",
+            "--source-universe-by-date",
+            "artifacts/assets/universe/hk_connect_full_by_date.csv",
+            "--frequency",
+            "M",
+            "--out",
+            "artifacts/assets/industry/industry_labels_m.parquet",
+            "--symbols-out",
+            "artifacts/assets/industry/industry_symbols.txt",
+            "--force",
+        ]
+    )
+    assert industry_labels.command == "rqdata"
+    assert industry_labels.rq_command == "build-hk-industry-labels"
+    assert industry_labels.asset_dir == "artifacts/assets/rqdata/hk/industry_changes/demo"
+    assert industry_labels.source_universe_by_date == "artifacts/assets/universe/hk_connect_full_by_date.csv"
+    assert industry_labels.frequency == "M"
+    assert industry_labels.out == "artifacts/assets/industry/industry_labels_m.parquet"
+    assert industry_labels.symbols_out == "artifacts/assets/industry/industry_symbols.txt"
+    assert industry_labels.force is True
+    assert callable(industry_labels.func)
+
     pit_coverage = parser.parse_args(
         [
             "rqdata",

@@ -32,6 +32,7 @@
 | 参考数据镜像 | `csml rqdata mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 保留复权、分红和股本原料，给后续派生研究使用 |
 | 行业资产镜像 | `csml rqdata mirror-hk-instrument-industry` / `mirror-hk-industry-changes` | `artifacts/assets/rqdata/hk/instrument_industry/` 等 | 保留行业快照和行业变更区间，给行业中性和暴露回放使用 |
 | 平面 fundamentals 文件 | `csml rqdata build-hk-pit-fundamentals` | `<pit_snapshot>/pipeline_fundamentals.parquet` | 给 pipeline 直接读取的财务文件 |
+| 本地行业标签文件 | `csml rqdata build-hk-industry-labels` | `<industry_changes_snapshot>/industry_labels_<freq>.parquet` | 用行业变更区间本地派生可直接 join 的日/月/季标签文件 |
 | 本地快照备份 | `csml backup-data` | `artifacts/snapshots/<name>/` | 把缓存、股票池和配置一起归档 |
 
 ## 2. 推荐准备顺序
@@ -45,7 +46,8 @@
 5. 如果你要保留复权、分红和股本原料，再镜像 `ex_factors`、`dividends` 和 `shares`。
 6. 如果你要做行业中性、行业暴露或行业归属回放，再镜像 `instrument_industry` 和 `industry_changes`。
 7. 用 `build-hk-pit-fundamentals` 生成研究用平面文件。
-8. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
+8. 如果你要直接 join 行业标签，再用 `build-hk-industry-labels` 从 `industry_changes` 派生本地标签文件。
+9. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
 
 ## 3. 股票池与下载历史的关系和处理
 
@@ -220,6 +222,7 @@ csml rqdata mirror-hk-industry-changes \
 * `mirror-hk-instrument-industry` 会按 `by_date_file` 或日期区间解析快照日期，并把这些日期写到 `dates.txt`。
 * `mirror-hk-industry-changes` 会先用 `get_industry_mapping` 枚举行业代码，再把每个 symbol 的行业区间写到 `data/<ts_code>.parquet`。
 * 这两类资产当前也不会被 pipeline 自动直读，更适合离线研究、行业中性和归因检查。
+* 如果你更关心“切换日真相层”，优先保留 `industry_changes`；`instrument_industry` 的月频、季频更像便捷快照层。
 
 ## 6. 平面 fundamentals 文件怎么生成
 
@@ -244,7 +247,66 @@ csml rqdata build-hk-pit-fundamentals \
 
 还可以顺手派生一份“只保留确实有 PIT 财报的 symbol”的研究股票池文件。
 
-## 7. 配额和恢复建议
+## 7. 本地行业标签文件怎么生成
+
+如果你已经有 `industry_changes` 资产，后续的日频、月频、季频行业标签都可以本地派生，不需要再向 provider 重复请求快照：
+
+```bash
+csml rqdata build-hk-industry-labels \
+  --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest \
+  --source-universe-by-date artifacts/assets/universe/hk_all_full_by_date.csv \
+  --frequency M
+```
+
+如果你要日频标签，用本地日线镜像提供真实交易日网格：
+
+```bash
+csml rqdata build-hk-industry-labels \
+  --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest \
+  --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest \
+  --frequency D
+```
+
+这一步会做几件事：
+
+* 读取 `industry_changes` 里的 `start_date` / `cancel_date` 区间。
+* 选一个本地日期网格来源：`source_universe_by_date` 或 `daily_asset_dir`。
+* 按 `start_date <= trade_date < cancel_date` 给每个 `trade_date + ts_code` 命中行业标签。
+* 写出 `industry_labels_<freq>.parquet` 和配套 manifest。
+
+使用建议：
+
+* 你如果要精确回放切换日，`industry_changes` 仍然是主资产，不要只保留快照文件。
+* 你如果只是做行业中性、暴露控制或日常 merge，优先直接用 `industry_labels_<freq>`。
+* `M/Q` 只是对本地日期网格抽样，不是 provider 原生“月度接口”。
+
+如果你要直接把这份文件接进研究配置，可以加：
+
+```yaml
+industry:
+  enabled: true
+  source: file
+  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest/industry_labels_m.parquet
+  keep_columns:
+    - industry_name
+    - first_industry_name
+  ffill: false
+  required: true
+
+eval:
+  bucket_ic:
+    enabled: true
+    schemes:
+      - industry_name
+```
+
+说明：
+
+* 这样会把行业列直接并到 panel，并保留到 `dataset.parquet` / `eval_scored.parquet`。
+* 这一步只是提供 join 输入；自动行业中性化、行业约束或行业 dummy 仍然要在后续研究逻辑里显式处理。
+* 如果你的研究单元是月度或季度，尽量用同频文件；只有明确要传播最近一次标签时，才考虑 `ffill=true`。
+
+## 8. 配额和恢复建议
 
 日常运维时，先做这几件事：
 
@@ -258,7 +320,7 @@ csml rqdata build-hk-pit-fundamentals \
 * 日线缓存：通常走 symbol cache，后续增量刷新成本较低
 * PIT 财务镜像：优先小 `batch-size`，让 quota 中断后更容易续跑
 
-## 8. 备份怎么做
+## 9. 备份怎么做
 
 本地私有备份优先用：
 
@@ -293,7 +355,7 @@ python3 scripts/release_assets.py \
 这个脚本会调用 `package_assets.py` 生成 bundle、写 `README.md`、打包成 tar.gz，
 并用 `gh release create/upload` 上传到 GitHub Release。只想打包不上传时加 `--skip-upload`。
 
-## 9. 跨机器打包与共享资产
+## 10. 跨机器打包与共享资产
 
 如果你需要把离线资产带到另一台机器或共享给他人，建议用仓库内置的打包脚本，把常用资产聚合成一个可搬运的 bundle。
 

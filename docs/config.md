@@ -224,6 +224,33 @@ fundamentals:
 - 如果 overlay 数据里没有 `valuation_trade_date`，pipeline 会把 provider 行本身的 `trade_date` 记为 `valuation_trade_date`，并在需要时计算 `valuation_age_days`。
 - `log_market_cap` 仍由顶层 `fundamentals.log_market_cap` 控制；只要 panel 里出现了 `market_cap`，就可以派生 `log_mcap`。
 
+### `industry`
+
+当你已经有本地 `industry_labels_<freq>.parquet` 时，可以直接把行业标签并到研究 panel，作为行业中性、暴露分析或 `bucket_ic` 的现成 join 输入。
+
+```yaml
+industry:
+  enabled: true
+  source: file
+  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest/industry_labels_m.parquet
+  keep_columns:
+    - industry_code
+    - industry_name
+    - first_industry_code
+    - first_industry_name
+  ffill: false
+  required: true
+```
+
+约定：
+
+- `industry` 目前只支持 `source=file`。
+- join 主键固定是 `trade_date + ts_code`。
+- 如果 `keep_columns` 为空，默认保留文件里的全部非主键列。
+- 这些行业列不会自动加入模型 `features`，但会保留在 `dataset.parquet`、`eval_scored.parquet`，也可以直接被 `eval.bucket_ic.schemes` 引用。
+- 这条链路只负责把行业标签接进 panel；自动行业中性化或行业约束还需要你在后续研究逻辑里显式实现。
+- 如果你用的是 `industry_labels_m/q.parquet`，更稳妥的做法是让文件频率和你的研究单元一致；只有在你明确知道自己要传播最近一次标签时，才打开 `ffill=true`。
+
 ## 路径迁移（旧仓库升级）
 
 | 旧路径 | 新路径 |

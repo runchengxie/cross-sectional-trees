@@ -319,6 +319,12 @@ def _handle_rqdata_build_hk_pit_fundamentals(args) -> int:
     return rqdata_assets.build_hk_pit_fundamentals_file(args)
 
 
+def _handle_rqdata_build_hk_industry_labels(args) -> int:
+    from .data_tools import rqdata_assets
+
+    return rqdata_assets.build_hk_industry_labels_file(args)
+
+
 def _handle_rqdata_inspect_hk_pit_coverage(args) -> int:
     from .data_tools import rqdata_assets
 
@@ -668,6 +674,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_pit_fundamentals_build_args(rq_pit_fundamentals)
     rq_pit_fundamentals.set_defaults(func=_handle_rqdata_build_hk_pit_fundamentals)
+
+    rq_industry_labels = rq_sub.add_parser(
+        "build-hk-industry-labels",
+        help="Build local HK industry label files from an industry_changes asset",
+    )
+    rqdata_assets.add_hk_industry_labels_build_args(rq_industry_labels)
+    rq_industry_labels.set_defaults(func=_handle_rqdata_build_hk_industry_labels)
 
     rq_pit_coverage = rq_sub.add_parser(
         "inspect-hk-pit-coverage",

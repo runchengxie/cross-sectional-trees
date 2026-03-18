@@ -47,6 +47,7 @@ artifacts/
 
 这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
 如果你继续执行 `csml rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
+如果你继续执行 `csml rqdata build-hk-industry-labels`，默认还会在对应的 `industry_changes` 目录下生成一份本地行业标签文件。
 
 ## RQData 资产镜像目录
 
@@ -117,6 +118,39 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * 这类文件可直接接 `fundamentals.source=file`
 * 如果你希望披露后的交易日持续使用最近一版财报值，保留 `fundamentals.ffill=true`
 
+## HK 行业标签文件
+
+默认路径：
+
+`artifacts/assets/rqdata/hk/industry_changes/<snapshot>/industry_labels_<freq>.parquet`
+
+这类文件由 `csml rqdata build-hk-industry-labels` 生成，也可以通过 `--out` 写到其他位置。
+
+配套文件：
+
+* `industry_labels_<freq>.manifest.yml`：来源 `industry_changes` 资产、采样频率、日期网格来源和输出统计。
+* 可选：如果构建时传了 `--symbols-out`，会额外写一个 symbol 文本文件。
+
+字段约定：
+
+* 固定列：`trade_date`、`ts_code`
+* 区间元数据列：通常还会保留 `order_book_id`、`start_date`、`cancel_date`
+* 行业值列：如果源资产里有，会保留 `industry_code`、`industry_name`、`industry_level`、`industry_source` 以及完整行业层级列
+* `trade_date` 永远是字符串 `YYYYMMDD`
+* 当某个 symbol 在该日期没有命中任何有效行业区间时，该行仍然保留，但行业列会是空值
+
+构建规则：
+
+* 输入真相层是 `industry_changes` 里的区间记录，按 `start_date <= trade_date < cancel_date` 命中。
+* `--source-universe-by-date` 适合月频或季频，直接复用研究股票池的日期和 symbol 网格。
+* `--daily-asset-dir` 适合日频，会从本地日线镜像里提取实际交易日网格。
+* `--frequency D|M|Q` 会在源网格上做抽样，`M/Q` 保留每个 symbol 在当月或当季的最后一个交易日。
+
+使用建议：
+
+* 如果你需要精确回放切换日，优先保留 `industry_changes` 原始区间资产。
+* 如果你主要是做行业中性、暴露控制或日常 join，直接消费这类 `industry_labels_<freq>` 文件会更顺手。
+
 ## `summary.json` 顶层结构
 
 `summary.json` 顶层字段（固定键）：
@@ -135,6 +169,7 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 | `positions` | 回测持仓文件路径与窗口字段声明 |
 | `live` | live 模式状态、as_of 与 live 持仓文件路径 |
 | `fundamentals` | 基本面数据源与字段配置摘要 |
+| `industry` | 本地行业标签 join 配置摘要 |
 | `walk_forward` | 滚动窗口验证参数与结果 |
 
 说明：
@@ -169,11 +204,30 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 1. `provider_overlay` 只表示运行时是否启用了第二路 provider 估值 merge，不等于这些列在每个 `trade_date` 都有值。
 1. 审 provider 估值链路时，优先看 `config.used.yml` 与这里的 `fundamentals.provider_overlay`，再决定是按 file 还是按 overlay 口径复现。
 
+`summary.json -> industry` 会记录本地行业标签 join 的配置与解析结果：
+
+```json
+{
+  "enabled": true,
+  "source": "file",
+  "file": "artifacts/assets/.../industry_labels_m.parquet",
+  "keep_columns": ["industry_name", "first_industry_name"],
+  "resolved_columns": ["industry_name", "first_industry_name"],
+  "ffill": false,
+  "ffill_limit": null
+}
+```
+
+说明：
+
+1. `industry` 只表示本次运行是否把本地行业标签接进了 panel，不等于系统已经自动做了行业中性化。
+1. `resolved_columns` 是本次真正保留到 panel / artifact 的行业列集合。
+
 ## 稳定性契约（给下游脚本）
 
 稳定 contract（版本演进时尽量保持不变）：
 
-1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/fundamentals/walk_forward`）。
+1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/fundamentals/industry/walk_forward`）。
 1. 持仓主键列语义：`trade_date`、`entry_date`、`ts_code`、`stock_ticker`、`weight`、`signal`、`rank`、`side`。
 1. `weight` 的解释取决于 `backtest.weighting`：`equal` 时等权，`signal` 时为信号 softmax 后的目标权重。
 1. `summary.json` 内记录的文件路径优先级高于固定文件名推断。
@@ -272,7 +326,8 @@ best-effort（可能为空、缺失或未产出文件）：
 格式约定：
 
 1. Parquet 以 `(trade_date, ts_code)` 为 MultiIndex。
-1. 列顺序为：`price_col` + `features` + `label` + `is_tradable`（若存在）。
+1. 列顺序为：`price_col` + `features` + `extra_cols` + `label` + `is_tradable`（若存在）。
+1. 若启用了本地 `industry.file` join，行业列会进入 `extra_cols` 并保留在 `dataset.parquet`。
 1. 对应 schema 会写入 `summary.json -> dataset.schema`。
 
 ## 研究工具输出契约

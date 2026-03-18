@@ -25,6 +25,7 @@ from .backup_data import _git_metadata
 DEFAULT_OUT_ROOT = DEFAULT_RQDATA_ASSETS_DIR.as_posix()
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_PIPELINE_FUNDAMENTALS_NAME = "pipeline_fundamentals.parquet"
+DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX = "industry_labels"
 DEFAULT_HK_INSTRUMENTS_FILENAME_PREFIX = "hk_instruments"
 DEFAULT_HK_INSTRUMENTS_DIR = DEFAULT_RQDATA_ASSETS_DIR / "hk" / "instruments"
 DEFAULT_MIRROR_MAX_ATTEMPTS = 3
@@ -4415,6 +4416,270 @@ def _resolve_pit_asset_dir(path_text: str | Path) -> tuple[Path, dict | None]:
     return asset_dir, manifest
 
 
+def _resolve_industry_changes_asset_dir(path_text: str | Path) -> tuple[Path, dict | None]:
+    asset_dir = _resolve_path(path_text)
+    if not asset_dir.exists():
+        raise SystemExit(f"Industry changes asset directory not found: {asset_dir}")
+    data_dir = asset_dir / "data"
+    if not data_dir.is_dir():
+        raise SystemExit(f"Industry changes asset directory is missing data/: {asset_dir}")
+    manifest = _load_manifest(asset_dir / "manifest.yml")
+    if manifest and manifest.get("dataset") not in {None, "industry_changes"}:
+        raise SystemExit(
+            f"Expected an industry_changes asset directory, got dataset={manifest.get('dataset')!r}: {asset_dir}"
+        )
+    return asset_dir, manifest
+
+
+def _default_hk_industry_labels_path(asset_dir: Path, frequency: str) -> Path:
+    suffix = str(frequency or "D").strip().upper()
+    return asset_dir / f"{DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX}_{suffix.lower()}.parquet"
+
+
+def _resolve_hk_industry_labels_out_path(args, asset_dir: Path) -> Path:
+    out = getattr(args, "out", None)
+    if out:
+        return _resolve_path(out)
+    frequency = str(getattr(args, "frequency", "D") or "D").strip().upper()
+    return _default_hk_industry_labels_path(asset_dir, frequency)
+
+
+def _industry_labels_manifest_path(out_path: Path) -> Path:
+    return out_path.with_name(f"{out_path.stem}.manifest.yml")
+
+
+def _resolve_hk_label_frequency(args) -> str:
+    frequency = str(getattr(args, "frequency", "D") or "D").strip().upper()
+    if frequency not in {"D", "M", "Q"}:
+        raise SystemExit("--frequency must be one of: D, M, Q.")
+    return frequency
+
+
+def _resolve_optional_absolute_date(value: object, *, label: str) -> str | None:
+    if value in {None, ""}:
+        return None
+    return _normalize_absolute_date(value, label=label)
+
+
+def _load_trade_date_grid_from_daily_asset_dir(
+    daily_asset_dir: Path,
+    *,
+    start_date: str | None,
+    end_date: str | None,
+) -> pd.DataFrame:
+    data_dir = daily_asset_dir / "data"
+    if not data_dir.exists():
+        raise SystemExit(f"Daily asset directory is missing data/: {daily_asset_dir}")
+
+    start_ts = pd.to_datetime(start_date, format="%Y%m%d", errors="coerce") if start_date else None
+    end_ts = pd.to_datetime(end_date, format="%Y%m%d", errors="coerce") if end_date else None
+
+    parts: list[pd.DataFrame] = []
+    for path in sorted(data_dir.glob("*.parquet")):
+        try:
+            frame = pd.read_parquet(path, columns=["trade_date", "ts_code"])
+        except Exception:
+            frame = pd.read_parquet(path)
+        frame = _normalize_frame_columns(frame)
+        if frame.empty:
+            continue
+        if "trade_date" not in frame.columns:
+            continue
+        if "ts_code" not in frame.columns:
+            frame["ts_code"] = path.stem
+        trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")
+        valid = trade_dates.notna()
+        if not valid.any():
+            continue
+        work = frame.loc[valid, ["ts_code"]].copy()
+        work["trade_date"] = trade_dates.loc[valid].dt.normalize()
+        work["ts_code"] = work["ts_code"].astype(str).str.strip().map(_normalize_hk_symbol)
+        work = work[work["ts_code"] != ""].copy()
+        if start_ts is not None:
+            work = work[work["trade_date"] >= start_ts.normalize()].copy()
+        if end_ts is not None:
+            work = work[work["trade_date"] <= end_ts.normalize()].copy()
+        if work.empty:
+            continue
+        work = work.drop_duplicates(subset=["trade_date"]).reset_index(drop=True)
+        parts.append(work[["trade_date", "ts_code"]])
+
+    if not parts:
+        raise SystemExit(f"No trade_date grid rows resolved from daily assets under {daily_asset_dir}")
+    grid = pd.concat(parts, ignore_index=True)
+    return grid.drop_duplicates().sort_values(["trade_date", "ts_code"]).reset_index(drop=True)
+
+
+def _sample_trade_date_grid(grid: pd.DataFrame, *, frequency: str) -> tuple[pd.DataFrame, dict[str, object]]:
+    if grid.empty:
+        return grid.copy(), {"sampling_mode": "empty", "frequency": frequency, "rows_in": 0, "rows_out": 0}
+    if frequency == "D":
+        sampled = grid.copy()
+        sampling_mode = "all_trade_dates"
+    else:
+        work = grid.copy()
+        work["__period"] = work["trade_date"].dt.to_period(frequency)
+        sampled = (
+            work.sort_values(["ts_code", "trade_date"])
+            .groupby(["ts_code", "__period"], group_keys=False)
+            .tail(1)[["trade_date", "ts_code"]]
+            .reset_index(drop=True)
+        )
+        sampling_mode = "period_last_trade_date"
+    sampled = sampled.drop_duplicates().sort_values(["trade_date", "ts_code"]).reset_index(drop=True)
+    return sampled, {
+        "sampling_mode": sampling_mode,
+        "frequency": frequency,
+        "rows_in": int(len(grid)),
+        "rows_out": int(len(sampled)),
+        "symbols": int(sampled["ts_code"].nunique()) if not sampled.empty else 0,
+        "trade_dates": int(sampled["trade_date"].nunique()) if not sampled.empty else 0,
+    }
+
+
+def _resolve_hk_industry_label_grid(args) -> tuple[pd.DataFrame, dict[str, object]]:
+    frequency = _resolve_hk_label_frequency(args)
+    source_universe = getattr(args, "source_universe_by_date", None)
+    daily_asset_dir_arg = getattr(args, "daily_asset_dir", None)
+    if bool(source_universe) == bool(daily_asset_dir_arg):
+        raise SystemExit("Provide exactly one of --source-universe-by-date or --daily-asset-dir.")
+
+    start_date = _resolve_optional_absolute_date(getattr(args, "start_date", None), label="--start-date")
+    end_date = _resolve_optional_absolute_date(getattr(args, "end_date", None), label="--end-date")
+    if start_date and end_date and start_date > end_date:
+        raise SystemExit("--start-date must be <= --end-date.")
+
+    if source_universe:
+        source_path = _resolve_path(source_universe)
+        if not source_path.exists():
+            raise SystemExit(f"Universe-by-date file not found: {source_path}")
+        grid = _load_universe_by_date_frame(source_path)
+        if start_date:
+            start_ts = pd.to_datetime(start_date, format="%Y%m%d", errors="coerce").normalize()
+            grid = grid[grid["trade_date"] >= start_ts].copy()
+        if end_date:
+            end_ts = pd.to_datetime(end_date, format="%Y%m%d", errors="coerce").normalize()
+            grid = grid[grid["trade_date"] <= end_ts].copy()
+        sampled, sample_meta = _sample_trade_date_grid(grid, frequency=frequency)
+        meta = {
+            "mode": "source_universe_by_date",
+            "source_universe_by_date": str(source_path),
+            "requested_frequency": frequency,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+        meta.update(sample_meta)
+        return sampled, meta
+
+    daily_asset_dir = _resolve_path(daily_asset_dir_arg)
+    if (daily_asset_dir / "data").exists():
+        resolved_daily_asset_dir = daily_asset_dir
+    elif daily_asset_dir.name == "data" and daily_asset_dir.is_dir():
+        resolved_daily_asset_dir = daily_asset_dir.parent
+    else:
+        raise SystemExit(f"Daily asset directory is missing data/: {daily_asset_dir}")
+    grid = _load_trade_date_grid_from_daily_asset_dir(
+        resolved_daily_asset_dir,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    sampled, sample_meta = _sample_trade_date_grid(grid, frequency=frequency)
+    meta = {
+        "mode": "daily_asset_dir",
+        "daily_asset_dir": str(resolved_daily_asset_dir),
+        "requested_frequency": frequency,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    meta.update(sample_meta)
+    return sampled, meta
+
+
+def _load_industry_changes_frame(data_files: Sequence[Path]) -> tuple[pd.DataFrame, int]:
+    frames: list[pd.DataFrame] = []
+    input_rows = 0
+    for data_file in data_files:
+        frame = _normalize_frame_columns(pd.read_parquet(data_file))
+        input_rows += int(len(frame))
+        if frame.empty:
+            continue
+        required = {"ts_code", "start_date", "cancel_date"}
+        missing = [column for column in required if column not in frame.columns]
+        if missing:
+            raise SystemExit(
+                f"Industry changes asset file is missing required columns {missing}: {data_file}"
+            )
+        work = frame.copy()
+        work["ts_code"] = work["ts_code"].astype(str).str.strip().map(_normalize_hk_symbol)
+        work = work[work["ts_code"] != ""].copy()
+        if work.empty:
+            continue
+        work["start_date"] = pd.to_datetime(work["start_date"], errors="coerce").dt.normalize()
+        work["cancel_date"] = pd.to_datetime(work["cancel_date"], errors="coerce").dt.normalize()
+        work = work[work["start_date"].notna()].copy()
+        if work.empty:
+            continue
+        sort_columns = [column for column in ("ts_code", "start_date", "cancel_date", "industry_code") if column in work.columns]
+        if sort_columns:
+            work = work.sort_values(sort_columns).reset_index(drop=True)
+        frames.append(work)
+    if not frames:
+        return pd.DataFrame(), input_rows
+    combined = pd.concat(frames, ignore_index=True)
+    dedupe_subset = [column for column in ("ts_code", "start_date", "cancel_date", "industry_code") if column in combined.columns]
+    if dedupe_subset:
+        combined = combined.drop_duplicates(subset=dedupe_subset, keep="last")
+    combined = combined.sort_values([column for column in ("ts_code", "start_date", "cancel_date", "industry_code") if column in combined.columns]).reset_index(drop=True)
+    return combined, input_rows
+
+
+def _derive_hk_industry_labels(
+    *,
+    grid: pd.DataFrame,
+    intervals: pd.DataFrame,
+) -> tuple[pd.DataFrame, int]:
+    if grid.empty:
+        return pd.DataFrame(columns=["trade_date", "ts_code"]), 0
+    if intervals.empty:
+        output = grid.copy()
+        output["trade_date"] = output["trade_date"].dt.strftime("%Y%m%d")
+        return output, int(len(output))
+
+    parts: list[pd.DataFrame] = []
+    invalid_rows = 0
+    interval_groups = {symbol: frame.copy() for symbol, frame in intervals.groupby("ts_code", sort=False)}
+
+    for ts_code, symbol_grid in grid.groupby("ts_code", sort=False):
+        left = symbol_grid.copy().sort_values("trade_date").reset_index(drop=True)
+        right = interval_groups.get(ts_code)
+        if right is None or right.empty:
+            parts.append(left)
+            continue
+        right = right.sort_values("start_date").reset_index(drop=True)
+        merged = pd.merge_asof(
+            left,
+            right,
+            left_on="trade_date",
+            right_on="start_date",
+            direction="backward",
+            allow_exact_matches=True,
+        )
+        if "ts_code_x" in merged.columns:
+            merged = merged.rename(columns={"ts_code_x": "ts_code"})
+        if "ts_code_y" in merged.columns:
+            merged = merged.drop(columns=["ts_code_y"])
+        cancel_date = pd.to_datetime(merged.get("cancel_date"), errors="coerce")
+        valid_mask = cancel_date.isna() | (merged["trade_date"] < cancel_date)
+        invalid_rows += int((~valid_mask).sum())
+        label_columns = [column for column in merged.columns if column not in {"trade_date", "ts_code"}]
+        merged.loc[~valid_mask, label_columns] = pd.NA
+        parts.append(merged)
+
+    combined = pd.concat(parts, ignore_index=True) if parts else grid.copy()
+    combined["trade_date"] = pd.to_datetime(combined["trade_date"], errors="coerce").dt.strftime("%Y%m%d")
+    return combined, invalid_rows
+
+
 def _resolve_build_fields(
     *,
     args,
@@ -5784,6 +6049,105 @@ def build_hk_pit_fundamentals_file(args) -> int:
     return 0
 
 
+def build_hk_industry_labels_file(args) -> int:
+    asset_dir, source_manifest = _resolve_industry_changes_asset_dir(args.asset_dir)
+    data_dir = asset_dir / "data"
+    data_files = sorted(data_dir.glob("*.parquet"))
+    if not data_files:
+        raise SystemExit(f"No parquet files found under {data_dir}")
+
+    frequency = _resolve_hk_label_frequency(args)
+    out_path = _resolve_hk_industry_labels_out_path(args, asset_dir)
+    force = bool(getattr(args, "force", False))
+    if out_path.exists() and not force:
+        raise SystemExit(f"Refusing to overwrite existing output: {out_path}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    symbols_out_path = _resolve_path(args.symbols_out) if getattr(args, "symbols_out", None) else None
+    if symbols_out_path and symbols_out_path.exists() and not force:
+        raise SystemExit(f"Refusing to overwrite existing output: {symbols_out_path}")
+
+    grid, grid_metadata = _resolve_hk_industry_label_grid(args)
+    intervals, input_rows = _load_industry_changes_frame(data_files)
+    output_df, interval_miss_rows = _derive_hk_industry_labels(grid=grid, intervals=intervals)
+    output_df = output_df.sort_values(["trade_date", "ts_code"]).reset_index(drop=True)
+
+    if out_path.suffix.lower() == ".csv":
+        output_df.to_csv(out_path, index=False)
+        output_format = "csv"
+    else:
+        output_df.to_parquet(out_path, index=False)
+        output_format = "parquet"
+
+    resolved_symbols = (
+        sorted(output_df["ts_code"].astype(str).str.strip().unique().tolist())
+        if "ts_code" in output_df.columns and not output_df.empty
+        else []
+    )
+    outputs = {"industry_labels_file": str(out_path)}
+    if symbols_out_path:
+        _write_symbol_list(symbols_out_path, resolved_symbols)
+        outputs["symbols_file"] = str(symbols_out_path)
+
+    label_value_columns = [
+        column
+        for column in (
+            "industry_code",
+            "industry_name",
+            "industry_level",
+            "industry_source",
+            *HK_INDUSTRY_HIERARCHY_COLUMNS,
+        )
+        if column in output_df.columns
+    ]
+    resolved_rows = 0
+    if label_value_columns:
+        resolved_rows = int(output_df[label_value_columns].notna().any(axis=1).sum())
+
+    output_manifest = {
+        "name": out_path.name,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "status": "completed",
+        "dataset": "industry_labels_file",
+        "market": "hk",
+        "source_asset_dir": str(asset_dir),
+        "source_manifest": str(asset_dir / "manifest.yml") if (asset_dir / "manifest.yml").exists() else None,
+        "source_query": source_manifest.get("query") if isinstance(source_manifest, Mapping) else None,
+        "symbol_source": source_manifest.get("symbol_source") if isinstance(source_manifest, Mapping) else None,
+        "output_file": str(out_path),
+        "output_format": output_format,
+        "query": {
+            "frequency": frequency,
+            "grid_mode": grid_metadata.get("mode"),
+            "source_universe_by_date": grid_metadata.get("source_universe_by_date"),
+            "daily_asset_dir": grid_metadata.get("daily_asset_dir"),
+            "start_date": grid_metadata.get("start_date"),
+            "end_date": grid_metadata.get("end_date"),
+        },
+        "grid": grid_metadata,
+        "columns": output_df.columns.tolist(),
+        "totals": {
+            "input_files": len(data_files),
+            "input_rows": input_rows,
+            "grid_rows": int(len(grid)),
+            "output_rows": int(len(output_df)),
+            "resolved_rows": resolved_rows,
+            "unresolved_rows": int(len(output_df) - resolved_rows),
+            "interval_miss_rows": interval_miss_rows,
+            "symbols": int(output_df["ts_code"].nunique()) if "ts_code" in output_df.columns and not output_df.empty else 0,
+            "trade_dates": int(output_df["trade_date"].nunique()) if "trade_date" in output_df.columns and not output_df.empty else 0,
+        },
+        "outputs": outputs,
+        "git": _git_metadata(Path.cwd().resolve()),
+    }
+    _write_manifest(_industry_labels_manifest_path(out_path), output_manifest)
+
+    print(
+        f"Wrote HK industry labels file to {out_path} "
+        f"({len(output_df)} rows, frequency={frequency}, {output_format})"
+    )
+    return 0
+
+
 def add_list_hk_financial_fields_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--contains",
@@ -6242,6 +6606,53 @@ def add_hk_pit_fundamentals_build_args(parser: argparse.ArgumentParser) -> None:
         choices=["keep-last", "error"],
         default="keep-last",
         help="How to handle duplicate trade_date + ts_code rows after mapping trade_date=info_date.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite the output file if it already exists.",
+    )
+
+
+def add_hk_industry_labels_build_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--asset-dir",
+        required=True,
+        help="Path to a mirror-hk-industry-changes output directory.",
+    )
+    parser.add_argument(
+        "--source-universe-by-date",
+        help="Optional universe-by-date CSV used as the exact date + symbol grid. Best for M/Q label files.",
+    )
+    parser.add_argument(
+        "--daily-asset-dir",
+        help="Optional local daily asset snapshot used to derive a daily trade_date + symbol grid.",
+    )
+    parser.add_argument(
+        "--start-date",
+        help="Optional lower date bound in YYYYMMDD. Applies to the selected source grid.",
+    )
+    parser.add_argument(
+        "--end-date",
+        help="Optional upper date bound in YYYYMMDD. Applies to the selected source grid.",
+    )
+    parser.add_argument(
+        "--frequency",
+        default="D",
+        choices=["D", "M", "Q"],
+        help="Output sampling frequency over the source grid. D keeps all dates, M/Q keep each symbol's last trade date per period. Default: D.",
+    )
+    parser.add_argument(
+        "--out",
+        help=(
+            "Output file path. Default: <asset-dir>/"
+            + DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX
+            + "_<freq>.parquet. Use .csv to write CSV, otherwise Parquet."
+        ),
+    )
+    parser.add_argument(
+        "--symbols-out",
+        help="Optional text file output with one ts_code per line for symbols present in the derived label file.",
     )
     parser.add_argument(
         "--force",

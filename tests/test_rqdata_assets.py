@@ -1502,6 +1502,195 @@ def test_build_hk_pit_fundamentals_file_normalizes_whitespace_fields_and_derives
     assert output_manifest["filtered_universe"]["symbols"] == 1
 
 
+def test_build_hk_industry_labels_file_from_universe_grid(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "industry_changes" / "industry_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    manifest = {
+        "dataset": "industry_changes",
+        "query": {"source": "citics_2019", "level": 1},
+        "columns": [
+            "ts_code",
+            "order_book_id",
+            "start_date",
+            "cancel_date",
+            "industry_code",
+            "industry_name",
+            "industry_level",
+            "industry_source",
+            "first_industry_code",
+            "first_industry_name",
+        ],
+    }
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        {
+            "ts_code": ["00005.HK", "00005.HK"],
+            "order_book_id": ["00005.XHKG", "00005.XHKG"],
+            "start_date": pd.to_datetime(["2025-01-01", "2025-03-15"]),
+            "cancel_date": pd.to_datetime(["2025-03-15", "2200-12-31"]),
+            "industry_code": ["40", "63"],
+            "industry_name": ["银行", "传媒"],
+            "industry_level": [1, 1],
+            "industry_source": ["citics_2019", "citics_2019"],
+            "first_industry_code": ["40", "63"],
+            "first_industry_name": ["银行", "传媒"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "ts_code": ["00700.HK"],
+            "order_book_id": ["00700.XHKG"],
+            "start_date": pd.to_datetime(["2025-01-01"]),
+            "cancel_date": pd.to_datetime(["2200-12-31"]),
+            "industry_code": ["63"],
+            "industry_name": ["传媒"],
+            "industry_level": [1],
+            "industry_source": ["citics_2019"],
+            "first_industry_code": ["63"],
+            "first_industry_name": ["传媒"],
+        }
+    ).to_parquet(data_dir / "00700.HK.parquet", index=False)
+
+    universe_path = repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_by_date.csv"
+    universe_path.parent.mkdir(parents=True, exist_ok=True)
+    universe_path.write_text(
+        "\n".join(
+            [
+                "trade_date,ts_code,selected",
+                "20250131,00005.HK,1",
+                "20250228,00005.HK,1",
+                "20250331,00005.HK,1",
+                "20250131,00700.HK,1",
+                "20250228,00700.HK,1",
+                "20250331,00700.HK,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    out_path = repo_root / "artifacts" / "assets" / "industry" / "industry_labels_m.parquet"
+    symbols_out = repo_root / "artifacts" / "assets" / "industry" / "industry_symbols.txt"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        source_universe_by_date=str(universe_path),
+        daily_asset_dir=None,
+        start_date=None,
+        end_date=None,
+        frequency="M",
+        out=str(out_path),
+        symbols_out=str(symbols_out),
+        force=False,
+    )
+
+    assert rqdata_assets.build_hk_industry_labels_file(args) == 0
+
+    labels = pd.read_parquet(out_path)
+    assert labels["trade_date"].tolist() == [
+        "20250131",
+        "20250131",
+        "20250228",
+        "20250228",
+        "20250331",
+        "20250331",
+    ]
+    assert labels["ts_code"].tolist() == [
+        "00005.HK",
+        "00700.HK",
+        "00005.HK",
+        "00700.HK",
+        "00005.HK",
+        "00700.HK",
+    ]
+    assert labels.loc[labels["ts_code"] == "00005.HK", "industry_name"].tolist() == ["银行", "银行", "传媒"]
+    assert labels.loc[labels["ts_code"] == "00700.HK", "industry_name"].tolist() == ["传媒", "传媒", "传媒"]
+    assert symbols_out.read_text(encoding="utf-8") == "00005.HK\n00700.HK\n"
+
+    output_manifest = yaml.safe_load(
+        (repo_root / "artifacts" / "assets" / "industry" / "industry_labels_m.manifest.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert output_manifest["dataset"] == "industry_labels_file"
+    assert output_manifest["query"]["frequency"] == "M"
+    assert output_manifest["grid"]["mode"] == "source_universe_by_date"
+    assert output_manifest["totals"]["resolved_rows"] == 6
+
+
+def test_build_hk_industry_labels_file_from_daily_assets_daily_frequency(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "industry_changes" / "industry_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    manifest = {
+        "dataset": "industry_changes",
+        "query": {"source": "citics_2019", "level": 1},
+    }
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        {
+            "ts_code": ["00005.HK", "00005.HK"],
+            "order_book_id": ["00005.XHKG", "00005.XHKG"],
+            "start_date": pd.to_datetime(["2025-01-01", "2025-03-15"]),
+            "cancel_date": pd.to_datetime(["2025-03-15", "2200-12-31"]),
+            "industry_code": ["40", "63"],
+            "industry_name": ["银行", "传媒"],
+            "industry_level": [1, 1],
+            "industry_source": ["citics_2019", "citics_2019"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    daily_asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_demo"
+    (daily_asset_dir / "data").mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "trade_date": ["20250314", "20250317", "20250331"],
+            "ts_code": ["00005.HK", "00005.HK", "00005.HK"],
+            "close": [10.0, 10.5, 11.0],
+        }
+    ).to_parquet(daily_asset_dir / "data" / "00005.HK.parquet", index=False)
+
+    out_path = repo_root / "artifacts" / "assets" / "industry" / "industry_labels_d.parquet"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        source_universe_by_date=None,
+        daily_asset_dir=str(daily_asset_dir),
+        start_date="20250314",
+        end_date="20250331",
+        frequency="D",
+        out=str(out_path),
+        symbols_out=None,
+        force=False,
+    )
+
+    assert rqdata_assets.build_hk_industry_labels_file(args) == 0
+
+    labels = pd.read_parquet(out_path)
+    assert labels["trade_date"].tolist() == ["20250314", "20250317", "20250331"]
+    assert labels["industry_name"].tolist() == ["银行", "传媒", "传媒"]
+
+    output_manifest = yaml.safe_load(
+        (repo_root / "artifacts" / "assets" / "industry" / "industry_labels_d.manifest.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert output_manifest["query"]["frequency"] == "D"
+    assert output_manifest["grid"]["mode"] == "daily_asset_dir"
+    assert output_manifest["totals"]["resolved_rows"] == 3
+
+
 def test_inspect_hk_pit_coverage_supports_config_selected_derived_features(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
