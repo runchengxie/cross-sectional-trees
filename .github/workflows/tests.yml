@@ -4,6 +4,13 @@ on:
   pull_request:
   push:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_LOCKED: "true"
+
 jobs:
   fast:
     runs-on: ubuntu-latest
@@ -15,9 +22,10 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v6
         with:
+          version: "0.10.11"
           enable-cache: true
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
       - name: Run fast offline regression
         run: ./scripts/run_tests.sh fast
 
@@ -31,9 +39,10 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v6
         with:
+          version: "0.10.11"
           enable-cache: true
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
       - name: Run slow offline regression
         run: ./scripts/run_tests.sh slow
 
@@ -47,8 +56,9 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v6
         with:
+          version: "0.10.11"
           enable-cache: true
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
       - name: Run integration tests
         run: ./scripts/run_tests.sh integration

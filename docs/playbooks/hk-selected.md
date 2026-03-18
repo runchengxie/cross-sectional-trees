@@ -289,10 +289,10 @@ csml rqdata inspect-hk-pit-coverage \
   --mode both
 ```
 
-如果你要做“PIT 财务 + provider valuation”叠加实验，先不要把日频估值写回稀疏 PIT 文件后直接解释结果。更稳妥的做法是让 pipeline 走双路 merge：主 `fundamentals.file` 保留 PIT 财报，provider valuation 用 `fundamentals.provider_overlay` 直接并到 daily panel。对应的 `G4_fixed` 本地配置已经按这个口径改好，直接跑：
+如果你要做“PIT 财务 + provider valuation”叠加实验，先不要把日频估值写回稀疏 PIT 文件后直接解释结果。更稳妥的做法是让 pipeline 走双路 merge：主 `fundamentals.file` 保留 PIT 财报，provider valuation 用 `fundamentals.provider_overlay` 直接并到 daily panel。对应的 `G4_fixed` 本地配置已经按这个口径改好；例如你可以先在 `configs/local/<your_g4_fixed_config>.yml` 派生一份，然后直接跑：
 
 ```bash
-csml run --config configs/local/hk_selected__quarterly_4way_g4_fixed_price_provider_valuation_pit_core_xgb_ranker.yml
+csml run --config configs/local/<your_g4_fixed_config>.yml
 
 uv run python scripts/audit_hk_selected_provider_valuation.py \
   --run-dir artifacts/runs/<run_dir>

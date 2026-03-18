@@ -158,9 +158,9 @@
 
 例如：
 
-* `configs/local/my_quarterly_pit_core_hybrid_xgb_ranker.yml`
-* `configs/local/my_quarterly_pit_core_hybrid_xgb_ranker_ffill.yml`
-* `configs/local/my_quarterly_pit_core_hybrid_xgb_ranker_strict.yml`
+* `configs/local/<my_quarterly_pit_core_hybrid_xgb_ranker>.yml`
+* `configs/local/<my_quarterly_pit_core_hybrid_xgb_ranker_ffill>.yml`
+* `configs/local/<my_quarterly_pit_core_hybrid_xgb_ranker_strict>.yml`
 
 ## 7. 新建模板时必须同步什么
 
