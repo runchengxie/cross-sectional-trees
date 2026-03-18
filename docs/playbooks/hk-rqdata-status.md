@@ -168,10 +168,17 @@
 
 推荐顺序：
 
-1. 先别重刷 `daily` 和 `pit_financials`，它们已经有稳定大资产。
-2. 优先把配置、文档和脚本统一到 alias 路径，减少日期写死。
-3. 只补轻量增量或小样本 probe，例如 `financial_details` 的少量 field/sample。
-4. 新资产下载前，先看 `manifest.yml` 和 `quota`，不要把旧失败 probe 误认成“当前缺口”。
+1. 先别为了“复权口径”重刷 `daily`；当前更合理的主线仍然是 `未复权日线 + ex_factors + dividends + shares`。
+2. 如果只是继续研究，不急着重建 full-market 离线底座，优先补更晚 as-of date 的窄 `PIT` 增量，而不是重刷 `daily` 或 `pit_financials` 大资产。
+3. 优先把配置、文档和脚本统一到 alias 路径，减少日期写死。
+4. 只补轻量增量或小样本 probe，例如 `financial_details` 的少量 field/sample。
+5. 新资产下载前，先看 `manifest.yml` 和 `quota`，不要把旧失败 probe 误认成“当前缺口”。
+
+补充判断：
+
+* 当前最值钱的仍然是会被横截面研究反复扫的原料层：`daily`、`pit_financials`、`ex_factors`、`dividends`、`shares`、行业变更。
+* 当前不值得升级成主线缓存对象的，主要是 `get_factor`、`get_all_factor_names`、`get_turnover_rate`，以及只有事件驱动才明显受益的 `hk.get_announcement`。
+* 如果你还想用试用额度换“以后可能会后悔没下”的东西，优先级上通常是 `southbound` 原始历史高于 `announcement`。
 
 ## 最小检查命令
 

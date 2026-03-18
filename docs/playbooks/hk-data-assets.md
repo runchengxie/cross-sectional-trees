@@ -144,6 +144,27 @@ csml rqdata mirror-hk-daily \
 
 首次运行会最慢。后续同口径重跑时，主要是命中缓存和刷新尾部。
 
+### 为什么不需要为了“复权”重跑一套日线
+
+更推荐的分层是：
+
+* 保留一套 `未复权` 日线
+* 单独保留 `ex_factors`
+* 单独保留 `dividends`
+* 需要市值、自由流通或港股流通口径时，再补 `shares`
+
+原因：
+
+* 未复权日线是更稳定的原料层，不会把企业行为直接揉进价格序列。
+* `ex_factors` 和 `dividends` 保留后，前复权、总回报、股息相关派生都可以在本地重建。
+* `shares` 是市值和流通口径的上游原料，长期价值通常高于直接囤一批派生因子。
+
+这也意味着：
+
+* 如果你的目标只是“以后可复权、可查错、可切换口径”，不需要单独再镜像一套前复权日线。
+* 只有当你明确要生成一份更新到更晚日期的完整 `daily snapshot` 时，才值得新建一版日线资产目录。
+* 当前 `mirror-hk-daily` 的 `--resume` 主要用于跳过已存在 symbol，不会在旧 parquet 上追加新的交易日；因此“补最新几天”更适合走 pipeline symbol cache，“重做完整离线归档”才适合新建 snapshot。
+
 ## 5. PIT 财务资产怎么落地
 
 PIT 财务资产有独立命令，推荐流程比日线更清晰：
@@ -351,6 +372,143 @@ eval:
 
 * 日线缓存：通常走 symbol cache，后续增量刷新成本较低
 * PIT 财务镜像：优先小 `batch-size`，让 quota 中断后更容易续跑
+
+### 试用期内推荐的最小动作
+
+如果你还在试用期，先记住一个原则：
+
+* 最值得保留的是会被横截面研究反复扫的原料层。
+* 不太值得优先保留的是派生接口、便捷接口，或者只有特定事件策略才会用的数据。
+
+按当前仓库实盘情况看，本地资产体量的大头已经是：
+
+* `daily`：约 `319M`
+* `pit_financials`：约 `1.5G`
+
+而 `ex_factors`、`dividends`、`shares`、行业几类加起来只是一百多兆量级，所以把这些参考原料保留下来并不过度工程化；真正容易过度工程化的，是把低价值接口也升级成一级命令和长期维护对象。
+
+### 两档最小命令
+
+#### 保守档：不重刷 full-market daily，只补当前研究最需要的增量
+
+适合你想继续研究、但不急着重建一整套离线底座的场景。
+
+1. 先刷新港股通 PIT universe：
+
+```bash
+csml universe hk-connect --config configs/presets/universe/hk_connect.yml --mode daily
+```
+
+2. 再做一份更晚 as-of date 的窄 PIT 增量，只补当前研究 universe：
+
+```bash
+csml rqdata mirror-hk-pit-financials \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --fields-file configs/field_profiles/hk_financial_fields_starter.txt \
+  --start-quarter 2025q4 \
+  --end-quarter 2026q1 \
+  --date 20260318 \
+  --batch-size 5 \
+  --name hk_connect_probe_2025q4_2026q1_starter_20260318 \
+  --resume
+```
+
+3. 需要把这份窄 PIT 直接接入研究时，再生成平面 fundamentals：
+
+```bash
+csml rqdata build-hk-pit-fundamentals \
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_connect_probe_2025q4_2026q1_starter_20260318 \
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_connect_probe_2025q4_2026q1_starter_20260318/pipeline_fundamentals.parquet
+```
+
+4. 如果你担心企业行为和股本原料还不够新，再轻量补三类参考资产：
+
+```bash
+csml rqdata mirror-hk-ex-factors \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260318 \
+  --name hk_connect_full_2010_20260318_ex_factors_latest \
+  --resume
+
+csml rqdata mirror-hk-dividends \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260318 \
+  --name hk_connect_full_2010_20260318_dividends_latest \
+  --resume
+
+csml rqdata mirror-hk-shares \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20100101 \
+  --end-date 20260318 \
+  --name hk_connect_full_2010_20260318_shares_latest \
+  --resume
+```
+
+说明：
+
+* 这一档默认不重刷 `hk_all_*_daily_*`。
+* 最新几天的价格缺口更适合让 pipeline 的 symbol cache 在研究时按需补齐。
+* 重点是把“高价值、低体量”的财务增量和企业行为原料尽量冻住。
+
+#### 归档档：补一份更新到更晚日期的完整离线底座
+
+适合你明确要保留一份新的 full-market daily snapshot，准备之后离线复用。
+
+1. 先确认 quota，再新建一版 full-market daily snapshot：
+
+```bash
+csml rqdata quota --pretty
+
+csml rqdata mirror-hk-daily \
+  --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest/symbols.txt \
+  --start-date 20000104 \
+  --end-date 20260317 \
+  --name hk_all_2000_20260317_daily_final_latest
+```
+
+2. 再从这份本地日线镜像派生新的全市场 universe：
+
+```bash
+csml universe hk-daily-assets \
+  --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260317_daily_final_latest \
+  --start-date 20000104 \
+  --end-date 20260317
+```
+
+3. 下载完成后，做一份本地快照，避免试用期过后目录散落：
+
+```bash
+csml backup-data \
+  --name hk_runtime_20260318_refresh \
+  --include-path artifacts/assets/rqdata/hk/daily/hk_all_2000_20260317_daily_final_latest \
+  --include-path artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest \
+  --include-path artifacts/assets/rqdata/hk/ex_factors/hk_all_2000_20260318_ex_factors_latest \
+  --include-path artifacts/assets/rqdata/hk/dividends/hk_all_2000_20260318_dividends_latest \
+  --include-path artifacts/assets/rqdata/hk/shares/hk_connect_full_2010_20260318_shares_latest
+```
+
+说明：
+
+* 这一档的目标是“生成一份新的完整离线底座”，不是为了复权额外保存一套价格口径。
+* `mirror-hk-daily` 当前不会在旧 parquet 上 append 新交易日，所以这里直接新建 snapshot 更清楚。
+* 如果 quota 紧张，优先保守档；只有你明确需要一份新的 full-market 离线日线目录时，再走归档档。
+
+### 剩余试用期的优先级
+
+按“还剩几天试用 + 每天带宽/额度有限”的场景，建议顺序是：
+
+1. 第一优先是补 `daily` 的 freshness gap，但只在你明确需要新 full-market snapshot 时执行。
+2. 第二优先是做一份更晚 as-of date 的窄 `PIT` 增量，不要重跑全市场全字段；先盯 `2025q4` 到 `2026q1`。
+3. 第三优先是保留 `ex_factors`、`dividends`、`shares` 的最新快照；这几类便宜但长期很值。
+4. 如果还想用试用额度换“以后可能会后悔没下”的东西，先考虑 `southbound` 原始历史，再考虑 `announcement`。
+
+原因：
+
+* `southbound` 更接近 universe 审计和资金口径原料。
+* `announcement` 更偏事件驱动，不是当前这条 HK 横截面研究主线的必需层。
+* `get_factor`、`get_turnover_rate`、`get_all_factor_names` 这类接口暂时不值得升级成主线缓存对象。
 
 ## 9. 备份怎么做
 
