@@ -17,7 +17,10 @@ from .build_hk_connect_universe import (
     validate_yyyymmdd,
 )
 
-DEFAULT_DAILY_ASSET_GLOB = "hk_all_*_daily_full_latest"
+DEFAULT_DAILY_ASSET_GLOBS = (
+    "hk_all_*_daily_final_latest",
+    "hk_all_*_daily_full_latest",
+)
 DEFAULTS = {
     "daily_asset_dir": None,
     "start_date": "20000104",
@@ -89,14 +92,15 @@ def discover_daily_asset_dir(path_text: str | Path | None = None) -> Path:
         raise SystemExit(f"Daily asset directory is missing data/: {asset_dir}")
 
     daily_root = (ASSETS_DIR / "rqdata" / "hk" / "daily").resolve()
-    candidates = sorted(
-        path for path in daily_root.glob(DEFAULT_DAILY_ASSET_GLOB) if (path / "data").exists()
+    for pattern in DEFAULT_DAILY_ASSET_GLOBS:
+        candidates = sorted(path for path in daily_root.glob(pattern) if (path / "data").exists())
+        if candidates:
+            return candidates[-1]
+
+    patterns = ", ".join(DEFAULT_DAILY_ASSET_GLOBS)
+    raise SystemExit(
+        f"No HK daily asset snapshot found under {daily_root} matching any of: {patterns}."
     )
-    if not candidates:
-        raise SystemExit(
-            f"No HK daily asset snapshot found under {daily_root} matching {DEFAULT_DAILY_ASSET_GLOB}."
-        )
-    return candidates[-1]
 
 
 def _load_symbol_turnover_frame(path: Path) -> tuple[str, pd.Series] | None:
@@ -284,7 +288,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", help="YAML config path (optional). If omitted, uses packaged default.")
     parser.add_argument(
         "--daily-asset-dir",
-        help="Local daily asset snapshot directory (defaults to latest hk_all_*_daily_full_latest).",
+        help=(
+            "Local daily asset snapshot directory "
+            "(defaults to latest hk_all_*_daily_final_latest, then hk_all_*_daily_full_latest)."
+        ),
     )
     parser.add_argument("--start-date", help="Start date in YYYYMMDD.")
     parser.add_argument("--end-date", help="End date in YYYYMMDD.")

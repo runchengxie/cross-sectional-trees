@@ -124,6 +124,32 @@ def test_build_hk_daily_asset_universe_outputs_symbol_aliases(tmp_path):
     assert universe["liq_metric"].tolist() == [35.0, 25.0]
 
 
+def test_discover_daily_asset_dir_prefers_final_latest(monkeypatch, tmp_path):
+    daily_root = tmp_path / "rqdata" / "hk" / "daily"
+    final_dir = daily_root / "hk_all_2000_20260312_daily_final_latest" / "data"
+    full_dir = daily_root / "hk_all_2000_20260312_daily_full_latest" / "data"
+    final_dir.mkdir(parents=True)
+    full_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(hk_daily_assets, "ASSETS_DIR", tmp_path)
+
+    resolved = hk_daily_assets.discover_daily_asset_dir()
+
+    assert resolved == final_dir.parent
+
+
+def test_discover_daily_asset_dir_falls_back_to_full_latest(monkeypatch, tmp_path):
+    daily_root = tmp_path / "rqdata" / "hk" / "daily"
+    full_dir = daily_root / "hk_all_2000_20260312_daily_full_latest" / "data"
+    full_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(hk_daily_assets, "ASSETS_DIR", tmp_path)
+
+    resolved = hk_daily_assets.discover_daily_asset_dir()
+
+    assert resolved == full_dir.parent
+
+
 def test_month_bounds_handles_leap_year():
     assert index_components.month_bounds("202402") == ("20240201", "20240229")
 

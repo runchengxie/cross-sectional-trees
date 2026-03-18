@@ -95,8 +95,8 @@ export EODHD_API_TOKEN=your_token_here
 data:
   provider: rqdata
   rqdata:
-    daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_connect_full_2000_20260311_daily_latest
-    instruments_file: artifacts/assets/rqdata/hk/instruments/hk_instruments_latest.parquet
+    daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
+    instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
 ```
 
 这样即使没有网络，也能跑研究。

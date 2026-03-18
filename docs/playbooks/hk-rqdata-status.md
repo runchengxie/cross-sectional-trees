@@ -1,267 +1,158 @@
 # HK RQData 状态矩阵
 
-本页解决什么：记录 HK RQData 相关接口在本仓库里的接入状态、本地已有资产和最近一次活体 probe 结果。  
-本页不解决什么：不展开研究路线选择，也不代替 CLI 参数文档。  
-适合谁：准备继续补 HK 资产，或想先确认“哪些已经有了、哪些现在能下、哪些还没接”的人。  
-读完你会得到什么：一张按 API 分组的状态矩阵，以及下一步该补什么的明确结论。  
-相关页面：`docs/playbooks/hk-data-assets.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
+本页解决什么：记录当前仓库里 HK RQData 资产的实际可用状态，以及哪些目录是主线、哪些只是 probe。  
+本页不解决什么：不代替 CLI 参数文档，也不展开完整研究路线。  
+适合谁：准备继续补 HK 资产、清理旧目录，或想先判断“哪些已经稳定、哪些别碰”的人。  
+读完你会得到什么：当前有效资产清单、接口接入状态，以及下一步应该补哪里的结论。  
+相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
-最后核对时间：`2026-03-18`（Asia/Shanghai）  
-核对环境：当前仓库工作区 + 当前这台机器上的 RQData 试用账号  
-当日 quota 快照：`TRIAL`，`remaining_days=9`，`bytes_used=5.23 MB / 1.00 GB`
+最后核对时间：`2026-03-18`（Asia/Shanghai）
+
+重要说明：
+
+* quota 是即时信息，不写死在这页；现场执行 `csml rqdata quota --pretty`。
+* 本页以当前工作区真实目录和 manifest 为准，不以旧笔记或 probe 命名为准。
+* “稳定资产”指已经能被后续研究或打包复用的 snapshot；“probe”只说明曾经做过小样本验证。
 
 ## 先看结论
 
-当前已经有的稳定资产：
+当前可以当作主线资产继续维护的有：
 
-* `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_20260312.parquet`
-* `artifacts/assets/rqdata/hk/instruments/hk_connect_full_20260312.parquet`
-* `artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest/`
-* `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_latest/`
-* `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/`
-* `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2010_2025_full_latest/`
-* `artifacts/assets/rqdata/hk/ex_factors/hk_connect_full_2010_20260318_ex_factors_latest/`
-* `artifacts/assets/rqdata/hk/dividends/hk_connect_full_2010_20260318_dividends_latest/`
-* `artifacts/assets/rqdata/hk/shares/hk_connect_full_2010_20260318_shares_latest/`
-* `artifacts/assets/universe/hk_connect_full_by_date.csv`
-* `artifacts/assets/universe/hk_all_full_by_date.csv`
+* `instruments`
+  `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_20260318.parquet`
+  `artifacts/assets/rqdata/hk/instruments/hk_connect_full_20260318.parquet`
+* `daily`
+  `artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest/`
+* `pit_financials`
+  `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/`
+  `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2010_2025_full_latest/`
+  `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/`
+* `ex_factors / dividends / shares`
+  全市场和 `hk_connect` 两套 snapshot 都已经在本地
+* `industry_changes / instrument_industry`
+  全市场 `industry_changes` 和月频、季频 `instrument_industry` 已经落盘
+* `universe`
+  `artifacts/assets/universe/hk_connect_full_by_date.csv`
+  `artifacts/assets/universe/hk_all_full_by_date.csv`
+* `bundles / backup`
+  `artifacts/snapshots/bundles/hk_full_ref_20260318/`
+  `artifacts/snapshots/bundles/hk_connect_ref_20260318/`
+  `artifacts/snapshots/hk_runtime_20260318/`
 
-当前已经打通、可以继续扩成批量下载的命令：
+当前不要当成稳定主线的：
 
-* `csml rqdata export-hk-instruments`
-* `csml rqdata mirror-hk-daily`
-* `csml rqdata mirror-hk-pit-financials`
-* `csml rqdata mirror-hk-ex-factors`
-* `csml rqdata mirror-hk-dividends`
-* `csml rqdata mirror-hk-shares`
+* `financial_details`
+  命令已经接入，但当前本机 probe 仍然停留在 `0` 行或 `missing_remote`，只适合继续小样本试。
+* 旧失败 probe、空目录、老的中间 shard
+  这些目录不代表“资产已完成”，清理时优先处理。
 
-这轮已经补齐的 reference snapshot：
+## 现在磁盘上哪些算“当前有效”
 
-* `get_ex_factor`
-  `930` 个请求 symbol 中写入 `766` 个，`missing_remote=164`，`failed=0`
-* `get_dividend`
-  `930` 个请求 symbol 中写入 `728` 个，`missing_remote=202`，`failed=0`
-* `get_shares`
-  `930` 个请求 symbol 中写入 `907` 个，`missing_remote=23`，`failed=0`
+建议把下面这些当成当前有效入口：
 
-当前不建议当作“已打通”的：
+* `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest`
+  当前全市场日线 alias，指向 `hk_all_2000_20260312_daily_final_latest`
+* `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`
+  当前全市场 instruments alias，指向 `hk_all_instruments_20260318.parquet`
+* `artifacts/assets/rqdata/hk/instruments/hk_connect_full_latest.parquet`
+  当前 `hk_connect` instruments alias，指向 `hk_connect_full_20260318.parquet`
 
-* `hk.get_detailed_financial_items`
-  现有 probe 目录存在，但 `revenue / 00005.HK / 2024q1-2025q4` 这组查询连续两次都是 `missing_remote`，还没有形成可复用资产。
+如果你要写配置、文档示例或临时脚本，优先引用这些 alias，避免再次把日期写死到多个地方。
 
-当前还没接成离线资产命令的：
-
-* `get_exchange_rate`
-* `get_industry`
-* `get_industry_change`
-* `get_instrument_industry`
-* `get_industry_mapping`
-* `get_turnover_rate`
-* `get_all_factor_names`
-* `hk.get_announcement`
-
-## 一个重要约定
-
-HK 这条链路里，三个 ID 不能混：
-
-* `ts_code`：仓库内部常用，形如 `00005.HK`
-* `order_book_id`：RQData 常规 HK 标识，形如 `00005.XHKG`
-* `unique_id`：部分 HK 接口真实更稳的标识，形如 `00005_01.XHKG`
-
-本仓库现在的处理方式是：
-
-* 研究和资产文件名仍然以 `ts_code` 为主。
-* instrument 快照保存 `ts_code + order_book_id + unique_id`。
-* `mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` 会优先读本地 instrument 快照，把 `ts_code` 解析到 `unique_id`。
-
-经验结论：
-
-* 直接拿 `.HK` 去打部分底层 HK API，可能返回 `None` 或触发 `unknown order_book_id`。
-* CLI 命令比临时脚本更稳，因为命令已经做了 symbol 归一化和 `unique_id` 解析。
-
-## 状态定义
-
-* `稳定资产`：不是单 symbol probe，能直接给后续研究复用。
-* `probe 资产`：小样本验证用目录，只说明接口/命令打通过，不等于已经完成全量归档。
-* `未接入`：仓库里还没有对应的批量资产命令。
-* `未验证`：这轮没有做活体 probe，不代表接口一定不可用。
+## 接口状态矩阵
 
 ## 基础信息
 
-| API | 仓库接入 | 本地资产状态 | 2026-03-18 probe | 备注 |
-| --- | --- | --- | --- | --- |
-| `all_instruments` | 已接，`csml rqdata export-hk-instruments` | 已有稳定资产 | `ok`，`3453` 行，约 `0.55s` | 现在是 HK symbol 映射主数据源。 |
-| `instruments` | 无单独镜像命令 | 间接覆盖，大部分常用字段已在 instrument 快照里 | `ok`，单 symbol 约 `0.39s` | 需要补少量明细字段时可直接调用。 |
-| `get_ex_factor` | 已接，`mirror-hk-ex-factors` | 已有稳定 snapshot | CLI probe `ok`，全量 snapshot `completed` | `930` 请求，`766` 写入，`164` `missing_remote`，`0` failed。 |
-| `get_exchange_rate` | 未接入 | 无 | 未验证 | 只有做跨币种标准化时才值得补。 |
-| `get_shares` | 已接，`mirror-hk-shares` | 已有稳定 snapshot | raw probe `ok`，全量 snapshot `completed` | `930` 请求，`907` 写入，`23` `missing_remote`，`0` failed。 |
-| `get_industry` | 未接入 | 无 | 未验证 | 次优先级。 |
-| `get_industry_change` | 未接入 | 无 | 未验证 | 如果做行业归属回放再补。 |
-| `get_instrument_industry` | 未接入 | 无 | 未验证 | 同上。 |
-| `get_industry_mapping` | 未接入 | 无 | 未验证 | 更像字典表。 |
-| `get_turnover_rate` | 未接入 | 无 | 未验证 | 当前日线里已有 `total_turnover`，先不急。 |
-| `get_dividend` | 已接，`mirror-hk-dividends` | 已有稳定 snapshot | CLI probe `ok`，全量 snapshot `completed` | `930` 请求，`728` 写入，`202` `missing_remote`，`0` failed。 |
-| `hk.get_southbound_eligible_secs` | 无原始镜像命令，但 `csml universe hk-connect` 已使用 | 已有稳定 universe 资产 | raw probe `ok`，`613` 个 symbol，约 `0.64s` | 当前研究层面已经够用，暂不急着再做 raw mirror。 |
+| API | 仓库接入 | 当前本地状态 | 建议 |
+| --- | --- | --- | --- |
+| `all_instruments` | 已接，`csml rqdata export-hk-instruments` | 稳定 | 继续维护，属于主数据入口。 |
+| `instruments` | 无单独 mirror 命令 | 间接覆盖 | 缺细节时按需调，不必单独做离线体系。 |
+| `get_ex_factor` | 已接，`mirror-hk-ex-factors` | 稳定，full/connect 都在 | 继续保留，属于复权原料层。 |
+| `get_dividend` | 已接，`mirror-hk-dividends` | 稳定，full/connect 都在 | 继续保留，属于股息原料层。 |
+| `get_shares` | 已接，`mirror-hk-shares` | 稳定，full/connect 都在 | 继续保留，属于股本原料层。 |
+| `get_exchange_rate` | 未接入离线 mirror | 无稳定资产 | 有跨币种需求再补。 |
+| `get_industry` | 无单独 mirror 命令 | 无独立稳定资产 | 优先级低于 `industry_changes`。 |
+| `get_industry_change` | 已接，`mirror-hk-industry-changes` | 稳定 | 行业切换真相层，优先保留。 |
+| `get_instrument_industry` | 已接，`mirror-hk-instrument-industry` | 稳定 | 便捷快照层，月频/季频都有。 |
+| `get_industry_mapping` | 间接覆盖 | 已写到 `industry_changes` 目录 | 作为字典表看待，不必单独升级。 |
+| `get_turnover_rate` | 未接入离线 mirror | 无稳定资产 | 当前优先级低。 |
+| `hk.get_southbound_eligible_secs` | 无 raw mirror，但 `csml universe hk-connect` 已使用 | 稳定 universe 已存在 | 研究层面已够用，暂不急着做原始镜像。 |
 
 ## 行情
 
-| API | 仓库接入 | 本地资产状态 | 2026-03-18 probe | 备注 |
-| --- | --- | --- | --- | --- |
-| `get_price` | 已接，`mirror-hk-daily` | 已有稳定资产 | raw probe `ok`，`7` 行；CLI probe `ok` | 日线这条已经成熟。pipeline 的 symbol cache 也能继续用。 |
+| API | 仓库接入 | 当前本地状态 | 建议 |
+| --- | --- | --- | --- |
+| `get_price` | 已接，`mirror-hk-daily` | 稳定 | 主线资产；当前 full-market `daily_final_latest` 是默认日线底座。 |
+
+补充：
+
+* 当前全市场日线 snapshot 覆盖 `3203` 个 symbol，日期范围是 `2000-01-04` 到 `2026-03-11`。
+* `hk_connect` 的独立日线 snapshot 也保留了，但属于兼容资产，不再是默认入口。
 
 ## 财务
 
-| API | 仓库接入 | 本地资产状态 | 2026-03-18 probe | 备注 |
-| --- | --- | --- | --- | --- |
-| `get_pit_financials_ex` | 已接，`mirror-hk-pit-financials` | 已有稳定资产 | raw probe `ok`，`8` 行；CLI probe `ok` | 直接传 `00005.HK` 的临时脚本可能拿不到值，CLI 路线正常。 |
-| `hk.get_detailed_financial_items` | 已接，`mirror-hk-financial-details` | 只有 probe 目录，暂无可复用资产 | CLI probe `completed` 但 `0` 行 | 当前按 `revenue / 00005.HK / 2024q1-2025q4` 连续两次都是 `missing_remote`。先别当成已打通。 |
+| API | 仓库接入 | 当前本地状态 | 建议 |
+| --- | --- | --- | --- |
+| `get_pit_financials_ex` | 已接，`mirror-hk-pit-financials` | 稳定 | 主线资产；full-market `743` 字段 snapshot 已完成。 |
+| `hk.get_detailed_financial_items` | 已接，`mirror-hk-financial-details` | 仅 probe，暂无稳定资产 | 继续小样本试，不要直接升成全量计划。 |
 
-## 因子
+补充：
 
-| API | 仓库接入 | 本地资产状态 | 2026-03-18 probe | 备注 |
-| --- | --- | --- | --- | --- |
-| `get_factor` | 仅 runtime overlay 支持，不走离线 mirror | 无离线资产 | 未单独 probe | 当前仅在 `fundamentals.source=provider` 且 `endpoint=get_factor` 时使用。默认口径是 `hk_total_market_val`、`pe_ratio_ttm`、`pb_ratio_ttm`。 |
-| `get_all_factor_names` | 未接入 | 无 | 未验证 | 只有要扩 factor 字段浏览器时再补。 |
+* `hk_all_2000_2025_full_market_latest` 是当前更完整的全市场 PIT snapshot。
+* `hk_all_2000_2025_full_latest` 仍在目录里，但更像旧版全市场 snapshot，不建议再拿它当默认入口。
 
-## 公告
+## 因子与公告
 
-| API | 仓库接入 | 本地资产状态 | 2026-03-18 probe | 备注 |
-| --- | --- | --- | --- | --- |
-| `hk.get_announcement` | 未接入 | 无 | 未验证 | 当前不是主线，先不升成资产命令。 |
+| API | 仓库接入 | 当前本地状态 | 建议 |
+| --- | --- | --- | --- |
+| `get_factor` | runtime overlay 支持 | 无离线 mirror | 保持 runtime 用法，不必单独囤。 |
+| `get_all_factor_names` | 未接入 | 无 | 需要字段浏览时再补。 |
+| `hk.get_announcement` | 未接入 | 无 | 当前不是主线。 |
 
-## 当前目录里哪些不要误判
+## 目录清理规则
 
-下面这些目录存在，但不能当成“已完成资产”：
+现在磁盘里的 HK 目录建议按下面的规则理解：
 
-* `artifacts/assets/rqdata/hk/ex_factors/probe_00005_2025_ex_factors`
-* `artifacts/assets/rqdata/hk/dividends/probe_00005_2025_dividends`
-* `artifacts/assets/rqdata/hk/ex_factors/probe_00005_2025_ex_factors_debug`
-* `artifacts/assets/rqdata/hk/ex_factors/probe_00005_2025_ex_factors_retry`
-* `artifacts/assets/rqdata/hk/daily/probe_00005_202501_daily_recheck`
+* `*_latest` 或带完整日期区间的 full/connect snapshot
+  这些才是主线资产目录。
+* `probe_*`
+  默认都先当实验目录看；只有明确写入有效数据、且你决定长期保留时，才值得继续留。
+* `daily/_archive_20260314/`
+  这是历史中间产物收纳目录，不是默认入口。里面的 shard、失败重试目录都不应再被新文档引用。
 
-原因：
+## 现在推荐的默认组合
 
-* 这些目录里有一部分是 `2026-03-17` 的失败 probe。
-* 有的只写了 `fields.txt / symbols.txt`。
-* 有的虽然写了 `manifest.yml`，但 `status=completed_with_failures`，`symbols_written=0`。
+如果你只是想让框架继续稳定跑，不想再被旧目录绕进去，默认用下面这一组：
 
-当前能算“probe 成功”的小样本目录主要是：
-
-* `artifacts/assets/rqdata/hk/ex_factors/probe_00005_2025_ex_factors_v3/`
-* `artifacts/assets/rqdata/hk/dividends/probe_00005_2025_dividends_v3/`
-* `artifacts/assets/rqdata/hk/shares/probe_00005_2025_shares_v2/`
-* `artifacts/assets/rqdata/hk/daily/probe_00005_202501_daily_v2/`
-* `artifacts/assets/rqdata/hk/pit_financials/probe_00005_2024_2025_pit_v2/`
+* `daily`
+  `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest`
+* `instruments`
+  `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`
+* `pit_financials`
+  `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/`
+* `industry`
+  `artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_latest/industry_labels_m.parquet`
+* `universe`
+  `artifacts/assets/universe/hk_all_full_by_date.csv`
+  或 `artifacts/assets/universe/hk_connect_full_by_date.csv`
 
 ## 下一步建议
 
-推荐按这个顺序继续：
+推荐顺序：
 
-1. 不动 `daily`、`pit_financials`、`instruments`、`ex_factors`、`dividends`、`shares` 这六条主线，它们现在都已有稳定资产。
-2. 优先做打包，把这三类 reference snapshot 挂进 `hk_connect` bundle，避免后续机器切换时重复下载。
-3. `financial_details` 先不要全量跑。先再找 1 到 3 个确定有值的 field/sample 验证出“哪种查询能稳定出行”。
-4. `exchange_rate`、行业、公告、`factor_names` 保持未接入，等研究真正需要再升格。
+1. 先别重刷 `daily` 和 `pit_financials`，它们已经有稳定大资产。
+2. 优先把配置、文档和脚本统一到 alias 路径，减少日期写死。
+3. 只补轻量增量或小样本 probe，例如 `financial_details` 的少量 field/sample。
+4. 新资产下载前，先看 `manifest.yml` 和 `quota`，不要把旧失败 probe 误认成“当前缺口”。
 
-## 正式全量下载命令
-
-下面这组命令已经在当前机器上成功执行完，对应 snapshot 已落盘。保留在这里主要是为了复跑和 `--resume`。
-
-命名约定：
-
-* universe 固定用 `hk_connect_full_by_date.csv`
-* reference 数据统一回溯到 `20100101`
-* 本轮快照日期固定写成 `20260318`
-* 中断后直接用同一条命令重跑，保留 `--resume`
-
-建议执行顺序：
-
-1. `ex_factors`
-2. `dividends`
-3. `shares`
-4. 全部完成后再打包
-
-### 1. Ex Factors
+## 最小检查命令
 
 ```bash
-csml rqdata mirror-hk-ex-factors \
-  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
-  --start-date 20100101 \
-  --end-date 20260318 \
-  --batch-size 10 \
-  --name hk_connect_full_2010_20260318_ex_factors_latest \
-  --resume
+csml rqdata quota --pretty
+ls artifacts/assets/rqdata/hk/instruments
+ls artifacts/assets/rqdata/hk/daily
+sed -n '1,80p' artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest/manifest.yml
+sed -n '1,80p' artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/manifest.yml
 ```
 
-### 2. Dividends
-
-```bash
-csml rqdata mirror-hk-dividends \
-  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
-  --start-date 20100101 \
-  --end-date 20260318 \
-  --batch-size 10 \
-  --name hk_connect_full_2010_20260318_dividends_latest \
-  --resume
-```
-
-### 3. Shares
-
-`shares` 通常比前两类更重一点，先用更小的 `batch-size`。
-
-```bash
-csml rqdata mirror-hk-shares \
-  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
-  --start-date 20100101 \
-  --end-date 20260318 \
-  --batch-size 5 \
-  --name hk_connect_full_2010_20260318_shares_latest \
-  --resume
-```
-
-### 4. 打包
-
-三类 reference snapshot 都完成后，再把它们挂进 `hk_connect` bundle：
-
-```bash
-python3 scripts/package_assets.py \
-  --preset hk_connect \
-  --dest ../csml_assets/hk_connect_20260318 \
-  --mode copy \
-  --overwrite \
-  --ex-factors-snapshot hk_connect_full_2010_20260318_ex_factors_latest \
-  --dividends-snapshot hk_connect_full_2010_20260318_dividends_latest \
-  --shares-snapshot hk_connect_full_2010_20260318_shares_latest
-```
-
-如果你只想先验证 bundle manifest，而不真正复制文件：
-
-```bash
-python3 scripts/package_assets.py \
-  --preset hk_connect \
-  --dest /tmp/hk_connect_20260318_bundle_probe \
-  --mode copy \
-  --dry-run \
-  --ex-factors-snapshot hk_connect_full_2010_20260318_ex_factors_latest \
-  --dividends-snapshot hk_connect_full_2010_20260318_dividends_latest \
-  --shares-snapshot hk_connect_full_2010_20260318_shares_latest
-```
-
-执行时的最小检查点：
-
-* 每跑完一条先看 `manifest.yml`
-* 重点看 `totals.symbols_written`、`symbols_failed`、`symbols_missing_remote`
-* 中断或 hit quota 时，不改 `--name`，直接原命令 `--resume`
-
-## 如何刷新这页
-
-最小检查顺序：
-
-1. `csml rqdata quota --pretty`
-2. `csml rqdata export-hk-instruments --out ...`
-3. `csml rqdata mirror-hk-daily --symbol 00005.HK ...`
-4. `csml rqdata mirror-hk-pit-financials --symbol 00005.HK --field revenue ...`
-5. `csml rqdata mirror-hk-ex-factors --symbol 00005.HK ...`
-6. `csml rqdata mirror-hk-dividends --symbol 00005.HK ...`
-7. `csml rqdata mirror-hk-shares --symbol 00005.HK ...`
-
-如果这些 probe 有变化，再更新本页的“最后核对时间”和矩阵结论。
+如果你发现这页和磁盘目录再次不一致，优先更新这页，不要再往别的文档里复制一份“临时状态”。

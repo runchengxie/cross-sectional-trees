@@ -155,7 +155,7 @@ csml rqdata list-hk-financial-fields --contains profit
 导出港股 instrument 元数据。
 
 ```bash
-csml rqdata export-hk-instruments --out artifacts/assets/rqdata/hk/instruments/hk_instruments_latest.parquet
+csml rqdata export-hk-instruments --out artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
 ```
 
 ### csml rqdata mirror-hk-daily

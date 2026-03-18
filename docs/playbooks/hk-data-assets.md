@@ -39,6 +39,7 @@
 
 建议按下面的顺序做：
 
+0. 先确认本地有没有已经可复用的 snapshot；大资产优先打包或备份，不要急着重下。
 1. 先生成港股通 PIT 股票池文件。
 2. 再导出一份 HK instrument 快照。
 3. 如果你要跑研究或做持仓回溯，再让 pipeline 把日线缓存落到 `artifacts/cache/`。
@@ -114,6 +115,11 @@ csml rqdata mirror-hk-daily \
 * `data.rqdata.instruments_file`：指向 HK instrument 快照文件
 
 这样 `provider=rqdata` 也可以直接吃本地资产，不需要运行时再初始化 provider。
+
+补充：
+
+* `csml universe hk-daily-assets` 默认会优先发现最新的 `hk_all_*_daily_final_latest`，找不到时再回退旧命名 `hk_all_*_daily_full_latest`。
+* 如果你的磁盘上同时保留了多版日线镜像，最好显式传 `--daily-asset-dir`，不要把“默认发现哪一版”交给猜测。
 
 如果你的目标是“把 2000 年以来的 HK 全市场研究口径补齐”，常见顺序是：
 

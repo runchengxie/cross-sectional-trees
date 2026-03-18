@@ -26,8 +26,8 @@ data:
     frequency: "1d"
     skip_suspended: true
     fields: ["close", "volume", "total_turnover"]
-    daily_asset_dir: "artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest"
-    instruments_file: "artifacts/assets/rqdata/hk/instruments/hk_all_instruments_20260312.parquet"
+    daily_asset_dir: "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest"
+    instruments_file: "artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet"
   column_map:
     trade_date: trade_date
     ts_code: ts_code
