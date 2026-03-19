@@ -370,6 +370,33 @@ def test_append_passthrough_strips_leading_separator():
     assert shares.name == "shares_demo"
     assert callable(shares.func)
 
+    southbound = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-southbound",
+            "--by-date-file",
+            "artifacts/assets/universe/hk_connect_full_by_date.csv",
+            "--start-date",
+            "20250101",
+            "--end-date",
+            "20250331",
+            "--trading-type",
+            "both",
+            "--rebalance-frequency",
+            "M",
+            "--resume",
+        ]
+    )
+    assert southbound.command == "rqdata"
+    assert southbound.rq_command == "mirror-hk-southbound"
+    assert southbound.by_date_file == "artifacts/assets/universe/hk_connect_full_by_date.csv"
+    assert southbound.start_date == "20250101"
+    assert southbound.end_date == "20250331"
+    assert southbound.trading_type == ["both"]
+    assert southbound.rebalance_frequency == "M"
+    assert southbound.resume is True
+    assert callable(southbound.func)
+
     instrument_industry = parser.parse_args(
         [
             "rqdata",

@@ -471,6 +471,26 @@ class _FakeRQIndustryClient:
         return pd.DataFrame()
 
 
+class _FakeRQSouthboundHKApi:
+    def __init__(self):
+        self.calls: list[dict] = []
+        self._payloads = {
+            ("sh", "20250102"): ["00005.XHKG"],
+            ("sz", "20250102"): ["00011.XHKG"],
+            ("sh", "20250131"): [],
+            ("sz", "20250131"): ["00011.XHKG"],
+        }
+
+    def get_southbound_eligible_secs(self, trading_type=None, date=None):
+        self.calls.append({"trading_type": trading_type, "date": date})
+        return list(self._payloads.get((trading_type, date), []))
+
+
+class _FakeRQSouthboundClient:
+    def __init__(self):
+        self.hk = _FakeRQSouthboundHKApi()
+
+
 class _FlakyRQPitClient:
     def __init__(self):
         self.calls: list[dict] = []
@@ -893,6 +913,81 @@ def test_mirror_hk_shares_uses_default_fields(tmp_path, monkeypatch):
     assert manifest["query"]["fields"] == list(rqdata_assets.DEFAULT_HK_SHARES_FIELDS)
     assert manifest["query"]["date_column"] == "date"
     assert manifest["totals"]["symbols_written"] == 1
+
+
+def test_mirror_hk_southbound_writes_symbol_history_assets(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+    (repo_root / "artifacts" / "assets" / "universe").mkdir(parents=True)
+    by_date_file = repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_by_date.csv"
+    by_date_file.write_text(
+        "\n".join(
+            [
+                "trade_date,ts_code,selected",
+                "20250102,00005.HK,1",
+                "20250102,00011.HK,1",
+                "20250131,00012.HK,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    client = _FakeRQSouthboundClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20250131",
+        symbol=[],
+        symbols_file=None,
+        by_date_file="artifacts/assets/universe/hk_connect_full_by_date.csv",
+        limit=None,
+        trading_type=["both"],
+        rebalance_frequency="D",
+        out_root="artifacts/assets/rqdata",
+        name="southbound_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_southbound(args, client) == 0
+
+    assert client.hk.calls == [
+        {"trading_type": "sh", "date": "20250102"},
+        {"trading_type": "sz", "date": "20250102"},
+        {"trading_type": "sh", "date": "20250131"},
+        {"trading_type": "sz", "date": "20250131"},
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "southbound" / "southbound_demo"
+    assert (output_dir / "fields.txt").read_text(encoding="utf-8") == "trading_type\neligible\n"
+    assert (output_dir / "dates.txt").read_text(encoding="utf-8") == "20250102\n20250131\n"
+    assert (output_dir / "trading_types.txt").read_text(encoding="utf-8") == "sh\nsz\n"
+
+    frame_5 = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert frame_5["date"].tolist() == ["20250102"]
+    assert frame_5["trading_type"].tolist() == ["sh"]
+    assert frame_5["eligible"].tolist() == [1]
+
+    frame_11 = pd.read_parquet(output_dir / "data" / "00011.HK.parquet")
+    assert frame_11["date"].tolist() == ["20250102", "20250131"]
+    assert frame_11["trading_type"].tolist() == ["sz", "sz"]
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "southbound"
+    assert manifest["api"] == "rqdatac.hk.get_southbound_eligible_secs"
+    assert manifest["query"]["trading_types"] == ["sh", "sz"]
+    assert manifest["query"]["rebalance_frequency"] == "D"
+    assert manifest["totals"]["symbols_requested"] == 3
+    assert manifest["totals"]["symbols_written"] == 2
+    assert manifest["missing_symbols"] == ["00012.HK"]
+    assert manifest["date_source"]["mode"] == "by_date_file"
 
 
 def test_mirror_hk_instrument_industry_writes_snapshot_assets(tmp_path, monkeypatch):

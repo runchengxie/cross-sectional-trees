@@ -41,6 +41,7 @@ def __getattr__(name):
         "mirror_hk_ex_factors",
         "mirror_hk_dividends",
         "mirror_hk_shares",
+        "mirror_hk_southbound",
         "mirror_hk_instrument_industry",
         "mirror_hk_industry_changes",
         "build_hk_pit_fundamentals_file",

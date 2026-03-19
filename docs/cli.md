@@ -206,6 +206,14 @@ csml rqdata mirror-hk-dividends --by-date-file artifacts/assets/universe/hk_conn
 csml rqdata mirror-hk-shares --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_shares_latest
 ```
 
+### csml rqdata mirror-hk-southbound
+
+拉取港股通成分历史。
+
+```bash
+csml rqdata mirror-hk-southbound --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20141117 --end-date 20260318 --trading-type both --rebalance-frequency D --name hk_connect_southbound_latest
+```
+
 ### csml rqdata mirror-hk-instrument-industry
 
 拉取港股股票在若干快照日期上的行业分类。

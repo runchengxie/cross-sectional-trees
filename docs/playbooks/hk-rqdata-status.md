@@ -100,7 +100,7 @@
 | `get_instrument_industry` | 已接，`mirror-hk-instrument-industry` | 稳定但仍是旧 research-universe 口径 | 便捷快照层；当前保留的月频/季频 latest 还是 `1547` symbol 版本。 |
 | `get_industry_mapping` | 间接覆盖 | 已写到 `industry_changes` 目录 | 作为字典表看待，不必单独升级。 |
 | `get_turnover_rate` | 未接入离线 mirror | 无稳定资产 | 当前优先级低。 |
-| `hk.get_southbound_eligible_secs` | 无 raw mirror，但 `csml universe hk-connect` 已使用 | 稳定 universe 已存在 | 研究层面已够用，暂不急着做原始镜像。 |
+| `hk.get_southbound_eligible_secs` | 已接，`mirror-hk-southbound` | 当前无稳定 raw snapshot，研究 universe 已存在 | 需要 universe 审计或渠道历史回放时再补原始镜像。 |
 
 ## 行情
 

@@ -30,6 +30,7 @@
 | 日线缓存 | pipeline 首次拉取时自动写入 | `artifacts/cache/hk_rqdata_daily_<symbol>.parquet` | 保留按 symbol 分开的日频行情缓存 |
 | PIT 财务镜像 | `csml rqdata mirror-hk-pit-financials` | `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/` | 保留按 symbol 分开的原始 PIT 财务资产 |
 | 参考数据镜像 | `csml rqdata mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 保留复权、分红和股本原料，给后续派生研究使用 |
+| 港股通原始历史镜像 | `csml rqdata mirror-hk-southbound` | `artifacts/assets/rqdata/hk/southbound/<snapshot>/` | 保留按 symbol 分开的 southbound 渠道历史，给 universe 审计和资金口径回放使用 |
 | 行业资产镜像 | `csml rqdata mirror-hk-instrument-industry` / `mirror-hk-industry-changes` | `artifacts/assets/rqdata/hk/instrument_industry/` 等 | 保留行业快照和行业变更区间，给行业中性和暴露回放使用 |
 | 平面 fundamentals 文件 | `csml rqdata build-hk-pit-fundamentals` | `<pit_snapshot>/pipeline_fundamentals.parquet` | 给 pipeline 直接读取的财务文件 |
 | 本地行业标签文件 | `csml rqdata build-hk-industry-labels` | `<industry_changes_snapshot>/industry_labels_<freq>.parquet` | 用行业变更区间本地派生可直接 join 的日/月/季标签文件 |
@@ -45,10 +46,11 @@
 3. 如果你要跑研究或做持仓回溯，再让 pipeline 把日线缓存落到 `artifacts/cache/`。
 4. 如果你要做 PIT 财报研究，再镜像 `pit_financials`。
 5. 如果你要保留复权、分红和股本原料，再镜像 `ex_factors`、`dividends` 和 `shares`。
-6. 如果你要做行业中性、行业暴露或行业归属回放，再镜像 `instrument_industry` 和 `industry_changes`。
-7. 用 `build-hk-pit-fundamentals` 生成研究用平面文件。
-8. 如果你要直接 join 行业标签，再用 `build-hk-industry-labels` 从 `industry_changes` 派生本地标签文件。
-9. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
+6. 如果你要保留港股通原始渠道历史，再镜像 `southbound`。
+7. 如果你要做行业中性、行业暴露或行业归属回放，再镜像 `instrument_industry` 和 `industry_changes`。
+8. 用 `build-hk-pit-fundamentals` 生成研究用平面文件。
+9. 如果你要直接 join 行业标签，再用 `build-hk-industry-labels` 从 `industry_changes` 派生本地标签文件。
+10. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
 
 补充：
 
@@ -227,6 +229,25 @@ csml rqdata mirror-hk-shares \
 * `mirror-hk-shares` 默认会拉一组常用股本字段；如需额外列，再补 `--field` / `--fields-file`。
 * 这三类命令会优先复用 `artifacts/assets/rqdata/hk/instruments/` 下最近的 HK instruments 快照来解析 `unique_id`，所以先准备 instrument 快照更稳。
 * 如果你在试用期内赶时间，优先级仍然低于 instrument、日线和 PIT core。
+
+如果你想把港股通原始历史单独冻住，而不是只保留派生后的 `universe by-date` 文件，可以再补一份 `southbound`：
+
+```bash
+csml rqdata mirror-hk-southbound \
+  --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --start-date 20141117 \
+  --end-date 20260318 \
+  --trading-type both \
+  --rebalance-frequency D \
+  --name hk_connect_southbound_latest \
+  --resume
+```
+
+补充：
+
+* `southbound` 资产按 symbol 落盘，每行保留 `date`、`trading_type` 和 `eligible=1`。
+* 这层更适合做 universe 审计、渠道差异回放和“某只股票何时可被南向买入”的原始核对。
+* 如果你当前只关心研究股票池，现有 `csml universe hk-connect` 已经够用；`southbound` raw mirror 属于高价值但非必需的补充层。
 
 `mirror-hk-financial-details` 目前建议只当 probe 用：
 

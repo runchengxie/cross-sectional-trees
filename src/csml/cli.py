@@ -299,6 +299,13 @@ def _handle_rqdata_mirror_hk_shares(args) -> int:
     return rqdata_assets.mirror_hk_shares(args, rqdatac)
 
 
+def _handle_rqdata_mirror_hk_southbound(args) -> int:
+    from .data_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_southbound(args, rqdatac)
+
+
 def _handle_rqdata_mirror_hk_instrument_industry(args) -> int:
     from .data_tools import rqdata_assets
 
@@ -653,6 +660,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_shares_mirror_args(rq_shares)
     rq_shares.set_defaults(func=_handle_rqdata_mirror_hk_shares)
+
+    rq_southbound = rq_sub.add_parser(
+        "mirror-hk-southbound",
+        help="Mirror HK southbound eligibility history into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_southbound_mirror_args(rq_southbound)
+    rq_southbound.set_defaults(func=_handle_rqdata_mirror_hk_southbound)
 
     rq_instrument_industry = rq_sub.add_parser(
         "mirror-hk-instrument-industry",
