@@ -75,14 +75,14 @@ trade_date,ts_code,stock_ticker
 ```bash
 csml universe hk-connect \
   --config configs/presets/universe/hk_connect.yml \
-  --mode daily
+  -- --mode daily
 ```
 
 ### 指数成分
 
 ```bash
 csml universe index-components \
-  --index-code 000300.SH \
+  -- --index-code 000300.SH \
   --month 202501
 ```
 

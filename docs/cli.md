@@ -4,7 +4,7 @@
 本页不解决什么：不展开研究流程与配置语义。
 适合谁：需要查命令和参数的读者。
 读完你会得到什么：按场景检索命令与参数的路径。
-相关页面：`docs/cookbook.md`、`docs/config.md`、`docs/outputs.md`
+相关页面：`docs/cookbook.md`、`docs/capabilities.md`、`docs/config.md`、`docs/outputs.md`
 
 ## 快速决策
 
@@ -17,6 +17,9 @@
 | 查看持仓 | `csml holdings --config <> --as-of t-1` |
 | 生成快照 | `csml snapshot --config <live.yml>` |
 | 手数分配 | `csml alloc --config <> --source live --top-n 20` |
+| 导出模板 | `csml init-config --market default` |
+| 构建 HK 全市场股票池 | `csml universe hk-daily-assets --config <> -- <args>` |
+| 验证 TuShare token | `csml tushare verify-token` |
 
 ## 查看帮助
 
@@ -35,6 +38,8 @@ csml <subcommand> --help
 - 本地 YAML 路径：`configs/presets/hk.yml`
 
 > `csml run --config default` 里的 `default` 是内置别名，不等于 `configs/presets/default.yml`。
+>
+> `default` 当前指向 HK starter 模板，默认 `data.provider=rqdata`。第一次跑 `default` 或 `hk` 前，先安装 `uv sync --extra dev --extra rqdata`。
 
 ### 日期 token
 
@@ -47,6 +52,16 @@ csml <subcommand> --help
 ### 输出格式
 
 `holdings`、`snapshot`、`alloc` 支持：`--format text|csv|json`
+
+### 透传参数
+
+`csml universe ...` 会先解析 wrapper 自己的参数（例如 `--config`），再把其余参数透传给底层脚本。
+
+需要传底层脚本参数时，建议显式加一个 `--` 分隔，例如：
+
+```bash
+csml universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
+```
 
 ## 主流程命令
 
@@ -131,6 +146,16 @@ csml migrate-artifacts --dry-run
 csml migrate-artifacts
 ```
 
+## 配置模板命令
+
+### csml init-config
+
+导出内置模板。
+
+```bash
+csml init-config --market default --out configs/
+csml init-config --market hk --out ./configs/custom_hk.yml --force
+```
 
 ## RQData 命令
 
@@ -271,7 +296,15 @@ csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_sel
 构建港股通 PIT universe。
 
 ```bash
-csml universe hk-connect --config configs/presets/universe/hk_connect.yml --mode daily
+csml universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
+```
+
+### csml universe hk-daily-assets
+
+用本地日线镜像构建 HK 全市场股票池。
+
+```bash
+csml universe hk-daily-assets --config configs/presets/universe/hk_all_assets.yml -- --end-date 20251231
 ```
 
 ### csml universe index-components
@@ -279,15 +312,17 @@ csml universe hk-connect --config configs/presets/universe/hk_connect.yml --mode
 拉取指数成分。
 
 ```bash
-csml universe index-components --index-code 000300.SH --month 202501
+csml universe index-components -- --index-code 000300.SH --month 202501
 ```
 
-### csml init-config
+## TuShare 命令
 
-导出内置模板。
+### csml tushare verify-token
+
+验证本地 `TUSHARE_TOKEN` / `TUSHARE_TOKEN_2` 是否可用。
 
 ```bash
-csml init-config --market default --out configs/
+csml tushare verify-token
 ```
 
 ## 相关文档

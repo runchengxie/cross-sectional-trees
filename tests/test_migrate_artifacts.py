@@ -74,3 +74,41 @@ def test_migrate_artifacts_conflict_requires_force(tmp_path, monkeypatch):
 
     assert migrate_artifacts.main(["--force"]) == 0
     assert (repo_root / "artifacts" / "cache" / "prices.parquet").read_text(encoding="utf-8") == "old-cache"
+
+
+def test_migrate_artifacts_dry_run_leaves_legacy_paths_untouched(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "cache").mkdir()
+    (repo_root / "cache" / "prices.parquet").write_text("cache-data", encoding="utf-8")
+
+    monkeypatch.chdir(repo_root)
+
+    assert migrate_artifacts.main(["--dry-run"]) == 0
+
+    assert (repo_root / "cache" / "prices.parquet").exists()
+    assert not (repo_root / "artifacts" / "cache" / "prices.parquet").exists()
+
+
+def test_migrate_artifacts_copy_mode_preserves_legacy_paths(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "cache").mkdir()
+    (repo_root / "cache" / "prices.parquet").write_text("cache-data", encoding="utf-8")
+
+    monkeypatch.chdir(repo_root)
+
+    assert migrate_artifacts.main(["--copy"]) == 0
+
+    assert (repo_root / "cache" / "prices.parquet").exists()
+    assert (repo_root / "artifacts" / "cache" / "prices.parquet").exists()
+
+
+def test_migrate_artifacts_no_legacy_paths_is_noop(tmp_path, monkeypatch, capsys):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    monkeypatch.chdir(repo_root)
+
+    assert migrate_artifacts.main([]) == 0
+    assert capsys.readouterr().out.strip() == "No legacy artifact paths found."

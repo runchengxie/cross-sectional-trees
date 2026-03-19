@@ -72,6 +72,11 @@ scripts/run_tests.sh coverage
 CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
 ```
 
+说明：
+
+* `scripts/run_tests.sh integration` 跑的是 `@pytest.mark.integration` 的跨模块流程。
+* `tests/test_provider_integration.py` 也带 `integration` 标记，但未设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时会自动 skip，所以默认 CI 的 `integration` job 仍以离线集成为主。
+
 ## 测试分层约定
 
 建议按以下分层维护测试，避免把“离线回归”与“端到端验证”混在一起：

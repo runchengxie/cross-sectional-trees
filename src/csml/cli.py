@@ -361,14 +361,18 @@ def _handle_universe_hk_daily_assets(args) -> int:
 def _handle_universe_index_components(args) -> int:
     from .data_tools import fetch_index_components
 
-    fetch_index_components.main(args.args)
+    argv: list[str] = []
+    _append_passthrough(argv, args.args)
+    fetch_index_components.main(argv)
     return 0
 
 
 def _handle_tushare_verify(args) -> int:
     from .data_tools import verify_tushare_tokens
 
-    verify_tushare_tokens.main(args.args)
+    argv: list[str] = []
+    _append_passthrough(argv, args.args)
+    verify_tushare_tokens.main(argv)
     return 0
 
 

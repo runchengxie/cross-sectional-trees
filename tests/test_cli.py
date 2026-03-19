@@ -1,7 +1,19 @@
+from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from csml import cli
+from csml import pipeline as pipeline_module
 from csml.config_utils import resolve_pipeline_config
+from csml.data_tools import backup_data as backup_data_tool
+from csml.data_tools import build_hk_connect_universe as hk_connect_tool
+from csml.data_tools import build_hk_daily_asset_universe as hk_daily_assets_tool
+from csml.data_tools import fetch_index_components as index_components_tool
+from csml.data_tools import migrate_artifacts as migrate_artifacts_tool
+from csml.data_tools import rqdata_assets as rqdata_assets_tool
+from csml.data_tools import verify_tushare_tokens as verify_tushare_tool
+from csml.liveops import snapshot as snapshot_tool
 from csml.project_tools import alloc as alloc_tool
 from csml.project_tools import holdings as holdings_tool
 from csml.project_tools import run_grid as grid_tool
@@ -625,19 +637,10 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     assert index_components.args == ["--", "--index-code", "000300.SH", "--month", "202501"]
     assert callable(index_components.func)
 
-    verify_token = parser.parse_args(
-        [
-            "tushare",
-            "verify-token",
-            "--",
-            "--test-symbol",
-            "000001.SZ",
-            "--verbose",
-        ]
-    )
+    verify_token = parser.parse_args(["tushare", "verify-token"])
     assert verify_token.command == "tushare"
     assert verify_token.tushare_command == "verify-token"
-    assert verify_token.args == ["--", "--test-symbol", "000001.SZ", "--verbose"]
+    assert verify_token.args == []
     assert callable(verify_token.func)
 
 
@@ -863,3 +866,195 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
             "DEBUG",
         ]
     ]
+
+
+def test_cli_handle_run_calls_pipeline(monkeypatch):
+    calls: list[str | None] = []
+    monkeypatch.setattr(pipeline_module, "run", lambda config: calls.append(config))
+
+    assert cli._handle_run(SimpleNamespace(config="hk")) == 0
+    assert calls == ["hk"]
+
+
+def test_cli_handle_rqdata_info_prints_client_info(monkeypatch, capsys):
+    class _FakeClient:
+        def info(self):
+            return {"user": "demo"}
+
+    monkeypatch.setattr(cli, "_init_rqdatac", lambda args: _FakeClient())
+
+    assert cli._handle_rqdata_info(SimpleNamespace()) == 0
+    assert capsys.readouterr().out.strip() == "{'user': 'demo'}"
+
+
+def test_cli_handle_rqdata_export_hk_instruments_passes_args_and_client(monkeypatch):
+    calls: list[tuple[SimpleNamespace, object]] = []
+    fake_client = object()
+
+    monkeypatch.setattr(cli, "_init_rqdatac", lambda args: fake_client)
+    monkeypatch.setattr(
+        rqdata_assets_tool,
+        "export_hk_instruments",
+        lambda args, rqdatac: calls.append((args, rqdatac)) or 0,
+    )
+
+    args = SimpleNamespace(limit=10, config="configs/presets/hk.yml")
+    assert cli._handle_rqdata_export_hk_instruments(args) == 0
+    assert calls == [(args, fake_client)]
+
+
+def test_cli_handle_snapshot_passes_through_args(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(snapshot_tool, "main", lambda argv: calls.append(argv))
+
+    args = SimpleNamespace(
+        config="hk",
+        run_dir="artifacts/runs/demo",
+        as_of="20260131",
+        skip_run=True,
+        top_k=15,
+        format="csv",
+        out="artifacts/live/snapshot.csv",
+    )
+    assert cli._handle_snapshot(args) == 0
+    assert calls == [
+        [
+            "--config",
+            "hk",
+            "--run-dir",
+            "artifacts/runs/demo",
+            "--as-of",
+            "20260131",
+            "--skip-run",
+            "--top-k",
+            "15",
+            "--format",
+            "csv",
+            "--out",
+            "artifacts/live/snapshot.csv",
+        ]
+    ]
+
+
+def test_cli_handle_backup_data_passes_through_args(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(backup_data_tool, "main", lambda argv: calls.append(argv))
+
+    args = SimpleNamespace(
+        out_root="artifacts/snapshots",
+        name="hk_frozen",
+        config=["configs/presets/hk.yml"],
+        include_path=["artifacts/assets/universe"],
+        no_cache=True,
+        no_universe=False,
+        skip_missing=True,
+    )
+    assert cli._handle_backup_data(args) == 0
+    assert calls == [
+        [
+            "--out-root",
+            "artifacts/snapshots",
+            "--name",
+            "hk_frozen",
+            "--config",
+            "configs/presets/hk.yml",
+            "--include-path",
+            "artifacts/assets/universe",
+            "--no-cache",
+            "--skip-missing",
+        ]
+    ]
+
+
+def test_cli_handle_migrate_artifacts_passes_through_args(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(migrate_artifacts_tool, "main", lambda argv: calls.append(argv))
+
+    args = SimpleNamespace(copy=True, force=False, dry_run=True)
+    assert cli._handle_migrate_artifacts(args) == 0
+    assert calls == [["--copy", "--dry-run"]]
+
+
+def test_cli_handle_universe_wrappers_pass_through_args(monkeypatch):
+    hk_connect_calls: list[list[str]] = []
+    hk_daily_calls: list[list[str]] = []
+    index_calls: list[list[str]] = []
+
+    monkeypatch.setattr(hk_connect_tool, "main", lambda argv: hk_connect_calls.append(argv))
+    monkeypatch.setattr(hk_daily_assets_tool, "main", lambda argv: hk_daily_calls.append(argv))
+    monkeypatch.setattr(index_components_tool, "main", lambda argv: index_calls.append(argv))
+
+    hk_connect_args = SimpleNamespace(
+        config="configs/presets/universe/hk_connect.yml",
+        args=["--", "--mode", "daily", "--start-date", "20250101"],
+    )
+    assert cli._handle_universe_hk_connect(hk_connect_args) == 0
+
+    hk_daily_args = SimpleNamespace(
+        config="configs/presets/universe/hk_all_assets.yml",
+        args=["--", "--start-date", "20000104", "--end-date", "20251231"],
+    )
+    assert cli._handle_universe_hk_daily_assets(hk_daily_args) == 0
+
+    index_args = SimpleNamespace(args=["--", "--index-code", "000300.SH", "--month", "202501"])
+    assert cli._handle_universe_index_components(index_args) == 0
+
+    assert hk_connect_calls == [
+        [
+            "--config",
+            "configs/presets/universe/hk_connect.yml",
+            "--mode",
+            "daily",
+            "--start-date",
+            "20250101",
+        ]
+    ]
+    assert hk_daily_calls == [
+        [
+            "--config",
+            "configs/presets/universe/hk_all_assets.yml",
+            "--start-date",
+            "20000104",
+            "--end-date",
+            "20251231",
+        ]
+    ]
+    assert index_calls == [["--index-code", "000300.SH", "--month", "202501"]]
+
+
+def test_cli_handle_tushare_verify_calls_verifier(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(verify_tushare_tool, "main", lambda argv=None: calls.append(argv or []))
+
+    args = SimpleNamespace(args=["--", "--verbose"])
+    assert cli._handle_tushare_verify(args) == 0
+    assert calls == [["--verbose"]]
+
+
+def test_cli_handle_init_config_writes_default_configs_dir(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    args = SimpleNamespace(market="hk", out=None, force=False)
+    assert cli._handle_init_config(args) == 0
+
+    out_path = tmp_path / "configs" / "hk.yml"
+    assert out_path.exists()
+
+    project_root = Path(cli.__file__).resolve().parents[2]
+    source_path = project_root / "configs" / "presets" / "hk.yml"
+    assert out_path.read_text(encoding="utf-8") == source_path.read_text(encoding="utf-8")
+    assert capsys.readouterr().out.strip() == f"Wrote {out_path}"
+
+
+def test_cli_handle_init_config_directory_output_and_overwrite_guard(tmp_path):
+    out_dir = tmp_path / "exports"
+    args = SimpleNamespace(market="hk", out=str(out_dir), force=False)
+
+    assert cli._handle_init_config(args) == 0
+    out_path = out_dir / "hk.yml"
+    assert out_path.exists()
+
+    with pytest.raises(SystemExit, match="Refusing to overwrite existing file"):
+        cli._handle_init_config(args)
+
+    assert cli._handle_init_config(SimpleNamespace(market="hk", out=str(out_dir), force=True)) == 0

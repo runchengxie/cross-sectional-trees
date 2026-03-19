@@ -429,7 +429,7 @@ eval:
 1. 先刷新港股通 PIT universe：
 
 ```bash
-csml universe hk-connect --config configs/presets/universe/hk_connect.yml --mode daily
+csml universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
 ```
 
 2. 再做一份更晚 as-of date 的窄 PIT 增量，只补当前研究 universe：
@@ -505,6 +505,7 @@ csml rqdata mirror-hk-daily \
 
 ```bash
 csml universe hk-daily-assets \
+  -- \
   --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260317_daily_final_latest \
   --start-date 20000104 \
   --end-date 20260317
