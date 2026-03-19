@@ -3895,8 +3895,14 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                 }:
                     raise SystemExit("Resume target query mismatch for rebalance_frequency.")
                 existing_types = query.get("trading_types")
-                if existing_types not in {None, trading_types}:
-                    raise SystemExit("Resume target query mismatch for trading_types.")
+                if existing_types is not None:
+                    normalized_existing_types = (
+                        _dedupe_preserve_order(existing_types)
+                        if isinstance(existing_types, Sequence) and not isinstance(existing_types, str)
+                        else _dedupe_preserve_order([existing_types])
+                    )
+                    if normalized_existing_types != list(trading_types):
+                        raise SystemExit("Resume target query mismatch for trading_types.")
             existing_dates = _load_existing_text_list(output_dir / "dates.txt", strip=False)
             if existing_dates and list(existing_dates) != list(snapshot_dates):
                 raise SystemExit("Resume target dates.txt does not match the requested date list.")

@@ -31,6 +31,10 @@
   全市场 alias 已切到 `2026-03-18` 的 `*_full_market_latest` snapshot；`hk_connect` 两套 snapshot 也都还在本地
 * `industry_changes`
   严格全市场 `industry_changes` 已落盘，并已从本地 `daily` 网格派生 `industry_labels_d/m/q`
+* `southbound`
+  `hk_connect` 范围 raw snapshot 已落盘：
+  `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest/`
+  它属于高价值补充层，不是默认研究入口
 * `instrument_industry`
   当前稳定的是旧 `1547` symbol 口径的月频、季频快照；`3203` symbol 的 full-market 月频尝试目录已经改名成 `*_incomplete`，不要当成 latest 用
 * `universe`
@@ -44,6 +48,7 @@
   `artifacts/snapshots/bundles/hk_full_ref_20260318/`
   `artifacts/snapshots/bundles/hk_connect_ref_20260318/`
   `artifacts/snapshots/hk_runtime_20260318/`
+  `artifacts/snapshots/hk_runtime_20260319_core_assets/`
 
 当前不要当成稳定主线的：
 
@@ -70,6 +75,8 @@
   当前全市场 shares alias，指向 `hk_all_2000_20260318_shares_full_market_latest`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest`
   当前全市场 industry_changes alias，指向 `hk_all_2000_20260318_industry_changes_full_market_latest`，目录下已经有 `industry_labels_d/m/q.parquet`
+* `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest`
+  当前 `hk_connect` 范围 southbound raw snapshot，覆盖 `2014-11-17` 到 `2026-03-18`
 * `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
   当前 `hk_connect` 的 research-ready PIT universe，已在 `2026-03-18` 重建并对齐到 `2026-03-17`
 * `artifacts/assets/universe/hk_connect_full_research_symbols.txt`
@@ -100,7 +107,7 @@
 | `get_instrument_industry` | 已接，`mirror-hk-instrument-industry` | 稳定但仍是旧 research-universe 口径 | 便捷快照层；当前保留的月频/季频 latest 还是 `1547` symbol 版本。 |
 | `get_industry_mapping` | 间接覆盖 | 已写到 `industry_changes` 目录 | 作为字典表看待，不必单独升级。 |
 | `get_turnover_rate` | 未接入离线 mirror | 无稳定资产 | 当前优先级低。 |
-| `hk.get_southbound_eligible_secs` | 已接，`mirror-hk-southbound` | 当前无稳定 raw snapshot，研究 universe 已存在 | 需要 universe 审计或渠道历史回放时再补原始镜像。 |
+| `hk.get_southbound_eligible_secs` | 已接，`mirror-hk-southbound` | `hk_connect` 范围 raw snapshot 已稳定落盘；full-market raw snapshot 仍无 | 默认研究仍可直接用现有 universe；需要渠道审计或资格回放时优先复用这份 raw mirror。 |
 
 ## 行情
 
@@ -131,6 +138,7 @@
 * `hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 也已在 `2026-03-18` 重建，并同步派生出 `hk_selected_pit_research_*` 入口文件。
 * `financial_details` 当前确认可用的 probe 是 `hk_financial_details_probe_core_2024_2025_latest/`，样本为 `00386.HK`、`00939.HK`、`01211.HK`，字段为 `operating_revenue`、`net_profit`。
 * 之前那类 `743` 字段宽表 probe 会在多只股票上触发 server error，不应再作为默认试法。
+* `hk_connect_probe_2025q4_2026q1_starter_20260319/` 是当前更晚 as-of 的窄 PIT 增量快照，`date=2026-03-19`，starter 字段集共 `17` 列；目录下已生成 `pipeline_fundamentals.parquet`，并派生 `artifacts/assets/universe/hk_connect_probe_2025q4_2026q1_starter_20260319_research_*`。
 
 ## 因子与公告
 

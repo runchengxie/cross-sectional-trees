@@ -989,6 +989,16 @@ def test_mirror_hk_southbound_writes_symbol_history_assets(tmp_path, monkeypatch
     assert manifest["missing_symbols"] == ["00012.HK"]
     assert manifest["date_source"]["mode"] == "by_date_file"
 
+    client.hk.calls.clear()
+    args.resume = True
+    assert rqdata_assets.mirror_hk_southbound(args, client) == 0
+    assert client.hk.calls == [
+        {"trading_type": "sh", "date": "20250102"},
+        {"trading_type": "sz", "date": "20250102"},
+        {"trading_type": "sh", "date": "20250131"},
+        {"trading_type": "sz", "date": "20250131"},
+    ]
+
 
 def test_mirror_hk_instrument_industry_writes_snapshot_assets(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
