@@ -4,7 +4,7 @@
 本页不解决什么：不代替 CLI 参数文档，也不展开完整研究路线。  
 适合谁：准备继续补 HK 资产、清理旧目录，或想先判断“哪些已经稳定、哪些别碰”的人。  
 读完你会得到什么：当前有效资产清单、接口接入状态，以及下一步应该补哪里的结论。  
-相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
+相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
 最后核对时间：`2026-03-19`（Asia/Shanghai）
 
@@ -22,7 +22,7 @@
   `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_20260318.parquet`
   `artifacts/assets/rqdata/hk/instruments/hk_connect_full_20260318.parquet`
 * `daily`
-  `artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest/`
+  `artifacts/assets/rqdata/hk/daily/hk_all_2000_20260318_daily_final_latest/`
 * `pit_financials`
   `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/`
   `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/`
@@ -62,7 +62,7 @@
 建议把下面这些当成当前有效入口：
 
 * `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest`
-  当前全市场日线 alias，指向 `hk_all_2000_20260312_daily_final_latest`
+  当前全市场日线 alias，指向 `hk_all_2000_20260318_daily_final_latest`
 * `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`
   当前全市场 instruments alias，指向 `hk_all_instruments_20260318.parquet`
 * `artifacts/assets/rqdata/hk/instruments/hk_connect_full_latest.parquet`
@@ -117,7 +117,7 @@
 
 补充：
 
-* 当前全市场日线 snapshot 覆盖 `3203` 个 symbol，日期范围是 `2000-01-04` 到 `2026-03-11`。
+* 当前全市场日线 snapshot 覆盖 `3203` 个 symbol，日期范围是 `2000-01-04` 到 `2026-03-18`。
 * `hk_connect` 的独立日线 snapshot 也保留了，但属于兼容资产，不再是默认入口。
 * `hk_connect_full_by_date.csv` 已在 `2026-03-18` 刷新到最近完整交易日 `2026-03-17`。
 * `hk_connect_full_research_by_date.csv` 已在 `2026-03-18` 重新派生，当前覆盖 `904` 个带本地 PIT flat fundamentals 的 symbol。
@@ -138,6 +138,7 @@
 * `hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 也已在 `2026-03-18` 重建，并同步派生出 `hk_selected_pit_research_*` 入口文件。
 * `financial_details` 当前确认可用的 probe 是 `hk_financial_details_probe_core_2024_2025_latest/`，样本为 `00386.HK`、`00939.HK`、`01211.HK`，字段为 `operating_revenue`、`net_profit`。
 * 之前那类 `743` 字段宽表 probe 会在多只股票上触发 server error，不应再作为默认试法。
+* `hk_all_probe_2025q4_2026q1_starter_20260319/` 也已经落盘，和 `hk_connect` 版本一样是 `date=2026-03-19` 的 `17` 列 starter 增量，并已生成 `pipeline_fundamentals.parquet` 与 `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260319_research_*`。
 * `hk_connect_probe_2025q4_2026q1_starter_20260319/` 是当前更晚 as-of 的窄 PIT 增量快照，`date=2026-03-19`，starter 字段集共 `17` 列；目录下已生成 `pipeline_fundamentals.parquet`，并派生 `artifacts/assets/universe/hk_connect_probe_2025q4_2026q1_starter_20260319_research_*`。
 
 ## 因子与公告
@@ -208,7 +209,7 @@
 csml rqdata quota --pretty
 ls artifacts/assets/rqdata/hk/instruments
 ls artifacts/assets/rqdata/hk/daily
-sed -n '1,80p' artifacts/assets/rqdata/hk/daily/hk_all_2000_20260312_daily_final_latest/manifest.yml
+sed -n '1,80p' artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/manifest.yml
 sed -n '1,80p' artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/manifest.yml
 ```
 
