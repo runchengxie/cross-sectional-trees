@@ -191,11 +191,11 @@
 
 推荐顺序：
 
-1. 先别为了“复权口径”重刷 `daily`；当前更合理的主线仍然是 `未复权日线 + ex_factors + dividends + shares`。
+1. 先别为了复权口径重刷 `daily`；当前更合理的主线仍然是 `未复权日线 + ex_factors + dividends + shares`。
 2. 如果只是继续研究，不急着重建 full-market 离线底座，优先补更晚 as-of date 的窄 `PIT` 增量，而不是重刷 `daily` 或 `pit_financials` 大资产。
 3. 优先把配置、文档和脚本统一到 alias 路径，减少日期写死。
 4. 只补轻量增量或小样本 probe，例如 `financial_details` 的少量 field/sample。
-5. 新资产下载前，先看 `manifest.yml` 和 `quota`，不要把旧失败 probe 误认成“当前缺口”。
+5. 新资产下载前，先看 `manifest.yml` 和 `quota`，不要把旧失败 probe 误认成当前缺口。
 
 补充判断：
 
@@ -213,4 +213,4 @@ sed -n '1,80p' artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/manifest.yml
 sed -n '1,80p' artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/manifest.yml
 ```
 
-如果你发现这页和磁盘目录再次不一致，优先更新这页，不要再往别的文档里复制一份“临时状态”。
+如果你发现这页和磁盘目录再次不一致，优先更新这页，不要再往别的文档里复制一份临时状态。

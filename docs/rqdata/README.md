@@ -12,7 +12,7 @@
 
 * `hk-data-assets.md` 和 `hk-rqdata-status.md` 仍然属于研究 / 运维 playbook。
 * `python-hk-stock-manual.md` 更像外部 API 的离线 reference snapshot。
-* 把它们强行塞进同一层目录，会让“流程文档”和“参考手册”的边界变糊。
+* 把它们强行塞进同一层目录，会让流程文档和参考手册的边界变糊。
 
 更合理的做法是保留原有分工，同时在这里给一个统一入口。
 
@@ -34,5 +34,5 @@
 ## 使用规则
 
 * 如果 `python-hk-stock-manual.md` 和仓库代码 / manifest / playbook 发生冲突，优先以仓库当前实现和本地资产 manifest 为准。
-* 如果你新增、重刷或清理了 HK / RQData 资产，优先更新 `hk-rqdata-status.md`，不要把“当前磁盘状态”复制到多个页面。
+* 如果你新增、重刷或清理了 HK / RQData 资产，优先更新 `hk-rqdata-status.md`，不要把当前磁盘状态复制到多个页面。
 * 参数和命令权威说明仍然在 `docs/cli.md`；provider 行为差异仍然在 `docs/providers.md`。

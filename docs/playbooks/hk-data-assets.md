@@ -138,7 +138,7 @@ csml rqdata mirror-hk-daily \
 3. 再把 `universe.by_date_file` 切到 `artifacts/assets/universe/hk_all_full_by_date.csv`
 4. 配上 `data.rqdata.daily_asset_dir` 和 `data.rqdata.instruments_file`
 
-如果你的目标是“把港股通 symbol archive 的日线缓存尽量补齐”，当前做法是：
+如果你的目标是把港股通 symbol archive 的日线缓存尽量补齐，当前做法是：
 
 1. 先准备好更宽的港股通 `by_date_file`
 2. 优先跑 `mirror-hk-daily` 做独立归档
@@ -148,7 +148,7 @@ csml rqdata mirror-hk-daily \
 
 首次运行会最慢。后续同口径重跑时，主要是命中缓存和刷新尾部。
 
-### 为什么不需要为了“复权”重跑一套日线
+### 为什么不需要为了复权重跑一套日线
 
 更推荐的分层是：
 
@@ -165,7 +165,7 @@ csml rqdata mirror-hk-daily \
 
 这也意味着：
 
-* 如果你的目标只是“以后可复权、可查错、可切换口径”，不需要单独再镜像一套前复权日线。
+* 如果你的目标只是以后可复权、可查错、可切换口径，不需要单独再镜像一套前复权日线。
 * 只有当你明确要生成一份更新到更晚日期的完整 `daily snapshot` 时，才值得新建一版日线资产目录。
 * 当前 `mirror-hk-daily` 的 `--resume` 主要用于跳过已存在 symbol，不会在旧 parquet 上追加新的交易日；因此“补最新几天”更适合走 pipeline symbol cache，“重做完整离线归档”才适合新建 snapshot。
 
