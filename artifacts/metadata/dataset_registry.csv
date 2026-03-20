@@ -1,0 +1,8 @@
+# Dataset Registry for research data assets.
+# This file documents the key datasets used in the project.
+# Last updated: 2026-03-14
+dataset_name,version,market,type,date_range,source,records,symbols,description,path
+hk_daily_cache,20260314,hk,daily,2015-01-01 to 2026-03-14,rqdata,~2.8M,~1523,Cached daily OHLCV data by symbol,artifacts/cache/
+hk_connect_universe,20260314,hk,universe,2014-11-17 to 2026-03-14,rqdata,~2800,~800,HK Connect daily membership,artifacts/assets/universe/universe_by_date.csv
+hk_pit_financials,20260314,hk,fundamentals,2015-01-01 to 2026-03-14,rqdata,~1.2M,~1200,PIT financial fundamentals,artifacts/assets/
+pipeline_fundamentals,latest,hk,derived,varies by run,derived,~varies,~varies,Research-grade fundamentals from pipeline,artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet

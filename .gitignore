@@ -216,7 +216,28 @@ full_project_source.txt
 /out/
 /data_mirror/
 /data_assets/
-/artifacts/
+/artifacts/*
+!/artifacts/README.md
+!/artifacts/assets/
+!/artifacts/cache/
+!/artifacts/metadata/
+!/artifacts/reports/
+!/artifacts/runs/
+!/artifacts/snapshots/
+/artifacts/assets/*
+!/artifacts/assets/.gitkeep
+/artifacts/cache/*
+!/artifacts/cache/.gitkeep
+!/artifacts/cache/README.md
+/artifacts/metadata/*
+!/artifacts/metadata/.gitkeep
+!/artifacts/metadata/dataset_registry.csv
+/artifacts/reports/*
+!/artifacts/reports/.gitkeep
+/artifacts/runs/*
+!/artifacts/runs/.gitkeep
+/artifacts/snapshots/*
+!/artifacts/snapshots/.gitkeep
 
 # VS code settings
 .vscode

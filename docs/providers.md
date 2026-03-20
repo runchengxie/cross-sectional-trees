@@ -63,7 +63,7 @@
 
 - join 主键固定是 `trade_date + symbol`；旧文件里的 `ts_code` / `stock_ticker` / `order_book_id` 会自动映射到 `symbol`。
 - 导入列默认保留全部非主键列，也可用 `industry.keep_columns` 缩小范围。
-- 这些列不会自动加入模型特征，但会保留到 `dataset.parquet`、`eval_scored.parquet`，适合做行业暴露检查和 `eval.bucket_ic.schemes: [industry_name]` 这类拆解。
+- 这些列不会自动加入模型特征，但会保留到 `dataset.parquet`；若启用 `eval.save_scored_artifact=true`，也会进入 `eval_scored.parquet`，适合做行业暴露检查和 `eval.bucket_ic.schemes: [industry_name]` 这类拆解。
 - 这条链路不会自动做行业中性化，它只是把标签接进研究数据面板。
 
 ## Symbol 与市场规则

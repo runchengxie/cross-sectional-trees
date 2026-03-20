@@ -48,7 +48,7 @@ configs/
 | `label` | 标签 | `target_col`, `horizon_days`, `rebalance_frequency`, `shift_days` |
 | `features` | 特征 | `list`, `windows`, `missing` |
 | `model` | 模型 | `type`, `params` |
-| `eval` | 评估 | `top_k`, `transaction_cost_bps`, `save_artifacts` |
+| `eval` | 评估 | `top_k`, `transaction_cost_bps`, `save_artifacts`, `save_scored_artifact` |
 | `backtest` | 回测 | `enabled`, `rebalance_frequency`, `top_k`, `weighting` |
 | `live` | 快照 | `enabled`, `as_of` |
 
@@ -107,6 +107,7 @@ eval:
   top_k: 20
   transaction_cost_bps: 15
   save_artifacts: true
+  save_scored_artifact: false
 
 backtest:
   enabled: true
@@ -151,6 +152,7 @@ backtest:
 | `top_k` | 选股数量 | `10`, `20`, `30` |
 | `transaction_cost_bps` | 交易成本(bps) | `15`, `25` |
 | `save_artifacts` | 保存产物 | `true` / `false` |
+| `save_scored_artifact` | 单独保存 `eval_scored.parquet` | 默认 `false` |
 | `purge_days` | 泄漏防护天数 | 默认 `horizon_days + shift_days` |
 
 ### `backtest`
@@ -248,7 +250,7 @@ industry:
 - `industry` 目前只支持 `source=file`。
 - join 主键固定是 `trade_date + symbol`；旧文件里的 `ts_code` / `stock_ticker` / `order_book_id` 会自动兼容。
 - 如果 `keep_columns` 为空，默认保留文件里的全部非主键列。
-- 这些行业列不会自动加入模型 `features`，但会保留在 `dataset.parquet`、`eval_scored.parquet`，也可以直接被 `eval.bucket_ic.schemes` 引用。
+- 这些行业列不会自动加入模型 `features`，但会保留在 `dataset.parquet`；若 `eval.save_scored_artifact=true`，也会保留到 `eval_scored.parquet`，并可直接被 `eval.bucket_ic.schemes` 引用。
 - 这条链路只负责把行业标签接进 panel；自动行业中性化或行业约束还需要你在后续研究逻辑里显式实现。
 - 如果你用的是 `industry_labels_m/q.parquet`，更稳妥的做法是让文件频率和你的研究单元一致；只有在你明确知道自己要传播最近一次标签时，才打开 `ffill=true`。
 

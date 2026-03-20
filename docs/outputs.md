@@ -322,7 +322,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | `summary.json` | 默认 | 机器可读总摘要，包含路径指针与关键指标 |
 | `config.used.yml` | 默认 | 实际生效配置（复现优先读这个） |
 | `dropped_dates.csv` | 存在被 `min_symbols_per_date` 丢弃的日期时 | 排查样本不足与过滤影响 |
-| `eval_scored.parquet` | `eval.save_artifacts=true` 且评估阶段成功 | `grid/summarize` 与二次分析复用 |
+| `eval_scored.parquet` | `eval.save_artifacts=true` 且 `eval.save_scored_artifact=true` 且评估阶段成功 | `grid` 与二次分析复用 |
 | `dataset.parquet` | `eval.save_artifacts=true` 且 `eval.save_dataset=true` | 冻结建模输入样本 |
 | `ic_test.csv` / `ic_pearson_test.csv` | 默认 | 测试期 IC 时序 |
 | `ic_train.csv` / `ic_pearson_train.csv` | `eval.report_train_ic=true` | 训练期对照 |
@@ -466,7 +466,7 @@ score = backtest_sharpe
 
 来源：
 
-1. 先执行一次 base pipeline（产出 `eval_scored.parquet`）。
+1. 先执行一次 base pipeline（会强制打开 `eval.save_scored_artifact=true` 产出 `eval_scored.parquet`）。
 1. 在同一份 scored 数据上循环 `top_k × cost_bps × buffer_exit × buffer_entry × weighting`。
 1. 每行对应一个参数组合，不会为每个格点重训模型。
 
@@ -541,7 +541,7 @@ csml migrate-artifacts
 ## 其他常用文件
 
 1. `config.used.yml`：本次运行实际生效配置（复现实验首选）。
-1. `eval_scored.parquet`：评估样本打分明细（启用 artifact 时）。
+1. `eval_scored.parquet`：评估样本打分明细（需 `eval.save_scored_artifact=true`）。
 1. `ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`：指标时序数据。
 1. `feature_importance.csv`：模型特征重要性。
 1. `walk_forward_feature_importance.csv`：walk-forward 每个窗口的特征重要性明细。

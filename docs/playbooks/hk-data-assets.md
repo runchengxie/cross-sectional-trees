@@ -420,7 +420,7 @@ eval:
 
 说明：
 
-* 这样会把行业列直接并到 panel，并保留到 `dataset.parquet` / `eval_scored.parquet`。
+* 这样会把行业列直接并到 panel，并保留到 `dataset.parquet`；若启用 `eval.save_scored_artifact=true`，也会写到 `eval_scored.parquet`。
 * 这一步只是提供 join 输入；自动行业中性化、行业约束或行业 dummy 仍然要在后续研究逻辑里显式处理。
 * 如果你的研究单元是月度或季度，尽量用同频文件；只有明确要传播最近一次标签时，才考虑 `ffill=true`。
 

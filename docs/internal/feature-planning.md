@@ -63,7 +63,7 @@
 
 | 类别 | 典型文件/目录 | 触发方式 | 用途 |
 | --- | --- | --- | --- |
-| run 核心产物 | `summary.json`、`config.used.yml`、`eval_scored.parquet`、`backtest_*.csv`、持仓文件 | `csml run` / `snapshot` | 研究结果复现、汇总和下游消费 |
+| run 核心产物 | `summary.json`、`config.used.yml`、`backtest_*.csv`、持仓文件（`eval_scored.parquet` 为可选） | `csml run` / `snapshot` | 研究结果复现、汇总和下游消费 |
 | provider 原始镜像 | `artifacts/assets/rqdata/hk/<dataset>/<snapshot>/` | `csml rqdata mirror-hk-*` | 冻结可复用原始资产，供下游项目或本仓库继续派生 |
 | 平面 fundamentals | `<pit_snapshot>/pipeline_fundamentals.parquet` | `csml rqdata build-hk-pit-fundamentals` | 给 pipeline 直接读取的 file fundamentals |
 | 本地行业标签 | `<industry_changes_snapshot>/industry_labels_<freq>.parquet` | `csml rqdata build-hk-industry-labels` | 给研究主链路或分析脚本直接 join 行业列 |

@@ -304,6 +304,7 @@ def main(argv: list[str] | None = None) -> None:
     base_run_cfg.setdefault("backtest", {})
     base_run_cfg["eval"]["run_name"] = base_run_name
     base_run_cfg["eval"]["save_artifacts"] = True
+    base_run_cfg["eval"]["save_scored_artifact"] = True
     base_run_cfg["eval"]["top_k"] = int(top_k_values[0])
     base_run_cfg["backtest"]["top_k"] = int(top_k_values[0])
     base_run_cfg["eval"]["transaction_cost_bps"] = float(cost_values[0])

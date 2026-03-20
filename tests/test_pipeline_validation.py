@@ -60,6 +60,7 @@ def _base_config(tmp_path):
             "sample_on_rebalance_dates": False,
             "report_train_ic": False,
             "save_artifacts": True,
+            "save_scored_artifact": False,
             "save_dataset": False,
             "output_dir": str(tmp_path / "runs"),
             "run_name": "validation",
@@ -133,6 +134,18 @@ def test_pipeline_live_requires_artifacts(tmp_path, no_client):
     with pytest.raises(
         SystemExit,
         match="live.enabled=true requires eval.save_artifacts=true to persist holdings.",
+    ):
+        pipeline.run(str(config_path))
+
+
+def test_pipeline_scored_artifact_requires_artifacts(tmp_path, no_client):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["eval"]["save_artifacts"] = False
+    config["eval"]["save_scored_artifact"] = True
+    config_path = _write_config(tmp_path, config)
+    with pytest.raises(
+        SystemExit,
+        match="eval.save_scored_artifact=true requires eval.save_artifacts=true.",
     ):
         pipeline.run(str(config_path))
 

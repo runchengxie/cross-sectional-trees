@@ -62,6 +62,7 @@ def test_grid_reuses_single_pipeline_run(tmp_path, monkeypatch):
     def fake_pipeline_run(cfg_path: str) -> None:
         calls.append(cfg_path)
         loaded = yaml.safe_load(Path(cfg_path).read_text(encoding="utf-8"))
+        assert loaded["eval"]["save_scored_artifact"] is True
         run_name = loaded["eval"]["run_name"]
         run_dir = Path(loaded["eval"]["output_dir"]) / f"{run_name}_20200101_000000_deadbeef"
         run_dir.mkdir(parents=True, exist_ok=True)

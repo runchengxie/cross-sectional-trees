@@ -1314,9 +1314,12 @@ def run(config_ref: str | Path | None = None) -> None:
         FINAL_OOS_ENABLED = bool(final_oos_cfg)
 
     SAVE_ARTIFACTS = bool(eval_cfg.get("save_artifacts", True))
+    SAVE_SCORED_ARTIFACT = bool(eval_cfg.get("save_scored_artifact", False))
     SAVE_DATASET = bool(eval_cfg.get("save_dataset", False))
     OUTPUT_DIR = eval_cfg.get("output_dir", DEFAULT_RUNS_DIR.as_posix())
     RUN_NAME = eval_cfg.get("run_name")
+    if SAVE_SCORED_ARTIFACT and not SAVE_ARTIFACTS:
+        raise SystemExit("eval.save_scored_artifact=true requires eval.save_artifacts=true.")
     if SAVE_DATASET and not SAVE_ARTIFACTS:
         raise SystemExit("eval.save_dataset=true requires eval.save_artifacts=true.")
 
@@ -3667,7 +3670,7 @@ def run(config_ref: str | Path | None = None) -> None:
         if SAVE_DATASET:
             dataset_path = run_dir / "dataset.parquet"
             save_parquet(dataset.as_multiindex(), dataset_path)
-        if eval_scored_data is not None and not eval_scored_data.empty:
+        if SAVE_SCORED_ARTIFACT and eval_scored_data is not None and not eval_scored_data.empty:
             eval_scored_path = run_dir / "eval_scored.parquet"
             save_parquet(eval_scored_data, eval_scored_path)
         feature_importance_path = run_dir / "feature_importance.csv"
@@ -3959,6 +3962,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 "rebalance_dates": [
                     pd.to_datetime(date).strftime("%Y%m%d") for date in eval_rebalance_dates
                 ],
+                "save_scored_artifact": SAVE_SCORED_ARTIFACT,
                 "scored_file": str(eval_scored_path) if eval_scored_path else None,
                 "scored_pred_col": "pred",
                 "scored_signal_col": "signal_eval",

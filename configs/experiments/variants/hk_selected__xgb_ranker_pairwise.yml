@@ -141,6 +141,7 @@ eval:
   purge_days: 22
   report_train_ic: true
   save_artifacts: true
+  save_scored_artifact: false
   save_dataset: false
   output_dir: artifacts/runs
   run_name: hk_sel_xgb_rank_pairwise

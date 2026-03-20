@@ -165,6 +165,9 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
     assert (run_dir / "backtest_net.csv").exists()
     assert (run_dir / "positions_by_rebalance.csv").exists()
     assert (run_dir / "positions_current.csv").exists()
+    assert not (run_dir / "eval_scored.parquet").exists()
+    assert summary["eval"]["save_scored_artifact"] is False
+    assert summary["eval"]["scored_file"] is None
 
     required_position_columns = {
         "signal_asof",

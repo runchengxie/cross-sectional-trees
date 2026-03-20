@@ -1667,6 +1667,7 @@ def test_pipeline_industry_file_join_preserves_labels_for_dataset_and_bucket_ic(
             "sample_on_rebalance_dates": False,
             "report_train_ic": False,
             "save_artifacts": True,
+            "save_scored_artifact": True,
             "save_dataset": True,
             "output_dir": str(output_dir),
             "run_name": "hk-industry-join",

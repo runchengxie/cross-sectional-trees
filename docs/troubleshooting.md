@@ -198,6 +198,7 @@ csml rqdata quota --pretty
 高频错误：
 
 * `eval.save_dataset=true` 但 `eval.save_artifacts=false`
+* `eval.save_scored_artifact=true` 但 `eval.save_artifacts=false`
 * `backtest.exit_mode=label_horizon` 与再平衡间隔不匹配
 * `features.cross_sectional.method` 或 `winsorize_pct` 不合法
 * `eval.bucket_ic.method` 不是 `spearman` 或 `pearson`
