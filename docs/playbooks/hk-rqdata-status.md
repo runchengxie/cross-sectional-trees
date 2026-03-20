@@ -6,7 +6,7 @@
 读完你会得到什么：当前有效资产清单、接口接入状态，以及下一步应该补哪里的结论。  
 相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
-最后核对时间：`2026-03-19`（Asia/Shanghai）
+最后核对时间：`2026-03-20`（Asia/Shanghai）
 
 重要说明：
 
@@ -31,12 +31,14 @@
   全市场 alias 已切到 `2026-03-18` 的 `*_full_market_latest` snapshot；`hk_connect` 两套 snapshot 也都还在本地
 * `industry_changes`
   严格全市场 `industry_changes` 已落盘，并已从本地 `daily` 网格派生 `industry_labels_d/m/q`
+  它是行业切换真相层；研究里直接 join 时优先用派生出来的 `industry_labels_*`
 * `southbound`
   `hk_connect` 范围 raw snapshot 已落盘：
   `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest/`
   它属于高价值补充层，不是默认研究入口
 * `instrument_industry`
   当前稳定的是旧 `1547` symbol 口径的月频、季频快照；`3203` symbol 的 full-market 月频尝试目录已经改名成 `*_incomplete`，不要当成 latest 用
+  它更像 provider 快照补充层，不是行业主线真相层
 * `universe`
   `artifacts/assets/universe/hk_connect_full_by_date.csv`
   `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
@@ -53,9 +55,38 @@
 当前不要当成稳定主线的：
 
 * `financial_details`
-  命令已经接入，也确认了“小样本 + 显式字段”可写出有效数据；但还不适合升成全量宽表主线。
+  命令已经接入，也确认了“全市场窄字段 + 长历史”可写出有效数据；但还不适合升成全量宽表主线。
 * 旧失败 probe、空目录、老的中间 shard
   这些目录不代表“资产已完成”，清理时优先处理。
+
+## 一张短表看口径
+
+下面这张表只回答一个容易混淆的问题：
+“当前仓库里的 HK / RQData 资产，到底哪些已经是全市场、哪些是全字段、时间拉到了哪里、能不能当主线？”
+
+| dataset | 是否全市场 | 是否全字段 | 当前时间范围 | 是否主线 |
+| --- | --- | --- | --- | --- |
+| `instruments` | 是 | 不适用，固定 instrument schema | `as-of 2026-03-18` 快照 | 是 |
+| `daily` | 是，`3203` 个 symbol | 否，固定 `6` 个日线字段 | `2000-01-04` 到 `2026-03-18` | 是 |
+| `pit_financials` | 是 | 是，`743` 个字段 | `2000q1` 到 `2025q4`，`as-of 2026-03-10` | 是 |
+| `financial_details` | 近似是，当前 raw probe 请求了 `3203` 个 symbol | 否，目前只抓 `3` 个字段 | `2000q1` 到 `2025q4`，`as-of 2026-03-19` | 否，仍是增强层 probe |
+| `ex_factors` | 是 | 不适用，按 API payload 固定 schema | `2000-01-01` 到 `2026-03-18` | 是 |
+| `dividends` | 是 | 不适用，按 API payload 固定 schema | `2000-01-01` 到 `2026-03-18` | 是 |
+| `shares` | 是 | 否，当前默认 `7` 个字段 | `2000-01-01` 到 `2026-03-18` | 是 |
+| `industry_changes` | 是 | 否，当前 level-1 映射 `11` 个字段 | `2000-01-01` 到 `2026-03-18` | 是 |
+| `southbound` | 否，只是 `hk_connect` 范围 | 否，当前 `2` 个字段 | `2014-11-17` 到 `2026-03-18` | 否，补充层 |
+
+补充：
+
+* “是否全字段”只对支持显式传 `fields` 的接口有意义；像 `daily`、`dividends`、`industry_changes` 这类更接近固定 schema 的 raw mirror，用“不适用”或“固定字段数”理解更准确。
+* `PB`、`PE`、`market_cap` 这类估值或衍生层，不在这张 raw mirror 表里。它们不等于“把 `pit_financials` 所有字段都抓下来”，而是走 provider valuation overlay / merge 的另一条链路。
+* 行业层建议按三层理解：
+  `industry_changes` 是切换日真相层；
+  从它本地派生的 `industry_labels_d/m/q` 是研究里直接 join 的标签层；
+  `instrument_industry` 更像 provider 快照补充层，不是默认主线。
+* 如果只看“已经有数据，但当前仍不是全市场 + 长历史或全字段主线”的 HK 资产族，当前主要就剩三类：
+  `instrument_industry`、`southbound`、`financial_details`。
+  其余主线 raw 资产如 `daily`、`pit_financials`、`ex_factors`、`dividends`、`shares`、`industry_changes` 已经都有当前可用的 full-market baseline。
 
 ## 现在磁盘上哪些算“当前有效”
 
@@ -85,8 +116,10 @@
   当前 `hk_selected` 这条实验线的 research-ready PIT universe，已在 `2026-03-18` 从本地 PIT flat file 重新派生
 * `artifacts/assets/universe/hk_selected_pit_research_symbols.txt`
   当前 `hk_selected` 的 research-ready PIT symbol 集合，对应 `222` 个 symbol
-* `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_core_2024_2025_latest/`
-  当前保留的 `financial_details` 有效 probe，只用于验证接口行为和资产结构
+* `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_hk_all3203_superset_2000_2025_20260319/`
+  当前保留的 `financial_details` 全市场窄字段 raw probe；请求 `3203` 个 symbol、`3` 个字段、`2000q1-2025q4`
+* `artifacts/assets/rqdata/hk/financial_details/analysis_hk_all3203_superset_2000_2025_local_override_v10/`
+  当前 `financial_details` 的标准化分析基线，只用于研究侧审阅和 subject 归并，不属于 pipeline 主线输入
 
 如果你要写配置、文档示例或临时脚本，优先引用这些 alias，避免再次把日期写死到多个地方。
 
@@ -128,7 +161,7 @@
 | API | 仓库接入 | 当前本地状态 | 建议 |
 | --- | --- | --- | --- |
 | `get_pit_financials_ex` | 已接，`mirror-hk-pit-financials` | 稳定 | 主线资产；full-market `743` 字段 snapshot 已完成。 |
-| `hk.get_detailed_financial_items` | 已接，`mirror-hk-financial-details` | 小样本 probe 可用，暂无稳定全量资产 | 继续显式 `symbol + field` 小样本试，不要直接升成全量计划。 |
+| `hk.get_detailed_financial_items` | 已接，`mirror-hk-financial-details` | 全市场窄字段 probe 可用，但仍非主线资产 | 继续显式 `field` 白名单增强，不要直接升成全字段计划。 |
 
 补充：
 
@@ -136,8 +169,9 @@
 * 旧的 `hk_all_2000_2025_full_latest` 空快照已经清理，不应再被配置、脚本或文档引用。
 * `hk_connect_full_2000_2025_full_latest/pipeline_fundamentals.parquet` 已在 `2026-03-18` 用本地宽 PIT 镜像重建，当前是 `904` 个 symbol、`743` 个 value 字段，不再是早先那份窄版 flat file。
 * `hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 也已在 `2026-03-18` 重建，并同步派生出 `hk_selected_pit_research_*` 入口文件。
-* `financial_details` 当前确认可用的 probe 是 `hk_financial_details_probe_core_2024_2025_latest/`，样本为 `00386.HK`、`00939.HK`、`01211.HK`，字段为 `operating_revenue`、`net_profit`。
-* 之前那类 `743` 字段宽表 probe 会在多只股票上触发 server error，不应再作为默认试法。
+* `financial_details` 当前最完整的 raw probe 是 `hk_financial_details_hk_all3203_superset_2000_2025_20260319/`：请求 `3203` 个 symbol、`2000q1-2025q4`、`3` 个字段，实际写出 `345` 个 parquet。
+* 对这份 raw probe 的标准化分析基线是 `analysis_hk_all3203_superset_2000_2025_local_override_v10/`；它说明“窄字段增强层”是可做的，但不等于已经适合升成全字段主线。
+* 之前那类把 `financial_details` 当成“`743` 字段宽表”去拉的试法，会在多只股票上触发 server error，不应再作为默认方案。
 * `hk_all_probe_2025q4_2026q1_starter_20260319/` 也已经落盘，和 `hk_connect` 版本一样是 `date=2026-03-19` 的 `17` 列 starter 增量，并已生成 `pipeline_fundamentals.parquet` 与 `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260319_research_*`。
 * `hk_connect_probe_2025q4_2026q1_starter_20260319/` 是当前更晚 as-of 的窄 PIT 增量快照，`date=2026-03-19`，starter 字段集共 `17` 列；目录下已生成 `pipeline_fundamentals.parquet`，并派生 `artifacts/assets/universe/hk_connect_probe_2025q4_2026q1_starter_20260319_research_*`。
 
