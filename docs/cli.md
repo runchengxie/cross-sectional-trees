@@ -19,6 +19,9 @@
 | 手数分配 | `csml alloc --config <> --source live --top-n 20` |
 | 导出模板 | `csml init-config --market default` |
 | 构建 HK 全市场股票池 | `csml universe hk-daily-assets --config <> -- <args>` |
+| 刷新数据 catalog | `csml data catalog` |
+| 物化标准层 | `csml data materialize --name <> ...` |
+| DuckDB 查询标准层 | `csml data query --sql <>` |
 | 验证 TuShare token | `csml tushare verify-token` |
 
 ## 查看帮助
@@ -144,6 +147,48 @@ csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants
 ```bash
 csml migrate-artifacts --dry-run
 csml migrate-artifacts
+```
+
+### csml data catalog
+
+扫描 `artifacts/` 下 manifest-backed 资产，并写入 SQLite metadata catalog。
+
+```bash
+csml data catalog
+csml data catalog --db-path artifacts/metadata/catalog.sqlite
+```
+
+默认输出：
+
+* `artifacts/metadata/catalog.sqlite`
+* `artifacts/metadata/catalog_summary.csv`
+
+### csml data materialize
+
+把 raw mirror 或派生平面文件物化成 analysis-ready 标准层。
+
+```bash
+csml data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
+csml data materialize --name hk_pit_panel --preset pit-fundamentals --file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+```
+
+默认输出根目录：
+
+* `artifacts/standardized/<market>/<dataset>/<name>/`
+
+### csml data query
+
+刷新 DuckDB 视图后直接查询标准层。首次使用前先安装：
+
+```bash
+uv sync --extra dev --extra duckdb
+```
+
+示例：
+
+```bash
+csml data query --sql "select symbol, trade_date, close from standardized.hk_daily_panel limit 5"
+csml data query --sql-file queries/top_names.sql --format csv --out artifacts/metadata/top_names.csv
 ```
 
 ## 配置模板命令

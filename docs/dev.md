@@ -21,6 +21,12 @@ uv sync --extra dev
 uv sync --extra dev --extra rqdata
 ```
 
+如需 DuckDB 查询层：
+
+```bash
+uv sync --extra dev --extra duckdb
+```
+
 如需完整统计检验（`p_value` 等）：
 
 ```bash

@@ -169,6 +169,61 @@ def test_cli_parses_rqdata_quota_pretty():
     assert args.pretty is True
 
 
+def test_cli_parses_data_commands():
+    parser = cli.build_parser()
+
+    catalog = parser.parse_args(
+        [
+            "data",
+            "catalog",
+            "--artifacts-root",
+            "artifacts",
+            "--db-path",
+            "artifacts/metadata/catalog.sqlite",
+        ]
+    )
+    assert catalog.command == "data"
+    assert catalog.data_command == "catalog"
+    assert catalog.db_path == "artifacts/metadata/catalog.sqlite"
+    assert callable(catalog.func)
+
+    materialize = parser.parse_args(
+        [
+            "data",
+            "materialize",
+            "--name",
+            "hk_daily_panel",
+            "--preset",
+            "rqdata-daily",
+            "--asset-dir",
+            "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest",
+            "--frequency",
+            "M",
+        ]
+    )
+    assert materialize.command == "data"
+    assert materialize.data_command == "materialize"
+    assert materialize.name == "hk_daily_panel"
+    assert materialize.preset == "rqdata-daily"
+    assert materialize.frequency == "M"
+    assert callable(materialize.func)
+
+    query = parser.parse_args(
+        [
+            "data",
+            "query",
+            "--sql",
+            "select * from standardized.hk_daily_panel limit 5",
+            "--format",
+            "json",
+        ]
+    )
+    assert query.command == "data"
+    assert query.data_command == "query"
+    assert query.format == "json"
+    assert callable(query.func)
+
+
 def test_cli_parses_rqdata_asset_commands():
     parser = cli.build_parser()
 

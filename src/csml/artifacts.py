@@ -5,6 +5,8 @@ from pathlib import Path
 ARTIFACTS_ROOT = Path("artifacts")
 CACHE_DIR = ARTIFACTS_ROOT / "cache"
 ASSETS_DIR = ARTIFACTS_ROOT / "assets"
+METADATA_DIR = ARTIFACTS_ROOT / "metadata"
+STANDARDIZED_DIR = ARTIFACTS_ROOT / "standardized"
 FUNDAMENTALS_DIR = ASSETS_DIR / "fundamentals"
 RQDATA_ASSETS_DIR = ASSETS_DIR / "rqdata"
 UNIVERSE_DIR = ASSETS_DIR / "universe"

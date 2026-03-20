@@ -24,6 +24,8 @@ artifacts/
   assets/
     rqdata/
     universe/
+  metadata/
+  standardized/
   runs/
   live_runs/
   sweeps/
@@ -95,6 +97,75 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * `manifest.yml` 的 `status` 会记录本次镜像是否完整完成。
 * 这类镜像目录供下游项目复用，不属于 `artifacts/cache/` 的 query cache。
 * 对 RQData 来说，原生标识是 `order_book_id`；这里的 `ts_code` 只是仓库历史兼容列，值等于本仓库归一后的 symbol。
+
+## Metadata Catalog
+
+默认路径：
+
+* `artifacts/metadata/catalog.sqlite`
+* `artifacts/metadata/catalog_summary.csv`
+
+这两份产物由 `csml data catalog` 生成。
+
+用途：
+
+* 用 SQLite 管理 manifest-backed 资产索引
+* 记录 layer、dataset、market、状态、时间范围、symbol 数和行数
+* 把 `source_asset_dir`、`source_manifest`、snapshot entries 这类 lineage 关系落到表里
+
+当前主要覆盖：
+
+* `artifacts/assets/**/manifest.yml`
+* `artifacts/assets/**/*.manifest.yml`
+* `artifacts/standardized/**/manifest.yml`
+* `artifacts/snapshots/**/manifest.yml`
+
+说明：
+
+* `catalog.sqlite` 是控制面，不存行情本体。
+* `catalog_summary.csv` 是给人看和临时筛选的平面导出，不替代 SQLite。
+
+## Standardized Layer
+
+默认路径：
+
+`artifacts/standardized/<market>/<dataset>/<name>/`
+
+这类目录由 `csml data materialize` 生成，目标是把 raw / derived 输入转成更适合横截面查询和聚合的分析层。
+
+目录结构：
+
+```text
+artifacts/standardized/<market>/<dataset>/<name>/
+  manifest.yml
+  data/
+    trade_year=2026/
+      part-00000.parquet
+      ...
+```
+
+文件说明：
+
+* `manifest.yml`：标准层数据集名、频率、分区方式、列类型、质量统计和 lineage。
+* `data/trade_year=.../*.parquet`：按 `trade_year` 分区的 analysis-ready Parquet 文件。
+
+字段约定：
+
+* 标准列：`trade_date`、`trade_date_key`、`symbol`、`_source_file`
+* `trade_date` 会规范成可直接查询/聚合的时间列
+* `trade_date_key` 保留 `YYYYMMDD` 字符串键，便于和现有研究链路对照
+* 如果输入本来就有 `trade_date` / `symbol` / `_source_file` 这类同名列，标准层会保留原始列并自动改名到 `source_*`
+
+质量字段：
+
+* `quality.rows_missing_date_dropped`
+* `quality.rows_missing_symbol_dropped`
+* `quality.duplicate_rows_dropped`
+
+使用建议：
+
+* 原始 replay、审计和复现继续看 `artifacts/assets/`。
+* 横截面覆盖分析、聚合、筛选和 SQL 查询优先读 `artifacts/standardized/`。
 
 ## PIT fundamentals 平面文件
 

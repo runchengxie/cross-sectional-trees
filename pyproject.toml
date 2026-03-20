@@ -25,6 +25,9 @@ dev = [
   "pytest>=7.4",
   "pytest-cov",
 ]
+duckdb = [
+  "duckdb>=1.2",
+]
 rqdata = [
   "rqdatac>=3.4.3",
   "rqdatac-hk",

@@ -338,6 +338,24 @@ def _handle_rqdata_inspect_hk_pit_coverage(args) -> int:
     return rqdata_assets.inspect_hk_pit_coverage(args)
 
 
+def _handle_data_catalog(args) -> int:
+    from .data_tools import data_warehouse
+
+    return data_warehouse.refresh_catalog(args)
+
+
+def _handle_data_materialize(args) -> int:
+    from .data_tools import data_warehouse
+
+    return data_warehouse.materialize_standardized(args)
+
+
+def _handle_data_query(args) -> int:
+    from .data_tools import data_warehouse
+
+    return data_warehouse.query_standardized(args)
+
+
 def _handle_universe_hk_connect(args) -> int:
     from .data_tools import build_hk_connect_universe
 
@@ -706,6 +724,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_pit_coverage_args(rq_pit_coverage)
     rq_pit_coverage.set_defaults(func=_handle_rqdata_inspect_hk_pit_coverage)
+
+    data = subparsers.add_parser(
+        "data",
+        help="Metadata catalog, standardized materialization, and DuckDB query helpers",
+    )
+    data_sub = data.add_subparsers(dest="data_command", required=True)
+
+    from .data_tools import data_warehouse
+
+    data_catalog = data_sub.add_parser(
+        "catalog",
+        help="Scan manifest-backed assets into a SQLite metadata catalog",
+    )
+    data_warehouse.add_catalog_args(data_catalog)
+    data_catalog.set_defaults(func=_handle_data_catalog)
+
+    data_materialize = data_sub.add_parser(
+        "materialize",
+        help="Build an analysis-ready standardized Parquet layer from raw or derived inputs",
+    )
+    data_warehouse.add_materialize_args(data_materialize)
+    data_materialize.set_defaults(func=_handle_data_materialize)
+
+    data_query = data_sub.add_parser(
+        "query",
+        help="Refresh DuckDB standardized views and run a SQL query",
+    )
+    data_warehouse.add_query_args(data_query)
+    data_query.set_defaults(func=_handle_data_query)
 
     universe = subparsers.add_parser("universe", help="Universe construction helpers")
     uni_sub = universe.add_subparsers(dest="uni_command", required=True)

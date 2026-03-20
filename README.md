@@ -29,6 +29,7 @@ cp .env.example .env
 * 研究汇总与敏感性分析：`csml summarize` / `csml grid` / `csml sweep-linear`
 * live 结果查看与分配：`csml holdings` / `csml snapshot` / `csml alloc`
 * 数据与运维工具：`csml rqdata ...` / `csml universe ...` / `csml tushare verify-token`
+* 数据分层与查询：`csml data catalog` / `csml data materialize` / `csml data query`
 
 完整能力地图见 `docs/capabilities.md`。
 
