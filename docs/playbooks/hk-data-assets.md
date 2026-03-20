@@ -270,6 +270,22 @@ csml rqdata mirror-hk-financial-details \
 
 * 目前更稳的做法是显式传 `--symbol` 和 `--field`，不要直接上 `--field-profile full`。
 * 这个接口当前更适合验证原始细项结构，不适合在试用额度里直接做全市场宽表镜像。
+* 如果你已经拉了一版 probe，想继续看 `subject` 频次、重复披露和保守标准化长表，可以直接跑研究侧脚本：
+
+```bash
+uv run python scripts/analyze_hk_financial_details.py \
+  --probe-dir artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_connect60_superset_2024_2025_20260319 \
+  --compare-probe-dir artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_connect30_core_2024_2025_20260319 \
+  --dedup latest_adjusted_then_info_date \
+  --mapping-file configs/local/hk_financial_details_subject_mapping.csv
+```
+
+补充：
+
+* 这个脚本不是正式 CLI，只负责把 `financial_details` 的原始长表整理成研究用分析包。
+* 默认会在 probe 同级目录下写 `analysis_<snapshot>/`，产出 `probe_coverage.csv`、`subject_frequency.csv`、`subject_mapping_draft.csv`、`duplicate_disclosure_summary.csv`、`normalized_long.parquet` 和 `summary.md`。
+* repo 默认映射表在 `src/csml/research/hk_financial_details_subject_mapping.csv`；`--mapping-file` 是叠加覆盖层，适合把人工确认过的新规则放进 `configs/local/` 或研究目录里。
+* 默认映射只会合并已经验证过的少量版式变体；未知 `subject` 默认保留原样，不会强行标准化。
 
 如果你已经确定后面要做行业中性或行业暴露控制，推荐再补两类行业资产：
 

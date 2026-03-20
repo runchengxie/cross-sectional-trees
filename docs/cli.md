@@ -154,7 +154,7 @@ csml migrate-artifacts
 
 ```bash
 csml init-config --market default --out configs/
-csml init-config --market hk --out ./configs/custom_hk.yml --force
+csml init-config --market hk --out ./custom_hk.yml --force
 ```
 
 ## RQData 命令
