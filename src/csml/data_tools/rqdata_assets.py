@@ -48,6 +48,10 @@ DEFAULT_HK_SHARES_FIELDS = (
     "total_hk",
     "total_hk1",
 )
+DEFAULT_HK_EXCHANGE_RATE_FIELDS = (
+    "currency_pair",
+    "middle_referrence_rate",
+)
 DEFAULT_HK_SOUTHBOUND_TRADING_TYPES = ("sh", "sz")
 DEFAULT_HK_INDUSTRY_SOURCE = "citics_2019"
 DEFAULT_HK_INSTRUMENT_INDUSTRY_LEVEL = 0
@@ -1282,6 +1286,50 @@ def _prepare_daily_output_dir(
     else:
         output_dir.mkdir(parents=True, exist_ok=False)
     return output_dir
+
+
+def _split_daily_range_by_year(start_date: str, end_date: str) -> list[tuple[str, str]]:
+    start_ts = pd.to_datetime(start_date, format="%Y%m%d", errors="raise")
+    end_ts = pd.to_datetime(end_date, format="%Y%m%d", errors="raise")
+    chunks: list[tuple[str, str]] = []
+    current = start_ts
+    while current <= end_ts:
+        year_end = pd.Timestamp(year=current.year, month=12, day=31)
+        chunk_end = min(year_end, end_ts)
+        chunks.append((current.strftime("%Y%m%d"), chunk_end.strftime("%Y%m%d")))
+        current = chunk_end + pd.Timedelta(days=1)
+    return chunks
+
+
+def _validate_global_daily_resume_inputs(
+    *,
+    output_dir: Path,
+    dataset_name: str,
+    fields: Sequence[str],
+    start_date: str,
+    end_date: str,
+) -> None:
+    manifest = _load_manifest(output_dir / "manifest.yml")
+    if manifest and manifest.get("dataset") not in {None, dataset_name}:
+        raise SystemExit(
+            f"Resume target dataset mismatch: expected {dataset_name!r}, got {manifest.get('dataset')!r}."
+        )
+    if manifest:
+        query = manifest.get("query") if isinstance(manifest.get("query"), Mapping) else {}
+        checks = [
+            ("start_date", start_date),
+            ("end_date", end_date),
+        ]
+        for key, expected in checks:
+            actual = query.get(key) if isinstance(query, Mapping) else None
+            if actual not in {None, expected}:
+                raise SystemExit(
+                    f"Resume target query mismatch for {key}: expected {expected!r}, got {actual!r}."
+                )
+
+    existing_fields = _load_existing_text_list(output_dir / "fields.txt", strip=False)
+    if existing_fields and list(existing_fields) != list(fields):
+        raise SystemExit("Resume target fields.txt does not match the requested field list.")
 
 
 def _chunked(values: Sequence[str], size: int) -> Iterable[list[str]]:
@@ -3771,6 +3819,166 @@ def mirror_hk_shares(args, rqdatac) -> int:
             )
         ),
     )
+
+
+def mirror_hk_exchange_rate(args, rqdatac) -> int:
+    start_date = _normalize_absolute_date(args.start_date, label="--start-date")
+    end_date = _normalize_absolute_date(args.end_date, label="--end-date")
+    if start_date > end_date:
+        raise SystemExit("--start-date must be <= --end-date.")
+
+    fields, field_metadata = _resolve_default_plus_explicit_fields(
+        args,
+        default_fields=DEFAULT_HK_EXCHANGE_RATE_FIELDS,
+        source_label="default_plus_explicit",
+    )
+    resume = bool(getattr(args, "resume", False))
+    max_attempts = max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
+    backoff_seconds = float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS))
+    max_backoff_seconds = float(
+        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+    )
+    output_dir = _prepare_daily_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        dataset_name="exchange_rate",
+        start_date=start_date,
+        end_date=end_date,
+        name=getattr(args, "name", None),
+        resume=resume,
+    )
+    if resume:
+        _validate_global_daily_resume_inputs(
+            output_dir=output_dir,
+            dataset_name="exchange_rate",
+            fields=fields,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    data_dir = output_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    fields_path = output_dir / "fields.txt"
+    data_path = data_dir / "exchange_rate.parquet"
+    currency_pairs_path = output_dir / "currency_pairs.txt"
+    dates_path = output_dir / "dates.txt"
+
+    started_at = _timestamp_now()
+    finished_at: str | None = None
+    status = "completed"
+    error: str | None = None
+    result_code = 0
+    total_attempts = 0
+    fetch_chunks = _split_daily_range_by_year(start_date, end_date)
+    frame = pd.DataFrame()
+
+    try:
+        chunk_frames: list[pd.DataFrame] = []
+        for chunk_index, (chunk_start, chunk_end) in enumerate(fetch_chunks, start=1):
+            print(
+                f"Fetching exchange_rate chunk {chunk_index}/{len(fetch_chunks)}: "
+                f"{chunk_start} -> {chunk_end}"
+            )
+            payload, attempts = _retry_fetch(
+                f"exchange_rate fetch failed for {chunk_start}->{chunk_end}",
+                lambda chunk_start=chunk_start, chunk_end=chunk_end: rqdatac.get_exchange_rate(
+                    start_date=chunk_start,
+                    end_date=chunk_end,
+                    fields=list(fields),
+                ),
+                max_attempts=max_attempts,
+                backoff_seconds=backoff_seconds,
+                max_backoff_seconds=max_backoff_seconds,
+            )
+            total_attempts += attempts
+            if isinstance(payload, pd.Series):
+                chunk_frame = payload.to_frame().reset_index()
+            elif isinstance(payload, pd.DataFrame):
+                chunk_frame = payload.reset_index()
+            else:
+                chunk_frame = pd.DataFrame(payload)
+            chunk_frames.append(_normalize_frame_columns(chunk_frame))
+
+        if chunk_frames:
+            frame = pd.concat(chunk_frames, ignore_index=True)
+        else:
+            frame = pd.DataFrame()
+        if "date" not in frame.columns and "index" in frame.columns:
+            frame = frame.rename(columns={"index": "date"})
+        if "date" not in frame.columns:
+            raise SystemExit("exchange_rate payload is missing date.")
+        if "currency_pair" not in frame.columns:
+            raise SystemExit("exchange_rate payload is missing currency_pair.")
+
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.strftime("%Y%m%d")
+        frame = frame[frame["date"].notna()].copy()
+        frame["currency_pair"] = frame["currency_pair"].astype(str).str.strip()
+        frame = frame[frame["currency_pair"] != ""].copy()
+        frame.sort_values(["date", "currency_pair"], kind="mergesort", inplace=True)
+        frame.reset_index(drop=True, inplace=True)
+
+        _write_text_list(fields_path, fields)
+        _write_text_list(currency_pairs_path, frame["currency_pair"].drop_duplicates().tolist())
+        _write_text_list(dates_path, frame["date"].drop_duplicates().tolist())
+        frame.to_parquet(data_path, index=False)
+    except MirrorQuotaError as exc:
+        status = "quota_exhausted"
+        error = str(exc)
+        result_code = 2
+        finished_at = _timestamp_now()
+    except Exception as exc:
+        status = "failed"
+        error = str(exc)
+        result_code = 1
+        finished_at = _timestamp_now()
+    else:
+        finished_at = _timestamp_now()
+    finally:
+        totals = {
+            "rows": int(len(frame)),
+            "dates": int(frame["date"].nunique()) if "date" in frame.columns else 0,
+            "currency_pairs": int(frame["currency_pair"].nunique()) if "currency_pair" in frame.columns else 0,
+            "bytes": int(data_path.stat().st_size) if data_path.exists() else 0,
+        }
+        manifest = {
+            "name": output_dir.name,
+            "created_at": started_at,
+            "dataset": "exchange_rate",
+            "api": "rqdatac.get_exchange_rate",
+            "market": "hk",
+            "config_ref": getattr(args, "config", None),
+            "output_dir": str(output_dir),
+            "data_file": str(data_path),
+            "fields_file": str(fields_path),
+            "currency_pairs_file": str(currency_pairs_path),
+            "dates_file": str(dates_path),
+            "query": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "fields": list(fields),
+            },
+            "field_metadata": field_metadata,
+            "columns": frame.columns.tolist(),
+            "totals": totals,
+            "currency_pairs": frame["currency_pair"].drop_duplicates().tolist()
+            if "currency_pair" in frame.columns
+            else [],
+            "status": status,
+            "error": error,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "attempts": total_attempts,
+            "fetch_chunks": len(fetch_chunks),
+            "git": _git_metadata(Path.cwd().resolve()),
+        }
+        _write_manifest(output_dir / "manifest.yml", manifest)
+
+    print(
+        f"Wrote exchange_rate mirror to {output_dir} "
+        f"({len(frame)} rows, {int(frame['date'].nunique()) if 'date' in frame.columns else 0} dates, "
+        f"{int(frame['currency_pair'].nunique()) if 'currency_pair' in frame.columns else 0} currency pairs, "
+        f"status={status})"
+    )
+    return result_code
 
 
 def mirror_hk_southbound(args, rqdatac) -> int:
@@ -6848,6 +7056,61 @@ def add_hk_shares_mirror_args(parser: argparse.ArgumentParser) -> None:
             "are included by default. Repeatable."
         ),
         fields_file_help="Text file with one extra shares field per line. Repeatable.",
+    )
+
+
+def add_hk_exchange_rate_mirror_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--config", help="Optional config path or alias for rqdata.init.")
+    parser.add_argument("--username", help="Override RQData username")
+    parser.add_argument("--password", help="Override RQData password")
+    parser.add_argument("--start-date", required=True, help="Date range start, for example 20000101.")
+    parser.add_argument("--end-date", required=True, help="Date range end, for example 20260319.")
+    parser.add_argument(
+        "--field",
+        action="append",
+        default=[],
+        help=(
+            "Extra exchange-rate field name. currency_pair + middle_referrence_rate are included "
+            "by default. Repeatable."
+        ),
+    )
+    parser.add_argument(
+        "--fields-file",
+        action="append",
+        default=[],
+        help="Text file with one extra exchange-rate field per line. Repeatable.",
+    )
+    parser.add_argument(
+        "--out-root",
+        default=DEFAULT_OUT_ROOT,
+        help=f"Mirror root directory. Default: {DEFAULT_OUT_ROOT}",
+    )
+    parser.add_argument(
+        "--name",
+        help="Optional snapshot folder name. Default: auto-generated from range + timestamp.",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume into an existing snapshot directory. Requires matching dates and fields.",
+    )
+    parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=DEFAULT_MIRROR_MAX_ATTEMPTS,
+        help=f"Retry attempts per exchange-rate request. Default: {DEFAULT_MIRROR_MAX_ATTEMPTS}.",
+    )
+    parser.add_argument(
+        "--backoff-seconds",
+        type=float,
+        default=DEFAULT_MIRROR_BACKOFF_SECONDS,
+        help=f"Initial retry backoff in seconds. Default: {DEFAULT_MIRROR_BACKOFF_SECONDS}.",
+    )
+    parser.add_argument(
+        "--max-backoff-seconds",
+        type=float,
+        default=DEFAULT_MIRROR_MAX_BACKOFF_SECONDS,
+        help=f"Maximum retry backoff in seconds. Default: {DEFAULT_MIRROR_MAX_BACKOFF_SECONDS}.",
     )
 
 

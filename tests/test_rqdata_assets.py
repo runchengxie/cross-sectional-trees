@@ -276,6 +276,61 @@ class _FakeRQDailyMirrorClient:
         return pd.DataFrame()
 
 
+class _FakeRQExchangeRateClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_exchange_rate(self, start_date=None, end_date=None, fields=None):
+        self.calls.append(
+            {
+                "start_date": start_date,
+                "end_date": end_date,
+                "fields": list(fields) if fields else None,
+            }
+        )
+        frame = pd.DataFrame(
+            [
+                {
+                    "currency_pair": "HKDCNY",
+                    "middle_referrence_rate": 0.9384,
+                    "bid_referrence_rate": 0.9165,
+                    "ask_referrence_rate": 0.9731,
+                    "bid_settlement_rate_sh": 0.94448,
+                    "ask_settlement_rate_sh": 0.94481,
+                    "bid_settlement_rate_sz": 0.94479,
+                    "ask_settlement_rate_sz": 0.94481,
+                },
+                {
+                    "currency_pair": "HKDUSD",
+                    "middle_referrence_rate": 0.1284,
+                    "bid_referrence_rate": pd.NA,
+                    "ask_referrence_rate": pd.NA,
+                    "bid_settlement_rate_sh": pd.NA,
+                    "ask_settlement_rate_sh": pd.NA,
+                    "bid_settlement_rate_sz": pd.NA,
+                    "ask_settlement_rate_sz": pd.NA,
+                },
+                {
+                    "currency_pair": "HKDCNY",
+                    "middle_referrence_rate": 0.9391,
+                    "bid_referrence_rate": 0.9174,
+                    "ask_referrence_rate": 0.9742,
+                    "bid_settlement_rate_sh": 0.94545,
+                    "ask_settlement_rate_sh": 0.94582,
+                    "bid_settlement_rate_sz": 0.94578,
+                    "ask_settlement_rate_sz": 0.94582,
+                },
+            ],
+            index=pd.Index(
+                pd.to_datetime(["2025-02-10", "2025-02-10", "2025-02-11"]),
+                name="date",
+            ),
+        )
+        if fields:
+            return frame.loc[:, list(fields)].copy()
+        return frame
+
+
 class _FakeRQExFactorClient:
     def __init__(self):
         self.calls: list[dict] = []
@@ -913,6 +968,60 @@ def test_mirror_hk_shares_uses_default_fields(tmp_path, monkeypatch):
     assert manifest["query"]["fields"] == list(rqdata_assets.DEFAULT_HK_SHARES_FIELDS)
     assert manifest["query"]["date_column"] == "date"
     assert manifest["totals"]["symbols_written"] == 1
+
+
+def test_mirror_hk_exchange_rate_writes_single_snapshot_file(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FakeRQExchangeRateClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250210",
+        end_date="20250211",
+        field=[],
+        fields_file=[],
+        out_root="artifacts/assets/rqdata",
+        name="exchange_rate_demo",
+        resume=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_exchange_rate(args, client) == 0
+
+    assert client.calls == [
+        {
+            "start_date": "20250210",
+            "end_date": "20250211",
+            "fields": list(rqdata_assets.DEFAULT_HK_EXCHANGE_RATE_FIELDS),
+        }
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "exchange_rate" / "exchange_rate_demo"
+    assert (output_dir / "fields.txt").read_text(encoding="utf-8") == (
+        "\n".join(rqdata_assets.DEFAULT_HK_EXCHANGE_RATE_FIELDS) + "\n"
+    )
+    assert (output_dir / "dates.txt").read_text(encoding="utf-8") == "20250210\n20250211\n"
+    assert (output_dir / "currency_pairs.txt").read_text(encoding="utf-8") == "HKDCNY\nHKDUSD\n"
+
+    frame = pd.read_parquet(output_dir / "data" / "exchange_rate.parquet")
+    assert frame["date"].tolist() == ["20250210", "20250210", "20250211"]
+    assert frame["currency_pair"].tolist() == ["HKDCNY", "HKDUSD", "HKDCNY"]
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "exchange_rate"
+    assert manifest["api"] == "rqdatac.get_exchange_rate"
+    assert manifest["query"]["start_date"] == "20250210"
+    assert manifest["query"]["end_date"] == "20250211"
+    assert manifest["query"]["fields"] == list(rqdata_assets.DEFAULT_HK_EXCHANGE_RATE_FIELDS)
+    assert manifest["totals"]["rows"] == 3
+    assert manifest["totals"]["dates"] == 2
+    assert manifest["totals"]["currency_pairs"] == 2
 
 
 def test_mirror_hk_southbound_writes_symbol_history_assets(tmp_path, monkeypatch):

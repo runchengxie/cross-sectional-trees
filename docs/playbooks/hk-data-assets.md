@@ -31,7 +31,7 @@
 | instrument 快照 | `csml rqdata export-hk-instruments` | `artifacts/assets/rqdata/hk/instruments/` | 保留 `listed_date`、`de_listed_date`、`round_lot` 等元数据 |
 | 日线缓存 | pipeline 首次拉取时自动写入 | `artifacts/cache/hk_rqdata_daily_<symbol>.parquet` | 保留按 symbol 分开的日频行情缓存 |
 | PIT 财务镜像 | `csml rqdata mirror-hk-pit-financials` | `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/` | 保留按 symbol 分开的原始 PIT 财务资产 |
-| 参考数据镜像 | `csml rqdata mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 保留复权、分红和股本原料，给后续派生研究使用 |
+| 参考数据镜像 | `csml rqdata mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` / `mirror-hk-exchange-rate` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 保留复权、分红、股本和汇率原料，给后续派生研究使用 |
 | 港股通原始历史镜像 | `csml rqdata mirror-hk-southbound` | `artifacts/assets/rqdata/hk/southbound/<snapshot>/` | 保留按 symbol 分开的 southbound 渠道历史，给 universe 审计和资金口径回放使用 |
 | 行业资产镜像 | `csml rqdata mirror-hk-instrument-industry` / `mirror-hk-industry-changes` | `artifacts/assets/rqdata/hk/instrument_industry/` 等 | 保留行业快照和行业变更区间，给行业中性和暴露回放使用 |
 | 平面 fundamentals 文件 | `csml rqdata build-hk-pit-fundamentals` | `<pit_snapshot>/pipeline_fundamentals.parquet` | 给 pipeline 直接读取的财务文件 |
@@ -48,11 +48,12 @@
 3. 如果你要跑研究或做持仓回溯，再让 pipeline 把日线缓存落到 `artifacts/cache/`。
 4. 如果你要做 PIT 财报研究，再镜像 `pit_financials`。
 5. 如果你要保留复权、分红和股本原料，再镜像 `ex_factors`、`dividends` 和 `shares`。
-6. 如果你要保留港股通原始渠道历史，再镜像 `southbound`。
-7. 如果你要做行业中性、行业暴露或行业归属回放，再镜像 `instrument_industry` 和 `industry_changes`。
-8. 用 `build-hk-pit-fundamentals` 生成研究用平面文件。
-9. 如果你要直接 join 行业标签，再用 `build-hk-industry-labels` 从 `industry_changes` 派生本地标签文件。
-10. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
+6. 如果你准备把 `financial_details` 的原币值统一到单一货币，再补 `exchange_rate`。
+7. 如果你要保留港股通原始渠道历史，再镜像 `southbound`。
+8. 如果你要做行业中性、行业暴露或行业归属回放，再镜像 `instrument_industry` 和 `industry_changes`。
+9. 用 `build-hk-pit-fundamentals` 生成研究用平面文件。
+10. 如果你要直接 join 行业标签，再用 `build-hk-industry-labels` 从 `industry_changes` 派生本地标签文件。
+11. 数据准备完成后，用 `csml backup-data` 做一份本地快照。
 
 补充：
 
@@ -231,6 +232,21 @@ csml rqdata mirror-hk-shares \
 * `mirror-hk-shares` 默认会拉一组常用股本字段；如需额外列，再补 `--field` / `--fields-file`。
 * 这三类命令会优先复用 `artifacts/assets/rqdata/hk/instruments/` 下最近的 HK instruments 快照来解析 `unique_id`，所以先准备 instrument 快照更稳。
 * 如果你在试用期内赶时间，优先级仍然低于 instrument、日线和 PIT core。
+
+如果你要把 `financial_details` 的原币值统一到单一货币，可以再补一份轻量汇率镜像：
+
+```bash
+csml rqdata mirror-hk-exchange-rate \
+  --start-date 20250210 \
+  --end-date 20250211 \
+  --name hk_exchange_rate_probe_20250210_20250211_minimal
+```
+
+补充：
+
+* `mirror-hk-exchange-rate` 默认只保留 `currency_pair` 和 `middle_referrence_rate`；如需结算汇率或买卖参考价，再补 `--field` / `--fields-file`。
+* 当前这个接口长时间窗明显慢于 `shares/dividends`，更适合先做 probe，再按阶段补长历史。
+* 如果你的目标只是给 `financial_details` 做币种归一，这组默认最小字段通常已经够用。
 
 如果你想把港股通原始历史单独冻住，而不是只保留派生后的 `universe by-date` 文件，可以再补一份 `southbound`：
 
@@ -553,11 +569,13 @@ csml backup-data \
 1. 第一优先是补 `daily` 的 freshness gap，但只在你明确需要新 full-market snapshot 时执行。
 2. 第二优先是做一份更晚 as-of date 的窄 `PIT` 增量，不要重跑全市场全字段；先盯 `2025q4` 到 `2026q1`。
 3. 第三优先是保留 `ex_factors`、`dividends`、`shares` 的最新快照；这几类便宜但长期很值。
-4. 如果还想用试用额度换“以后可能会后悔没下”的东西，先考虑 `southbound` 原始历史，再考虑 `announcement`。
+4. 如果你已经开始用 `financial_details`，第四优先是补一份最小字段的 `exchange_rate`。
+5. 如果还想用试用额度换“以后可能会后悔没下”的东西，再考虑 `southbound` 原始历史和 `announcement`。
 
 原因：
 
 * `southbound` 更接近 universe 审计和资金口径原料。
+* `exchange_rate` 对 `financial_details` 的跨币种归一很直接，但当前更适合小窗 probe 或 staged backfill，不适合盲目单次拉全历史。
 * `announcement` 更偏事件驱动，不是当前这条 HK 横截面研究主线的必需层。
 * `get_factor`、`get_turnover_rate`、`get_all_factor_names` 这类接口暂时不值得升级成主线缓存对象。
 

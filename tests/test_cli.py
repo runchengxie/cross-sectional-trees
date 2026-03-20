@@ -958,6 +958,22 @@ def test_cli_handle_rqdata_export_hk_instruments_passes_args_and_client(monkeypa
     assert calls == [(args, fake_client)]
 
 
+def test_cli_handle_rqdata_mirror_hk_exchange_rate_passes_args_and_client(monkeypatch):
+    calls: list[tuple[SimpleNamespace, object]] = []
+    fake_client = object()
+
+    monkeypatch.setattr(cli, "_init_rqdatac", lambda args: fake_client)
+    monkeypatch.setattr(
+        rqdata_assets_tool,
+        "mirror_hk_exchange_rate",
+        lambda args, rqdatac: calls.append((args, rqdatac)) or 0,
+    )
+
+    args = SimpleNamespace(start_date="20000101", end_date="20260319", config="configs/presets/hk.yml")
+    assert cli._handle_rqdata_mirror_hk_exchange_rate(args) == 0
+    assert calls == [(args, fake_client)]
+
+
 def test_cli_handle_snapshot_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(snapshot_tool, "main", lambda argv: calls.append(argv))

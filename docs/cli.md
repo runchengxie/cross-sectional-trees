@@ -252,6 +252,14 @@ csml rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest --f
 csml rqdata mirror-hk-financial-details --symbol 00005.HK --field revenue --start-quarter 2024q1 --end-quarter 2025q4
 ```
 
+### csml rqdata mirror-hk-exchange-rate
+
+拉取港币对外汇率历史。
+
+```bash
+csml rqdata mirror-hk-exchange-rate --start-date 20250210 --end-date 20250211 --name hk_exchange_rate_probe_20250210_20250211_minimal
+```
+
 ### csml rqdata mirror-hk-ex-factors
 
 拉取港股复权因子历史。

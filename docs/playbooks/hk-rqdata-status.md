@@ -56,6 +56,8 @@
 
 * `financial_details`
   命令已经接入，也确认了“全市场窄字段 + 长历史”可写出有效数据；但还不适合升成全量宽表主线。
+* `exchange_rate`
+  命令已经接入，也有默认最小字段的真实 probe；但长时间窗目前仍更适合 staged backfill，不要把当前状态误判成“全历史已齐”。
 * 旧失败 probe、空目录、老的中间 shard
   这些目录不代表“资产已完成”，清理时优先处理。
 
@@ -70,6 +72,7 @@
 | `daily` | 是，`3203` 个 symbol | 否，固定 `6` 个日线字段 | `2000-01-04` 到 `2026-03-18` | 是 |
 | `pit_financials` | 是 | 是，`743` 个字段 | `2000q1` 到 `2025q4`，`as-of 2026-03-10` | 是 |
 | `financial_details` | 近似是，当前 raw probe 请求了 `3203` 个 symbol | 否，目前只抓 `3` 个字段 | `2000q1` 到 `2025q4`，`as-of 2026-03-19` | 否，仍是增强层 probe |
+| `exchange_rate` | 不适用，按货币对而不是股票池 | 否，当前默认 `2` 个字段 | 当前稳定 probe 是 `2025-02-10` 到 `2025-02-11` | 否，补充层 |
 | `ex_factors` | 是 | 不适用，按 API payload 固定 schema | `2000-01-01` 到 `2026-03-18` | 是 |
 | `dividends` | 是 | 不适用，按 API payload 固定 schema | `2000-01-01` 到 `2026-03-18` | 是 |
 | `shares` | 是 | 否，当前默认 `7` 个字段 | `2000-01-01` 到 `2026-03-18` | 是 |
@@ -84,8 +87,9 @@
   `industry_changes` 是切换日真相层；
   从它本地派生的 `industry_labels_d/m/q` 是研究里直接 join 的标签层；
   `instrument_industry` 更像 provider 快照补充层，不是默认主线。
-* 如果只看“已经有数据，但当前仍不是全市场 + 长历史或全字段主线”的 HK 资产族，当前主要就剩三类：
-  `instrument_industry`、`southbound`、`financial_details`。
+* 如果只看“已经有数据，但当前仍不是全市场 + 长历史或全字段主线”的 HK 资产族，当前主要是：
+  `instrument_industry`、`financial_details`、`exchange_rate`。
+  `southbound` 这条线虽然不是 `2000` 年起、也不是全市场概念，但按它自己的自然历史范围已经够完整。
   其余主线 raw 资产如 `daily`、`pit_financials`、`ex_factors`、`dividends`、`shares`、`industry_changes` 已经都有当前可用的 full-market baseline。
 
 ## 现在磁盘上哪些算“当前有效”
@@ -120,6 +124,8 @@
   当前保留的 `financial_details` 全市场窄字段 raw probe；请求 `3203` 个 symbol、`3` 个字段、`2000q1-2025q4`
 * `artifacts/assets/rqdata/hk/financial_details/analysis_hk_all3203_superset_2000_2025_local_override_v10/`
   当前 `financial_details` 的标准化分析基线，只用于研究侧审阅和 subject 归并，不属于 pipeline 主线输入
+* `artifacts/assets/rqdata/hk/exchange_rate/hk_exchange_rate_probe_20250210_20250211_minimal/`
+  当前保留的 `exchange_rate` minimal probe；默认字段是 `currency_pair` 和 `middle_referrence_rate`
 
 如果你要写配置、文档示例或临时脚本，优先引用这些 alias，避免再次把日期写死到多个地方。
 
@@ -134,7 +140,7 @@
 | `get_ex_factor` | 已接，`mirror-hk-ex-factors` | 稳定，full/connect 都在 | 继续保留，属于复权原料层。 |
 | `get_dividend` | 已接，`mirror-hk-dividends` | 稳定，full/connect 都在 | 继续保留，属于股息原料层。 |
 | `get_shares` | 已接，`mirror-hk-shares` | 稳定，full/connect 都在 | 继续保留，属于股本原料层。 |
-| `get_exchange_rate` | 未接入离线 mirror | 无稳定资产 | 有跨币种需求再补。 |
+| `get_exchange_rate` | 已接，`mirror-hk-exchange-rate` | 已有默认最小字段 probe；长窗 staged backfill 仍待补 | 如果目标是给 `financial_details` 做币种归一，优先复用默认两列。 |
 | `get_industry` | 无单独 mirror 命令 | 无独立稳定资产 | 优先级低于 `industry_changes`。 |
 | `get_industry_change` | 已接，`mirror-hk-industry-changes` | 稳定 | 行业切换真相层，优先保留。 |
 | `get_instrument_industry` | 已接，`mirror-hk-instrument-industry` | 稳定但仍是旧 research-universe 口径 | 便捷快照层；当前保留的月频/季频 latest 还是 `1547` symbol 版本。 |
@@ -172,6 +178,8 @@
 * `financial_details` 当前最完整的 raw probe 是 `hk_financial_details_hk_all3203_superset_2000_2025_20260319/`：请求 `3203` 个 symbol、`2000q1-2025q4`、`3` 个字段，实际写出 `345` 个 parquet。
 * 对这份 raw probe 的标准化分析基线是 `analysis_hk_all3203_superset_2000_2025_local_override_v10/`；它说明“窄字段增强层”是可做的，但不等于已经适合升成全字段主线。
 * 之前那类把 `financial_details` 当成“`743` 字段宽表”去拉的试法，会在多只股票上触发 server error，不应再作为默认方案。
+* `exchange_rate` 命令已经接入，当前有 `hk_exchange_rate_probe_20250210_20250211_minimal/` 这份真实 probe；默认只保留 `currency_pair` 和 `middle_referrence_rate`。
+* 这条接口当前最大问题不是配额，而是长时间窗明显慢于 `shares/dividends`；现阶段更适合先做最小字段 probe，再按阶段回填更长历史。
 * `hk_all_probe_2025q4_2026q1_starter_20260319/` 也已经落盘，和 `hk_connect` 版本一样是 `date=2026-03-19` 的 `17` 列 starter 增量，并已生成 `pipeline_fundamentals.parquet` 与 `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260319_research_*`。
 * `hk_connect_probe_2025q4_2026q1_starter_20260319/` 是当前更晚 as-of 的窄 PIT 增量快照，`date=2026-03-19`，starter 字段集共 `17` 列；目录下已生成 `pipeline_fundamentals.parquet`，并派生 `artifacts/assets/universe/hk_connect_probe_2025q4_2026q1_starter_20260319_research_*`。
 
