@@ -1,0 +1,13 @@
+## Anti-drift template v1 on the canonical quarterly overlay unit.
+## Keep the dense validation route unchanged, but tilt training weight toward
+## recent rebalance dates with exponential decay.
+extends:
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml
+
+model:
+  sample_weight_mode: exp_decay
+  sample_weight_params:
+    halflife: 12
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_expdecay_validate

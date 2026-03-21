@@ -381,6 +381,65 @@ run：
 * 行业中性 residualization
 * 风格暴露约束
 
+## 可直接跑的抗漂移模板
+
+在上述 3 个功能都已经落地后，下一轮 HK overlay 研究可以先从下面这 3 个 progressive variant 开始。
+
+### 1. `exp_decay` only
+
+适合回答的问题：
+
+* 只提高近期样本权重，是否已经足够改善 `final_oos`
+
+配置：
+
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_validate.yml)
+
+关键设置：
+
+* `model.sample_weight_mode=exp_decay`
+* `model.sample_weight_params.halflife=12`
+
+### 2. `exp_decay + rolling`
+
+适合回答的问题：
+
+* 在近期加权之外，再限制主训练只看最近 `16` 个季度训练日期，能否进一步减少旧 regime 污染
+
+配置：
+
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_validate.yml)
+
+关键设置：
+
+* `model.sample_weight_mode=exp_decay`
+* `model.train_window.mode=rolling`
+* `model.train_window.size=16`
+* `model.train_window.unit=dates`
+
+### 3. `exp_decay + rolling + group cap`
+
+适合回答的问题：
+
+* 若训练侧已经做了抗漂移处理，再在组合层限制单行业最多 `3` 只，能否减少行业轮动带来的误伤
+
+配置：
+
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_groupcap_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_groupcap_validate.yml)
+
+关键设置：
+
+* `model.sample_weight_mode=exp_decay`
+* `model.train_window.mode=rolling`
+* `backtest.group_col=first_industry_name`
+* `backtest.max_names_per_group=3`
+
+推荐运行顺序：
+
+1. 先跑 `exp_decay` only，看单独样本加权是否已经带来改善。
+2. 再跑 `exp_decay + rolling`，判断主训练窗口收缩的增量价值。
+3. 最后跑 `exp_decay + rolling + group cap`，把组合层暴露控制作为第三层增量。
+
 ## 推荐运行顺序
 
 这轮 5 个实验已经全部跑完。若后续复现或继续扩展，建议顺序仍然是：
@@ -396,6 +455,9 @@ uv run csml run --config configs/experiments/variants/hk_selected__quarterly_pit
 uv run csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml
 uv run csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml
 uv run csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml
+uv run csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_validate.yml
+uv run csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_validate.yml
+uv run csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_groupcap_validate.yml
 uv run csml grid \
   --config configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_construction_grid.yml \
   --run-name-prefix hk_sel_q_g4_fixed_pit_overlay_construction \

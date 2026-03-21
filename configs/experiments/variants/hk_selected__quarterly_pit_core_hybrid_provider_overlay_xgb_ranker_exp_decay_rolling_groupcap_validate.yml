@@ -1,0 +1,12 @@
+## Anti-drift template v3 on the canonical quarterly overlay unit.
+## Keep exp-decay + rolling training, then add a minimal industry-aware cap in
+## portfolio construction to reduce group concentration.
+extends:
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_validate.yml
+
+backtest:
+  group_col: first_industry_name
+  max_names_per_group: 3
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_expdecay_roll16_groupcap3_validate
