@@ -1,0 +1,120 @@
+## Shared dense-validation base for the quarterly PIT + provider overlay unit.
+## Keep the data, feature, and diagnostics route model-agnostic so model
+## presets can swap cleanly without inheriting incompatible params.
+extends:
+  - presets/hk_quarterly_pit_hybrid.yml
+
+data:
+  start_date: "20150101"
+
+fundamentals:
+  allow_missing_features: false
+  log_market_cap: true
+  market_cap_col: market_cap
+  log_market_cap_col: log_mcap
+  provider_overlay:
+    enabled: true
+    source: provider
+    provider: rqdata
+    endpoint: get_factor
+    fields:
+      - hk_total_market_val
+      - pe_ratio_ttm
+      - pb_ratio_ttm
+    column_map:
+      trade_date: trade_date
+      ts_code: ts_code
+      market_cap: hk_total_market_val
+      pe_ttm: pe_ratio_ttm
+      pb: pb_ratio_ttm
+    features:
+      - market_cap
+      - pe_ttm
+      - pb
+    auto_add_features: true
+    required: true
+
+universe:
+  by_date_file: artifacts/assets/universe/universe_by_date.csv
+
+features:
+  list:
+    - ret_60
+    - ret_120
+    - ret_240
+    - rv_60
+    - rv_120
+    - volume_sma20_ratio
+    - volume_sma60_ratio
+    - log_vol
+    - vol
+    - sales
+    - growth_sales
+    - basic_earnings_per_share
+    - growth_basic_earnings_per_share
+    - net_profit
+    - growth_net_profit
+    - cash_flow_from_operating_activities
+    - growth_cash_flow_from_operating_activities
+    - profit_margin
+    - cfo_margin
+    - cfo_to_profit
+    - days_since_report
+    - market_cap
+    - pe_ttm
+    - pb
+    - log_mcap
+  missing:
+    features:
+      - sales
+      - growth_sales
+      - basic_earnings_per_share
+      - growth_basic_earnings_per_share
+      - net_profit
+      - growth_net_profit
+      - cash_flow_from_operating_activities
+      - growth_cash_flow_from_operating_activities
+      - profit_margin
+      - cfo_margin
+      - cfo_to_profit
+      - days_since_report
+      - market_cap
+      - pe_ttm
+      - pb
+      - log_mcap
+
+industry:
+  enabled: true
+  source: file
+  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_full_market_latest/industry_labels_d.parquet
+  keep_columns:
+    - industry_name
+    - first_industry_name
+  ffill: false
+  required: true
+
+eval:
+  save_scored_artifact: true
+  bucket_ic:
+    enabled: true
+    schemes:
+      - industry_name
+  permutation_test:
+    enabled: true
+    n_runs: 100
+    seed: 42
+  walk_forward:
+    enabled: true
+    n_windows: 6
+    test_size: 0.2
+    step_size: 1
+    anchor_end: true
+    feature_top_k: 8
+    backtest_enabled: true
+    permutation_test:
+      enabled: false
+      n_runs: 10
+      seed: 42
+  final_oos:
+    enabled: true
+    size: 0.2

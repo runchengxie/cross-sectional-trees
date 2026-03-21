@@ -1,7 +1,7 @@
 ## Same quarterly PIT + overlay data route, but replace the tree model with
 ## ridge as a linear drift probe.
 extends:
-  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_validate_dense_wf_base.yml
   - configs/presets/models/ridge.yml
 
 eval:

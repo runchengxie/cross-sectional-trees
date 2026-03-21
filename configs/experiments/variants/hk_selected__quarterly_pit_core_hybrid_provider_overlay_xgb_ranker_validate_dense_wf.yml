@@ -2,34 +2,12 @@
 ## Keep the same ranker and data recipe, but strengthen OOS validation and
 ## save industry-aware scored artifacts for drift diagnostics.
 extends:
-  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate.yml
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_validate_dense_wf_base.yml
+  - configs/presets/models/xgb_ranker.yml
 
-industry:
-  enabled: true
-  source: file
-  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260318_industry_changes_full_market_latest/industry_labels_d.parquet
-  keep_columns:
-    - industry_name
-    - first_industry_name
-  ffill: false
-  required: true
+model:
+  params:
+    learning_rate: 0.05
 
 eval:
-  save_scored_artifact: true
-  bucket_ic:
-    enabled: true
-    schemes:
-      - industry_name
-  walk_forward:
-    enabled: true
-    n_windows: 6
-    test_size: 0.2
-    step_size: 1
-    anchor_end: true
-    feature_top_k: 8
-    backtest_enabled: true
-    permutation_test:
-      enabled: false
-      n_runs: 10
-      seed: 42
   run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_validate_wf_dense

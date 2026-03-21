@@ -60,3 +60,22 @@ def test_universe_config_defaults_resolve_outside_repo_root(tmp_path, monkeypatc
 
     assert hk_connect["hk_connect_universe"]["rebalance_frequency"] == "M"
     assert hk_all_assets["hk_daily_asset_universe"]["rebalance_frequency"] == "M"
+
+
+def test_linear_provider_overlay_validate_variants_do_not_inherit_xgb_params():
+    ridge_cfg = resolve_pipeline_config(
+        "configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml"
+    ).data
+    elasticnet_cfg = resolve_pipeline_config(
+        "configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml"
+    ).data
+
+    ridge_params = ridge_cfg["model"]["params"]
+    elasticnet_params = elasticnet_cfg["model"]["params"]
+
+    assert ridge_cfg["model"]["type"] == "ridge"
+    assert elasticnet_cfg["model"]["type"] == "elasticnet"
+    assert "n_estimators" not in ridge_params
+    assert "learning_rate" not in ridge_params
+    assert "n_estimators" not in elasticnet_params
+    assert "learning_rate" not in elasticnet_params
