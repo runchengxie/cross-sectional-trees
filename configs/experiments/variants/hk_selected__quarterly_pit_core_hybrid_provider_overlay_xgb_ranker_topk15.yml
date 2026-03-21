@@ -1,0 +1,10 @@
+## Concentrate the book to test whether the top-ranked names carry stronger edge.
+extends:
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml
+
+eval:
+  top_k: 15
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_top15
+
+backtest:
+  top_k: 15

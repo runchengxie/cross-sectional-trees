@@ -1,0 +1,88 @@
+## Canonical G4-fixed quarterly research unit.
+## Keep the quarterly PIT core + slow price hybrid baseline, then add provider
+## valuation as a daily overlay and switch to xgb_ranker.
+extends:
+  - configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
+  - configs/presets/models/xgb_ranker.yml
+
+data:
+  start_date: "20150101"
+
+fundamentals:
+  allow_missing_features: false
+  log_market_cap: true
+  market_cap_col: market_cap
+  log_market_cap_col: log_mcap
+  provider_overlay:
+    enabled: true
+    source: provider
+    provider: rqdata
+    endpoint: get_factor
+    fields:
+      - hk_total_market_val
+      - pe_ratio_ttm
+      - pb_ratio_ttm
+    column_map:
+      trade_date: trade_date
+      ts_code: ts_code
+      market_cap: hk_total_market_val
+      pe_ttm: pe_ratio_ttm
+      pb: pb_ratio_ttm
+    features:
+      - market_cap
+      - pe_ttm
+      - pb
+    auto_add_features: true
+    required: true
+
+universe:
+  by_date_file: artifacts/assets/universe/universe_by_date.csv
+
+features:
+  list:
+    - ret_60
+    - ret_120
+    - ret_240
+    - rv_60
+    - rv_120
+    - volume_sma20_ratio
+    - volume_sma60_ratio
+    - log_vol
+    - vol
+    - sales
+    - growth_sales
+    - basic_earnings_per_share
+    - growth_basic_earnings_per_share
+    - net_profit
+    - growth_net_profit
+    - cash_flow_from_operating_activities
+    - growth_cash_flow_from_operating_activities
+    - profit_margin
+    - cfo_margin
+    - cfo_to_profit
+    - days_since_report
+    - market_cap
+    - pe_ttm
+    - pb
+    - log_mcap
+  missing:
+    features:
+      - sales
+      - growth_sales
+      - basic_earnings_per_share
+      - growth_basic_earnings_per_share
+      - net_profit
+      - growth_net_profit
+      - cash_flow_from_operating_activities
+      - growth_cash_flow_from_operating_activities
+      - profit_margin
+      - cfo_margin
+      - cfo_to_profit
+      - days_since_report
+      - market_cap
+      - pe_ttm
+      - pb
+      - log_mcap
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank

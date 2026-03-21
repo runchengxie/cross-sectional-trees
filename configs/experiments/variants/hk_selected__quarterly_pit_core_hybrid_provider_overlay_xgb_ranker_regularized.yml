@@ -1,0 +1,15 @@
+## Conservative capacity cut for the same G4-fixed research unit.
+## Keep the data route unchanged and only regularize the ranker.
+extends:
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml
+
+model:
+  params:
+    max_depth: 2
+    subsample: 0.7
+    colsample_bytree: 0.7
+    reg_alpha: 0.2
+    reg_lambda: 3.0
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_reg

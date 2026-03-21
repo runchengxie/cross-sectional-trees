@@ -515,6 +515,46 @@ artifacts/snapshots/<name>/
 1. 这是本地私有快照工具，不会重新向 provider 拉数。
 1. 若需要公开分享，请另做一份不含 `artifacts/cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、汇总 CSV 和简短说明。
 
+### 历史 run Release staging：`scripts/package_runs.py`
+
+如果你要把历史研究结果拆成可上传 GitHub Release 的独立包，建议用脚本级流程，而不是直接复制整个 `artifacts/runs/`。
+
+默认 staging 结构：
+
+```text
+<staged_root>/
+  manifest.yml
+  runs_summary.csv
+  <run_dir>/
+    manifest.yml
+    summary.json
+    config.used.yml
+    positions_current.csv
+    positions_by_rebalance.csv
+    rebalance_diff.csv
+    ic_*.csv
+    quantile_returns*.csv
+    backtest_*.csv
+    feature_importance.csv
+    walk_forward_*.csv
+```
+
+其中：
+
+1. 根目录 `manifest.yml` 记录这次打包选中了哪些 run、来源目录、文件数和字节数汇总；如果当前目录可识别为 git 仓库，还会写入 `commit/branch/is_dirty`。
+1. 默认 profile 是 `--profile light`：只打包轻量 run 结果，也就是 `summary.json`、`config.used.yml`、持仓、关键评估/回测 CSV、`feature_importance.csv`、`walk_forward_*.csv` 等。
+1. `--profile milestone` 会在 light 的基础上再带上 `eval_scored.parquet` 和 `dataset.parquet`。
+1. `--profile full` 会直接归档整个 run 目录。
+1. `--include-scored`、`--include-dataset`、`--include-full-run-dir` 仍然可用，但现在是对当前 profile 的显式追加覆盖。
+1. root manifest 和每个 run 的 `manifest.yml` 都会写 `reproducibility.asset_references`：优先记录资产 `manifest.yml` 或 `*.manifest.yml` 的路径与 sha256；如果引用的是没有 manifest 的资产文件，则退化记录该文件本身的路径与 sha256。
+1. `runs_summary.csv` 是对 staging root 再做一次 `summarize` 得到的索引表，方便先看再决定下载哪几个 run。
+
+对应的上传脚本是 `scripts/release_runs.py`：
+
+1. 它会把每个 `<run_dir>/` 分别打成一个 tar.gz。
+1. 然后在同一个 GitHub Release tag 下上传多份 run asset。
+1. 这条链路和 `scripts/release_assets.py` 分开；前者是研究结果备份，后者是数据资产备份。
+
 ### 一次性旧目录迁移
 
 当前仓库默认只使用 `artifacts/` 布局。

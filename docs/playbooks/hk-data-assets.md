@@ -597,9 +597,10 @@ csml backup-data \
 
 如果你要做 GitHub Release：
 
-* 私有仓库可以考虑上传完整快照
+* 私有仓库可以按 part 上传需要的资产
 * 公开仓库更适合上传 `manifest.yml`、配置、说明文件和汇总 CSV
 * 原始 provider 缓存和原始数据是否适合公开，要先看你的使用边界和合规要求
+* 数据资产和历史 run 现在是两条独立流程：资产走 `release_assets.py`，run 结果走 `release_runs.py`
 
 如果你想自动打包并上传到 GitHub Release（私有仓库场景），可以用：
 
@@ -611,21 +612,44 @@ python3 scripts/release_assets.py \
   --overwrite
 ```
 
-这个脚本会调用 `package_assets.py` 生成 bundle、写 `README.md`、打包成 tar.gz，
-并用 `gh release create/upload` 上传到 GitHub Release。只想打包不上传时加 `--skip-upload`。
+这个脚本会调用 `package_assets.py` 先生成一个 staging root，
+再按 `daily / instruments / pit / reference / industry / universe` 分别打成 tar.gz，
+并用同一个 GitHub Release tag 一次上传多份 asset。只想打包不上传时加 `--skip-upload`；
+只想传部分资产时加 `--part daily --part universe` 这类参数。
+
+如果你想备份历史 run 到 GitHub Release，要用单独的脚本：
+
+```bash
+python3 scripts/release_runs.py \
+  --name hk_selected_history \
+  --runs-dir artifacts/runs \
+  --run-name-prefix hk_selected \
+  --profile light \
+  --latest-n 20 \
+  --skip-upload
+```
+
+说明：
+
+* 默认建议用 `--profile light`，只打包轻量 run 结果，不会把 `eval_scored.parquet`、`dataset.parquet` 这类大文件自动塞进去。
+* 即使是 `light`，staging manifest 现在也会额外记录当前 git commit / dirty 状态，以及 run 实际引用到的资产 manifest 路径和 sha256，方便之后定位 rerun 该用哪版代码和哪份资产。
+* 如果是基线、checkpoint 或准备写结论的 run，更适合用 `--profile milestone`；它会把 `eval_scored.parquet` 和 `dataset.parquet` 一起带上。
+* 如果要整目录归档，再用 `--profile full`。
+* `--include-scored`、`--include-dataset`、`--include-full-run-dir` 仍然可用，但现在是对 profile 的显式追加覆盖。
+* `release_runs.py` 会先调用 `package_runs.py` 生成 staging root，再按 run 分别打成 tar.gz，并在同一个 Release tag 下上传多份 run asset。
 
 ## 10. 跨机器打包与共享资产
 
-如果你需要把离线资产带到另一台机器或共享给他人，建议用仓库内置的打包脚本，把常用资产聚合成一个可搬运的 bundle。
+如果你需要把离线资产带到另一台机器或共享给他人，建议用仓库内置的打包脚本，先把资产拆成几个独立可搬运的 part。
 
 脚本入口：`scripts/package_assets.py`
 
-推荐用法（全市场口径，打包成独立目录）：
+推荐用法（全市场口径，生成独立 staging root）：
 
 ```bash
 python3 scripts/package_assets.py \
   --preset hk_full \
-  --dest /home/richard/code/csml_assets/hk_full_20260312 \
+  --dest /home/richard/code/csml_asset_parts/hk_full_20260312 \
   --mode copy \
   --overwrite
 ```
@@ -634,16 +658,19 @@ python3 scripts/package_assets.py \
 
 * `--preset hk_full`：全市场口径，默认包含日线、instrument、PIT、`ex_factors`、`dividends`、`shares`、`industry_changes` 与 universe 资产。
 * `--mode copy`：生成独立可搬运目录；本机调试时也可以用 `--mode symlink`。
-* bundle 内会写 `manifest.yml`，并为关键入口生成 `latest` 软链接，方便配置引用。
+* 输出根目录下默认会有 `daily/`、`instruments/`、`pit/`、`reference/`、`industry/`、`universe/` 这些子目录。
+* 每个 part 自己都会写 `manifest.yml`，并在该 part 内生成 `latest` 软链接，方便配置引用。
 
-如果你只想保留旧的“瘦 bundle”，可以显式关掉 reference / industry：
+如果你只想准备核心 part，可以显式限制只生成需要的部分：
 
 ```bash
 python3 scripts/package_assets.py \
   --preset hk_full \
-  --no-reference \
-  --no-industry \
-  --dest /home/richard/code/csml_assets/hk_full_core_20260312 \
+  --part daily \
+  --part instruments \
+  --part pit \
+  --part universe \
+  --dest /home/richard/code/csml_asset_parts/hk_full_core_20260312 \
   --mode copy \
   --overwrite
 ```
@@ -655,26 +682,26 @@ python3 scripts/package_assets.py \
 
 在其他项目里使用有两种常见方式：
 
-* 直接把 bundle 目录复制到目标项目的 `artifacts/assets/`。
-* 不复制，直接在配置里指向 bundle 的 `latest` 路径。
+* 只解压你需要的 tarball，然后在配置里指向对应 part 的 `latest` 路径。
+* 不走 Release，直接把某几个 part 目录复制到共享目录，再让配置分别引用。
 
-示例（直接指向 bundle）：
+示例（直接指向解压后的 part 目录）：
 
 ```yaml
 data:
   rqdata:
-    daily_asset_dir: "/path/to/bundle/rqdata/hk/daily/latest"
-    instruments_file: "/path/to/bundle/rqdata/hk/instruments/latest.parquet"
+    daily_asset_dir: "/path/to/extract/daily/rqdata/hk/daily/latest"
+    instruments_file: "/path/to/extract/instruments/rqdata/hk/instruments/latest.parquet"
 universe:
-  by_date_file: "/path/to/bundle/universe/latest_by_date.csv"
+  by_date_file: "/path/to/extract/universe/universe/latest_by_date.csv"
 fundamentals:
   source: file
-  file: "/path/to/bundle/rqdata/hk/pit_financials/latest/pipeline_fundamentals.parquet"
+  file: "/path/to/extract/pit/rqdata/hk/pit_financials/latest/pipeline_fundamentals.parquet"
 ```
 
-如果你只想共享部分资产，可以用 `--no-pit` 或用 `--daily-snapshot`、`--instruments-file` 等参数覆盖默认快照。
+如果你只想共享部分资产，优先用 `--part`；如果你只是想切换具体快照，再用 `--daily-snapshot`、`--instruments-file` 这类参数覆盖默认值。
 
-## 10. 常见误解
+## 11. 常见误解
 
 ### 误解 1：PIT 股票池会把历史财报自动裁成成员期
 

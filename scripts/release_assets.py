@@ -7,8 +7,9 @@ import shutil
 import subprocess
 import sys
 import tarfile
-from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -29,160 +30,106 @@ def _run(cmd: list[str], *, dry_run: bool, capture: bool = False) -> subprocess.
     return subprocess.run(cmd, check=False, capture_output=capture, text=True)
 
 
-def _parse_bundle_path(output: str) -> Path | None:
+def _parse_staged_root(output: str) -> Path | None:
     for line in output.splitlines():
-        if line.startswith("Bundle created at:"):
+        if line.startswith("Staged asset parts at:"):
             path_text = line.split(":", 1)[1].strip()
             if path_text:
                 return Path(path_text).expanduser().resolve()
     return None
 
 
-def _load_manifest(bundle_dir: Path) -> dict:
-    manifest_path = bundle_dir / "manifest.yml"
+def _load_manifest(staged_root: Path) -> dict:
+    manifest_path = staged_root / "manifest.yml"
     if not manifest_path.exists():
+        raise SystemExit(f"Manifest not found: {manifest_path}")
+    return yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+
+
+def _manifest_distribution(manifest: dict) -> dict:
+    node = manifest.get("distribution")
+    return node if isinstance(node, dict) else {}
+
+
+def _manifest_parts(manifest: dict) -> dict[str, dict]:
+    node = manifest.get("parts")
+    if not isinstance(node, dict):
         return {}
-    try:
-        import yaml  # type: ignore
-
-        return yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return {}
+    return {str(key): value for key, value in node.items() if isinstance(value, dict)}
 
 
-def _manifest_value(manifest: dict, *keys: str) -> str | None:
-    node: object = manifest
-    for key in keys:
-        if not isinstance(node, dict):
-            return None
-        node = node.get(key)
-    return node if isinstance(node, str) else None
+def _selected_parts(manifest: dict, requested_parts: list[str]) -> list[str]:
+    available = _manifest_parts(manifest)
+    if not available:
+        raise SystemExit("No parts found in staged manifest.")
+    selected = list(dict.fromkeys(requested_parts or list(available.keys())))
+    missing = [part for part in selected if part not in available]
+    if missing:
+        raise SystemExit(f"Requested parts are not available in staged manifest: {missing}")
+    return selected
 
 
-def _format_readme(bundle_dir: Path, manifest: dict) -> str:
-    name = _manifest_value(manifest, "bundle", "name") or bundle_dir.name
-    as_of = _manifest_value(manifest, "bundle", "as_of")
-    generated_at = _manifest_value(manifest, "bundle", "generated_at") or datetime.now(
-        timezone.utc
-    ).astimezone().isoformat(timespec="seconds")
-    source_repo = _manifest_value(manifest, "bundle", "source_repo") or str(REPO_ROOT)
-    mode = _manifest_value(manifest, "bundle", "mode") or "copy"
-
-    daily_snapshot = _manifest_value(manifest, "assets", "daily", "snapshot")
-    instruments_file = _manifest_value(manifest, "assets", "instruments", "file")
-    pit_snapshot = _manifest_value(manifest, "assets", "pit_financials", "snapshot")
-    ex_factors_snapshot = _manifest_value(manifest, "assets", "ex_factors", "snapshot")
-    dividends_snapshot = _manifest_value(manifest, "assets", "dividends", "snapshot")
-    shares_snapshot = _manifest_value(manifest, "assets", "shares", "snapshot")
-    universe_by_date = _manifest_value(manifest, "assets", "universe", "by_date")
-    universe_symbols = _manifest_value(manifest, "assets", "universe", "symbols")
-    universe_meta = _manifest_value(manifest, "assets", "universe", "meta")
+def _format_readme(manifest: dict, selected_parts: list[str]) -> str:
+    distribution = _manifest_distribution(manifest)
+    name = distribution.get("name") or "assets"
+    as_of = distribution.get("as_of") or "unknown"
+    generated_at = distribution.get("generated_at") or "unknown"
+    source_repo = distribution.get("source_repo") or str(REPO_ROOT)
+    mode = distribution.get("mode") or "copy"
+    parts = _manifest_parts(manifest)
 
     lines = [
-        "# CSML HK Assets Bundle",
+        "# CSML HK Asset Release Parts",
         "",
-        "This bundle packages raw HK assets for reuse across projects.",
+        "This release splits reusable HK assets into independent upload parts.",
         "",
-        f"Bundle: {name}",
-        f"As of: {as_of or 'unknown'}",
+        f"Distribution: {name}",
+        f"As of: {as_of}",
         f"Generated at: {generated_at}",
         f"Source repo: {source_repo}",
         f"Mode: {mode}",
         "",
-        "Contents:",
+        "Included parts:",
     ]
-
-    if daily_snapshot:
-        lines.append(f"- rqdata/hk/daily/{daily_snapshot}/")
-    if instruments_file:
-        lines.append(f"- rqdata/hk/instruments/{instruments_file}")
-    if pit_snapshot:
-        lines.append(f"- rqdata/hk/pit_financials/{pit_snapshot}/")
-    if ex_factors_snapshot:
-        lines.append(f"- rqdata/hk/ex_factors/{ex_factors_snapshot}/")
-    if dividends_snapshot:
-        lines.append(f"- rqdata/hk/dividends/{dividends_snapshot}/")
-    if shares_snapshot:
-        lines.append(f"- rqdata/hk/shares/{shares_snapshot}/")
-    if universe_by_date:
-        lines.append(f"- universe/{universe_by_date}")
-    if universe_symbols:
-        lines.append(f"- universe/{universe_symbols}")
-    if universe_meta:
-        lines.append(f"- universe/{universe_meta}")
-
+    for part_name in selected_parts:
+        part = parts[part_name]
+        description = part.get("description") or ""
+        lines.append(f"- {part_name}: {description}".rstrip())
+        summary = part.get("summary")
+        if isinstance(summary, dict):
+            for key, value in summary.items():
+                lines.append(f"  - {key}: {value}")
     lines.extend(
         [
             "",
-            "Entry points:",
-            "- rqdata/hk/daily/latest",
-            "- rqdata/hk/instruments/latest.parquet",
-            "- universe/latest_by_date.csv",
-            "- universe/latest_symbols.txt",
-        ]
-    )
-    if pit_snapshot:
-        lines.append("- rqdata/hk/pit_financials/latest")
-    if ex_factors_snapshot:
-        lines.append("- rqdata/hk/ex_factors/latest")
-    if dividends_snapshot:
-        lines.append("- rqdata/hk/dividends/latest")
-    if shares_snapshot:
-        lines.append("- rqdata/hk/shares/latest")
-    if universe_meta:
-        lines.append("- universe/latest_meta.yml")
-
-    lines.extend(
-        [
-            "",
-            "Notes:",
-            "- Raw per-symbol parquet files live under each snapshot directory.",
-            "- See manifest.yml for the exact asset mapping and metadata.",
+            "Each uploaded tarball contains one independent asset part plus its manifest.yml.",
             "",
         ]
     )
     return "\n".join(lines)
 
 
-def _format_release_notes(bundle_dir: Path, manifest: dict) -> str:
-    name = _manifest_value(manifest, "bundle", "name") or bundle_dir.name
-    as_of = _manifest_value(manifest, "bundle", "as_of") or "unknown"
-    generated_at = _manifest_value(manifest, "bundle", "generated_at") or "unknown"
+def _format_release_notes(manifest: dict, selected_parts: list[str], tar_paths: list[Path]) -> str:
+    distribution = _manifest_distribution(manifest)
+    name = distribution.get("name") or "assets"
+    as_of = distribution.get("as_of") or "unknown"
+    generated_at = distribution.get("generated_at") or "unknown"
+    parts = _manifest_parts(manifest)
+
     lines = [
-        f"Bundle: {name}",
+        f"Distribution: {name}",
         f"As of: {as_of}",
         f"Generated at: {generated_at}",
         "",
-        "Included assets:",
+        "Uploaded parts:",
     ]
-    daily_snapshot = _manifest_value(manifest, "assets", "daily", "snapshot")
-    instruments_file = _manifest_value(manifest, "assets", "instruments", "file")
-    pit_snapshot = _manifest_value(manifest, "assets", "pit_financials", "snapshot")
-    ex_factors_snapshot = _manifest_value(manifest, "assets", "ex_factors", "snapshot")
-    dividends_snapshot = _manifest_value(manifest, "assets", "dividends", "snapshot")
-    shares_snapshot = _manifest_value(manifest, "assets", "shares", "snapshot")
-    universe_by_date = _manifest_value(manifest, "assets", "universe", "by_date")
-    universe_symbols = _manifest_value(manifest, "assets", "universe", "symbols")
-    universe_meta = _manifest_value(manifest, "assets", "universe", "meta")
-
-    if daily_snapshot:
-        lines.append(f"- daily: {daily_snapshot}")
-    if instruments_file:
-        lines.append(f"- instruments: {instruments_file}")
-    if pit_snapshot:
-        lines.append(f"- pit_financials: {pit_snapshot}")
-    if ex_factors_snapshot:
-        lines.append(f"- ex_factors: {ex_factors_snapshot}")
-    if dividends_snapshot:
-        lines.append(f"- dividends: {dividends_snapshot}")
-    if shares_snapshot:
-        lines.append(f"- shares: {shares_snapshot}")
-    if universe_by_date:
-        lines.append(f"- universe by_date: {universe_by_date}")
-    if universe_symbols:
-        lines.append(f"- universe symbols: {universe_symbols}")
-    if universe_meta:
-        lines.append(f"- universe meta: {universe_meta}")
+    for part_name, tar_path in zip(selected_parts, tar_paths, strict=True):
+        part = parts[part_name]
+        summary = part.get("summary")
+        lines.append(f"- {part_name}: {tar_path.name}")
+        if isinstance(summary, dict):
+            for key, value in summary.items():
+                lines.append(f"  - {key}: {value}")
     return "\n".join(lines) + "\n"
 
 
@@ -191,65 +138,102 @@ def _ensure_gh() -> None:
         raise SystemExit("GitHub CLI (gh) not found in PATH.")
 
 
-def _default_tag(bundle_dir: Path, manifest: dict) -> str:
-    name = _manifest_value(manifest, "bundle", "name") or bundle_dir.name
-    as_of = _manifest_value(manifest, "bundle", "as_of")
+def _default_tag(manifest: dict) -> str:
+    distribution = _manifest_distribution(manifest)
+    name = distribution.get("name") or "assets"
+    as_of = distribution.get("as_of")
     if as_of:
         return f"assets-{name}-{as_of}"
     return f"assets-{name}"
 
 
-def _default_title(bundle_dir: Path, manifest: dict) -> str:
-    name = _manifest_value(manifest, "bundle", "name") or bundle_dir.name
-    as_of = _manifest_value(manifest, "bundle", "as_of")
+def _default_title(manifest: dict) -> str:
+    distribution = _manifest_distribution(manifest)
+    name = distribution.get("name") or "assets"
+    as_of = distribution.get("as_of")
     return f"Assets {name}{' ' + as_of if as_of else ''}"
 
 
-def _build_tar(bundle_dir: Path, tar_path: Path, *, dry_run: bool) -> None:
+def _asset_tar_name(manifest: dict, part_name: str) -> str:
+    distribution = _manifest_distribution(manifest)
+    name = distribution.get("name") or "assets"
+    as_of = distribution.get("as_of") or "unknown"
+    return f"assets-{name}-{as_of}-{part_name}.tar.gz"
+
+
+def _build_tar(part_dir: Path, tar_path: Path, *, dry_run: bool) -> None:
     if dry_run:
         return
     if tar_path.exists():
         tar_path.unlink()
     tar_path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tar_path, "w:gz") as tar:
-        tar.add(bundle_dir, arcname=bundle_dir.name, recursive=True)
+        tar.add(part_dir, arcname=part_dir.name, recursive=True)
+
+
+def _build_tars(
+    *,
+    staged_root: Path,
+    manifest: dict,
+    selected_parts: list[str],
+    tar_dir: Path,
+    dry_run: bool,
+) -> list[Path]:
+    tar_paths: list[Path] = []
+    for part_name in selected_parts:
+        part_dir = staged_root / part_name
+        if not part_dir.exists():
+            raise SystemExit(f"Staged part not found: {part_dir}")
+        tar_path = tar_dir / _asset_tar_name(manifest, part_name)
+        _build_tar(part_dir, tar_path, dry_run=dry_run)
+        tar_paths.append(tar_path)
+    return tar_paths
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Package HK assets and upload to a GitHub Release.",
+        description="Stage HK asset parts and upload multiple tarballs into one GitHub Release.",
     )
-    parser.add_argument("--bundle", help="Existing bundle directory to upload.")
-    parser.add_argument("--tar-out", help="Output tar.gz path.")
-    parser.add_argument("--tag", help="Release tag (default derived from bundle).")
-    parser.add_argument("--title", help="Release title (default derived from bundle).")
+    parser.add_argument("--staged-root", help="Existing staged asset-parts root to upload.")
+    parser.add_argument("--tar-dir", help="Output directory for per-part tarballs.")
+    parser.add_argument("--tag", help="Release tag (default derived from manifest).")
+    parser.add_argument("--title", help="Release title (default derived from manifest).")
     parser.add_argument("--notes-file", help="Release notes file.")
     parser.add_argument("--draft", action="store_true", help="Create as draft.")
     parser.add_argument("--prerelease", action="store_true", help="Mark as prerelease.")
     parser.add_argument("--latest", action="store_true", help="Mark as latest.")
-    parser.add_argument("--clobber", action="store_true", help="Overwrite asset if exists.")
+    parser.add_argument("--clobber", action="store_true", help="Overwrite assets if they exist.")
     parser.add_argument("--repo", help="Target repo in owner/name format.")
-    parser.add_argument("--skip-package", action="store_true", help="Skip packaging step.")
+    parser.add_argument("--skip-package", action="store_true", help="Skip staging step.")
     parser.add_argument("--skip-upload", action="store_true", help="Skip release upload step.")
-    parser.add_argument("--no-readme", action="store_true", help="Do not write bundle README.")
+    parser.add_argument("--no-readme", action="store_true", help="Do not write release README.")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--part",
+        action="append",
+        choices=("daily", "instruments", "pit", "reference", "industry", "universe"),
+        default=[],
+        help="Only upload selected part(s). Repeatable.",
+    )
     args, package_args = parser.parse_known_args(argv)
 
-    if args.bundle and package_args:
-        print("Warning: package args ignored because --bundle is set.", file=sys.stderr)
+    if args.staged_root and package_args:
+        print("Warning: package args ignored because --staged-root is set.", file=sys.stderr)
 
-    bundle_dir: Path
-    if args.bundle:
-        bundle_dir = _resolve_path(args.bundle)
-        if not bundle_dir.exists():
-            raise SystemExit(f"Bundle not found: {bundle_dir}")
+    staged_root: Path
+    if args.staged_root:
+        staged_root = _resolve_path(args.staged_root)
+        if not staged_root.exists():
+            raise SystemExit(f"Staged root not found: {staged_root}")
     else:
         if args.skip_package:
-            raise SystemExit("No bundle provided and --skip-package was set.")
-        if "--dry-run" in package_args:
-            raise SystemExit("package_assets --dry-run does not create a bundle.")
+            raise SystemExit("No staged root provided and --skip-package was set.")
         package_cmd = [sys.executable, str(PACKAGE_SCRIPT), *package_args]
-        result = _run(package_cmd, dry_run=args.dry_run, capture=True)
+        for part_name in args.part:
+            package_cmd.extend(["--part", part_name])
+        if args.dry_run:
+            package_cmd.append("--dry-run")
+        result = _run(package_cmd, dry_run=False, capture=True)
         if result.returncode != 0:
             sys.stderr.write(result.stderr or "")
             raise SystemExit(result.returncode)
@@ -257,40 +241,58 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             print("Dry run complete.")
             return 0
-        bundle_dir = _parse_bundle_path(result.stdout or "")
-        if bundle_dir is None:
-            raise SystemExit("Could not detect bundle path from package_assets output.")
+        staged_root = _parse_staged_root(result.stdout or "")
+        if staged_root is None:
+            raise SystemExit("Could not detect staged root from package_assets output.")
 
-    manifest = _load_manifest(bundle_dir)
-    if not args.no_readme:
-        readme_path = bundle_dir / "README.md"
-        if not args.dry_run:
-            readme_path.write_text(_format_readme(bundle_dir, manifest), encoding="utf-8")
+    manifest = _load_manifest(staged_root)
+    selected_parts = _selected_parts(manifest, args.part)
 
-    tar_path = _resolve_path(args.tar_out) if args.tar_out else bundle_dir.with_suffix(".tar.gz")
-    _build_tar(bundle_dir, tar_path, dry_run=args.dry_run)
+    if not args.no_readme and not args.dry_run:
+        readme_path = staged_root / "README.md"
+        readme_path.write_text(_format_readme(manifest, selected_parts), encoding="utf-8")
+
+    tar_dir = (
+        _resolve_path(args.tar_dir)
+        if args.tar_dir
+        else staged_root.parent / f"{staged_root.name}_tarballs"
+    )
+    if not args.dry_run:
+        tar_dir.mkdir(parents=True, exist_ok=True)
+    tar_paths = _build_tars(
+        staged_root=staged_root,
+        manifest=manifest,
+        selected_parts=selected_parts,
+        tar_dir=tar_dir,
+        dry_run=args.dry_run,
+    )
 
     if args.skip_upload:
-        print(f"Bundle: {bundle_dir}")
-        print(f"Tarball: {tar_path}")
+        print(f"Staged root: {staged_root}")
+        for tar_path in tar_paths:
+            print(f"Tarball: {tar_path}")
         return 0
 
     _ensure_gh()
-    tag = args.tag or _default_tag(bundle_dir, manifest)
-    title = args.title or _default_title(bundle_dir, manifest)
+    tag = args.tag or _default_tag(manifest)
+    title = args.title or _default_title(manifest)
     notes_file = args.notes_file
     if not notes_file:
-        notes_path = tar_path.with_suffix(".release_notes.txt")
+        notes_path = tar_dir / f"{tag}.release_notes.txt"
         if not args.dry_run:
-            notes_path.write_text(_format_release_notes(bundle_dir, manifest), encoding="utf-8")
+            notes_path.write_text(
+                _format_release_notes(manifest, selected_parts, tar_paths),
+                encoding="utf-8",
+            )
         notes_file = str(notes_path)
 
     repo_args: list[str] = ["--repo", args.repo] if args.repo else []
 
     view_cmd = ["gh", "release", "view", tag, *repo_args]
     view_result = _run(view_cmd, dry_run=args.dry_run, capture=True)
+    tar_args = [str(path) for path in tar_paths]
     if view_result.returncode == 0:
-        upload_cmd = ["gh", "release", "upload", tag, str(tar_path), *repo_args]
+        upload_cmd = ["gh", "release", "upload", tag, *tar_args, *repo_args]
         if args.clobber:
             upload_cmd.append("--clobber")
         _run(upload_cmd, dry_run=args.dry_run)
@@ -301,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         "release",
         "create",
         tag,
-        str(tar_path),
+        *tar_args,
         "--title",
         title,
         "--notes-file",
