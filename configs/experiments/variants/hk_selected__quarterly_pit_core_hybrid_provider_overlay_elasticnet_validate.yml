@@ -1,0 +1,8 @@
+## Same quarterly PIT + overlay data route, but replace the tree model with
+## ElasticNet as a sparse linear drift probe.
+extends:
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml
+  - configs/presets/models/elasticnet.yml
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_elasticnet_validate

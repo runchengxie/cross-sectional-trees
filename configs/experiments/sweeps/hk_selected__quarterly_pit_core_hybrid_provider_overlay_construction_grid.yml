@@ -1,0 +1,15 @@
+## Small construction sweep base around the canonical G4-fixed unit.
+## Keep the signal fixed and compare only top_k / buffer choices with run-grid.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml
+
+eval:
+  save_scored_artifact: false
+  permutation_test:
+    enabled: false
+  walk_forward:
+    enabled: false
+  final_oos:
+    enabled: true
+    size: 0.2
+  run_name: hk_sel_q_g4_fixed_pit_overlay_construction_grid_base

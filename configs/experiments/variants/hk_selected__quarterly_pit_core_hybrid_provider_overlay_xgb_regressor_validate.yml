@@ -1,0 +1,8 @@
+## Same quarterly PIT + overlay data route, but replace the ranker with
+## xgb_regressor to test whether OOS drift is model-family specific.
+extends:
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml
+  - configs/presets/models/xgb_regressor.yml
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_reg_validate
