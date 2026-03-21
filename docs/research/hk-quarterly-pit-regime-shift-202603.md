@@ -326,17 +326,19 @@ run：
 3. 把主要开发资源投向抗漂移训练机制：`time_decay`、主训练 `rolling` 窗口、行业/风格暴露控制。
 4. 等训练机制补上之后，再回头看是否需要新的 ensemble、行业内排序或更复杂的组合构造。
 
-## 需要开发的 3 个功能卡片
+## 抗漂移功能落地进展（2026-03-21）
 
 ### 1. `time_decay` sample weight
 
-现状：
+当前状态：
 
-* `sample_weight_mode` 目前只支持 `none` 和 `date_equal`
+* 已落地 `model.sample_weight_mode=exp_decay`
+* 支持 `model.sample_weight_params.halflife` 或 `decay_rate`
 
-目标：
+当前语义：
 
-* 新增 `time_decay / exp_decay` 一类模式，让近期样本权重大、远期样本权重小
+* 近期训练日期权重更高
+* 同一日期内仍按横截面样本数均分，避免单日样本数变化直接改变总权重
 
 价值：
 
@@ -344,13 +346,15 @@ run：
 
 ### 2. 主训练 `rolling` 窗口
 
-现状：
+当前状态：
 
-* 现在暴露出来的是评估侧 `walk_forward`，不是最终训练只用最近 `N` 年样本的主训练开关
+* 已落地 `model.train_window`
+* 支持 `mode=rolling`，`unit=dates|years`
 
-目标：
+当前语义：
 
-* 给主训练流程增加 rolling 窗口配置
+* 不再只停留在评估侧 `walk_forward`
+* 主训练、CV、walk-forward 训练段、`final_oos` 拟合和 `live.train_mode=full` 复训都会共用这套训练窗口逻辑
 
 价值：
 
@@ -358,17 +362,24 @@ run：
 
 ### 3. 行业中性化 / 行业内排序
 
-现状：
+当前状态：
 
-* 现在可以 join 行业标签，但不会自动 neutralize 或加行业约束
+* 最小版已落地：`backtest.group_col + backtest.max_names_per_group`
+* 这是组合构造层的 group cap，不是分数残差化，也不是完整行业中性化
 
-目标：
+当前语义：
 
-* 在打分或组合构造阶段加入行业内排序、行业上限或中性化逻辑
+* 可直接利用已 join 的行业列，在回测、持仓导出、live snapshot 和 `grid` 复算里限制单组最多持仓数
 
 价值：
 
 * 降低模型把行业轮动误学成 alpha 的风险
+
+仍未覆盖的范围：
+
+* 行业内排序
+* 行业中性 residualization
+* 风格暴露约束
 
 ## 推荐运行顺序
 

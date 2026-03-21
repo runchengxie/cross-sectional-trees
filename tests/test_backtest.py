@@ -180,6 +180,65 @@ def test_backtest_signal_weighting_uses_signal_magnitude():
     assert np.isclose(turnover_series.iloc[0], 1.0)
 
 
+def test_backtest_group_cap_limits_names_per_group():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                [
+                    "2020-01-01",
+                    "2020-01-01",
+                    "2020-01-01",
+                    "2020-01-01",
+                    "2020-01-01",
+                    "2020-01-01",
+                    "2020-01-02",
+                    "2020-01-02",
+                    "2020-01-02",
+                    "2020-01-02",
+                    "2020-01-02",
+                    "2020-01-02",
+                ]
+            ),
+            "ts_code": ["A1", "A2", "B1", "B2", "C1", "C2"] * 2,
+            "pred": [6.0, 5.0, 4.0, 3.0, 2.0, 1.0] * 2,
+            "close": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                120.0,
+                80.0,
+                110.0,
+                100.0,
+                130.0,
+                100.0,
+            ],
+            "industry": ["A", "A", "B", "B", "C", "C"] * 2,
+        }
+    )
+    rebalance_dates = [pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")]
+    result = backtest_topk(
+        df,
+        pred_col="pred",
+        price_col="close",
+        rebalance_dates=rebalance_dates,
+        top_k=3,
+        shift_days=0,
+        cost_bps=0,
+        trading_days_per_year=252,
+        exit_mode="rebalance",
+        group_col="industry",
+        max_names_per_group=1,
+    )
+    stats, net_series, gross_series, _, period_info = result
+    expected_gross = np.mean([0.20, 0.10, 0.30])
+    assert stats["periods"] == 1
+    assert np.isclose(gross_series.iloc[0], expected_gross)
+    assert np.isclose(net_series.iloc[0], expected_gross)
+
+
 def test_backtest_exit_delay_uses_next_available_price():
     df = pd.DataFrame(
         {

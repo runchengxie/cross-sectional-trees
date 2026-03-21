@@ -122,6 +122,8 @@ def select_holdings(
     prev_holdings: Optional[set[str]],
     buffer_exit: int,
     buffer_entry: int,
+    group_col: Optional[str] = None,
+    max_names_per_group: Optional[int] = None,
 ) -> tuple[list[str], pd.Series]:
     if day.empty or k <= 0:
         return [], pd.Series(dtype=float)
@@ -137,6 +139,14 @@ def select_holdings(
         buffer_exit,
         buffer_entry,
     )
+    group_map = None
+    if (
+        group_col
+        and max_names_per_group is not None
+        and max_names_per_group > 0
+        and group_col in day.columns
+    ):
+        group_map = day.set_index("symbol")[group_col].to_dict()
 
     entry_prices = price_table.loc[entry_date]
     tradable_flags = None
@@ -146,6 +156,7 @@ def select_holdings(
         tradable_flags = tradable_table.loc[entry_date]
 
     holdings: list[str] = []
+    group_counts: dict[object, int] = {}
     for symbol in candidate_order:
         if len(holdings) >= k:
             break
@@ -154,6 +165,13 @@ def select_holdings(
             continue
         if tradable_flags is not None and not bool(tradable_flags.get(symbol, False)):
             continue
+        if group_map is not None:
+            group_value = group_map.get(symbol)
+            if pd.notna(group_value):
+                current_count = group_counts.get(group_value, 0)
+                if current_count >= max_names_per_group:
+                    continue
+                group_counts[group_value] = current_count + 1
         holdings.append(symbol)
     if not holdings:
         return [], pd.Series(dtype=float)
@@ -174,6 +192,8 @@ def build_positions_by_rebalance(
     long_only: bool = True,
     short_k: Optional[int] = None,
     tradable_col: Optional[str] = None,
+    group_col: Optional[str] = None,
+    max_names_per_group: Optional[int] = None,
 ) -> pd.DataFrame:
     if data is not None and not data.empty:
         data = ensure_symbol_columns(data, context="Portfolio data")
@@ -248,6 +268,8 @@ def build_positions_by_rebalance(
                 prev_holdings=prev_holdings,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
+                group_col=group_col,
+                max_names_per_group=max_names_per_group,
             )
             if not holdings:
                 continue
@@ -296,6 +318,8 @@ def build_positions_by_rebalance(
             prev_holdings=prev_holdings,
             buffer_exit=buffer_exit,
             buffer_entry=buffer_entry,
+            group_col=group_col,
+            max_names_per_group=max_names_per_group,
         )
         short_holdings, _ = select_holdings(
             day,
@@ -308,6 +332,8 @@ def build_positions_by_rebalance(
             prev_holdings=prev_short_holdings,
             buffer_exit=buffer_exit,
             buffer_entry=buffer_entry,
+            group_col=group_col,
+            max_names_per_group=max_names_per_group,
         )
         if not long_holdings or not short_holdings:
             continue

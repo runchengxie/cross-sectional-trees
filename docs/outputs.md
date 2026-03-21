@@ -280,6 +280,22 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. `provider_overlay` 只表示运行时是否启用了第二路 provider 估值 merge，不等于这些列在每个 `trade_date` 都有值。
 1. 审 provider 估值链路时，优先看 `config.used.yml` 与这里的 `fundamentals.provider_overlay`，再决定是按 file 还是按 overlay 口径复现。
 
+`summary.json -> run` 现在还会记录训练机制相关元数据：
+
+```json
+{
+  "model_type": "xgb_ranker",
+  "sample_weight_mode": "exp_decay",
+  "sample_weight_params": {"halflife": 12},
+  "train_window": {"mode": "rolling", "size": 16, "unit": "dates"}
+}
+```
+
+说明：
+
+1. `sample_weight_mode` / `sample_weight_params` 反映模型拟合时是否启用了近期样本加权。
+1. `train_window` 反映主训练、CV、walk-forward 训练段、`final_oos` 拟合与 `live.train_mode=full` 复训所使用的训练窗口配置。
+
 `summary.json -> industry` 会记录本地行业标签 join 的配置与解析结果：
 
 ```json
@@ -299,6 +315,22 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. `industry` 只表示本次运行是否把本地行业标签接进了 panel，不等于系统已经自动做了行业中性化。
 1. `resolved_columns` 是本次真正保留到 panel / artifact 的行业列集合。
 
+`summary.json -> split` 现在会额外区分原始 train 日期数和训练窗口裁剪后的实际 train 日期数：
+
+```json
+{
+  "train_dates": 16,
+  "train_dates_raw": 28,
+  "test_dates": 8,
+  "train_window": {"mode": "rolling", "size": 16, "unit": "dates", "applied": true}
+}
+```
+
+说明：
+
+1. `train_dates_raw` 是 purge/embargo 之后、但还没应用 `model.train_window` 时的训练日期数。
+1. `train_dates` 是最终实际用于本轮主训练的日期数。
+
 ## 稳定性契约（给下游脚本）
 
 稳定 contract（版本演进时尽量保持不变）：
@@ -307,6 +339,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. 研究主链路内部 canonical 标的列是 `symbol`；run artifacts / CLI 输出会继续双写 `symbol`、`ts_code`、`stock_ticker`。
 1. 持仓主键列语义：`trade_date`、`entry_date`、`symbol`、`ts_code`、`stock_ticker`、`weight`、`signal`、`rank`、`side`。
 1. `weight` 的解释取决于 `backtest.weighting`：`equal` 时等权，`signal` 时为信号 softmax 后的目标权重。
+1. 若配置了 `backtest.group_col + max_names_per_group`，持仓文件会体现该分组上限约束；这属于组合层约束，不会改变 `eval` 里的 IC / quantile 指标。
 1. `summary.json` 内记录的文件路径优先级高于固定文件名推断。
 
 best-effort（可能为空、缺失或未产出文件）：
@@ -363,6 +396,10 @@ best-effort（可能为空、缺失或未产出文件）：
 | `signal` | 该标的预测信号值 |
 | `rank` | 当期截面排序名次 |
 | `side` | `long` 或 `short` |
+
+补充：
+
+1. 若启用了 `backtest.group_col + max_names_per_group`，这里展示的是应用分组上限约束后的最终持仓，不等于单纯的全市场前 `K` 名。
 
 ### `positions_current.csv` / `positions_current_live.csv`
 

@@ -96,6 +96,13 @@ model:
   params:
     n_estimators: 100
     max_depth: 5
+  sample_weight_mode: exp_decay  # none / date_equal / exp_decay
+  sample_weight_params:
+    halflife: 12
+  train_window:
+    mode: rolling                # full / rolling
+    size: 16
+    unit: dates                  # dates / years
 ```
 
 详见 `docs/concepts/model-selection.md`。
@@ -145,6 +152,25 @@ backtest:
 | `rebalance_frequency` | 再平衡频率 | `M` / `Q` / `Y` |
 | `shift_days` | 信号位移 | `1`, `0` |
 
+### `model`
+
+| 键 | 说明 | 常见值 |
+|---|------|--------|
+| `type` | 模型类型 | `xgb_regressor` / `xgb_ranker` / `ridge` / `elasticnet` |
+| `sample_weight_mode` | 训练样本加权 | `none` / `date_equal` / `exp_decay` |
+| `sample_weight_params.halflife` | `exp_decay` 半衰期（按训练日期步数） | `8`, `12`, `16` |
+| `sample_weight_params.decay_rate` | `exp_decay` 的固定衰减率（可替代 `halflife`） | `0.95`, `0.98` |
+| `train_window.mode` | 主训练窗口模式 | `full` / `rolling` |
+| `train_window.size` | rolling 窗口大小 | `12`, `16`, `20` |
+| `train_window.unit` | rolling 窗口单位 | `dates` / `years` |
+
+说明：
+
+* `sample_weight_mode=exp_decay` 时，近期训练日期权重更高；同一日期内仍会先按截面样本数做均分。
+* `sample_weight_params` 目前至少需要提供 `halflife` 或 `decay_rate` 之一。
+* `model.train_window` 作用在主训练、CV、walk-forward 训练段、`final_oos` 拟合和 `live.train_mode=full` 的再训练，不是评估侧 `walk_forward` 的别名。
+* `train_window.unit=dates` 表示最近 `N` 个训练日期；`years` 表示相对训练终点回看最近 `N` 年。
+
 ### `eval`
 
 | 键 | 说明 | 常见值 |
@@ -163,11 +189,14 @@ backtest:
 | `weighting` | 权重方式 | `equal` / `signal` |
 | `exit_price_policy` | 退出价格策略 | `strict` / `ffill` / `delay` |
 | `rebalance_frequency` | 再平衡频率 | `M` / `Q` / `Y` |
+| `group_col` | 组合层分组列（例如行业列） | `first_industry_name` |
+| `max_names_per_group` | 单组最多持仓数 | `2`, `3`, `5` |
 
 说明：
 
 * 若同时启用 `universe.by_date_file`，选股样本仍按 PIT universe 过滤。
 * 回测的 entry/exit 定价与 `tradable` 检查会使用未经过 `universe_by_date` 过滤的日线价格面板，避免已持仓股票在持有期内因 universe 变化而“消失”。
+* `backtest.group_col + max_names_per_group` 是组合构造阶段的最小版暴露约束，不会改变模型打分，也不等于完整行业中性化。
 
 ### `fundamentals`
 

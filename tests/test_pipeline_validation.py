@@ -166,6 +166,34 @@ def test_pipeline_model_params_validation(tmp_path, no_client):
         pipeline.run(str(config_path))
 
 
+def test_pipeline_exp_decay_requires_weight_params(tmp_path, no_client):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["model"]["sample_weight_mode"] = "exp_decay"
+    config_path = _write_config(tmp_path, config)
+    with pytest.raises(
+        SystemExit,
+        match="model.sample_weight_mode=exp_decay requires model.sample_weight_params.halflife or decay_rate.",
+    ):
+        pipeline.run(str(config_path))
+
+
+@pytest.mark.parametrize(
+    ("train_window", "message"),
+    [
+        ({"mode": "oops", "size": 4, "unit": "dates"}, "model.train_window.mode must be one of: full, rolling."),
+        ({"mode": "rolling", "unit": "dates"}, "model.train_window.size is required when model.train_window.mode=rolling."),
+        ({"mode": "rolling", "size": 0, "unit": "dates"}, "model.train_window.size must be a positive integer."),
+        ({"mode": "rolling", "size": 4, "unit": "months"}, "model.train_window.unit must be one of: dates, years."),
+    ],
+)
+def test_pipeline_train_window_validation(tmp_path, no_client, train_window, message):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["model"]["train_window"] = train_window
+    config_path = _write_config(tmp_path, config)
+    with pytest.raises(SystemExit, match=message):
+        pipeline.run(str(config_path))
+
+
 def test_hk_benchmark_protocol_configs_align_research_unit():
     repo_root = Path(__file__).resolve().parents[1]
     config_paths = [

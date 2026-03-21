@@ -433,6 +433,19 @@ def main(argv: list[str] | None = None) -> None:
     tradable_col = str(tradable_col).strip() if tradable_col is not None else None
     if tradable_col and tradable_col not in scored_data.columns:
         tradable_col = None
+    backtest_group_col = _get_nested(summary, "backtest", "group_col")
+    if backtest_group_col is None:
+        backtest_group_col = backtest_cfg.get("group_col")
+    backtest_group_col = (
+        str(backtest_group_col).strip() if backtest_group_col is not None else None
+    )
+    if backtest_group_col and backtest_group_col not in scored_data.columns:
+        backtest_group_col = None
+    backtest_max_names_per_group = _get_nested(summary, "backtest", "max_names_per_group")
+    if backtest_max_names_per_group is None:
+        backtest_max_names_per_group = backtest_cfg.get("max_names_per_group")
+    if backtest_max_names_per_group is not None:
+        backtest_max_names_per_group = int(backtest_max_names_per_group)
 
     rows: list[dict] = []
     for top_k, cost_bps, buffer_exit, buffer_entry, weighting in combos:
@@ -501,6 +514,8 @@ def main(argv: list[str] | None = None) -> None:
                     buffer_exit=int(buffer_exit),
                     buffer_entry=int(buffer_entry),
                     tradable_col=tradable_col,
+                    group_col=backtest_group_col,
+                    max_names_per_group=backtest_max_names_per_group,
                     exit_price_policy=backtest_exit_price_policy,
                     exit_fallback_policy=backtest_exit_fallback_policy,
                 )

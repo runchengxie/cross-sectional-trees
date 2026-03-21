@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from csml.split import build_sample_weight, time_series_cv_ic
+from csml.split import build_sample_weight, select_train_window_dates, time_series_cv_ic
 
 
 def test_time_series_cv_gap_skips_all():
@@ -42,6 +42,49 @@ def test_build_sample_weight_date_equal():
     df = df.assign(weight=weights)
     sums = df.groupby("trade_date")["weight"].sum().values
     assert all(abs(value - 1.0) < 1e-12 for value in sums)
+
+
+def test_build_sample_weight_exp_decay_increases_recent_dates():
+    dates = pd.to_datetime(
+        [
+            "2020-01-01",
+            "2020-01-01",
+            "2020-01-02",
+            "2020-01-02",
+            "2020-01-03",
+        ]
+    )
+    df = pd.DataFrame(
+        {
+            "trade_date": dates,
+            "ts_code": ["A", "B", "A", "B", "A"],
+            "f1": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "target": [0.1, 0.2, 0.3, 0.4, 0.5],
+        }
+    )
+    weights = build_sample_weight(
+        df,
+        "exp_decay",
+        params={"halflife": 1.0},
+    )
+    assert weights is not None
+    totals = df.assign(weight=weights).groupby("trade_date")["weight"].sum()
+    assert totals.iloc[2] > totals.iloc[1] > totals.iloc[0]
+    assert np.isclose(float(totals.mean()), 1.0)
+
+
+def test_select_train_window_dates_supports_dates_unit():
+    dates = pd.date_range("2020-01-01", periods=8, freq="D")
+    selected = select_train_window_dates(dates.to_numpy(), mode="rolling", size=3, unit="dates")
+    assert pd.to_datetime(selected).tolist() == list(dates[-3:])
+
+
+def test_select_train_window_dates_supports_years_unit():
+    dates = pd.to_datetime(
+        ["2020-03-31", "2021-03-31", "2022-03-31", "2023-03-31", "2024-03-31"]
+    )
+    selected = select_train_window_dates(dates.to_numpy(), mode="rolling", size=2, unit="years")
+    assert pd.to_datetime(selected).tolist() == list(dates[-3:])
 
 
 def test_time_series_cv_supports_model_cfg():
@@ -133,6 +176,34 @@ def test_time_series_cv_supports_custom_date_col_with_unsorted_rows():
         model_cfg={"type": "ridge", "params": {"alpha": 1.0}},
         signal_direction=1.0,
         date_col="trade_dt",
+    )
+
+    assert len(scores) == 3
+    assert all(np.isfinite(scores))
+
+
+def test_time_series_cv_supports_exp_decay_and_train_window():
+    dates = pd.date_range("2020-01-01", periods=12, freq="D")
+    rows = []
+    for idx, date in enumerate(dates):
+        rows.append({"trade_date": date, "ts_code": "A", "f1": 0.0, "target": 0.1 + idx * 0.01})
+        rows.append({"trade_date": date, "ts_code": "B", "f1": 1.0, "target": 0.9 + idx * 0.01})
+    df = pd.DataFrame(rows)
+
+    scores = time_series_cv_ic(
+        df,
+        features=["f1"],
+        target_col="target",
+        n_splits=3,
+        embargo_days=0,
+        purge_days=0,
+        model_cfg={"type": "ridge", "params": {"alpha": 1.0}},
+        signal_direction=1.0,
+        sample_weight_mode="exp_decay",
+        sample_weight_params={"halflife": 3.0},
+        train_window_mode="rolling",
+        train_window_size=5,
+        train_window_unit="dates",
     )
 
     assert len(scores) == 3

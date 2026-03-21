@@ -234,6 +234,8 @@ def backtest_topk(
     buffer_exit: int = 0,
     buffer_entry: int = 0,
     tradable_col: Optional[str] = None,
+    group_col: Optional[str] = None,
+    max_names_per_group: Optional[int] = None,
     exit_price_policy: Literal["strict", "ffill", "delay"] = "strict",
     exit_fallback_policy: Literal["ffill", "none"] = "ffill",
     execution: Optional[ExecutionModel] = None,
@@ -390,6 +392,8 @@ def backtest_topk(
                 prev_holdings=prev_holdings,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
+                group_col=group_col,
+                max_names_per_group=max_names_per_group,
             )
             if not holdings:
                 continue
@@ -440,6 +444,8 @@ def backtest_topk(
                 prev_holdings=prev_holdings,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
+                group_col=group_col,
+                max_names_per_group=max_names_per_group,
             )
             short_holdings, short_entry = select_holdings(
                 day,
@@ -452,6 +458,8 @@ def backtest_topk(
                 prev_holdings=prev_short_holdings,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
+                group_col=group_col,
+                max_names_per_group=max_names_per_group,
             )
             if not long_holdings or not short_holdings:
                 continue

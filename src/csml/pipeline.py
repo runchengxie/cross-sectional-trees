@@ -63,7 +63,7 @@ from .metrics import (
     bucket_ic_summary,
 )
 from .transform import apply_cross_sectional_transform
-from .split import build_sample_weight, time_series_cv_ic
+from .split import build_sample_weight, select_train_window_dates, time_series_cv_ic
 from .modeling import build_model, fit_model, resolve_model_spec, feature_importance_frame
 from .backtest import backtest_topk, summarize_period_returns
 from .portfolio import build_positions_by_rebalance
@@ -1466,12 +1466,75 @@ def run(config_ref: str | Path | None = None) -> None:
         sys.exit(str(exc))
     MODEL_CFG = {"type": MODEL_TYPE, "params": MODEL_PARAMS}
     SAMPLE_WEIGHT_MODE = str(model_cfg.get("sample_weight_mode", "none")).strip().lower()
+    SAMPLE_WEIGHT_PARAMS_RAW = model_cfg.get("sample_weight_params")
+    if SAMPLE_WEIGHT_PARAMS_RAW is None:
+        SAMPLE_WEIGHT_PARAMS = {}
+    elif isinstance(SAMPLE_WEIGHT_PARAMS_RAW, Mapping):
+        SAMPLE_WEIGHT_PARAMS = dict(SAMPLE_WEIGHT_PARAMS_RAW)
+    else:
+        sys.exit("model.sample_weight_params must be a mapping when provided.")
     if SAMPLE_WEIGHT_MODE in {"", "none", "null"}:
         SAMPLE_WEIGHT_MODE = "none"
     if SAMPLE_WEIGHT_MODE in {"date"}:
         SAMPLE_WEIGHT_MODE = "date_equal"
-    if SAMPLE_WEIGHT_MODE not in {"none", "date_equal"}:
-        sys.exit("model.sample_weight_mode must be one of: none, date_equal.")
+    if SAMPLE_WEIGHT_MODE in {"time_decay", "exp_decay", "exp"}:
+        SAMPLE_WEIGHT_MODE = "exp_decay"
+    if SAMPLE_WEIGHT_MODE not in {"none", "date_equal", "exp_decay"}:
+        sys.exit("model.sample_weight_mode must be one of: none, date_equal, exp_decay.")
+    if SAMPLE_WEIGHT_MODE == "exp_decay":
+        halflife_raw = SAMPLE_WEIGHT_PARAMS.get("halflife", SAMPLE_WEIGHT_PARAMS.get("half_life"))
+        decay_rate_raw = SAMPLE_WEIGHT_PARAMS.get("decay_rate", SAMPLE_WEIGHT_PARAMS.get("rate"))
+        if halflife_raw is None and decay_rate_raw is None:
+            sys.exit(
+                "model.sample_weight_mode=exp_decay requires "
+                "model.sample_weight_params.halflife or decay_rate."
+            )
+        if halflife_raw is not None:
+            try:
+                halflife = float(halflife_raw)
+            except (TypeError, ValueError):
+                sys.exit("model.sample_weight_params.halflife must be a number.")
+            if not np.isfinite(halflife) or halflife <= 0:
+                sys.exit("model.sample_weight_params.halflife must be > 0.")
+        if decay_rate_raw is not None:
+            try:
+                decay_rate = float(decay_rate_raw)
+            except (TypeError, ValueError):
+                sys.exit("model.sample_weight_params.decay_rate must be a number.")
+            if not np.isfinite(decay_rate) or decay_rate <= 0 or decay_rate > 1:
+                sys.exit("model.sample_weight_params.decay_rate must be in (0, 1].")
+        min_weight_raw = SAMPLE_WEIGHT_PARAMS.get("min_weight")
+        if min_weight_raw is not None:
+            try:
+                min_weight = float(min_weight_raw)
+            except (TypeError, ValueError):
+                sys.exit("model.sample_weight_params.min_weight must be a number.")
+            if not np.isfinite(min_weight) or min_weight < 0:
+                sys.exit("model.sample_weight_params.min_weight must be >= 0.")
+
+    train_window_cfg = model_cfg.get("train_window")
+    if train_window_cfg is None:
+        train_window_cfg = {}
+    if not isinstance(train_window_cfg, Mapping):
+        sys.exit("model.train_window must be a mapping when provided.")
+    TRAIN_WINDOW_MODE = str(train_window_cfg.get("mode", "full")).strip().lower()
+    if TRAIN_WINDOW_MODE in {"", "all", "expanding"}:
+        TRAIN_WINDOW_MODE = "full"
+    if TRAIN_WINDOW_MODE not in {"full", "rolling"}:
+        sys.exit("model.train_window.mode must be one of: full, rolling.")
+    TRAIN_WINDOW_SIZE = train_window_cfg.get("size")
+    if TRAIN_WINDOW_SIZE is not None:
+        try:
+            TRAIN_WINDOW_SIZE = int(TRAIN_WINDOW_SIZE)
+        except (TypeError, ValueError):
+            sys.exit("model.train_window.size must be a positive integer.")
+        if TRAIN_WINDOW_SIZE <= 0:
+            sys.exit("model.train_window.size must be a positive integer.")
+    TRAIN_WINDOW_UNIT = str(train_window_cfg.get("unit", "dates")).strip().lower()
+    if TRAIN_WINDOW_UNIT not in {"dates", "years"}:
+        sys.exit("model.train_window.unit must be one of: dates, years.")
+    if TRAIN_WINDOW_MODE == "rolling" and TRAIN_WINDOW_SIZE is None:
+        sys.exit("model.train_window.size is required when model.train_window.mode=rolling.")
 
     BACKTEST_ENABLED = bool(backtest_cfg.get("enabled", True))
     BACKTEST_TOP_K = int(backtest_cfg.get("top_k", TOP_K))
@@ -1485,6 +1548,17 @@ def run(config_ref: str | Path | None = None) -> None:
     BACKTEST_WEIGHTING = str(backtest_cfg.get("weighting", "equal")).strip().lower()
     if BACKTEST_WEIGHTING not in {"equal", "signal"}:
         sys.exit("backtest.weighting must be one of: equal, signal.")
+    BACKTEST_GROUP_COL = backtest_cfg.get("group_col")
+    if BACKTEST_GROUP_COL is not None:
+        BACKTEST_GROUP_COL = str(BACKTEST_GROUP_COL).strip() or None
+    BACKTEST_MAX_NAMES_PER_GROUP = backtest_cfg.get("max_names_per_group")
+    if BACKTEST_MAX_NAMES_PER_GROUP is not None:
+        try:
+            BACKTEST_MAX_NAMES_PER_GROUP = int(BACKTEST_MAX_NAMES_PER_GROUP)
+        except (TypeError, ValueError):
+            sys.exit("backtest.max_names_per_group must be a positive integer.")
+        if BACKTEST_MAX_NAMES_PER_GROUP <= 0:
+            sys.exit("backtest.max_names_per_group must be a positive integer.")
     BACKTEST_SIGNAL_DIRECTION_RAW = backtest_cfg.get("signal_direction")
     if BACKTEST_SIGNAL_DIRECTION_RAW is not None:
         BACKTEST_SIGNAL_DIRECTION_RAW = float(BACKTEST_SIGNAL_DIRECTION_RAW)
@@ -2217,6 +2291,12 @@ def run(config_ref: str | Path | None = None) -> None:
                 on=["trade_date", "symbol"],
                 how="left",
             )
+    if BACKTEST_GROUP_COL and BACKTEST_GROUP_COL not in df_full.columns:
+        logger.warning(
+            "backtest.group_col=%s not found in dataset; industry/group constraint disabled.",
+            BACKTEST_GROUP_COL,
+        )
+        BACKTEST_GROUP_COL = None
     (
         df_full_sorted,
         all_dates_full,
@@ -2334,6 +2414,56 @@ def run(config_ref: str | Path | None = None) -> None:
                 final_oos_end.strftime("%Y-%m-%d"),
             )
 
+    def _apply_model_train_window(
+        train_dates_input: np.ndarray | list[pd.Timestamp],
+        *,
+        label: str,
+    ) -> np.ndarray:
+        train_dates_array = np.asarray(pd.to_datetime(train_dates_input), dtype="datetime64[ns]")
+        if train_dates_array.size == 0:
+            return train_dates_array
+        windowed_dates = select_train_window_dates(
+            train_dates_array,
+            mode=TRAIN_WINDOW_MODE,
+            size=TRAIN_WINDOW_SIZE,
+            unit=TRAIN_WINDOW_UNIT,
+        )
+        if (
+            TRAIN_WINDOW_MODE == "rolling"
+            and windowed_dates.size > 0
+            and windowed_dates.size < train_dates_array.size
+        ):
+            logger.info(
+                "Applied model.train_window to %s: using %s/%s dates (%s -> %s).",
+                label,
+                len(windowed_dates),
+                len(train_dates_array),
+                pd.to_datetime(windowed_dates[0]).strftime("%Y-%m-%d"),
+                pd.to_datetime(windowed_dates[-1]).strftime("%Y-%m-%d"),
+            )
+        return windowed_dates
+
+    def _slice_with_train_window(
+        ordered: pd.DataFrame,
+        start_rows: np.ndarray,
+        end_rows: np.ndarray,
+        date_to_pos: dict[pd.Timestamp, int],
+        train_dates_input: np.ndarray | list[pd.Timestamp],
+        *,
+        label: str,
+    ) -> tuple[pd.DataFrame, np.ndarray]:
+        windowed_dates = _apply_model_train_window(train_dates_input, label=label)
+        if windowed_dates.size == 0:
+            return ordered.iloc[0:0].copy(), windowed_dates
+        frame = _slice_trade_dates(
+            ordered,
+            start_rows,
+            end_rows,
+            date_to_pos,
+            windowed_dates,
+        )
+        return frame, windowed_dates
+
     rebalance_gap_days = None
     if SAMPLE_ON_REBALANCE_DATES:
         sample_dates = sorted(df_model["trade_date"].unique())
@@ -2410,15 +2540,15 @@ def run(config_ref: str | Path | None = None) -> None:
     train_end = split_idx
     if EFFECTIVE_GAP_STEPS > 0:
         train_end = max(0, split_idx - EFFECTIVE_GAP_STEPS)
-    train_dates = all_dates[:train_end]
+    train_dates_full = all_dates[:train_end]
     test_dates = all_dates[split_idx:]
-
-    train_df = _slice_trade_date_range(
+    train_df, train_dates = _slice_with_train_window(
         df_model_sorted,
         all_date_start_rows,
         all_date_end_rows,
-        0,
-        train_end - 1,
+        all_date_to_pos,
+        train_dates_full,
+        label="main train split",
     )
     test_df = _slice_trade_date_range(
         df_model_sorted,
@@ -2432,8 +2562,9 @@ def run(config_ref: str | Path | None = None) -> None:
         sys.exit("Not enough dates for train/test after embargo.")
 
     logger.info(
-        "Train/test split: train_dates=%s, test_dates=%s, purge_steps=%s, embargo_steps=%s.",
+        "Train/test split: train_dates=%s/%s, test_dates=%s, purge_steps=%s, embargo_steps=%s.",
         len(train_dates),
+        len(train_dates_full),
         len(test_dates),
         PURGE_STEPS,
         EMBARGO_STEPS,
@@ -2491,7 +2622,11 @@ def run(config_ref: str | Path | None = None) -> None:
             perm_train = permute_target_within_date(train_data, TARGET, rng)
 
             perm_model = build_model(MODEL_TYPE, MODEL_PARAMS)
-            perm_weights = build_sample_weight(perm_train, SAMPLE_WEIGHT_MODE)
+            perm_weights = build_sample_weight(
+                perm_train,
+                SAMPLE_WEIGHT_MODE,
+                params=SAMPLE_WEIGHT_PARAMS,
+            )
             fit_model(
                 perm_model,
                 MODEL_TYPE,
@@ -2547,7 +2682,10 @@ def run(config_ref: str | Path | None = None) -> None:
 
     def evaluate_window(window_meta: dict) -> dict:
         window_id = int(window_meta["window"])
-        train_dates = window_meta["train_dates"]
+        train_dates = _apply_model_train_window(
+            window_meta["train_dates"],
+            label=f"walk_forward window {window_id}",
+        )
         test_dates = window_meta["test_dates"]
         train_df_w = _slice_trade_dates(
             df_model_sorted,
@@ -2565,8 +2703,12 @@ def run(config_ref: str | Path | None = None) -> None:
         )
         result = {
             "window": window_id,
-            "train_start": pd.to_datetime(window_meta["train_start"]).strftime("%Y-%m-%d"),
-            "train_end": pd.to_datetime(window_meta["train_end"]).strftime("%Y-%m-%d"),
+            "train_start": pd.to_datetime(train_dates[0]).strftime("%Y-%m-%d")
+            if len(train_dates)
+            else pd.to_datetime(window_meta["train_start"]).strftime("%Y-%m-%d"),
+            "train_end": pd.to_datetime(train_dates[-1]).strftime("%Y-%m-%d")
+            if len(train_dates)
+            else pd.to_datetime(window_meta["train_end"]).strftime("%Y-%m-%d"),
             "test_start": pd.to_datetime(window_meta["test_start"]).strftime("%Y-%m-%d"),
             "test_end": pd.to_datetime(window_meta["test_end"]).strftime("%Y-%m-%d"),
             "status": "ok",
@@ -2588,6 +2730,10 @@ def run(config_ref: str | Path | None = None) -> None:
                 MODEL_CFG,
                 1.0,
                 sample_weight_mode=SAMPLE_WEIGHT_MODE,
+                sample_weight_params=SAMPLE_WEIGHT_PARAMS,
+                train_window_mode=TRAIN_WINDOW_MODE,
+                train_window_size=TRAIN_WINDOW_SIZE,
+                train_window_unit=TRAIN_WINDOW_UNIT,
             )
             if cv_scores_w:
                 cv_mean = float(np.nanmean(cv_scores_w))
@@ -2601,7 +2747,11 @@ def run(config_ref: str | Path | None = None) -> None:
                 }
 
         model_w = build_model(MODEL_TYPE, MODEL_PARAMS)
-        train_weights_w = build_sample_weight(train_df_w, SAMPLE_WEIGHT_MODE)
+        train_weights_w = build_sample_weight(
+            train_df_w,
+            SAMPLE_WEIGHT_MODE,
+            params=SAMPLE_WEIGHT_PARAMS,
+        )
         fit_model(
             model_w,
             MODEL_TYPE,
@@ -2749,6 +2899,10 @@ def run(config_ref: str | Path | None = None) -> None:
                         short_k=BACKTEST_SHORT_K,
                         buffer_exit=BACKTEST_BUFFER_EXIT,
                         buffer_entry=BACKTEST_BUFFER_ENTRY,
+                        group_col=BACKTEST_GROUP_COL
+                        if BACKTEST_GROUP_COL in test_full_w.columns
+                        else None,
+                        max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
                         tradable_col=BACKTEST_TRADABLE_COL
                         if BACKTEST_TRADABLE_COL in backtest_pricing_df.columns
                         else None,
@@ -2815,6 +2969,10 @@ def run(config_ref: str | Path | None = None) -> None:
         MODEL_CFG,
         1.0,
         sample_weight_mode=SAMPLE_WEIGHT_MODE,
+        sample_weight_params=SAMPLE_WEIGHT_PARAMS,
+        train_window_mode=TRAIN_WINDOW_MODE,
+        train_window_size=TRAIN_WINDOW_SIZE,
+        train_window_unit=TRAIN_WINDOW_UNIT,
     )
     if cv_scores_raw:
         logger.info(
@@ -2842,7 +3000,11 @@ def run(config_ref: str | Path | None = None) -> None:
     # -----------------------------------------------------------------------------
     logger.info("Fitting model (%s) ...", MODEL_TYPE)
     model = build_model(MODEL_TYPE, MODEL_PARAMS)
-    train_weights = build_sample_weight(train_df, SAMPLE_WEIGHT_MODE)
+    train_weights = build_sample_weight(
+        train_df,
+        SAMPLE_WEIGHT_MODE,
+        params=SAMPLE_WEIGHT_PARAMS,
+    )
     fit_model(
         model,
         MODEL_TYPE,
@@ -2941,61 +3103,94 @@ def run(config_ref: str | Path | None = None) -> None:
                 live_model = model
                 if LIVE_TRAIN_MODE == "full":
                     live_model = build_model(MODEL_TYPE, MODEL_PARAMS)
-                    live_weights = build_sample_weight(df_live_labeled, SAMPLE_WEIGHT_MODE)
-                    fit_model(
-                        live_model,
-                        MODEL_TYPE,
-                        df_live_labeled,
-                        features=FEATURES,
-                        target_col=TARGET,
-                        sample_weight=live_weights,
+                    (
+                        df_live_labeled_sorted,
+                        live_all_dates,
+                        live_date_start_rows,
+                        live_date_end_rows,
+                        live_date_to_pos,
+                    ) = _build_trade_date_slices(df_live_labeled)
+                    (
+                        df_live_train,
+                        _,
+                    ) = _slice_with_train_window(
+                        df_live_labeled_sorted,
+                        live_date_start_rows,
+                        live_date_end_rows,
+                        live_date_to_pos,
+                        live_all_dates,
+                        label="live full fit",
                     )
-
-                df_live["pred"] = live_model.predict(df_live[FEATURES])
-                live_pred_col = "pred"
-                if SIGNAL_DIRECTION != 1.0:
-                    df_live["signal"] = df_live["pred"] * SIGNAL_DIRECTION
-                    live_pred_col = "signal"
-
-                live_dates = sorted(df_live["trade_date"].unique())
-                live_rebalance = get_rebalance_dates(live_dates, BACKTEST_REBALANCE_FREQUENCY)
-                live_counts = df_live.groupby("trade_date")["symbol"].nunique()
-                live_valid_dates = set(
-                    live_counts[live_counts >= MIN_SYMBOLS_PER_DATE].index
-                )
-                live_rebalance = [d for d in live_rebalance if d in live_valid_dates]
-
-                positions_by_rebalance_live = build_positions_by_rebalance(
-                    df_live,
-                    pred_col=live_pred_col,
-                    price_col=PRICE_COL,
-                    rebalance_dates=live_rebalance,
-                    top_k=BACKTEST_TOP_K,
-                    shift_days=LABEL_SHIFT_DAYS,
-                    weighting=BACKTEST_WEIGHTING,
-                    buffer_exit=BACKTEST_BUFFER_EXIT,
-                    buffer_entry=BACKTEST_BUFFER_ENTRY,
-                    long_only=BACKTEST_LONG_ONLY,
-                    short_k=BACKTEST_SHORT_K,
-                    tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in df_live.columns else None,
-                )
-
-                if positions_by_rebalance_live is None or positions_by_rebalance_live.empty:
-                    logger.warning("Live snapshot skipped: no positions generated.")
-                else:
-                    live_positions_ready = True
-                    entry_dates_live = pd.to_datetime(
-                        positions_by_rebalance_live["entry_date"], errors="coerce"
-                    )
-                    if entry_dates_live.notna().any():
-                        latest_entry = entry_dates_live.max()
-                        holdings_count = int((entry_dates_live == latest_entry).sum())
-                        logger.info(
-                            "Live snapshot ready: as_of=%s, entry_date=%s, holdings=%s",
-                            live_as_of.strftime("%Y-%m-%d"),
-                            latest_entry.strftime("%Y-%m-%d"),
-                            holdings_count,
+                    if df_live_train.empty:
+                        logger.warning(
+                            "Live snapshot skipped: model.train_window left no in-sample data."
                         )
+                        live_model = None
+                    else:
+                        live_weights = build_sample_weight(
+                            df_live_train,
+                            SAMPLE_WEIGHT_MODE,
+                            params=SAMPLE_WEIGHT_PARAMS,
+                        )
+                        fit_model(
+                            live_model,
+                            MODEL_TYPE,
+                            df_live_train,
+                            features=FEATURES,
+                            target_col=TARGET,
+                            sample_weight=live_weights,
+                        )
+
+                if live_model is None:
+                    logger.warning("Live snapshot skipped: no live model was fitted.")
+                else:
+                    df_live["pred"] = live_model.predict(df_live[FEATURES])
+                    live_pred_col = "pred"
+                    if SIGNAL_DIRECTION != 1.0:
+                        df_live["signal"] = df_live["pred"] * SIGNAL_DIRECTION
+                        live_pred_col = "signal"
+
+                    live_dates = sorted(df_live["trade_date"].unique())
+                    live_rebalance = get_rebalance_dates(live_dates, BACKTEST_REBALANCE_FREQUENCY)
+                    live_counts = df_live.groupby("trade_date")["symbol"].nunique()
+                    live_valid_dates = set(
+                        live_counts[live_counts >= MIN_SYMBOLS_PER_DATE].index
+                    )
+                    live_rebalance = [d for d in live_rebalance if d in live_valid_dates]
+
+                    positions_by_rebalance_live = build_positions_by_rebalance(
+                        df_live,
+                        pred_col=live_pred_col,
+                        price_col=PRICE_COL,
+                        rebalance_dates=live_rebalance,
+                        top_k=BACKTEST_TOP_K,
+                        shift_days=LABEL_SHIFT_DAYS,
+                        weighting=BACKTEST_WEIGHTING,
+                        buffer_exit=BACKTEST_BUFFER_EXIT,
+                        buffer_entry=BACKTEST_BUFFER_ENTRY,
+                        long_only=BACKTEST_LONG_ONLY,
+                        short_k=BACKTEST_SHORT_K,
+                        tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in df_live.columns else None,
+                        group_col=BACKTEST_GROUP_COL if BACKTEST_GROUP_COL in df_live.columns else None,
+                        max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
+                    )
+
+                    if positions_by_rebalance_live is None or positions_by_rebalance_live.empty:
+                        logger.warning("Live snapshot skipped: no positions generated.")
+                    else:
+                        live_positions_ready = True
+                        entry_dates_live = pd.to_datetime(
+                            positions_by_rebalance_live["entry_date"], errors="coerce"
+                        )
+                        if entry_dates_live.notna().any():
+                            latest_entry = entry_dates_live.max()
+                            holdings_count = int((entry_dates_live == latest_entry).sum())
+                            logger.info(
+                                "Live snapshot ready: as_of=%s, entry_date=%s, holdings=%s",
+                                live_as_of.strftime("%Y-%m-%d"),
+                                latest_entry.strftime("%Y-%m-%d"),
+                                holdings_count,
+                            )
 
     if LIVE_ENABLED and not BACKTEST_ENABLED and not live_positions_ready:
         raise SystemExit(
@@ -3282,6 +3477,10 @@ def run(config_ref: str | Path | None = None) -> None:
                 tradable_col=BACKTEST_TRADABLE_COL
                 if BACKTEST_TRADABLE_COL in eval_df_full.columns
                 else None,
+                group_col=BACKTEST_GROUP_COL
+                if BACKTEST_GROUP_COL in eval_df_full.columns
+                else None,
+                max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
             )
         if allow_live_fallback and LIVE_ENABLED and not BACKTEST_ENABLED:
             positions_by_rebalance = positions_by_rebalance_live
@@ -3308,6 +3507,10 @@ def run(config_ref: str | Path | None = None) -> None:
                     weighting=BACKTEST_WEIGHTING,
                     buffer_exit=BACKTEST_BUFFER_EXIT,
                     buffer_entry=BACKTEST_BUFFER_ENTRY,
+                    group_col=BACKTEST_GROUP_COL
+                    if BACKTEST_GROUP_COL in eval_df_full.columns
+                    else None,
+                    max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
                     tradable_col=BACKTEST_TRADABLE_COL
                     if BACKTEST_TRADABLE_COL in backtest_pricing_df.columns
                     else None,
@@ -3575,46 +3778,65 @@ def run(config_ref: str | Path | None = None) -> None:
         else:
             logger.info("Fitting final model on all in-sample data for OOS evaluation ...")
             final_model = build_model(MODEL_TYPE, MODEL_PARAMS)
-            final_weights = build_sample_weight(df_model, SAMPLE_WEIGHT_MODE)
-            fit_model(
-                final_model,
-                MODEL_TYPE,
-                df_model,
-                features=FEATURES,
-                target_col=TARGET,
-                sample_weight=final_weights,
+            (
+                df_oos_train,
+                _,
+            ) = _slice_with_train_window(
+                df_model_sorted,
+                all_date_start_rows,
+                all_date_end_rows,
+                all_date_to_pos,
+                all_dates,
+                label="final_oos fit",
             )
-            final_oos_eval = evaluate_period(
-                "Final OOS",
-                final_model,
-                oos_df_full,
-                final_oos_dates,
-                run_perm_test=False,
-                allow_live_fallback=False,
-            )
-            ic_series_oos = final_oos_eval["ic_series"]
-            ic_stats_oos = final_oos_eval["ic_stats"]
-            pearson_ic_series_oos = final_oos_eval["pearson_ic_series"]
-            pearson_ic_stats_oos = final_oos_eval["pearson_ic_stats"]
-            error_metrics_oos = final_oos_eval["error_metrics"]
-            hit_rate_stats_oos = final_oos_eval["hit_rate"]
-            topk_positive_stats_oos = final_oos_eval["topk_positive_ratio"]
-            bucket_ic_records_oos = final_oos_eval["bucket_ic"]
-            quantile_ts_oos = final_oos_eval["quantile_ts"]
-            quantile_mean_oos = final_oos_eval["quantile_mean"]
-            turnover_series_oos = final_oos_eval["turnover_series"]
-            positions_by_rebalance_oos = final_oos_eval["positions_by_rebalance"]
-            bt_stats_oos = final_oos_eval["bt_stats"]
-            bt_net_series_oos = final_oos_eval["bt_net_series"]
-            bt_gross_series_oos = final_oos_eval["bt_gross_series"]
-            bt_turnover_series_oos = final_oos_eval["bt_turnover_series"]
-            bt_benchmark_series_oos = final_oos_eval["bt_benchmark_series"]
-            bt_active_series_oos = final_oos_eval["bt_active_series"]
-            bt_benchmark_stats_oos = final_oos_eval["bt_benchmark_stats"]
-            bt_active_stats_oos = final_oos_eval["bt_active_stats"]
-            bt_periods_oos = final_oos_eval["bt_periods"]
-            if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
-                positions_by_rebalance_oos = _annotate_positions_window(positions_by_rebalance_oos)
+            if df_oos_train.empty:
+                logger.info("Final OOS evaluation skipped: model.train_window left no in-sample data.")
+            else:
+                final_weights = build_sample_weight(
+                    df_oos_train,
+                    SAMPLE_WEIGHT_MODE,
+                    params=SAMPLE_WEIGHT_PARAMS,
+                )
+                fit_model(
+                    final_model,
+                    MODEL_TYPE,
+                    df_oos_train,
+                    features=FEATURES,
+                    target_col=TARGET,
+                    sample_weight=final_weights,
+                )
+                final_oos_eval = evaluate_period(
+                    "Final OOS",
+                    final_model,
+                    oos_df_full,
+                    final_oos_dates,
+                    run_perm_test=False,
+                    allow_live_fallback=False,
+                )
+                ic_series_oos = final_oos_eval["ic_series"]
+                ic_stats_oos = final_oos_eval["ic_stats"]
+                pearson_ic_series_oos = final_oos_eval["pearson_ic_series"]
+                pearson_ic_stats_oos = final_oos_eval["pearson_ic_stats"]
+                error_metrics_oos = final_oos_eval["error_metrics"]
+                hit_rate_stats_oos = final_oos_eval["hit_rate"]
+                topk_positive_stats_oos = final_oos_eval["topk_positive_ratio"]
+                bucket_ic_records_oos = final_oos_eval["bucket_ic"]
+                quantile_ts_oos = final_oos_eval["quantile_ts"]
+                quantile_mean_oos = final_oos_eval["quantile_mean"]
+                turnover_series_oos = final_oos_eval["turnover_series"]
+            if final_oos_eval is not None:
+                positions_by_rebalance_oos = final_oos_eval["positions_by_rebalance"]
+                bt_stats_oos = final_oos_eval["bt_stats"]
+                bt_net_series_oos = final_oos_eval["bt_net_series"]
+                bt_gross_series_oos = final_oos_eval["bt_gross_series"]
+                bt_turnover_series_oos = final_oos_eval["bt_turnover_series"]
+                bt_benchmark_series_oos = final_oos_eval["bt_benchmark_series"]
+                bt_active_series_oos = final_oos_eval["bt_active_series"]
+                bt_benchmark_stats_oos = final_oos_eval["bt_benchmark_stats"]
+                bt_active_stats_oos = final_oos_eval["bt_active_stats"]
+                bt_periods_oos = final_oos_eval["bt_periods"]
+                if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
+                    positions_by_rebalance_oos = _annotate_positions_window(positions_by_rebalance_oos)
 
     if final_oos_eval is not None:
         rolling_ic_oos_results, rolling_ic_oos_obs_per_year = _compute_rolling_ic(
@@ -3877,6 +4099,13 @@ def run(config_ref: str | Path | None = None) -> None:
                 "config_path": str(config_path) if config_path else None,
                 "config_source": config_source,
                 "model_type": MODEL_TYPE,
+                "sample_weight_mode": SAMPLE_WEIGHT_MODE,
+                "sample_weight_params": SAMPLE_WEIGHT_PARAMS,
+                "train_window": {
+                    "mode": TRAIN_WINDOW_MODE,
+                    "size": TRAIN_WINDOW_SIZE,
+                    "unit": TRAIN_WINDOW_UNIT,
+                },
                 "output_dir": str(run_dir),
             },
             "data": {
@@ -3917,11 +4146,21 @@ def run(config_ref: str | Path | None = None) -> None:
             },
             "split": {
                 "train_dates": len(train_dates),
+                "train_dates_raw": len(train_dates_full),
                 "test_dates": len(test_dates),
                 "purge_days": purge_days,
                 "embargo_days": embargo_days,
                 "purge_steps": PURGE_STEPS,
                 "embargo_steps": EMBARGO_STEPS,
+                "train_window": {
+                    "mode": TRAIN_WINDOW_MODE,
+                    "size": TRAIN_WINDOW_SIZE,
+                    "unit": TRAIN_WINDOW_UNIT,
+                    "applied": bool(
+                        TRAIN_WINDOW_MODE == "rolling"
+                        and len(train_dates) < len(train_dates_full)
+                    ),
+                },
                 "rebalance_gap_days": float(rebalance_gap_days)
                 if SAMPLE_ON_REBALANCE_DATES
                 and rebalance_gap_days is not None
@@ -3987,6 +4226,8 @@ def run(config_ref: str | Path | None = None) -> None:
                 "buffer_entry": BACKTEST_BUFFER_ENTRY,
                 "mode": "long_only" if BACKTEST_LONG_ONLY else "long_short",
                 "weighting": BACKTEST_WEIGHTING,
+                "group_col": BACKTEST_GROUP_COL,
+                "max_names_per_group": BACKTEST_MAX_NAMES_PER_GROUP,
                 "top_k": BACKTEST_TOP_K,
                 "short_k": BACKTEST_SHORT_K,
                 "rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,

@@ -600,3 +600,94 @@ def test_pipeline_walk_forward_feature_stability_outputs(tmp_path, monkeypatch):
     assert walk_forward["feature_importance_windows"] >= 1
     assert walk_forward["feature_importance_file"]
     assert walk_forward["feature_stability_file"]
+
+
+@pytest.mark.integration
+def test_pipeline_records_exp_decay_and_train_window_summary(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=80, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    frames = _build_daily_frames(symbols, dates)
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return frames[symbol].copy()
+
+    def fake_load_basic(self, symbols=None) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", fake_load_basic)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "us",
+        "data": {
+            "provider": "tushare",
+            "start_date": "20200101",
+            "end_date": "20200430",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5", "ret_5"],
+            "params": {"sma_windows": [5], "ret_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "ridge",
+            "params": {"alpha": 1.0},
+            "sample_weight_mode": "exp_decay",
+            "sample_weight_params": {"halflife": 10},
+            "train_window": {"mode": "rolling", "size": 15, "unit": "dates"},
+        },
+        "eval": {
+            "test_size": 0.25,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": False,
+            "output_dir": str(output_dir),
+            "run_name": "e2e_train_window",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    pipeline.run(str(config_path))
+
+    run_dirs = list(Path(output_dir).glob("e2e_train_window_*"))
+    assert len(run_dirs) == 1
+    summary = json.loads((run_dirs[0] / "summary.json").read_text(encoding="utf-8"))
+    assert summary["run"]["sample_weight_mode"] == "exp_decay"
+    assert summary["run"]["sample_weight_params"]["halflife"] == 10
+    assert summary["run"]["train_window"] == {"mode": "rolling", "size": 15, "unit": "dates"}
+    assert summary["split"]["train_dates_raw"] > summary["split"]["train_dates"]
+    assert summary["split"]["train_dates"] == 15
