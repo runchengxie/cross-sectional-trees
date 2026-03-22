@@ -124,6 +124,8 @@ def _load_fundamentals_frames(
     fundamentals_cfg: Mapping[str, Any],
     market: str,
     item_label: str,
+    log_retry_failures: bool = True,
+    log_retry_traceback: bool = True,
 ) -> tuple[list[pd.DataFrame], Optional[Path]]:
     frames: list[pd.DataFrame] = []
     cache_dir: Optional[Path] = None
@@ -148,6 +150,8 @@ def _load_fundamentals_frames(
                 end_date,
                 fundamentals_cfg,
                 cache_dir=cache_dir,
+                log_retry_failures=log_retry_failures,
+                log_retry_traceback=log_retry_traceback,
             )
         except Exception as exc:
             logger.warning("Skipping %s for %s after retries (%s).", item_label, symbol, exc)
@@ -1852,6 +1856,8 @@ def run(config_ref: str | Path | None = None) -> None:
                 fundamentals_cfg=provider_overlay_cfg,
                 market=MARKET,
                 item_label="provider valuation overlay",
+                log_retry_failures=False,
+                log_retry_traceback=False,
             )
             if overlay_frames:
                 overlay_df = pd.concat(overlay_frames, ignore_index=True)

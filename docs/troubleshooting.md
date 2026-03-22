@@ -218,6 +218,29 @@ csml init-config --market default --out configs/
 * `docs/config.md`
 * `docs/cli.md`
 
+## 9. HK provider overlay 出现少量 `Skipping ... after retries`
+
+常见现象：
+
+* `Skipping provider valuation overlay for 02800.HK after retries (...)`
+* 少量港股 ETF、指数相关符号或非普通股票符号在 provider overlay 阶段被跳过
+
+常见原因：
+
+* provider overlay 使用的基本面因子接口只接受普通股票（`CS`）符号
+* 股票池里混入了 benchmark、ETF 或 provider 无法识别的 HK 符号
+
+怎么判断是否致命：
+
+1. 如果 run 继续执行并出现 `Merged provider overlay: ...`，这通常只是可跳过符号被降级处理
+2. 如果 `summary.json`、`config.used.yml` 和回测文件都正常产出，一般不需要因为这几条 warning 重跑
+3. 若大面积符号都被跳过，再检查 `fundamentals.provider_overlay.provider`、symbol 映射和 universe 来源
+
+说明：
+
+* 当前行为会对这类已处理跳过只保留单行 warning，不再输出整段 traceback
+* benchmark 若本就不在建模 universe 中，不会影响模型训练
+
 ## 9. HK 基本面有 warning，部分 symbol 没有 `market_cap / pe_ttm / pb`
 
 常见原因：

@@ -287,9 +287,21 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
     )
 
     seen_cache_dirs = {}
+    seen_retry_flags = {}
 
-    def fake_fetch_fundamentals(self, symbol: str, start_date: str, end_date: str, fundamentals_cfg, *, cache_dir=None):
+    def fake_fetch_fundamentals(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        fundamentals_cfg,
+        *,
+        cache_dir=None,
+        log_retry_failures=True,
+        log_retry_traceback=True,
+    ):
         seen_cache_dirs[symbol] = str(cache_dir) if cache_dir is not None else None
+        seen_retry_flags[symbol] = (log_retry_failures, log_retry_traceback)
         return pd.DataFrame(
             {
                 "trade_date": [d.strftime("%Y%m%d") for d in dates],
@@ -400,6 +412,7 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
     assert dataset["pb"].notna().all()
     assert dataset["log_mcap"].notna().all()
     assert set(seen_cache_dirs.values()) == {str(tmp_path / "cache" / "fundamentals" / "hk")}
+    assert set(seen_retry_flags.values()) == {(True, True)}
 
 
 @pytest.mark.slow
@@ -1077,6 +1090,8 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
         }
     ).to_parquet(fundamentals_path, index=False)
 
+    seen_retry_flags = {}
+
     def fake_fetch_fundamentals(
         self,
         symbol: str,
@@ -1085,8 +1100,11 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
         fundamentals_cfg,
         *,
         cache_dir=None,
+        log_retry_failures=True,
+        log_retry_traceback=True,
     ):
         assert fundamentals_cfg.get("endpoint") == "get_factor"
+        seen_retry_flags[symbol] = (log_retry_failures, log_retry_traceback)
         base_cap = 1100.0 if symbol == "00005.HK" else 1500.0
         return pd.DataFrame(
             {
@@ -1214,6 +1232,7 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
     assert after_report_row["valuation_age_days_missing"].iloc[0] == pytest.approx(1.0)
     assert summary["fundamentals"]["provider_overlay"]["enabled"] is True
     assert summary["fundamentals"]["provider_overlay"]["provider"] == "rqdata"
+    assert set(seen_retry_flags.values()) == {(False, False)}
 
 
 @pytest.mark.slow

@@ -1,0 +1,13 @@
+## Anti-drift search point on the canonical quarterly overlay unit.
+## halflife=6, rolling train window=20 dates.
+extends:
+  - hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml
+
+model:
+  sample_weight_params:
+    halflife: 6
+  train_window:
+    size: 20
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h06_w20_validate

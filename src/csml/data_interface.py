@@ -223,6 +223,9 @@ class DataInterface:
         self,
         label: str,
         action: Callable[[], pd.DataFrame],
+        *,
+        log_failures: bool = True,
+        log_traceback: bool = True,
     ) -> pd.DataFrame:
         last_exc: Optional[Exception] = None
         for attempt in range(1, self.max_attempts + 1):
@@ -230,14 +233,15 @@ class DataInterface:
                 return action()
             except Exception as exc:
                 last_exc = exc
-                self.logger.warning(
-                    "%s (attempt %s/%s): %s",
-                    label,
-                    attempt,
-                    self.max_attempts,
-                    exc,
-                    exc_info=True,
-                )
+                if log_failures:
+                    self.logger.warning(
+                        "%s (attempt %s/%s): %s",
+                        label,
+                        attempt,
+                        self.max_attempts,
+                        exc,
+                        exc_info=log_traceback,
+                    )
                 self._rotate_tushare_token()
                 if attempt < self.max_attempts:
                     sleep_for = min(
@@ -282,6 +286,8 @@ class DataInterface:
         fundamentals_cfg: Mapping,
         *,
         cache_dir: Optional[Path] = None,
+        log_retry_failures: bool = True,
+        log_retry_traceback: bool = True,
     ) -> pd.DataFrame:
         label = f"Fundamentals load failed for {symbol}"
         fund_cache_dir = cache_dir or self.cache_dir
@@ -298,4 +304,9 @@ class DataInterface:
                 fundamentals_cfg,
             )
 
-        return self._with_retry(label, _load)
+        return self._with_retry(
+            label,
+            _load,
+            log_failures=log_retry_failures,
+            log_traceback=log_retry_traceback,
+        )
