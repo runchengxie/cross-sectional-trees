@@ -284,6 +284,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 ```json
 {
+  "log_file": "artifacts/runs/<run_dir>/run.log",
   "model_type": "xgb_ranker",
   "sample_weight_mode": "exp_decay",
   "sample_weight_params": {"halflife": 12},
@@ -293,6 +294,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 说明：
 
+1. `log_file` 是本次 run 实际使用的日志路径；未显式配置 `logging.file` 时，默认会落在 `<run_dir>/run.log`。
 1. `sample_weight_mode` / `sample_weight_params` 反映模型拟合时是否启用了近期样本加权。
 1. `train_window` 反映主训练、CV、walk-forward 训练段、`final_oos` 拟合与 `live.train_mode=full` 复训所使用的训练窗口配置。
 
@@ -354,6 +356,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | --- | --- | --- |
 | `summary.json` | 默认 | 机器可读总摘要，包含路径指针与关键指标 |
 | `config.used.yml` | 默认 | 实际生效配置（复现优先读这个） |
+| `run.log` | `eval.save_artifacts=true` 且未显式配置 `logging.file` | 本次 run 的默认本地日志 |
 | `dropped_dates.csv` | 存在被 `min_symbols_per_date` 丢弃的日期时 | 排查样本不足与过滤影响 |
 | `eval_scored.parquet` | `eval.save_artifacts=true` 且 `eval.save_scored_artifact=true` 且评估阶段成功 | `grid` 与二次分析复用 |
 | `dataset.parquet` | `eval.save_artifacts=true` 且 `eval.save_dataset=true` | 冻结建模输入样本 |
@@ -618,6 +621,7 @@ csml migrate-artifacts
 ## 其他常用文件
 
 1. `config.used.yml`：本次运行实际生效配置（复现实验首选）。
+1. `run.log`：默认本地运行日志；若配置了 `logging.file`，则以 `summary.json -> run.log_file` 为准。
 1. `eval_scored.parquet`：评估样本打分明细（需 `eval.save_scored_artifact=true`）。
 1. `ic_*.csv`、`quantile_returns.csv`、`backtest_*.csv`：指标时序数据。
 1. `feature_importance.csv`：模型特征重要性。

@@ -51,6 +51,7 @@ configs/
 | `eval` | 评估 | `top_k`, `transaction_cost_bps`, `save_artifacts`, `save_scored_artifact` |
 | `backtest` | 回测 | `enabled`, `rebalance_frequency`, `top_k`, `weighting` |
 | `live` | 快照 | `enabled`, `as_of` |
+| `logging` | 日志输出 | `level`, `file` |
 
 ## 关键配置速查
 
@@ -121,6 +122,16 @@ backtest:
   rebalance_frequency: "M"   # M / Q / Y
   top_k: 20
   weighting: equal           # equal / signal
+```
+
+### 日志
+
+```yaml
+logging:
+  level: INFO
+  # 不显式配置 file 时，若 eval.save_artifacts=true，
+  # 默认写到 artifacts/runs/<run_dir>/run.log
+  # file: artifacts/reports/my_run.log
 ```
 
 ## 高频键快速参考
@@ -197,6 +208,18 @@ backtest:
 * 若同时启用 `universe.by_date_file`，选股样本仍按 PIT universe 过滤。
 * 回测的 entry/exit 定价与 `tradable` 检查会使用未经过 `universe_by_date` 过滤的日线价格面板，避免已持仓股票在持有期内因 universe 变化而“消失”。
 * `backtest.group_col + max_names_per_group` 是组合构造阶段的最小版暴露约束，不会改变模型打分，也不等于完整行业中性化。
+
+### `logging`
+
+| 键 | 说明 | 常见值 |
+|---|------|--------|
+| `level` | 日志级别 | `INFO` / `WARNING` / `DEBUG` |
+| `file` | 日志文件路径 | 任意文件路径 |
+
+说明：
+
+* 若未设置 `logging.file` 且 `eval.save_artifacts=true`，pipeline 会默认把日志写到本次 run 目录下的 `run.log`。
+* 若显式设置 `logging.file`，则按该路径写日志，不再额外生成默认的 `<run_dir>/run.log`。
 
 ### `fundamentals`
 

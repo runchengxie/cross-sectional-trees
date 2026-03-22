@@ -135,6 +135,7 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
     assert summary_path.exists()
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["run"]["name"] == "e2e"
+    assert summary["run"]["log_file"] == str(run_dir / "run.log")
     assert summary["dataset"]["file"]
     assert set(summary.keys()) == {
         "run",
@@ -165,9 +166,11 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
     assert (run_dir / "backtest_net.csv").exists()
     assert (run_dir / "positions_by_rebalance.csv").exists()
     assert (run_dir / "positions_current.csv").exists()
+    assert (run_dir / "run.log").exists()
     assert not (run_dir / "eval_scored.parquet").exists()
     assert summary["eval"]["save_scored_artifact"] is False
     assert summary["eval"]["scored_file"] is None
+    assert "Artifacts will be saved to" in (run_dir / "run.log").read_text(encoding="utf-8")
 
     required_position_columns = {
         "signal_asof",
@@ -186,6 +189,118 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
     positions_current = pd.read_csv(run_dir / "positions_current.csv")
     assert required_position_columns.issubset(positions_full.columns)
     assert required_position_columns.issubset(positions_current.columns)
+
+
+@pytest.mark.integration
+def test_pipeline_run_uses_explicit_log_file(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=60, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    frames = _build_daily_frames(symbols, dates)
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return frames[symbol].copy()
+
+    def fake_load_basic(self, symbols=None) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", fake_load_basic)
+
+    output_dir = tmp_path / "runs"
+    explicit_log_path = tmp_path / "custom.log"
+    config = {
+        "market": "us",
+        "data": {
+            "provider": "tushare",
+            "start_date": "20200101",
+            "end_date": "20200331",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "next_rebalance",
+            "rebalance_frequency": "W",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5"],
+            "params": {"sma_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "logging": {
+            "level": "INFO",
+            "file": str(explicit_log_path),
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "e2e_explicit_log",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {
+            "enabled": True,
+            "top_k": 2,
+            "rebalance_frequency": "W",
+            "transaction_cost_bps": 0,
+            "long_only": True,
+            "exit_mode": "rebalance",
+            "exit_price_policy": "delay",
+        },
+    }
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    pipeline.run(str(config_path))
+
+    run_dirs = list(Path(output_dir).glob("e2e_explicit_log_*"))
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert summary["run"]["log_file"] == str(explicit_log_path)
+    assert explicit_log_path.exists()
+    assert not (run_dir / "run.log").exists()
+    assert "Artifacts will be saved to" in explicit_log_path.read_text(encoding="utf-8")
 
 
 @pytest.mark.integration

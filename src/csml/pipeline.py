@@ -72,6 +72,8 @@ from .rebalance import estimate_rebalance_gap, get_rebalance_dates
 warnings.filterwarnings("ignore")
 
 logger = logging.getLogger("csml")
+_managed_stream_handler: Optional[logging.Handler] = None
+_managed_file_handler: Optional[logging.Handler] = None
 
 
 def _warn_if_purge_too_small(
@@ -667,20 +669,69 @@ def _normalize_bucket_schemes(raw_schemes: object | None) -> list[dict]:
 # -----------------------------------------------------------------------------
 # 1. Config
 # -----------------------------------------------------------------------------
-def setup_logging(cfg: dict) -> None:
+def _resolve_log_file(
+    cfg: dict,
+    *,
+    default_log_file: Optional[Path] = None,
+) -> Optional[Path]:
+    log_cfg = cfg.get("logging") if isinstance(cfg, dict) else None
+    log_cfg = log_cfg if isinstance(log_cfg, dict) else {}
+    log_file = log_cfg.get("file")
+    if log_file is None:
+        return default_log_file
+    log_path_text = str(log_file).strip()
+    if not log_path_text:
+        return default_log_file
+    return Path(log_path_text).expanduser()
+
+
+def setup_logging(
+    cfg: dict,
+    *,
+    default_log_file: Optional[Path] = None,
+) -> Optional[Path]:
+    global _managed_stream_handler, _managed_file_handler
+
     log_cfg = cfg.get("logging") if isinstance(cfg, dict) else None
     log_cfg = log_cfg if isinstance(log_cfg, dict) else {}
     level_name = str(log_cfg.get("level", "INFO")).upper()
-    log_file = log_cfg.get("file")
     level = getattr(logging, level_name, logging.INFO)
-    handlers = [logging.StreamHandler()]
+    log_file = _resolve_log_file(cfg, default_log_file=default_log_file)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    if _managed_stream_handler is None or _managed_stream_handler not in root_logger.handlers:
+        _managed_stream_handler = logging.StreamHandler()
+        root_logger.addHandler(_managed_stream_handler)
+    _managed_stream_handler.setFormatter(formatter)
+    _managed_stream_handler.setLevel(logging.NOTSET)
+
     if log_file:
-        handlers.append(logging.FileHandler(log_file))
-    logging.basicConfig(
-        level=level,
-        handlers=handlers,
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        resolved_target = log_file.resolve()
+        existing_target = None
+        if _managed_file_handler is not None:
+            existing_target = Path(getattr(_managed_file_handler, "baseFilename", "")).resolve()
+        if (
+            _managed_file_handler is None
+            or _managed_file_handler not in root_logger.handlers
+            or existing_target != resolved_target
+        ):
+            if _managed_file_handler is not None:
+                if _managed_file_handler in root_logger.handlers:
+                    root_logger.removeHandler(_managed_file_handler)
+                _managed_file_handler.close()
+            _managed_file_handler = logging.FileHandler(log_file, encoding="utf-8")
+            root_logger.addHandler(_managed_file_handler)
+        _managed_file_handler.setFormatter(formatter)
+        _managed_file_handler.setLevel(logging.NOTSET)
+    elif _managed_file_handler is not None:
+        if _managed_file_handler in root_logger.handlers:
+            root_logger.removeHandler(_managed_file_handler)
+        _managed_file_handler.close()
+        _managed_file_handler = None
+    return log_file
 
 
 def config_hash(cfg: dict) -> str:
@@ -1065,7 +1116,7 @@ def run(config_ref: str | Path | None = None) -> None:
     config_label = resolved.label
     config_path = resolved.path
     config_source = resolved.source
-    setup_logging(config)
+    active_log_file = setup_logging(config)
 
     data_cfg = config.get("data", {})
     MARKET = normalize_market(config.get("market") or data_cfg.get("market"))
@@ -1621,6 +1672,7 @@ def run(config_ref: str | Path | None = None) -> None:
     run_dir = Path(OUTPUT_DIR) / f"{run_name}_{run_stamp}_{run_hash}"
     if SAVE_ARTIFACTS:
         run_dir.mkdir(parents=True, exist_ok=True)
+        active_log_file = setup_logging(config, default_log_file=run_dir / "run.log")
         logger.info("Artifacts will be saved to %s", run_dir)
 
     fundamentals_cols: list[str] = []
@@ -4113,6 +4165,7 @@ def run(config_ref: str | Path | None = None) -> None:
                     "unit": TRAIN_WINDOW_UNIT,
                 },
                 "output_dir": str(run_dir),
+                "log_file": str(active_log_file) if active_log_file else None,
             },
             "data": {
                 "market": MARKET,
