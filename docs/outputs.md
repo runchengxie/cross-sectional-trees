@@ -44,17 +44,18 @@ artifacts/
 * `ex_factors`
 * `dividends`
 * `shares`
+* `exchange_rate`
 * `southbound`
 * `instrument_industry`
 * `industry_changes`
 
-这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-southbound`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
+这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-exchange-rate`、`csml rqdata mirror-hk-southbound`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
 如果你继续执行 `csml rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
 如果你继续执行 `csml rqdata build-hk-industry-labels`，默认还会在对应的 `industry_changes` 目录下生成一份本地行业标签文件。
 
 ## RQData 资产镜像目录
 
-目录结构：
+大多数按 symbol 镜像的目录结构：
 
 ```text
 artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
@@ -76,8 +77,23 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * `symbols.txt`：本次拉取的 symbol 清单。
 * `data/<symbol>.parquet`：按 symbol 分开的原始镜像文件；历史文档里常写成 `data/<ts_code>.parquet`，但文件名实际就是仓库归一后的 symbol 值。
 * `dates.txt`：`southbound` 和 `instrument_industry` 会写，表示本次实际查询的日期列表。
+* `currency_pairs.txt`：仅 `exchange_rate` 会写，表示本次实际查询并成功落盘的货币对清单。
 * `trading_types.txt`：仅 `southbound` 会写，表示本次实际查询的 `sh` / `sz` 渠道列表。
 * `industries.txt` / `industry_catalog.parquet`：仅 `industry_changes` 会写，表示本次枚举的行业代码和映射表。
+
+`exchange_rate` 例外：
+
+```text
+artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
+  manifest.yml
+  fields.txt
+  currency_pairs.txt
+  dates.txt
+  data/
+    exchange_rate.parquet
+```
+
+这类目录不按 symbol 拆文件，而是把整个时间窗的汇率结果写入单个 `data/exchange_rate.parquet`。
 
 字段约定：
 
@@ -88,6 +104,7 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * `ex_factors` 保留 `rqdatac.get_ex_factor` 返回的字段名，并额外写入 legacy `ts_code`。
 * `dividends` 保留 `rqdatac.get_dividend` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
 * `shares` 保留 `rqdatac.get_shares` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
+* `exchange_rate` 保留 `rqdatac.get_exchange_rate` 返回的字段名，固定要求至少有 `date` 和 `currency_pair`；`date` 会规范成字符串 `YYYYMMDD`。
 * `southbound` 固定写出 `date`、legacy `ts_code`、`order_book_id`、`trading_type`、`eligible`；其中 `trading_type` 表示 `sh` / `sz` 渠道，`eligible` 当前固定为 `1`。
 * `instrument_industry` 保留 `rqdatac.get_instrument_industry` 返回的行业列，并额外写入 legacy `ts_code`、`order_book_id`、`date`。
 * `industry_changes` 保留 `start_date` / `cancel_date`，并额外写入 legacy `ts_code`、`order_book_id`、`industry_code`、`industry_name`、`industry_level`、`industry_source` 和完整行业层级列。

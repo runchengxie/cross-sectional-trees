@@ -82,6 +82,7 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 
 * `scripts/dev/run_tests.sh integration` 跑的是 `@pytest.mark.integration` 的跨模块流程。
 * `tests/test_provider_integration.py` 也带 `integration` 标记，但未设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时会自动 skip，所以默认 CI 的 `integration` job 仍以离线集成为主。
+* 文档引用和公开入口契约现在也有测试兜底，主要看 `tests/test_docs_contracts.py` 和 `tests/test_run_tests_script.py`。
 
 ## 测试分层约定
 
@@ -108,13 +109,15 @@ scripts/dev/run_tests.sh integration
 
 仓库现在提供 GitHub Actions workflow：`.github/workflows/tests.yml`。
 
-CI 默认拆成三段：
+CI 默认拆成五段：
 
 1. `fast`：`scripts/dev/run_tests.sh fast`
 1. `slow`：`scripts/dev/run_tests.sh slow`
 1. `integration`：`scripts/dev/run_tests.sh integration`
+1. `rqdata-extra-smoke`：安装 `--extra rqdata`，验证 optional extra 和 `csml rqdata --help`
+1. `duckdb-extra-smoke`：安装 `--extra duckdb`，验证 optional extra 和 `csml data query --help`
 
-这样可以把默认离线回归、较重离线回归和端到端流程分开看。排查失败时，先在本地复现对应那一段。
+这样可以把默认离线回归、较重离线回归、端到端流程，以及 optional extra 的安装/导入烟雾检查分开看。排查失败时，先在本地复现对应那一段。
 
 最近几轮和 HK + RQData 相关的高频回归，建议至少覆盖这组：
 

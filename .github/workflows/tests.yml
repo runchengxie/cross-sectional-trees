@@ -62,3 +62,41 @@ jobs:
         run: uv sync --locked --extra dev
       - name: Run integration tests
         run: ./scripts/dev/run_tests.sh integration
+
+  rqdata-extra-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.11"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --extra rqdata
+      - name: Smoke rqdata extra
+        run: |
+          uv run python -c "import rqdatac; print(rqdatac.__name__)"
+          uv run csml rqdata --help > /dev/null
+
+  duckdb-extra-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.11"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --extra duckdb
+      - name: Smoke duckdb extra
+        run: |
+          uv run python -c "import duckdb; print(duckdb.__version__)"
+          uv run csml data query --help > /dev/null

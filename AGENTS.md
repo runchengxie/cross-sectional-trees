@@ -19,7 +19,7 @@
 * 数据源差异：`docs/providers.md`
 * 排障：`docs/troubleshooting.md`
 * 开发与测试：`docs/dev.md`
-* 内部规划资料：`docs/internal/full_function.md`
+* 内部规划资料：`docs/internal/feature-planning.md`
 
 ## 常用命令
 

@@ -24,6 +24,7 @@
 | `csml init-config` | 导出内置配置模板 | 本地 YAML |
 | `csml backup-data` | 归档本地缓存、股票池和配置 | `artifacts/snapshots/<name>/` |
 | `csml migrate-artifacts` | 一次性把旧布局迁到 `artifacts/` | 新目录结构 |
+| `csml data ...` | metadata catalog、标准层物化和 DuckDB 查询 | `artifacts/metadata/*` / `artifacts/standardized/*` |
 | `csml rqdata ...` | RQData 账号、配额、港股财报资产与 instrument 元数据工具 | 账号信息或资产目录 |
 | `csml universe ...` | 股票池构建工具（`hk-connect` / `hk-daily-assets` / `index-components`） | 股票池文件 |
 | `csml tushare verify-token` | 验证 TuShare token | 验证结果 |
