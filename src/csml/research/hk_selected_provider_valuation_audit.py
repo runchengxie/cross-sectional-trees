@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -13,18 +12,16 @@ import yaml
 
 from csml.data_providers import _cache_tag, _fundamentals_cache_file, normalize_market, resolve_provider
 from csml.rebalance import get_rebalance_dates
+from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = find_repo_root(__file__)
 DEFAULT_REPORT_DIR = REPO_ROOT / "artifacts" / "reports"
 VALUATION_COLUMNS = ("market_cap", "pe_ttm", "pb", "log_mcap")
 
 
 def resolve_repo_path(path_text: str | Path) -> Path:
-    path = Path(path_text).expanduser()
-    if path.is_absolute():
-        return path.resolve()
-    return (REPO_ROOT / path).resolve()
+    return resolve_repo_relative_path(path_text, repo_root=REPO_ROOT)
 
 
 def _load_yaml(path: Path) -> dict:

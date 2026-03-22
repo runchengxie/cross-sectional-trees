@@ -1,6 +1,5 @@
-import importlib.util
+import importlib
 import json
-from pathlib import Path
 
 import pandas as pd
 import yaml
@@ -9,17 +8,9 @@ from csml.data_providers import _cache_tag, _fundamentals_cache_file
 
 
 def _load_audit_module():
-    module_path = (
-        Path(__file__).resolve().parents[1]
-        / "scripts"
-        / "research"
-        / "audit_hk_selected_provider_valuation.py"
+    return importlib.reload(
+        importlib.import_module("csml.research.hk_selected_provider_valuation_audit")
     )
-    spec = importlib.util.spec_from_file_location("audit_provider_valuation", module_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def test_audit_provider_overlay_uses_cached_frames_without_provider_init(tmp_path):

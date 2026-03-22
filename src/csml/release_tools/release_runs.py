@@ -14,9 +14,10 @@ from typing import Any
 
 import yaml
 
+from csml.repo_paths import find_repo_root
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-PACKAGE_SCRIPT = Path(__file__).resolve().with_name("package_runs.py")
+REPO_ROOT = find_repo_root(__file__)
+PACKAGE_MODULE = "csml.release_tools.package_runs"
 DATETIME_PARSE_FORMATS = (
     "%Y%m%d_%H%M%S",
     "%Y%m%d",
@@ -271,7 +272,7 @@ def _build_tars(
 
 
 def _package_cmd_from_args(args: argparse.Namespace) -> list[str]:
-    cmd = [sys.executable, str(PACKAGE_SCRIPT)]
+    cmd = [sys.executable, "-m", PACKAGE_MODULE]
     for runs_dir in args.runs_dir or []:
         cmd.extend(["--runs-dir", runs_dir])
     for run in args.run or []:
@@ -341,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         "--profile",
         choices=["light", "milestone", "full"],
         default="light",
-        help="Packaging profile forwarded to package_runs.py.",
+        help="Packaging profile forwarded to csml.release_tools.package_runs.",
     )
     parser.add_argument(
         "--include-scored",

@@ -3,20 +3,17 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 from pathlib import Path
-
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = REPO_ROOT / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
 
 import pandas as pd
 from dotenv import load_dotenv
 
 from csml.config_utils import resolve_pipeline_config
 from csml import data_providers
+from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+
+
+REPO_ROOT = find_repo_root(__file__)
 
 
 DEFAULT_PIT_FILE = (
@@ -34,10 +31,7 @@ DEFAULT_CACHE_DIR = "artifacts/cache/fundamentals/hk/provider_valuation_merge"
 
 
 def resolve_repo_path(path_text: str | Path) -> Path:
-    path = Path(path_text).expanduser()
-    if path.is_absolute():
-        return path.resolve()
-    return (REPO_ROOT / path).resolve()
+    return resolve_repo_relative_path(path_text, repo_root=REPO_ROOT)
 
 
 def _normalize_trade_date(series: pd.Series) -> pd.Series:

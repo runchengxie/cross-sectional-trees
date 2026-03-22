@@ -10,8 +10,9 @@ from pathlib import Path
 
 import yaml
 
+from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = find_repo_root(__file__)
 ASSETS_ROOT = REPO_ROOT / "artifacts" / "assets"
 PART_CHOICES = ("daily", "instruments", "pit", "reference", "industry", "universe")
 
@@ -44,10 +45,7 @@ PRESETS = {
 
 
 def resolve_repo_path(path_text: str | Path) -> Path:
-    path = Path(path_text).expanduser()
-    if path.is_absolute():
-        return path.resolve()
-    return (REPO_ROOT / path).resolve()
+    return resolve_repo_relative_path(path_text, repo_root=REPO_ROOT)
 
 
 def looks_like_path(value: str) -> bool:

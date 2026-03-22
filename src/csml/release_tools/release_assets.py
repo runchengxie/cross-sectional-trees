@@ -11,9 +11,10 @@ from pathlib import Path
 
 import yaml
 
+from csml.repo_paths import find_repo_root
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-PACKAGE_SCRIPT = Path(__file__).resolve().with_name("package_assets.py")
+REPO_ROOT = find_repo_root(__file__)
+PACKAGE_MODULE = "csml.release_tools.package_assets"
 
 
 def _resolve_path(path_text: str | Path) -> Path:
@@ -228,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         if args.skip_package:
             raise SystemExit("No staged root provided and --skip-package was set.")
-        package_cmd = [sys.executable, str(PACKAGE_SCRIPT), *package_args]
+        package_cmd = [sys.executable, "-m", PACKAGE_MODULE, *package_args]
         for part_name in args.part:
             package_cmd.extend(["--part", part_name])
         if args.dry_run:

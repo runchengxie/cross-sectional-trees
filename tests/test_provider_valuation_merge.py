@@ -1,16 +1,12 @@
-import importlib.util
-from pathlib import Path
+import importlib
 
 import pandas as pd
 import pytest
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = REPO_ROOT / "scripts" / "research" / "merge_hk_selected_provider_valuation_into_pit.py"
-SPEC = importlib.util.spec_from_file_location("merge_provider_valuation_script", SCRIPT_PATH)
-assert SPEC and SPEC.loader
-MERGE_SCRIPT = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MERGE_SCRIPT)
+MERGE_SCRIPT = importlib.reload(
+    importlib.import_module("csml.research.hk_selected_provider_valuation_merge")
+)
 
 
 def test_merge_frames_asof_uses_latest_provider_row_per_symbol():

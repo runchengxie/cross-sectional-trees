@@ -1,21 +1,11 @@
-import importlib.util
+import importlib
 import subprocess
 from pathlib import Path
 
 import yaml
 
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_SCRIPT_PATH = REPO_ROOT / "scripts" / "release" / "package_assets.py"
-RELEASE_SCRIPT_PATH = REPO_ROOT / "scripts" / "release" / "release_assets.py"
-
-
-def _load_script(module_name: str, script_path: Path):
-    spec = importlib.util.spec_from_file_location(module_name, script_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _load_module(module_name: str):
+    return importlib.reload(importlib.import_module(module_name))
 
 
 def _prepare_demo_assets(repo_root: Path) -> None:
@@ -35,7 +25,7 @@ def _prepare_demo_assets(repo_root: Path) -> None:
 
 
 def _stage_demo_parts(tmp_path: Path) -> tuple[object, Path]:
-    package_script = _load_script("package_assets_script", PACKAGE_SCRIPT_PATH)
+    package_script = _load_module("csml.release_tools.package_assets")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _prepare_demo_assets(repo_root)
@@ -99,7 +89,7 @@ def test_package_assets_stages_selected_parts_and_manifests(tmp_path):
 
 def test_release_assets_builds_multiple_tarballs_for_selected_parts(tmp_path):
     _, stage_root = _stage_demo_parts(tmp_path)
-    release_script = _load_script("release_assets_script", RELEASE_SCRIPT_PATH)
+    release_script = _load_module("csml.release_tools.release_assets")
 
     tar_dir = tmp_path / "tarballs"
     exit_code = release_script.main(
@@ -124,7 +114,7 @@ def test_release_assets_builds_multiple_tarballs_for_selected_parts(tmp_path):
 
 def test_release_assets_creates_single_release_with_multiple_assets(tmp_path, monkeypatch):
     _, stage_root = _stage_demo_parts(tmp_path)
-    release_script = _load_script("release_assets_script_for_create", RELEASE_SCRIPT_PATH)
+    release_script = _load_module("csml.release_tools.release_assets")
 
     calls: list[list[str]] = []
 
@@ -159,7 +149,7 @@ def test_release_assets_creates_single_release_with_multiple_assets(tmp_path, mo
 
 def test_release_assets_forwards_selected_parts_to_package_step(tmp_path, monkeypatch):
     _, stage_root = _stage_demo_parts(tmp_path)
-    release_script = _load_script("release_assets_script_for_package", RELEASE_SCRIPT_PATH)
+    release_script = _load_module("csml.release_tools.release_assets")
 
     calls: list[list[str]] = []
 
@@ -191,5 +181,6 @@ def test_release_assets_forwards_selected_parts_to_package_step(tmp_path, monkey
 
     assert exit_code == 0
     package_cmd = calls[0]
+    assert package_cmd[1:3] == ["-m", "csml.release_tools.package_assets"]
     assert "--part" in package_cmd
     assert package_cmd[package_cmd.index("--part") + 1] == "daily"

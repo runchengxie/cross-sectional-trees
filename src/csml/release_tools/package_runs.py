@@ -8,22 +8,19 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from csml.research_tools import summarize_runs
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+
+REPO_ROOT = find_repo_root(__file__)
 RUNS_ROOT = REPO_ROOT / "artifacts" / "runs"
 ASSETS_ROOT = REPO_ROOT / "artifacts" / "assets"
-SRC_ROOT = REPO_ROOT / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
-
-from csml.research_tools import summarize_runs
 
 
 RUN_DIR_PATTERN = re.compile(
@@ -73,10 +70,7 @@ PROFILE_DEFAULTS = {
 
 
 def resolve_repo_path(path_text: str | Path) -> Path:
-    path = Path(path_text).expanduser()
-    if path.is_absolute():
-        return path.resolve()
-    return (REPO_ROOT / path).resolve()
+    return resolve_repo_relative_path(path_text, repo_root=REPO_ROOT)
 
 
 def ensure_dest_root(dest: Path, overwrite: bool, *, dry_run: bool) -> None:
