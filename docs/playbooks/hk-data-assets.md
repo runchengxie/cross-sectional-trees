@@ -289,7 +289,7 @@ csml rqdata mirror-hk-financial-details \
 * 如果你已经拉了一版 probe，想继续看 `subject` 频次、重复披露和保守标准化长表，可以直接跑研究侧脚本：
 
 ```bash
-uv run python scripts/analyze_hk_financial_details.py \
+uv run python scripts/research/analyze_hk_financial_details.py \
   --probe-dir artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_connect60_superset_2024_2025_20260319 \
   --compare-probe-dir artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_connect30_core_2024_2025_20260319 \
   --dedup latest_adjusted_then_info_date \
@@ -600,19 +600,19 @@ csml backup-data \
 * 私有仓库可以按 part 上传需要的资产
 * 公开仓库更适合上传 `manifest.yml`、配置、说明文件和汇总 CSV
 * 原始 provider 缓存和原始数据是否适合公开，要先看你的使用边界和合规要求
-* 数据资产和历史 run 现在是两条独立流程：资产走 `release_assets.py`，run 结果走 `release_runs.py`
+* 数据资产和历史 run 现在是两条独立流程：资产走 `scripts/release/release_assets.py`，run 结果走 `scripts/release/release_runs.py`
 
 如果你想自动打包并上传到 GitHub Release（私有仓库场景），可以用：
 
 ```bash
-python3 scripts/release_assets.py \
+python3 scripts/release/release_assets.py \
   --tag hk_assets_20260312 \
   --preset hk_full \
   --mode copy \
   --overwrite
 ```
 
-这个脚本会调用 `package_assets.py` 先生成一个 staging root，
+这个脚本会调用 `scripts/release/package_assets.py` 先生成一个 staging root，
 再按 `daily / instruments / pit / reference / industry / universe` 分别打成 tar.gz，
 并用同一个 GitHub Release tag 一次上传多份 asset。只想打包不上传时加 `--skip-upload`；
 只想传部分资产时加 `--part daily --part universe` 这类参数。
@@ -620,7 +620,7 @@ python3 scripts/release_assets.py \
 如果你想备份历史 run 到 GitHub Release，要用单独的脚本：
 
 ```bash
-python3 scripts/release_runs.py \
+python3 scripts/release/release_runs.py \
   --name hk_selected_history \
   --runs-dir artifacts/runs \
   --run-name-prefix hk_selected \
@@ -636,18 +636,18 @@ python3 scripts/release_runs.py \
 * 如果是基线、checkpoint 或准备写结论的 run，更适合用 `--profile milestone`；它会把 `eval_scored.parquet` 和 `dataset.parquet` 一起带上。
 * 如果要整目录归档，再用 `--profile full`。
 * `--include-scored`、`--include-dataset`、`--include-full-run-dir` 仍然可用，但现在是对 profile 的显式追加覆盖。
-* `release_runs.py` 会先调用 `package_runs.py` 生成 staging root，再按 run 分别打成 tar.gz，并在同一个 Release tag 下上传多份 run asset。
+* `scripts/release/release_runs.py` 会先调用 `scripts/release/package_runs.py` 生成 staging root，再按 run 分别打成 tar.gz，并在同一个 Release tag 下上传多份 run asset。
 
 ## 10. 跨机器打包与共享资产
 
 如果你需要把离线资产带到另一台机器或共享给他人，建议用仓库内置的打包脚本，先把资产拆成几个独立可搬运的 part。
 
-脚本入口：`scripts/package_assets.py`
+脚本入口：`scripts/release/package_assets.py`
 
 推荐用法（全市场口径，生成独立 staging root）：
 
 ```bash
-python3 scripts/package_assets.py \
+python3 scripts/release/package_assets.py \
   --preset hk_full \
   --dest /home/richard/code/csml_asset_parts/hk_full_20260312 \
   --mode copy \
@@ -664,7 +664,7 @@ python3 scripts/package_assets.py \
 如果你只想准备核心 part，可以显式限制只生成需要的部分：
 
 ```bash
-python3 scripts/package_assets.py \
+python3 scripts/release/package_assets.py \
   --preset hk_full \
   --part daily \
   --part instruments \

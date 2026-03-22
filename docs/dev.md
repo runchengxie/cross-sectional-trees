@@ -53,7 +53,7 @@ csml run --config default
 项目使用 `pytest`。默认入口不再强制打开 coverage，便于本地只收集测试、定点排查和拆分回归。
 
 ```bash
-scripts/run_tests.sh all
+scripts/dev/run_tests.sh all
 ```
 
 常见用法：
@@ -63,16 +63,16 @@ scripts/run_tests.sh all
 uv run pytest tests/test_metrics.py
 
 # 日常快回归
-scripts/run_tests.sh fast
+scripts/dev/run_tests.sh fast
 
 # 较重的离线回归
-scripts/run_tests.sh slow
+scripts/dev/run_tests.sh slow
 
 # 跑集成测试
-scripts/run_tests.sh integration
+scripts/dev/run_tests.sh integration
 
 # 需要 coverage 时显式执行
-scripts/run_tests.sh coverage
+scripts/dev/run_tests.sh coverage
 
 # 真实 provider 集成测试（需显式启用 + 配置对应 token/账号）
 CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
@@ -80,7 +80,7 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 
 说明：
 
-* `scripts/run_tests.sh integration` 跑的是 `@pytest.mark.integration` 的跨模块流程。
+* `scripts/dev/run_tests.sh integration` 跑的是 `@pytest.mark.integration` 的跨模块流程。
 * `tests/test_provider_integration.py` 也带 `integration` 标记，但未设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时会自动 skip，所以默认 CI 的 `integration` job 仍以离线集成为主。
 
 ## 测试分层约定
@@ -95,13 +95,13 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 
 ```bash
 # 离线回归（建议本地高频执行）
-scripts/run_tests.sh fast
+scripts/dev/run_tests.sh fast
 
 # 较重的离线回归
-scripts/run_tests.sh slow
+scripts/dev/run_tests.sh slow
 
 # 仅集成测试
-scripts/run_tests.sh integration
+scripts/dev/run_tests.sh integration
 ```
 
 ## CI
@@ -110,16 +110,16 @@ scripts/run_tests.sh integration
 
 CI 默认拆成三段：
 
-1. `fast`：`scripts/run_tests.sh fast`
-1. `slow`：`scripts/run_tests.sh slow`
-1. `integration`：`scripts/run_tests.sh integration`
+1. `fast`：`scripts/dev/run_tests.sh fast`
+1. `slow`：`scripts/dev/run_tests.sh slow`
+1. `integration`：`scripts/dev/run_tests.sh integration`
 
 这样可以把默认离线回归、较重离线回归和端到端流程分开看。排查失败时，先在本地复现对应那一段。
 
 最近几轮和 HK + RQData 相关的高频回归，建议至少覆盖这组：
 
 ```bash
-scripts/run_tests.sh all \
+scripts/dev/run_tests.sh all \
   tests/test_pipeline_validation.py \
   tests/test_summarize_runs.py \
   tests/test_pipeline_filters.py \
@@ -148,7 +148,7 @@ scripts/run_tests.sh all \
 
 ## 提交前检查建议
 
-1. 至少跑一遍 `scripts/run_tests.sh all`。
+1. 至少跑一遍 `scripts/dev/run_tests.sh all`。
 1. 用你修改过的配置跑一次 `csml run --config ...`。
 1. 检查 `README.md` 与 `docs/` 是否同步更新。
 

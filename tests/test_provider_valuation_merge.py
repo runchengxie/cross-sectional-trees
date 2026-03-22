@@ -6,7 +6,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = REPO_ROOT / "scripts" / "merge_hk_selected_provider_valuation_into_pit.py"
+SCRIPT_PATH = REPO_ROOT / "scripts" / "research" / "merge_hk_selected_provider_valuation_into_pit.py"
 SPEC = importlib.util.spec_from_file_location("merge_provider_valuation_script", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 MERGE_SCRIPT = importlib.util.module_from_spec(SPEC)

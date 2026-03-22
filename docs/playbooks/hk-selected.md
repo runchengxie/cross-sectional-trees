@@ -294,7 +294,7 @@ csml rqdata inspect-hk-pit-coverage \
 ```bash
 csml run --config configs/local/<your_g4_fixed_config>.yml
 
-uv run python scripts/audit_hk_selected_provider_valuation.py \
+uv run python scripts/research/audit_hk_selected_provider_valuation.py \
   --run-dir artifacts/runs/<run_dir>
 ```
 

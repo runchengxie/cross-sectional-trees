@@ -6,8 +6,8 @@ import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_SCRIPT_PATH = REPO_ROOT / "scripts" / "package_assets.py"
-RELEASE_SCRIPT_PATH = REPO_ROOT / "scripts" / "release_assets.py"
+PACKAGE_SCRIPT_PATH = REPO_ROOT / "scripts" / "release" / "package_assets.py"
+RELEASE_SCRIPT_PATH = REPO_ROOT / "scripts" / "release" / "release_assets.py"
 
 
 def _load_script(module_name: str, script_path: Path):

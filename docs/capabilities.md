@@ -32,8 +32,8 @@
 
 仓库另外还提供两组脚本级分发工具：
 
-* `scripts/package_assets.py` / `scripts/release_assets.py`：把 HK 数据资产按 part 打包并上传到 GitHub Releases
-* `scripts/package_runs.py` / `scripts/release_runs.py`：把历史 run 结果按 run 拆包并上传到 GitHub Releases，支持 `light / milestone / full` 三档 profile
+* `scripts/release/package_assets.py` / `scripts/release/release_assets.py`：把 HK 数据资产按 part 打包并上传到 GitHub Releases
+* `scripts/release/package_runs.py` / `scripts/release/release_runs.py`：把历史 run 结果按 run 拆包并上传到 GitHub Releases，支持 `light / milestone / full` 三档 profile
 
 它们不是 `csml` CLI 子命令，主要用于私有备份、跨机器搬运和 Release 分发。
 

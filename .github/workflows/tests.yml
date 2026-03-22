@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
       - name: Run fast offline regression
-        run: ./scripts/run_tests.sh fast
+        run: ./scripts/dev/run_tests.sh fast
 
   slow:
     runs-on: ubuntu-latest
@@ -44,7 +44,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
       - name: Run slow offline regression
-        run: ./scripts/run_tests.sh slow
+        run: ./scripts/dev/run_tests.sh slow
 
   integration:
     runs-on: ubuntu-latest
@@ -61,4 +61,4 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
       - name: Run integration tests
-        run: ./scripts/run_tests.sh integration
+        run: ./scripts/dev/run_tests.sh integration

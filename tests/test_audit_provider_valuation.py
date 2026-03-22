@@ -12,6 +12,7 @@ def _load_audit_module():
     module_path = (
         Path(__file__).resolve().parents[1]
         / "scripts"
+        / "research"
         / "audit_hk_selected_provider_valuation.py"
     )
     spec = importlib.util.spec_from_file_location("audit_provider_valuation", module_path)
