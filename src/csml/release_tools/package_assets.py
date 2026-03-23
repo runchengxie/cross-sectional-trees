@@ -14,7 +14,17 @@ from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_re
 
 REPO_ROOT = find_repo_root(__file__)
 ASSETS_ROOT = REPO_ROOT / "artifacts" / "assets"
-PART_CHOICES = ("daily", "instruments", "pit", "reference", "industry", "universe")
+PART_CHOICES = (
+    "daily",
+    "instruments",
+    "pit",
+    "reference",
+    "exchange_rate",
+    "southbound",
+    "financial_details",
+    "industry",
+    "universe",
+)
 
 PRESETS = {
     "hk_full": {
@@ -24,6 +34,9 @@ PRESETS = {
         "ex_factors_snapshot": "hk_all_2000_20260318_ex_factors_full_market_latest",
         "dividends_snapshot": "hk_all_2000_20260318_dividends_full_market_latest",
         "shares_snapshot": "hk_all_2000_20260318_shares_full_market_latest",
+        "exchange_rate_snapshot": "hk_exchange_rate_probe_20250210_20250216",
+        "southbound_snapshot": "hk_connect_southbound_latest",
+        "financial_details_snapshot": "hk_financial_details_hk_all3203_superset_2000_2025_20260319",
         "industry_changes_snapshot": "hk_all_2000_20260318_industry_changes_full_market_latest",
         "universe_by_date": "hk_all_full_by_date.csv",
         "universe_symbols": "hk_all_full_symbols.txt",
@@ -36,6 +49,9 @@ PRESETS = {
         "ex_factors_snapshot": None,
         "dividends_snapshot": None,
         "shares_snapshot": None,
+        "exchange_rate_snapshot": "hk_exchange_rate_probe_20250210_20250216",
+        "southbound_snapshot": "hk_connect_southbound_latest",
+        "financial_details_snapshot": "hk_financial_details_probe_connect_union967_2000_2025_20260319",
         "industry_changes_snapshot": None,
         "universe_by_date": "hk_connect_full_by_date.csv",
         "universe_symbols": "hk_connect_full_symbols.txt",
@@ -137,6 +153,21 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         ex_factors_snapshot = args.ex_factors_snapshot or preset.get("ex_factors_snapshot")
         dividends_snapshot = args.dividends_snapshot or preset.get("dividends_snapshot")
         shares_snapshot = args.shares_snapshot or preset.get("shares_snapshot")
+    exchange_rate_snapshot = (
+        None
+        if args.no_exchange_rate
+        else (args.exchange_rate_snapshot or preset.get("exchange_rate_snapshot"))
+    )
+    southbound_snapshot = (
+        None
+        if args.no_southbound
+        else (args.southbound_snapshot or preset.get("southbound_snapshot"))
+    )
+    financial_details_snapshot = (
+        None
+        if args.no_financial_details
+        else (args.financial_details_snapshot or preset.get("financial_details_snapshot"))
+    )
     industry_changes_snapshot = (
         None
         if args.no_industry
@@ -171,6 +202,30 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         if shares_snapshot
         else None
     )
+    exchange_rate_dir = (
+        resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "exchange_rate",
+            exchange_rate_snapshot,
+        )
+        if exchange_rate_snapshot
+        else None
+    )
+    southbound_dir = (
+        resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "southbound",
+            southbound_snapshot,
+        )
+        if southbound_snapshot
+        else None
+    )
+    financial_details_dir = (
+        resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "financial_details",
+            financial_details_snapshot,
+        )
+        if financial_details_snapshot
+        else None
+    )
     industry_changes_dir = (
         resolve_snapshot_path(
             ASSETS_ROOT / "rqdata" / "hk" / "industry_changes",
@@ -194,6 +249,12 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         ensure_exists(dividends_dir, "Dividends snapshot directory")
     if shares_dir:
         ensure_exists(shares_dir, "Shares snapshot directory")
+    if exchange_rate_dir:
+        ensure_exists(exchange_rate_dir, "Exchange-rate snapshot directory")
+    if southbound_dir:
+        ensure_exists(southbound_dir, "Southbound snapshot directory")
+    if financial_details_dir:
+        ensure_exists(financial_details_dir, "Financial-details snapshot directory")
     if industry_changes_dir:
         ensure_exists(industry_changes_dir, "Industry changes snapshot directory")
     ensure_exists(universe_by_date_path, "Universe by-date file")
@@ -208,6 +269,9 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         "ex_factors_dir": ex_factors_dir,
         "dividends_dir": dividends_dir,
         "shares_dir": shares_dir,
+        "exchange_rate_dir": exchange_rate_dir,
+        "southbound_dir": southbound_dir,
+        "financial_details_dir": financial_details_dir,
         "industry_changes_dir": industry_changes_dir,
         "universe_by_date_path": universe_by_date_path,
         "universe_symbols_path": universe_symbols_path,
@@ -222,6 +286,9 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
     ex_factors_dir = resolved["ex_factors_dir"]
     dividends_dir = resolved["dividends_dir"]
     shares_dir = resolved["shares_dir"]
+    exchange_rate_dir = resolved["exchange_rate_dir"]
+    southbound_dir = resolved["southbound_dir"]
+    financial_details_dir = resolved["financial_details_dir"]
     industry_changes_dir = resolved["industry_changes_dir"]
     universe_by_date_path = resolved["universe_by_date_path"]
     universe_symbols_path = resolved["universe_symbols_path"]
@@ -383,6 +450,63 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
             "summary": reference_summary,
         }
 
+    if exchange_rate_dir:
+        parts["exchange_rate"] = {
+            "description": "Exchange-rate snapshot directory.",
+            "entries": [
+                _part_entry(
+                    "exchange_rate",
+                    exchange_rate_dir,
+                    f"rqdata/hk/exchange_rate/{exchange_rate_dir.name}",
+                )
+            ],
+            "latest_links": [
+                _latest_link(
+                    "rqdata/hk/exchange_rate/latest",
+                    f"rqdata/hk/exchange_rate/{exchange_rate_dir.name}",
+                )
+            ],
+            "summary": {"snapshot": exchange_rate_dir.name},
+        }
+
+    if southbound_dir:
+        parts["southbound"] = {
+            "description": "Southbound eligibility snapshot directory.",
+            "entries": [
+                _part_entry(
+                    "southbound",
+                    southbound_dir,
+                    f"rqdata/hk/southbound/{southbound_dir.name}",
+                )
+            ],
+            "latest_links": [
+                _latest_link(
+                    "rqdata/hk/southbound/latest",
+                    f"rqdata/hk/southbound/{southbound_dir.name}",
+                )
+            ],
+            "summary": {"snapshot": southbound_dir.name},
+        }
+
+    if financial_details_dir:
+        parts["financial_details"] = {
+            "description": "Financial-details raw snapshot directory.",
+            "entries": [
+                _part_entry(
+                    "financial_details",
+                    financial_details_dir,
+                    f"rqdata/hk/financial_details/{financial_details_dir.name}",
+                )
+            ],
+            "latest_links": [
+                _latest_link(
+                    "rqdata/hk/financial_details/latest",
+                    f"rqdata/hk/financial_details/{financial_details_dir.name}",
+                )
+            ],
+            "summary": {"snapshot": financial_details_dir.name},
+        }
+
     if industry_changes_dir:
         parts["industry"] = {
             "description": "Industry changes snapshot directory.",
@@ -511,10 +635,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ex-factors-snapshot", default=None)
     parser.add_argument("--dividends-snapshot", default=None)
     parser.add_argument("--shares-snapshot", default=None)
+    parser.add_argument("--exchange-rate-snapshot", default=None)
+    parser.add_argument("--southbound-snapshot", default=None)
+    parser.add_argument("--financial-details-snapshot", default=None)
     parser.add_argument("--industry-changes-snapshot", default=None)
     parser.add_argument("--universe-by-date", default=None)
     parser.add_argument("--universe-symbols", default=None)
     parser.add_argument("--universe-meta", default=None)
+    parser.add_argument("--no-exchange-rate", action="store_true", help="Skip exchange_rate assets.")
+    parser.add_argument("--no-southbound", action="store_true", help="Skip southbound assets.")
+    parser.add_argument(
+        "--no-financial-details",
+        action="store_true",
+        help="Skip financial_details assets.",
+    )
     parser.add_argument("--no-industry", action="store_true", help="Skip industry_changes assets.")
     args = parser.parse_args(argv)
 

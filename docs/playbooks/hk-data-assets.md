@@ -32,7 +32,8 @@
 
 * `src/csml/release_tools/package_assets.py` 里的 preset 是静态快照名，不是 alias 解析器。
 * 当前 `hk_full` preset 里的 `daily_snapshot` 仍是 `hk_all_2000_20260312_daily_final_latest`，而当前研究 alias `hk_all_daily_latest` 已经指向 `hk_all_2000_20260318_daily_final_latest`。
-* 如果你要打包“当前 alias 指向的版本”，请显式传 `--daily-snapshot`、`--instruments-file`、`--pit-snapshot` 等参数，不要默认 preset 会自动前进。
+* `southbound` 和 `financial_details` 现在也能打成独立 part；`exchange_rate` 默认走的是一个已完成的短窗 probe snapshot，不是假装“2000-至今”的长窗都已经成功。
+* 如果你要打包“当前 alias 指向的版本”，请显式传 `--daily-snapshot`、`--instruments-file`、`--pit-snapshot`、`--exchange-rate-snapshot`、`--southbound-snapshot`、`--financial-details-snapshot` 等参数，不要默认 preset 会自动前进。
 
 ## 资产地图
 
@@ -620,10 +621,11 @@ uv run python -m csml.release_tools.package_assets \
 
 这条链路的特点：
 
-* 会把资产拆成 `daily / instruments / pit / reference / industry / universe` 这些 part
+* 会把资产拆成 `daily / instruments / pit / reference / exchange_rate / southbound / financial_details / industry / universe` 这些 part
 * 每个 part 都有自己的 `manifest.yml`
 * part 内部会生成 `latest` 软链接，方便下游配置直接引用
 * 只想打核心层时，可以显式传 `--part daily --part instruments --part pit --part universe`
+* 如果你不想带增强层，可以补 `--no-exchange-rate`、`--no-southbound`、`--no-financial-details`
 
 如果你要直接打成 GitHub Release 资产，再用：
 
@@ -642,6 +644,7 @@ uv run python -m csml.release_tools.release_assets \
 * 因为 `package_assets` / `release_assets` 走的是静态 preset
 * 它们不会自动跟随 `hk_all_daily_latest` 这类 alias
 * 如果你要分发当前工作区真正正在使用的 snapshot，最好把关键快照名写死在命令里
+* `exchange_rate` 尤其要显式确认，因为当前稳定可用的是短窗 probe，不是长窗 `latest`
 
 ### 3. 历史 run 和数据资产是两条不同流程
 

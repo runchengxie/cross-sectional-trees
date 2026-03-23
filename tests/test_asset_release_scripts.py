@@ -23,6 +23,18 @@ def _prepare_demo_assets(repo_root: Path) -> None:
     (universe_dir / "symbols_demo.txt").write_text("00005.HK\n", encoding="utf-8")
     (universe_dir / "meta_demo.yml").write_text("name: demo\n", encoding="utf-8")
 
+    exchange_rate_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "exchange_rate" / "exchange_rate_demo"
+    (exchange_rate_dir / "data").mkdir(parents=True, exist_ok=True)
+    (exchange_rate_dir / "data" / "exchange_rate.parquet").write_text("exchange-rate", encoding="utf-8")
+
+    southbound_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "southbound" / "southbound_demo"
+    (southbound_dir / "data").mkdir(parents=True, exist_ok=True)
+    (southbound_dir / "data" / "00005.HK.parquet").write_text("southbound", encoding="utf-8")
+
+    financial_details_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "financial_details" / "financial_details_demo"
+    (financial_details_dir / "data").mkdir(parents=True, exist_ok=True)
+    (financial_details_dir / "data" / "00005.HK.parquet").write_text("financial-details", encoding="utf-8")
+
 
 def _stage_demo_parts(tmp_path: Path) -> tuple[object, Path]:
     package_script = _load_module("csml.release_tools.package_assets")
@@ -54,11 +66,64 @@ def _stage_demo_parts(tmp_path: Path) -> tuple[object, Path]:
             "meta_demo.yml",
             "--no-pit",
             "--no-reference",
+            "--no-exchange-rate",
+            "--no-southbound",
+            "--no-financial-details",
             "--no-industry",
             "--part",
             "daily",
             "--part",
             "universe",
+        ]
+    )
+
+    assert exit_code == 0
+    return package_script, stage_root
+
+
+def _stage_demo_supplemental_parts(tmp_path: Path) -> tuple[object, Path]:
+    package_script = _load_module("csml.release_tools.package_assets")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _prepare_demo_assets(repo_root)
+
+    package_script.REPO_ROOT = repo_root
+    package_script.ASSETS_ROOT = repo_root / "artifacts" / "assets"
+
+    stage_root = tmp_path / "stage_supplemental"
+    exit_code = package_script.main(
+        [
+            "--dest",
+            str(stage_root),
+            "--name",
+            "demo_assets_extra",
+            "--as-of",
+            "20260319",
+            "--daily-snapshot",
+            "daily_demo",
+            "--instruments-file",
+            "instruments_demo.parquet",
+            "--universe-by-date",
+            "by_date_demo.csv",
+            "--universe-symbols",
+            "symbols_demo.txt",
+            "--universe-meta",
+            "meta_demo.yml",
+            "--exchange-rate-snapshot",
+            "exchange_rate_demo",
+            "--southbound-snapshot",
+            "southbound_demo",
+            "--financial-details-snapshot",
+            "financial_details_demo",
+            "--no-pit",
+            "--no-reference",
+            "--no-industry",
+            "--part",
+            "exchange_rate",
+            "--part",
+            "southbound",
+            "--part",
+            "financial_details",
         ]
     )
 
@@ -110,6 +175,75 @@ def test_release_assets_builds_multiple_tarballs_for_selected_parts(tmp_path):
     assert (tar_dir / "assets-demo_assets-20260318-daily.tar.gz").exists()
     assert (tar_dir / "assets-demo_assets-20260318-universe.tar.gz").exists()
     assert (stage_root / "README.md").exists()
+
+
+def test_package_assets_stages_supplemental_parts_and_manifests(tmp_path):
+    _, stage_root = _stage_demo_supplemental_parts(tmp_path)
+
+    assert (
+        stage_root
+        / "exchange_rate"
+        / "rqdata"
+        / "hk"
+        / "exchange_rate"
+        / "exchange_rate_demo"
+        / "data"
+        / "exchange_rate.parquet"
+    ).exists()
+    assert (
+        stage_root
+        / "southbound"
+        / "rqdata"
+        / "hk"
+        / "southbound"
+        / "southbound_demo"
+        / "data"
+        / "00005.HK.parquet"
+    ).exists()
+    assert (
+        stage_root
+        / "financial_details"
+        / "rqdata"
+        / "hk"
+        / "financial_details"
+        / "financial_details_demo"
+        / "data"
+        / "00005.HK.parquet"
+    ).exists()
+
+    assert (stage_root / "exchange_rate" / "rqdata" / "hk" / "exchange_rate" / "latest").is_symlink()
+    assert (stage_root / "southbound" / "rqdata" / "hk" / "southbound" / "latest").is_symlink()
+    assert (stage_root / "financial_details" / "rqdata" / "hk" / "financial_details" / "latest").is_symlink()
+
+    root_manifest = yaml.safe_load((stage_root / "manifest.yml").read_text(encoding="utf-8"))
+    assert sorted(root_manifest["parts"].keys()) == ["exchange_rate", "financial_details", "southbound"]
+
+
+def test_release_assets_builds_tarballs_for_supplemental_parts(tmp_path):
+    _, stage_root = _stage_demo_supplemental_parts(tmp_path)
+    release_script = _load_module("csml.release_tools.release_assets")
+
+    tar_dir = tmp_path / "tarballs_extra"
+    exit_code = release_script.main(
+        [
+            "--staged-root",
+            str(stage_root),
+            "--tar-dir",
+            str(tar_dir),
+            "--part",
+            "exchange_rate",
+            "--part",
+            "southbound",
+            "--part",
+            "financial_details",
+            "--skip-upload",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (tar_dir / "assets-demo_assets_extra-20260319-exchange_rate.tar.gz").exists()
+    assert (tar_dir / "assets-demo_assets_extra-20260319-southbound.tar.gz").exists()
+    assert (tar_dir / "assets-demo_assets_extra-20260319-financial_details.tar.gz").exists()
 
 
 def test_release_assets_creates_single_release_with_multiple_assets(tmp_path, monkeypatch):

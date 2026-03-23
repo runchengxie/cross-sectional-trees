@@ -212,7 +212,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--part",
         action="append",
-        choices=("daily", "instruments", "pit", "reference", "industry", "universe"),
+        choices=(
+            "daily",
+            "instruments",
+            "pit",
+            "reference",
+            "exchange_rate",
+            "southbound",
+            "financial_details",
+            "industry",
+            "universe",
+        ),
         default=[],
         help="Only upload selected part(s). Repeatable.",
     )
