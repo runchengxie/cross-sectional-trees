@@ -1,128 +1,155 @@
 # HK selected 研究路线
 
-本页解决什么：在 HK selected 路线上做频率与数据路线选择，并确定比较顺序。
-本页不解决什么：不展开参数定义与资产准备细节。
-适合谁：已经要做 HK selected 研究的人。
-读完你会得到什么：一条可执行的路线选择与比较顺序。
-相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/cli.md`、`docs/config.md`
+本页解决什么：在 HK selected 路线上选择频率、数据路线和比较顺序。  
+本页不解决什么：不展开参数定义、资产整备细节或专题研究流水账。  
+适合谁：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。  
+读完你会得到什么：一条按当前仓库模板和最新研究结论整理过的可执行路线图。  
+相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/hk-quarterly-pit-regime-shift-202603.md`、`docs/cli.md`、`docs/config.md`
 
-任务摘要：先选频率，再选数据路线；走 PIT 路线先做覆盖率体检，再按 benchmark protocol 跑特征阶梯，最后在同一路线内比较模型。
+本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-23` 的仓库内研究结论整理。  
+历史 run 里仍然保留了旧口径；复现旧结果时，请先看 `config.used.yml`。
 
-本页把 HK selected 研究拆成五步：
+任务摘要：先选频率，再选数据路线；`fundamentals.source=file` 的 PIT 路线先做覆盖率体检；季度正式 benchmark 按 `price-only -> pit-core -> pit-core-hybrid` 递进；模型比较只在同一个研究单元里进行。
+
+## 1. 先看结论
+
+如果你只想先知道该从哪里开始，按下面这张表选入口：
+
+| 你的目标 | 建议起点 | 原因 |
+| --- | --- | --- |
+| 第一次跑 HK selected，先熟悉命令和主流程 | 月度 `M` + provider 基本面 | 内置模型模板最完整，反馈最快 |
+| 做正式的财报驱动研究 | 季度 `Q` + PIT 财务 | 这是当前官方 benchmark protocol 的主线 |
+| 想做低频调仓，但暂时没有本地 PIT 文件 | 季度 `Q` + provider 基本面对照 | 可以先验证低频估值和慢量价，再决定是否进 PIT |
+| 想探索年度 `Y` | 先把季度路线跑稳，再从季度配置派生 | 代码支持，模板和经验都更依赖季度主线 |
+| 想做 `provider valuation overlay` | 先把季度 `pit-core-hybrid` 主线跑稳，再进入专题研究页 | 这条线已升级为进阶路线，不再是默认 benchmark 主线 |
+
+先记住两条最新状态：
+
+* 当前官方季度 PIT preset 和 benchmark 配置已经默认 `features.missing.add_indicators: false`。
+* `provider_overlay` 现在是一条单独维护的进阶季度路线；主线入口仍然是 `price-only / pit-core / pit-core-hybrid`。
+
+阅读导航：
+
+* 路线总览看 [README.md](./README.md)
+* PIT 资产准备看 [hk-data-assets.md](./hk-data-assets.md)
+* 配置派生和模板边界看 [research-template-design.md](./research-template-design.md)
+* PIT 体检怎么解读看 `docs/concepts/pit-coverage.md`
+* benchmark 阶梯定义看 `docs/concepts/benchmark-protocol.md`
+* overlay 路线最新结论看 `docs/research/hk-quarterly-pit-regime-shift-202603.md`
+
+## 2. 主线流程
+
+HK selected 主线研究，按下面 6 步推进最稳妥：
 
 1. 先选频率：`M` / `Q` / `Y`
 2. 再选数据路线：`纯量价` / `量价 + provider 基本面` / `量价 + PIT 财务`
-3. 如果走 PIT 路线，先过覆盖率体检
-4. 按 benchmark protocol 先跑 `price-only -> PIT-only -> hybrid`
-5. 最后才在同一条路线里比较模型：`ridge` / `xgb_regressor` / `xgb_ranker` / `elasticnet`
+3. 如果配置里用了 `fundamentals.source=file`，先准备 `pipeline_fundamentals.parquet`
+4. 如果走季度 PIT 路线，先跑 `inspect-hk-pit-coverage`
+5. 固定同一研究单元后，先跑特征 benchmark，再做模型比较
+6. `provider_overlay`、抗漂移和更细的验证，放到主线稳定之后再展开
 
-本页只讲研究路线、模板选择和比较顺序。
+这里的“研究单元”至少包含这几件事：
 
-先看本目录导航：
+* 频率
+* 数据路线
+* 股票池口径
+* 是否依赖本地 PIT 文件
 
-* [README.md](./README.md)
+只要这些边界没变，你大多还在同一个研究单元里。  
+同一研究单元里可以换模型、调参数、删少量字段；跨出这个单元，就已经是在比较整条研究路线。
 
-参数细节看：
+## 3. 研究矩阵
 
-* `docs/cli.md`
-* `docs/config.md`
-
-PIT 资产准备看：
-
-* [hk-data-assets.md](./hk-data-assets.md)
-
-模板维护和派生原则看：
-
-* [research-template-design.md](./research-template-design.md)
-
-## 1. 新手先看这个
-
-如果你第一次做 HK selected，先按下面的顺序走：
-
-1. 想先确认主流程和命令入口，从“月度 + provider 基本面”开始。
-2. 想做正式的财报驱动研究，默认从“季度 + PIT 财务”开始。
-3. 想做低频调仓，但暂时不想准备本地 PIT 财务文件，从“季度 + provider 基本面对照”开始。
-4. 年度 `Y` 先当探索路线。先把季度路线跑稳，再上年度。
-
-这里多记一条经验：
-
-* 对 PIT 财务路线，先过覆盖率体检，并把 `Fill Dependence` 调到可接受状态，再谈模型比较。
-
-## 2. 先看研究矩阵
-
-这张表只回答“你应该从哪一格开始”。它不表示每一格都有完整的内置模板。
+这张表只回答“当前仓库里，你应该从哪一格开始”。  
+表里写“需要本地派生”的格子，表示代码支持，但没有单独维护成官方 benchmark 模板。
 
 | 频率 | 纯量价 | 量价 + provider 基本面 | 量价 + PIT 财务 |
 | --- | --- | --- | --- |
-| 月度 `M` | 需要本地派生。可从 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 关掉 `fundamentals` 开始。 | 现成模板最完整：`configs/experiments/variants/hk_selected__xgb_regressor.yml`、`configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`、`configs/experiments/variants/hk_selected__ridge_a1.yml`、`configs/experiments/variants/hk_selected__elasticnet_a0.1_l0.5.yml`。 | 需要本地派生；当前没有单独维护的月度 PIT benchmark 模板。 |
-| 季度 `Q` | 有官方 benchmark 起点：`configs/experiments/baseline/hk_selected__quarterly_price_only.yml`。 | 需要本地派生；当前没有单独维护的季度 provider 基本面对照模板。 | 有官方 benchmark 阶梯：`configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`，以及同一 hybrid 单元上的 challenger 模板。 |
+| 月度 `M` | 需要本地派生。可从 `configs/experiments/baseline/hk_selected.yml` 或 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 关闭 `fundamentals` 开始。 | 官方月度入口最完整：`configs/experiments/baseline/hk_selected.yml`，以及 `configs/experiments/variants/hk_selected__xgb_regressor.yml`、`configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`、`configs/experiments/variants/hk_selected__ridge_a1.yml`、`configs/experiments/variants/hk_selected__elasticnet_a0.1_l0.5.yml`。 | 需要本地派生；当前没有单独维护的月度 PIT benchmark 模板。 |
+| 季度 `Q` | 官方 benchmark 起点：`configs/experiments/baseline/hk_selected__quarterly_price_only.yml`。 | 需要本地派生；当前没有单独维护的季度 provider benchmark 模板。 | 官方 benchmark 主线：`configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`，以及同一 hybrid 单元上的 challenger 模板。 |
 | 年度 `Y` | 代码支持，当前没有内置模板。建议从月度或季度配置派生。 | 代码支持，当前没有内置模板。建议从季度 provider 路线派生。 | 代码支持，当前没有内置模板。建议从季度 PIT 路线派生。 |
 
-读表时记住两点：
+读表时记住两条规则：
 
-* 做模型比较时，只在同一格里换模型。
-* 跨格比较时，你比较的是整条研究路线，不只是模型。
+* 模型比较只在同一格里换模型。
+* 跨格比较时，你比较的是频率、数据维度和样本口径一起变化后的整条路线。
 
-## 3. 月度 `M` 怎么选
+## 4. 月度 `M` 路线
 
-月度路线适合日常基线、模型横向对比和更高样本量的研究。
+月度路线适合日常基线、模型横向比较和更快的研究反馈。
 
-| 数据路线 | 起点配置 | 需要本地 PIT 文件 | 更适合回答的问题 |
+| 数据路线 | 起点配置 | 是否需要本地 PIT 文件 | 更适合回答的问题 |
 | --- | --- | --- | --- |
-| 纯量价 | 从 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 派生，设 `fundamentals.enabled=false` | 否 | 先看技术面和量价本身有没有稳定信号 |
-| 量价 + provider 基本面 | `configs/experiments/variants/hk_selected__xgb_regressor.yml` 及其显式模型模板 | 否 | 日常基线、四模型 PK、估值与技术面的混合信号 |
-| 量价 + PIT 财务 | 需要本地派生 | 是 | 想保留月度调仓，同时把财报字段并进模型 |
+| 纯量价 | 从 `configs/experiments/baseline/hk_selected.yml` 或 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 派生，设 `fundamentals.enabled=false` | 否 | 技术面和量价特征本身有没有稳定信号 |
+| 量价 + provider 基本面 | `configs/experiments/baseline/hk_selected.yml` 及其显式模型模板 | 否 | 日常基线、四模型 PK、估值与技术面的混合效果 |
+| 量价 + PIT 财务 | 需要本地派生 | 是 | 保留月度调仓，同时把真实财报字段并入模型后会发生什么 |
 
-月度路线当前最适合做四模型比较。原因很简单：
+月度路线当前最适合做两件事：
+
+* 快速跑通完整流程
+* 在同一路线里直接比较四种模型
+
+原因也很直接：
 
 * 内置模板最完整
 * 样本点更多
-* 调参与回看结果都更直接
+* 结果回看和参数调整更高频
 
-如果你只想先把四模型跑一遍，优先从这一块开始。
+如果你现在的目标只是“先把四种模型都跑一遍看看差距”，月度 `M` + provider 基本面仍然是最顺手的入口。
 
-## 4. 季度 `Q` 怎么选
+## 5. 季度 `Q` 路线
 
-季度路线适合低频调仓和财报驱动研究。
+季度路线适合低频调仓和正式的财报驱动研究。
 
-这里先记住两件事：
+这里先固定两个判断：
 
-* 季度路线仍然读取日线行情。变化的是标签、评估和回测的 rebalance 频率。
-* PIT 财务只在披露日更新。季度频率更适合作为正式研究起点。
+* 季度路线仍然读取日线行情；变化的是 `label`、`eval` 和 `backtest` 的 rebalance 频率。
+* 当前官方 HK selected benchmark protocol 的主线，是季度 `price-only -> pit-core -> pit-core-hybrid`。
 
-| 数据路线 | 起点配置 | 需要本地 PIT 文件 | 更适合回答的问题 |
+| 数据路线 | 起点配置 | 是否需要本地 PIT 文件 | 更适合回答的问题 |
 | --- | --- | --- | --- |
 | 纯量价 | `configs/experiments/baseline/hk_selected__quarterly_price_only.yml` | 否 | 低频调仓下，慢量价特征本身有没有方向 |
-| 量价 + provider 基本面 | 需要本地派生；可从 `configs/experiments/baseline/hk_selected.yml` 切到 `Q` 并保留 provider fundamentals | 否 | 低频估值字段本身有没有方向；是否值得再叠加量价 |
-| 量价 + PIT 财务 | `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`，以及同一 hybrid 单元上的模型 challenger | 是 | 财报披露节奏对齐后，core PIT 和慢量价特征有没有 alpha |
+| 量价 + provider 基本面 | 需要本地派生；可从 `configs/experiments/baseline/hk_selected.yml` 切到 `Q`，再对齐低频相关配置 | 否 | 低频估值字段本身有没有信息量；和慢量价放在一起是否值得继续 |
+| 量价 + PIT 财务 | `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`，以及同一 hybrid 单元上的 challenger 模板 | 是 | 财报披露节奏对齐后，core PIT 和慢量价能不能提供可解释的 alpha |
 
-### 4.1 季度 PIT 的默认研究流程
+### 5.1 季度 PIT 的官方流程
 
-如果你的目标是研究财报驱动信号，推荐按下面的顺序走：
+如果你的目标是正式做财报驱动研究，推荐按下面顺序走：
 
 1. 准备 `pipeline_fundamentals.parquet`
-2. 先跑 `csml rqdata inspect-hk-pit-coverage`
-3. 如果 `Fill Dependence` 还是红灯，先缩窄 PIT 特征，再重跑体检
-4. 先做三条 benchmark：`季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价`
-5. 确认基线稳定后，再做四模型 PK
+2. 运行 `csml rqdata inspect-hk-pit-coverage`
+3. 先看 `Fill Dependence`、`Worst Features`、`Complete Case`
+4. 覆盖率达标后，按顺序跑三条基线：
+   `quarterly_price_only -> quarterly_pit_core -> quarterly_pit_core_hybrid`
+5. 固定 `pit-core-hybrid` 研究单元后，再比较模型
 
-这条流程的重点是先判断数据和信号，再判断模型。
+这条流程的目标很明确：
 
-这里的 `core PIT` 指高覆盖财务主项和少量稳健派生项。低覆盖字段先不要放进起步配置。
+* 先确认数据能不能支撑研究
+* 再确认 PIT 特征有没有增量
+* 最后才回答“哪种模型更合适”
 
-**重要更新（2026-03）**：最新实验表明，在季度 PIT 路线上，`add_indicators: false`（不添加缺失指示器）+ `xgb_ranker` 的组合显著优于其他配置。具体结论：
+这里的 `core PIT`，指的是覆盖率较高的财务主项和少量稳健派生项。  
+低覆盖字段、更宽的字段池和专题路线，放到主线稳定之后再加。
 
-- `pit_core_hybrid` + `add_indicators: false` + `xgb_ranker`：IC 0.097，Sharpe 1.009，Score 0.959
-- 同特征 + `xgb_regressor`：IC 0.072，Sharpe 2.066（但样本太短，仅 3 个 period）
-- 同特征 + `add_indicators: true`（原版 hybrid）：IC 0.092，Sharpe 0.34，Score 0.249
+### 5.2 季度 PIT 的当前模板状态
 
-核心发现：去掉 `*_missing` 指示器后，模型真正学到了基本面信号，而非依赖"哪些公司财报缺了"这个捷径。
+截至 `2026-03-23`，这里有 3 条需要明确写清楚：
 
-如果体检结果说明 source-level 覆盖很差，先回到资产准备。  
-如果源头覆盖还可以，但 selected features 的 complete-case 结果很差，先缩窄特征集。  
-如果 `季度 core PIT + 慢量价` 没有明显优于 `季度纯量价`，先不要急着继续调模型。
+* 当前官方季度 preset `configs/presets/hk_quarterly_pit_hybrid.yml` 已经默认 `features.missing.add_indicators: false`。
+* 当前三条官方季度 benchmark 配置都建立在这个 preset 之上。
+* 仓库里仍能看到带 `*_missing` 列的历史 run；那是旧口径或旧本地配置，不是当前默认模板。
 
-体检命令示例：
+所以，读季度 PIT 结果时请先区分两件事：
+
+* 当前官方模板怎么定义
+* 某个历史 run 当时实际用了什么口径
+
+最稳妥的核对方式仍然是先读该 run 的 `config.used.yml`。
+
+### 5.3 覆盖率体检怎么过关
+
+体检命令：
 
 ```bash
 csml rqdata inspect-hk-pit-coverage \
@@ -130,17 +157,21 @@ csml rqdata inspect-hk-pit-coverage \
   --mode both
 ```
 
-看 `Fill Dependence` 时，先按这套门槛判断：
+看 `Fill Dependence` 时，按下面这套门槛判断：
 
-* `core PIT`：`retention_ratio_after_ffill >= 0.60` 记为绿灯，`0.30-0.59` 记为黄灯，`< 0.30` 记为红灯。
-* `core_hybrid`：`retention_ratio_after_ffill >= 0.40` 记为绿灯，`0.15-0.39` 记为黄灯，`< 0.15` 记为红灯。
-* 如果 `periods_after_missing_fill=0`，直接按红灯处理。
+* `core PIT`：`retention_ratio_after_ffill >= 0.60` 为绿灯，`0.30-0.59` 为黄灯，`< 0.30` 为红灯
+* `core_hybrid`：`retention_ratio_after_ffill >= 0.40` 为绿灯，`0.15-0.39` 为黄灯，`< 0.15` 为红灯
+* `periods_after_missing_fill=0`：直接按红灯处理
 
-`Fill Dependence` 是红灯时，先停下来改资产或特征集。  
-`Fill Dependence` 是黄灯时，先看 `Worst Features`，删掉最拖后腿的一两个字段，再重跑体检。  
-`Fill Dependence` 是绿灯时，再继续跑三条基线和四模型 PK。
+对应动作：
 
-仓库现在已经把这套 benchmark protocol 的标准入口沉淀成正式配置：
+* 红灯：停止跑模型，先改字段集、股票池或 PIT 资产
+* 黄灯：先看 `Worst Features`，优先删掉最拖后腿的一两个字段，再重跑体检
+* 绿灯：可以继续跑三条基线和模型 challenger
+
+### 5.4 季度 PIT 的官方 benchmark 与 challenger
+
+当前官方季度 benchmark protocol 的入口已经收口到下面这些配置：
 
 * `configs/experiments/baseline/hk_selected__quarterly_price_only.yml`
 * `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`
@@ -149,104 +180,53 @@ csml rqdata inspect-hk-pit-coverage \
 * `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml`
 * `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml`
 
-**推荐配置**（2026-03）：
+当前协议里的角色分工是：
 
-对默认 benchmark protocol，当前更稳妥的设置是：
+* `xgb_regressor`：强 benchmark，也是默认要被超越的对象
+* `xgb_ranker`：primary challenger，回答“换成排序目标后会不会更好”
+* `ridge`：线性 sanity benchmark
+* `elasticnet`：稀疏线性 challenger
 
-* 保留 `features.missing.add_indicators: false`
-* 先把 `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml` 当作强 benchmark
-* 再用 `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml` 作为 primary challenger
+这套分工和“某次局部实验里哪种模型分数更高”是两回事。  
+如果你在旧笔记或历史 run 里看到 `xgb_ranker` 某次赢了 `xgb_regressor`，请把它理解成特定研究单元下的一次结果，不要自动外推成全局默认。
 
-如果你还想看更宽的 PIT 财报路线，仓库里另外还有这几份季度模板：
-
-* `configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`
-* `configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`
-* `configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml`
-
-这里最容易混淆的点是：
-
-* 这三份文件是三条季度实验路线。
-* 它们不是“四种模型”的一一对应模板。
-* 如果你要做严格的四模型 PK，应该先选其中一条作为路线基线，再只改 `model`。
-
-## 5. 年度 `Y` 怎么选
+## 6. 年度 `Y` 路线
 
 代码层已经支持年度频率，但当前没有单独维护的年度模板。
 
 更稳妥的做法是：
 
-1. 先从季度路线选一份最接近你的配置。
-2. 把 `label.rebalance_frequency`、`eval.rebalance_frequency`、`backtest.rebalance_frequency` 一起改成 `Y`。
-3. 同步把 `eval.n_splits` 和 `eval.walk_forward.n_windows` 调低。
-4. 起步时优先用线性模型或较浅的树模型。
+1. 先从季度路线选一份最接近你的配置
+2. 把 `label.rebalance_frequency`、`eval.rebalance_frequency`、`backtest.rebalance_frequency` 一起改成 `Y`
+3. 同步下调 `eval.n_splits` 和 `eval.walk_forward.n_windows`
+4. 起步时优先使用线性模型或较浅的树模型
 
 年度路线更适合这类问题：
 
 * 你只关心很慢的财报信号
 * 你接受更少的训练窗口
-* 你愿意先做探索，再决定要不要长期维护这条路线
+* 你准备先做探索，再决定是否长期维护这条线
 
-## 6. 四模型 PK 放在流程后段
+## 7. 四模型比较怎么做
 
-仓库当前支持四种模型：
+四模型比较放在流程后段，结论会更稳定，也更容易解释。
 
-* `xgb_regressor`
-* `xgb_ranker`
-* `ridge`
-* `elasticnet`
+推荐顺序：
 
-推荐做法很固定：
+1. 先固定研究单元
+2. 先跑完特征 benchmark
+3. 再只换 `model` 和 `eval.run_name`
+4. 用同一批 run 统一 `summarize`
 
-1. 先把数据路线和特征口径定住。
-2. 先跑完 `季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价` 这三条基线。
-3. 再选定研究矩阵里的一个单元；对标准季度 PIT protocol，直接用官方 hybrid benchmark。
-4. 标准四模型 PK 直接使用官方 hybrid benchmark 和三个 challenger 模板；只有更细的实验再复制到 `configs/local/`。
-5. 保持下面这些块尽量不变：
-   `universe`、`fundamentals`、`features`、`label`、`eval`、`backtest`
-6. 只改两类内容：
-   `model`
-   `eval.run_name`
-7. 跑四份配置，再统一 `summarize`。
-
-**重要更新（2026-03）**：最新实验表明，季度 PIT 路线的最佳实践是：
-
-1. **一定要设置 `features.missing.add_indicators: false`**，去掉 `*_missing` 指示器
-2. **优先使用 `xgb_ranker`**，在基本面路线上表现显著优于 `xgb_regressor`
-
-模型 benchmark 现在有现成模板：
-
-* `xgb_regressor`：`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`
-* `xgb_ranker`：`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml`
-* `ridge`：`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml`
-* `elasticnet`：`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml`
-
-如果你现在要做“季度 + 量价 + PIT 财务”的四模型 PK，更稳妥的起点是：
-
-* 先跑完 `季度纯量价`、`季度 core PIT`、`季度 core PIT + 慢量价`
-* 用 `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml` 固定研究单元
-* 再只切到同一单元上的 `ridge`、`xgb_ranker`、`elasticnet`
-* 只改 `model` 和 `eval.run_name`
-
-这一步更适合放在下面这些条件都满足之后：
-
-* PIT 覆盖率体检已经跑过
-* `季度 core PIT` 已经能稳定训练
-* `季度 core PIT + 慢量价` 已经证明比更简单的基线更有信息量
-
-模型分组可以直接这样记：
-
-* 线性模型：`ridge`、`elasticnet`
-* 非线性模型：`xgb_regressor`、`xgb_ranker`
-
-示例：
+对标准季度 PIT 主线，最直接的执行方式就是：
 
 ```bash
-# 三条 benchmark
+# 特征 benchmark
 csml run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
 csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
 csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
 
-# 同一 hybrid 单元上的 challenger
+# 同一 hybrid 单元上的模型 challenger
 csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml
 csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml
 csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml
@@ -257,13 +237,21 @@ csml summarize \
   --sort-by score
 ```
 
-如果你要继续细化线性模型，再单独用 `csml sweep-linear` 跑 `ridge` 和 `elasticnet`。前提仍然是先把研究单元固定住。
+这里最重要的控制变量是：
 
-## 7. 什么时候需要准备 PIT 财务文件
+* `universe`
+* `fundamentals`
+* `features`
+* `label`
+* `eval`
+* `backtest`
 
-只有在你走“量价 + PIT 财务”这条路线时，才需要本地 PIT fundamentals 文件。
+如果这些块一起变了，你比较的就不再是模型，而是整条研究路线。  
+如果你还要继续细化线性模型，再单独用 `csml sweep-linear` 做后续搜索。
 
-判断方法很简单：
+## 8. 什么时候必须准备 PIT 财务文件
+
+判断规则很简单：
 
 * `fundamentals.source=provider`：不需要本地 PIT 文件
 * `fundamentals.enabled=false`：不需要本地 PIT 文件
@@ -289,49 +277,60 @@ csml rqdata inspect-hk-pit-coverage \
   --mode both
 ```
 
-如果你要做“PIT 财务 + provider valuation”叠加实验，先不要把日频估值写回稀疏 PIT 文件后直接解释结果。更稳妥的做法是让 pipeline 走双路 merge：主 `fundamentals.file` 保留 PIT 财报，provider valuation 用 `fundamentals.provider_overlay` 直接并到 daily panel。对应的 `G4_fixed` 本地配置已经按这个口径改好；例如你可以先在 `configs/local/<your_g4_fixed_config>.yml` 派生一份，然后直接跑：
+更完整的资产准备顺序，看 [hk-data-assets.md](./hk-data-assets.md)。
+
+## 9. 进阶路线：`provider valuation overlay`
+
+`provider valuation overlay` 现在是一条单独维护的季度进阶路线。
+
+它的定义是：
+
+* 主基本面继续走 `fundamentals.source=file` 的稀疏 PIT 财报
+* 日频估值通过 `fundamentals.provider_overlay` 按 `trade_date + symbol` 直接并到 daily panel
+
+这条线的主入口是：
+
+* `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml`
+
+当前使用方式有 3 条原则：
+
+* 先把官方 `quarterly_pit_core_hybrid` 主线跑稳，再进入 overlay
+* 日频估值直接走 `provider_overlay`；不要把它写回稀疏 PIT 文件后再解释结果
+* 专题结论和抗漂移基线看 `docs/research/hk-quarterly-pit-regime-shift-202603.md`
+
+截至 `2026-03-23`，这条线的状态是：
+
+* 旧 overlay 基线已经在 `final_oos` 暴露出 regime shift
+* 当前仓库里有单独维护的抗漂移验证配置
+* 这条线适合当专题研究和 canary 准备路线，不适合重新写回 HK selected 主线 benchmark
+
+如果你要审计 overlay 合并链路，可以在 run 完成后执行：
 
 ```bash
-csml run --config configs/local/<your_g4_fixed_config>.yml
-
 uv run python -m csml.research.hk_selected_provider_valuation_audit \
   --run-dir artifacts/runs/<run_dir>
 ```
 
-这样至少能先把 daily overlay 路径上的覆盖率看清楚，再决定要不要继续解释 G4 类实验；如果 `valuation_age_days` 不是接近 0 或缺失，而是重新出现长尾陈旧值，就说明链路又被改坏了。
+## 10. 几个容易混淆的点
 
-更完整的资产准备顺序看：
+先把下面这些点记住，很多阅读和复现问题都会少很多：
 
-* [hk-data-assets.md](./hk-data-assets.md)
+* 仓库只把核心研究单元维护成官方模板；研究矩阵里其余格子需要本地派生
+* 季度和年度路线仍然读取日线行情；低频设定改的是标签、评估和回测的 rebalance 频率
+* `universe.by_date_file` 控制的是某只股票在哪些日期能进入研究样本；本地日线和 PIT 资产控制的是你保留了多长历史
+* 模型比较必须固定在同一个研究单元里；跨格比较属于路线比较
+* 历史 run 和当前模板不是同一个概念；读旧结果时先看 `config.used.yml`
 
-## 8. 常见误解
+## 11. 结果先看什么
 
-### 误解 1：研究矩阵里的每一格都有完整内置模板
-
-当前不是这样。仓库已经覆盖了常用单元，但不是九宫格全部现成。
-
-### 误解 2：季度或年度路线不再依赖日线行情
-
-不会。季度和年度路线仍然读取日线价格、成交量和成交额，只是 rebalance 频率变了。
-
-### 误解 3：PIT 股票池会把财务历史自动裁成成员期
-
-不会。股票池控制的是某个日期能不能进入研究样本。财务镜像控制的是本地保留了多少历史。
-
-### 误解 4：比较模型时，可以直接拿不同路线的模板互相比
-
-这样很难解释。更稳妥的做法是在同一条路线里换模型。
-
-## 9. 结果先看什么
-
-先读这几个文件：
+跑完之后，优先按这个顺序读产出：
 
 1. `summary.json`
 2. `config.used.yml`
-3. `positions_current.csv`
-4. `runs_summary.csv`
+3. `runs_summary.csv`
+4. `positions_current.csv`
 
-重点看：
+重点看这些指标：
 
 * `ic_mean`
 * `long_short`
@@ -340,9 +339,11 @@ uv run python -m csml.research.hk_selected_provider_valuation_audit \
 * `backtest_avg_turnover`
 * `flag_*`
 
-如果你在比较季度或年度低频 run，再额外看：
+如果你在看季度或年度低频 run，再额外叠加下面几项：
 
-* walk-forward 是否稳定
-* `positions_current.csv` 是否集中在极少数低流动性标的
-* 样本覆盖是否因为缺失填补、`growth_*` 特征或更慢的 rebalance 频率发生明显变化
-* 体检输出里的 `Complete Case` 和 `Recent Quarters` 是否还支持当前研究口径
+* `walk_forward` 的方向是否稳定
+* `positions_current.csv` 是否过度集中到低流动性个股
+* `inspect-hk-pit-coverage` 里的 `Complete Case`、`Fill Dependence` 和 `Recent Quarters` 是否还支持当前字段组合
+
+如果最终结论和你的预期差很多，先不要急着换模型。  
+先回到 `config.used.yml`、覆盖率体检和研究单元边界，确认你比较的到底是不是同一件事。
