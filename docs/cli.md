@@ -17,6 +17,7 @@
 | 查看持仓 | `csml holdings --config <> --as-of t-1` |
 | 生成快照 | `csml snapshot --config <live.yml>` |
 | 手数分配 | `csml alloc --config <> --source live --top-n 20` |
+| 港股增强分配 | `csml alloc-hk --config <> --source live --top-n 20 --method custom` |
 | 导出模板 | `csml init-config --market default` |
 | 构建 HK 全市场股票池 | `csml universe hk-daily-assets --config <> -- <args>` |
 | 刷新数据 catalog | `csml data catalog` |
@@ -46,7 +47,7 @@ csml <subcommand> --help
 
 ### 日期 token
 
-`holdings`、`snapshot`、`alloc` 支持：
+`holdings`、`snapshot`、`alloc`、`alloc-hk` 支持：
 
 - `YYYYMMDD` / `YYYY-MM-DD`
 - `today` / `t-1`
@@ -55,6 +56,15 @@ csml <subcommand> --help
 ### 输出格式
 
 `holdings`、`snapshot`、`alloc` 支持：`--format text|csv|json`
+
+`alloc-hk` 额外支持：`--format xlsx`。该格式需要安装 `--extra liveops-hk`，并且必须显式传 `--out`。
+
+`alloc-hk` 还支持场景矩阵参数：
+
+- `--scenario-capital 1000000,500000`
+- `--scenario-top-n 20,10`
+
+两者都支持重复传入和逗号分隔；命令会按 `资金 × TopN` 做笛卡尔积。
 
 ### 透传参数
 
@@ -128,6 +138,22 @@ csml snapshot --config path/to/live.yml
 ```bash
 csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
 ```
+
+### csml alloc-hk
+
+港股增强分配，适合把 `positions_current_live.csv` 或 `csml holdings --format json` 结果往执行前分析层推进。
+
+```bash
+csml alloc-hk --config path/to/live.yml --source live --top-n 20 --cash 1000000 --method custom
+csml alloc-hk --positions-file artifacts/runs/<run_dir>/positions_current_live.csv --as-of 2026-03-20 --roll-window 252 --no-secondary-fill
+csml alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --format xlsx --out artifacts/exports/alloc_hk.xlsx
+csml alloc-hk --config path/to/live.yml --source live --scenario-capital 1000000,500000 --scenario-top-n 20,10 --method custom --format xlsx --out artifacts/exports/alloc_hk_grid.xlsx
+```
+
+说明：
+
+- 单场景时，`csv` 仍输出逐标的分配表。
+- 多场景时，`csv` 会切换为场景总览表；完整明细优先用 `json` 或 `xlsx`。
 
 
 ## 数据管理命令

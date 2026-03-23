@@ -6,7 +6,7 @@
     - Commands: ``from csml.commands import run_grid, linear_sweep``
     - Data Tools: ``from csml.data_tools import build_hk_daily_asset_universe, ...``
     - Research: ``from csml.research import summarize_runs``
-    - LiveOps: ``from csml.liveops import snapshot, holdings, alloc``
+    - LiveOps: ``from csml.liveops import snapshot, holdings, alloc, alloc_hk``
 """
 
 from importlib import import_module
@@ -24,6 +24,8 @@ def __getattr__(name):
         return import_module("csml.commands.linear_sweep")
     elif name in ("holdings", "snapshot", "alloc"):
         return import_module(f"csml.research_tools.{name}")
+    elif name == "alloc_hk":
+        return import_module("csml.liveops.alloc_hk")
     elif name == "summarize_runs":
         return import_module("csml.research_tools.summarize_runs")
     elif name == "rqdata_assets":

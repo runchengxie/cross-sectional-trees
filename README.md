@@ -8,7 +8,7 @@
 
 ## 我能不能跑起来
 
-Python 3.12+，推荐 `uv`。如果你需要 RQData 能力，安装时加 `--extra rqdata`。
+Python 3.12+，推荐 `uv`。如果你需要 RQData 能力，安装时加 `--extra rqdata`；如果你要把 `csml alloc-hk` 导出成 Excel，再额外加 `--extra liveops-hk`。
 
 ```bash
 uv venv --seed
@@ -27,7 +27,7 @@ cp .env.example .env
 ## 这仓库还有哪些入口
 
 * 研究汇总与敏感性分析：`csml summarize` / `csml grid` / `csml sweep-linear`
-* live 结果查看与分配：`csml holdings` / `csml snapshot` / `csml alloc`
+* live 结果查看与分配：`csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk`（含 HK 执行前场景矩阵）
 * 数据与运维工具：`csml rqdata ...` / `csml universe ...` / `csml tushare verify-token`
 * 数据分层与查询：`csml data catalog` / `csml data materialize` / `csml data query`
 

@@ -569,6 +569,104 @@ def _handle_alloc(args) -> int:
     return 0
 
 
+def _handle_alloc_hk(args) -> int:
+    from .liveops import alloc_hk
+
+    argv: list[str] = []
+    _append_arg(argv, "--config", getattr(args, "config", None))
+    _append_arg(argv, "--run-dir", getattr(args, "run_dir", None))
+    _append_arg(argv, "--positions-file", getattr(args, "positions_file", None))
+    _append_arg(argv, "--top-k", getattr(args, "top_k", None), formatter=str)
+    _append_arg(argv, "--as-of", getattr(args, "as_of", None))
+    _append_arg(argv, "--source", getattr(args, "source", None))
+    _append_arg(argv, "--side", getattr(args, "side", None))
+    _append_arg(argv, "--top-n", getattr(args, "top_n", None), formatter=str)
+    _append_repeat_args(argv, "--scenario-capital", getattr(args, "scenario_capital", None))
+    _append_repeat_args(argv, "--scenario-top-n", getattr(args, "scenario_top_n", None))
+    _append_arg(argv, "--cash", getattr(args, "cash", None), formatter=str)
+    _append_arg(argv, "--method", getattr(args, "method", None))
+    _append_bool_switch(
+        argv,
+        getattr(args, "require_stock_connect", None),
+        true_flag="--require-stock-connect",
+        false_flag="--allow-non-stock-connect",
+    )
+    _append_arg(argv, "--history-years", getattr(args, "history_years", None), formatter=str)
+    _append_arg(argv, "--roll-window", getattr(args, "roll_window", None), formatter=str)
+    _append_arg(argv, "--sell-quantile", getattr(args, "sell_quantile", None), formatter=str)
+    _append_arg(
+        argv,
+        "--extreme-quantile",
+        getattr(args, "extreme_quantile", None),
+        formatter=str,
+    )
+    _append_bool_switch(
+        argv,
+        getattr(args, "secondary_fill_enabled", None),
+        true_flag="--secondary-fill",
+        false_flag="--no-secondary-fill",
+    )
+    _append_bool_switch(
+        argv,
+        getattr(args, "avoid_high_valuation", None),
+        true_flag="--avoid-high-valuation",
+        false_flag="--allow-high-valuation",
+    )
+    _append_bool_switch(
+        argv,
+        getattr(args, "avoid_high_valuation_strict", None),
+        true_flag="--avoid-high-valuation-strict",
+    )
+    _append_bool_switch(
+        argv,
+        getattr(args, "allow_over_alloc", None),
+        true_flag="--allow-over-alloc",
+    )
+    _append_arg(argv, "--max-steps", getattr(args, "max_steps", None), formatter=str)
+    _append_arg(
+        argv,
+        "--max-over-alloc-ratio",
+        getattr(args, "max_over_alloc_ratio", None),
+        formatter=str,
+    )
+    _append_arg(
+        argv,
+        "--max-over-alloc-amount",
+        getattr(args, "max_over_alloc_amount", None),
+        formatter=str,
+    )
+    _append_arg(
+        argv,
+        "--max-over-alloc-lots-per-ticker",
+        getattr(args, "max_over_alloc_lots_per_ticker", None),
+        formatter=str,
+    )
+    _append_arg(
+        argv,
+        "--cash-buffer-ratio",
+        getattr(args, "cash_buffer_ratio", None),
+        formatter=str,
+    )
+    _append_arg(
+        argv,
+        "--cash-buffer-amount",
+        getattr(args, "cash_buffer_amount", None),
+        formatter=str,
+    )
+    _append_arg(
+        argv,
+        "--estimated-fee-per-order",
+        getattr(args, "estimated_fee_per_order", None),
+        formatter=str,
+    )
+    _append_arg(argv, "--username", getattr(args, "username", None))
+    _append_arg(argv, "--password", getattr(args, "password", None))
+    _append_arg(argv, "--format", getattr(args, "format", None))
+    _append_arg(argv, "--out", getattr(args, "out", None))
+    alloc_hk.main(argv)
+    return 0
+
+
 def _handle_init_config(args) -> int:
     filename = resolve_pipeline_filename(args.market)
 
@@ -961,6 +1059,163 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional output path (default: stdout).",
     )
     alloc.set_defaults(func=_handle_alloc)
+
+    alloc_hk = subparsers.add_parser(
+        "alloc-hk",
+        help="HK pre-trade allocation with custom weights, valuation buckets, and secondary fill.",
+    )
+    alloc_hk.add_argument(
+        "--config",
+        help="Pipeline config path or built-in name (default: default).",
+    )
+    alloc_hk.add_argument(
+        "--run-dir",
+        help="Explicit run directory to read (overrides --config).",
+    )
+    alloc_hk.add_argument(
+        "--positions-file",
+        help="Explicit positions CSV path (overrides --config/--run-dir).",
+    )
+    alloc_hk.add_argument(
+        "--top-k",
+        type=int,
+        help="Optional Top-K filter when selecting the latest run.",
+    )
+    alloc_hk.add_argument(
+        "--as-of",
+        default="t-1",
+        help=(
+            "As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1, last_trading_day, "
+            "last_completed_trading_day). Default: t-1."
+        ),
+    )
+    alloc_hk.add_argument(
+        "--source",
+        default="auto",
+        choices=["auto", "backtest", "live"],
+        help="Positions source (auto/backtest/live). Default: auto.",
+    )
+    alloc_hk.add_argument(
+        "--side",
+        default="long",
+        choices=["long", "short", "all"],
+        help="Select side for allocation (long/short/all). Default: long.",
+    )
+    alloc_hk.add_argument(
+        "--top-n",
+        type=int,
+        default=20,
+        help="Number of names to allocate from sorted holdings. Default: 20.",
+    )
+    alloc_hk.add_argument(
+        "--scenario-capital",
+        action="append",
+        help="Scenario capital list (repeatable, supports comma-separated values).",
+    )
+    alloc_hk.add_argument(
+        "--scenario-top-n",
+        action="append",
+        help="Scenario Top-N list (repeatable, supports comma-separated values).",
+    )
+    alloc_hk.add_argument(
+        "--cash",
+        type=float,
+        help="Total portfolio cash for sizing. Overrides live.alloc_hk.cash.",
+    )
+    alloc_hk.add_argument(
+        "--method",
+        choices=["equal", "custom"],
+        help="Sizing method. custom uses holdings weight.",
+    )
+    alloc_hk.add_argument(
+        "--require-stock-connect",
+        dest="require_stock_connect",
+        action="store_true",
+        default=None,
+        help="Require stock_connect eligibility for tradable names.",
+    )
+    alloc_hk.add_argument(
+        "--allow-non-stock-connect",
+        dest="require_stock_connect",
+        action="store_false",
+        help="Allow non-stock-connect names to remain tradable.",
+    )
+    alloc_hk.add_argument("--history-years", type=int, help="Lookback years for valuation history.")
+    alloc_hk.add_argument("--roll-window", type=int, help="Rolling window used for valuation thresholds.")
+    alloc_hk.add_argument("--sell-quantile", type=float, help="Quantile used for HIGH valuation threshold.")
+    alloc_hk.add_argument(
+        "--extreme-quantile",
+        type=float,
+        help="Quantile used for EXTREME valuation threshold.",
+    )
+    alloc_hk.add_argument(
+        "--secondary-fill",
+        dest="secondary_fill_enabled",
+        action="store_true",
+        default=None,
+        help="Enable secondary fill after base lot sizing.",
+    )
+    alloc_hk.add_argument(
+        "--no-secondary-fill",
+        dest="secondary_fill_enabled",
+        action="store_false",
+        help="Disable secondary fill after base lot sizing.",
+    )
+    alloc_hk.add_argument(
+        "--avoid-high-valuation",
+        dest="avoid_high_valuation",
+        action="store_true",
+        default=None,
+        help="Prefer LOW/NEUTRAL names first during secondary fill.",
+    )
+    alloc_hk.add_argument(
+        "--allow-high-valuation",
+        dest="avoid_high_valuation",
+        action="store_false",
+        help="Do not prefer LOW/NEUTRAL names during secondary fill.",
+    )
+    alloc_hk.add_argument(
+        "--avoid-high-valuation-strict",
+        dest="avoid_high_valuation_strict",
+        action="store_true",
+        default=None,
+        help="Hard-block HIGH/EXTREME names during secondary fill.",
+    )
+    alloc_hk.add_argument(
+        "--allow-over-alloc",
+        dest="allow_over_alloc",
+        action="store_true",
+        default=None,
+        help="Allow bounded over-allocation during secondary fill.",
+    )
+    alloc_hk.add_argument("--max-steps", type=int, help="Maximum secondary fill steps.")
+    alloc_hk.add_argument("--max-over-alloc-ratio", type=float, help="Over-allocation cap as a ratio of cash.")
+    alloc_hk.add_argument("--max-over-alloc-amount", type=float, help="Over-allocation cap as an absolute amount.")
+    alloc_hk.add_argument(
+        "--max-over-alloc-lots-per-ticker",
+        type=int,
+        help="Per-ticker cap for over-allocation lots.",
+    )
+    alloc_hk.add_argument("--cash-buffer-ratio", type=float, help="Cash buffer ratio reserved before fill.")
+    alloc_hk.add_argument("--cash-buffer-amount", type=float, help="Cash buffer amount reserved before fill.")
+    alloc_hk.add_argument(
+        "--estimated-fee-per-order",
+        type=float,
+        help="Estimated fee added to each secondary fill step.",
+    )
+    alloc_hk.add_argument("--username", help="Override RQData username.")
+    alloc_hk.add_argument("--password", help="Override RQData password.")
+    alloc_hk.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "csv", "json", "xlsx"],
+        help="Output format (text/csv/json/xlsx). Default: text.",
+    )
+    alloc_hk.add_argument(
+        "--out",
+        help="Optional output path (default: stdout; required for xlsx).",
+    )
+    alloc_hk.set_defaults(func=_handle_alloc_hk)
 
     snapshot = subparsers.add_parser(
         "snapshot", help="Run a live snapshot and emit latest holdings"

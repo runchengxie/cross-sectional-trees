@@ -21,6 +21,7 @@
 | `csml holdings` | 读取当前持仓 | text / csv / json |
 | `csml snapshot` | 跑 live 快照，或从现有 run 导出快照 | text / csv / json |
 | `csml alloc` | 基于持仓做等权手数分配 | text / csv / json |
+| `csml alloc-hk` | 基于持仓做港股执行前分配分析（custom 权重、估值分层、二次补仓、资金 × TopN 场景矩阵） | text / csv / json / xlsx |
 | `csml init-config` | 导出内置配置模板 | 本地 YAML |
 | `csml backup-data` | 归档本地缓存、股票池和配置 | `artifacts/snapshots/<name>/` |
 | `csml migrate-artifacts` | 一次性把旧布局迁到 `artifacts/` | 新目录结构 |

@@ -21,6 +21,7 @@ EXPECTED_CAPABILITY_TOKENS = [
     "`csml holdings`",
     "`csml snapshot`",
     "`csml alloc`",
+    "`csml alloc-hk`",
     "`csml init-config`",
     "`csml backup-data`",
     "`csml migrate-artifacts`",

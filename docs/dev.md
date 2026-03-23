@@ -21,6 +21,12 @@ uv sync --extra dev
 uv sync --extra dev --extra rqdata
 ```
 
+如需 `csml alloc-hk --format xlsx`：
+
+```bash
+uv sync --extra dev --extra rqdata --extra liveops-hk
+```
+
 如需 DuckDB 查询层：
 
 ```bash

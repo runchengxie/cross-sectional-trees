@@ -553,6 +553,80 @@ artifacts/sweeps/<tag>/
 1. `run_results.csv` 列契约：`order,run_name,config_path,status,error`
 1. `runs_summary.csv` 列契约与 `csml summarize` 章节一致。
 
+### `csml alloc-hk`
+
+默认不写 run 目录内文件，除非显式传 `--out`。它消费的输入契约仍然是持仓文件 / holdings JSON 的稳定字段：
+
+* `symbol`、`ts_code`、`stock_ticker`
+* `weight`、`signal`、`rank`、`side`
+
+单场景 `--format=xlsx` 时，`--out` 必填，且当前会写一个 3 sheet 工作簿：
+
+* `分配`
+* `汇总`
+* `卖出信号`
+
+多场景 `--format=xlsx` 时，会写一个场景工作簿：
+
+* `场景总览`
+* `<scenario_id>_分配`
+* `<scenario_id>_汇总`
+* `<scenario_id>_卖出`
+
+该格式需要安装 `--extra liveops-hk`。
+
+单场景 `--format=json` 时，顶层 payload 当前固定包含：
+
+* `as_of`、`entry_date`、`pricing_date`
+* `source`、`side`、`market`
+* `requested_top_n`、`selected_n`
+* `cash`、`allocation_method`、`require_stock_connect`
+* `pricing_source`、`pricing_source_detail`
+* `estimated_value`、`cash_left`、`total_gap_to_target`
+* `summary`
+* `allocations`
+* `sell_signals`
+
+多场景 `--format=json` 时，顶层 payload 会切换成场景矩阵结构，常用键包括：
+
+* `mode=scenario_grid`
+* `as_of`、`entry_date`
+* `source`、`side`、`market`
+* `scenario_capitals`
+* `scenario_top_ns`
+* `scenario_overview`
+* `scenarios`
+
+其中 `scenarios[]` 里的每个元素，仍然沿用单场景 payload 的字段约定，并额外包含：
+
+* `scenario_id`
+* `scenario_capital`
+* `scenario_top_n`
+
+多场景 `--format=csv` 时，当前输出 `scenario_overview` 的平面表，而不是逐标的 `allocations` 明细。
+
+`allocations` 行级常用字段：
+
+* `symbol`、`ts_code`、`stock_ticker`
+* `name`、`side`、`rank`、`signal`、`weight`
+* `order_book_id`
+* `price`、`price_source`、`pricing_date`
+* `round_lot`、`stock_connect`、`tradable`
+* `target_value`
+* `lots_base`、`lots_extra`、`lots`、`shares`
+* `est_value`、`gap_to_target`、`gap_ratio`
+* `pct_1y`、`z_1y`、`valuation`
+* `overpriced_low`、`overpriced_high`、`overpriced_range`
+
+`sell_signals` 行级常用字段：
+
+* `symbol`、`ts_code`、`stock_ticker`
+* `name`、`side`、`rank`、`signal`、`weight`
+* `close_pre`
+* `sell_trigger`、`extreme_trigger`
+* `last_sell_signal_date`
+* `pct_1y`、`z_1y`、`valuation`
+
 ### `csml backup-data`：`artifacts/snapshots/<name>/`
 
 目录结构：

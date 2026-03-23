@@ -124,6 +124,43 @@ backtest:
   weighting: equal           # equal / signal
 ```
 
+### `live.alloc_hk`
+
+`csml alloc-hk` 会先读当前持仓，再在港股 liveops 层做执行前 sizing。CLI 参数优先级高于配置。
+
+```yaml
+live:
+  alloc_hk:
+    cash: 1000000
+    method: custom                  # equal / custom
+    require_stock_connect: true
+    scenarios:
+      capitals: [1000000, 500000]   # 可选；不配时默认只跑单场景
+      top_ns: [20, 10]              # 可选；不配时默认沿用 CLI --top-n
+    valuation:
+      history_years: 3
+      roll_window: 252
+      sell_quantile: 0.95
+      extreme_quantile: 0.99
+    secondary_fill:
+      enabled: true
+      avoid_high_valuation: true
+      avoid_high_valuation_strict: false
+      max_steps: 5000
+      allow_over_alloc: false
+      max_over_alloc_ratio: 0.0
+      max_over_alloc_amount: 0.0
+      max_over_alloc_lots_per_ticker: 1
+      cash_buffer_ratio: 0.0
+      cash_buffer_amount: 0.0
+      estimated_fee_per_order: 0.0
+```
+
+补充：
+
+* `live.alloc_hk.scenarios.capitals` 和 `top_ns` 同时存在时，会按 `资金 × TopN` 生成场景矩阵。
+* CLI 传 `--scenario-capital` / `--scenario-top-n` 时，会覆盖对应配置项。
+
 ### 日志
 
 ```yaml

@@ -28,6 +28,9 @@ dev = [
 duckdb = [
   "duckdb>=1.2",
 ]
+liveops-hk = [
+  "openpyxl>=3.1",
+]
 rqdata = [
   "rqdatac>=3.4.3",
   "rqdatac-hk",
