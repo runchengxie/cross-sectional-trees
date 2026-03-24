@@ -36,3 +36,23 @@ def apply_cross_sectional_transform(
 
     out[features] = values
     return out
+
+
+def apply_cross_sectional_series_transform(
+    data: pd.DataFrame,
+    column: str,
+    method: str,
+    winsorize_pct: Optional[float] = None,
+) -> pd.Series:
+    if method == "none":
+        return data[column].copy()
+
+    transformed = apply_cross_sectional_transform(
+        data[["trade_date", column]].copy(),
+        [column],
+        method,
+        winsorize_pct,
+    )
+    result = transformed[column]
+    result[data[column].isna()] = np.nan
+    return result

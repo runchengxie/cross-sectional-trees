@@ -199,6 +199,14 @@ logging:
 | `horizon_days` | 预测天数 | `5`, `20`, `60` |
 | `rebalance_frequency` | 再平衡频率 | `M` / `Q` / `Y` |
 | `shift_days` | 信号位移 | `1`, `0` |
+| `winsorize_pct` | 按 `trade_date` 对原始标签做去极值 | `0.01`, `null` |
+| `train_target_transform` | 训练时对标签做横截面变换 | `none` / `zscore` / `rank` |
+
+说明：
+
+* `train_target_transform` 只影响训练、CV、walk-forward 和 `live.train_mode=full` 的拟合标签。
+* 评估、`IC`、`Top-K`、`long_short` 和回测仍然使用 `label.target_col` 的原标签列。
+* 对 `xgb_regressor` 来说，这个开关适合做“绝对收益回归 vs 相对强弱回归”的对照；对 `xgb_ranker` 来说，单调变换通常影响更小。
 
 ### `model`
 

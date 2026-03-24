@@ -166,6 +166,14 @@ def test_pipeline_model_params_validation(tmp_path, no_client):
         pipeline.run(str(config_path))
 
 
+def test_pipeline_train_target_transform_validation(tmp_path, no_client):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["label"]["train_target_transform"] = "oops"
+    config_path = _write_config(tmp_path, config)
+    with pytest.raises(SystemExit, match="label.train_target_transform must be one of: none, zscore, rank."):
+        pipeline.run(str(config_path))
+
+
 def test_pipeline_exp_decay_requires_weight_params(tmp_path, no_client):
     config = copy.deepcopy(_base_config(tmp_path))
     config["model"]["sample_weight_mode"] = "exp_decay"

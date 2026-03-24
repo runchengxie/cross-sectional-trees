@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from csml.transform import apply_cross_sectional_transform
+from csml.transform import apply_cross_sectional_series_transform, apply_cross_sectional_transform
 
 
 def test_cross_sectional_zscore_by_date():
@@ -20,3 +20,21 @@ def test_cross_sectional_zscore_by_date():
         subset = out[out["trade_date"] == date]
         assert np.isclose(subset["f1"].mean(), 0.0, atol=1e-8)
         assert np.isclose(subset["f2"].mean(), 0.0, atol=1e-8)
+
+
+def test_cross_sectional_series_transform_preserves_missing_values():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
+            ),
+            "target": [1.0, 2.0, np.nan, 4.0],
+        }
+    )
+
+    out = apply_cross_sectional_series_transform(df, "target", method="zscore")
+
+    assert np.isclose(float(out.iloc[0]), -1.0)
+    assert np.isclose(float(out.iloc[1]), 1.0)
+    assert np.isnan(out.iloc[2])
+    assert np.isclose(float(out.iloc[3]), 0.0)

@@ -110,6 +110,47 @@ def test_time_series_cv_supports_model_cfg():
     assert all(np.isfinite(scores))
 
 
+def test_time_series_cv_supports_separate_fit_target_col():
+    dates = pd.date_range("2020-01-01", periods=8, freq="D")
+    rows = []
+    for date in dates:
+        rows.append(
+            {
+                "trade_date": date,
+                "ts_code": "A",
+                "f1": 0.0,
+                "target": 1.0,
+                "train_target": 0.0,
+            }
+        )
+        rows.append(
+            {
+                "trade_date": date,
+                "ts_code": "B",
+                "f1": 1.0,
+                "target": 0.0,
+                "train_target": 1.0,
+            }
+        )
+    df = pd.DataFrame(rows)
+
+    scores = time_series_cv_ic(
+        df,
+        features=["f1"],
+        target_col="target",
+        fit_target_col="train_target",
+        eval_target_col="target",
+        n_splits=3,
+        embargo_days=0,
+        purge_days=0,
+        model_cfg={"type": "ridge", "params": {"alpha": 1.0}},
+        signal_direction=1.0,
+    )
+
+    assert len(scores) == 3
+    assert all(score < 0 for score in scores if np.isfinite(score))
+
+
 def test_time_series_cv_supports_ranker_date_equal_weights():
     dates = pd.date_range("2020-01-01", periods=8, freq="D")
     rows = []

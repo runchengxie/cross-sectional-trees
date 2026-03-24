@@ -142,6 +142,8 @@ def time_series_cv_ic(
     train_window_mode: str | None = None,
     train_window_size: int | None = None,
     train_window_unit: str = "dates",
+    fit_target_col: str | None = None,
+    eval_target_col: str | None = None,
 ):
     if model_cfg is not None and model_params is not None:
         raise ValueError("Provide either model_cfg or model_params, not both.")
@@ -159,6 +161,8 @@ def time_series_cv_ic(
         )
 
     sorted_data = data.sort_values(date_col, kind="mergesort").reset_index(drop=True)
+    fit_target = fit_target_col or target_col
+    eval_target = eval_target_col or target_col
     date_values = sorted_data[date_col].to_numpy()
     if date_values.size == 0:
         return []
@@ -210,7 +214,7 @@ def time_series_cv_ic(
             resolved_type,
             tr_df,
             features=features,
-            target_col=target_col,
+            target_col=fit_target,
             sample_weight=sample_weight,
             date_col=date_col,
         )
@@ -222,6 +226,6 @@ def time_series_cv_ic(
             ic_input = va_df
         else:
             ic_input = va_df.rename(columns={date_col: "trade_date"})
-        ic_values = daily_ic_series(ic_input, target_col, "pred")
+        ic_values = daily_ic_series(ic_input, eval_target, "pred")
         scores.append(float(ic_values.mean()) if not ic_values.empty else np.nan)
     return scores

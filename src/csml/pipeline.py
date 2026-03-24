@@ -62,7 +62,7 @@ from .metrics import (
     assign_daily_quantile_bucket,
     bucket_ic_summary,
 )
-from .transform import apply_cross_sectional_transform
+from .transform import apply_cross_sectional_series_transform, apply_cross_sectional_transform
 from .split import build_sample_weight, select_train_window_dates, time_series_cv_ic
 from .modeling import build_model, fit_model, resolve_model_spec, feature_importance_frame
 from .backtest import backtest_topk, summarize_period_returns
@@ -1241,6 +1241,10 @@ def run(config_ref: str | Path | None = None) -> None:
         sys.exit("label.horizon_mode must be one of: fixed, next_rebalance.")
     LABEL_REBALANCE_FREQUENCY = label_cfg.get("rebalance_frequency", eval_cfg.get("rebalance_frequency", "M"))
     TARGET = label_cfg.get("target_col", "future_return")
+    TRAIN_TARGET_TRANSFORM = str(label_cfg.get("train_target_transform", "none")).strip().lower()
+    if TRAIN_TARGET_TRANSFORM not in {"none", "zscore", "rank"}:
+        sys.exit("label.train_target_transform must be one of: none, zscore, rank.")
+    TRAIN_TARGET = TARGET if TRAIN_TARGET_TRANSFORM == "none" else f"{TARGET}__train_target"
     WINSORIZE_PCT = label_cfg.get("winsorize_pct")
     if WINSORIZE_PCT is not None:
         WINSORIZE_PCT = float(WINSORIZE_PCT)
@@ -2278,7 +2282,13 @@ def run(config_ref: str | Path | None = None) -> None:
     )
 
     passthrough_cols = list(dict.fromkeys(industry_cols))
-    cols = ["trade_date", "symbol", "ts_code", "stock_ticker", PRICE_COL] + FEATURES + passthrough_cols + meta_cols + [TARGET]
+    cols = (
+        ["trade_date", "symbol", "ts_code", "stock_ticker", PRICE_COL]
+        + FEATURES
+        + passthrough_cols
+        + meta_cols
+        + [TARGET]
+    )
     cols = list(dict.fromkeys(cols))
     df = df[cols].copy()
 
@@ -2324,6 +2334,19 @@ def run(config_ref: str | Path | None = None) -> None:
             df_features, FEATURES, CS_METHOD, CS_WINSORIZE_PCT
         )
 
+    if TRAIN_TARGET != TARGET:
+        df_features[TRAIN_TARGET] = apply_cross_sectional_series_transform(
+            df_features,
+            TARGET,
+            TRAIN_TARGET_TRANSFORM,
+        )
+        logger.info(
+            "Applied training target transform: base=%s, method=%s, train_target=%s",
+            TARGET,
+            TRAIN_TARGET_TRANSFORM,
+            TRAIN_TARGET,
+        )
+
     dataset_schema = DatasetSchema(
         date_col="trade_date",
         instrument_col="symbol",
@@ -2331,7 +2354,7 @@ def run(config_ref: str | Path | None = None) -> None:
         label_col=TARGET,
         tradable_col="is_tradable" if "is_tradable" in df_features.columns else None,
         feature_cols=FEATURES,
-        extra_cols=["ts_code", "stock_ticker", *passthrough_cols],
+        extra_cols=["ts_code", "stock_ticker", *passthrough_cols, *([TRAIN_TARGET] if TRAIN_TARGET != TARGET else [])],
     )
     dataset = build_dataset(df_features, dataset_schema)
     df_features = dataset.frame
@@ -2677,7 +2700,7 @@ def run(config_ref: str | Path | None = None) -> None:
         for idx in range(n_runs):
             run_seed = None if seed is None else seed + idx
             rng = np.random.default_rng(run_seed)
-            perm_train = permute_target_within_date(train_data, TARGET, rng)
+            perm_train = permute_target_within_date(train_data, TRAIN_TARGET, rng)
 
             perm_model = build_model(MODEL_TYPE, MODEL_PARAMS)
             perm_weights = build_sample_weight(
@@ -2690,7 +2713,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 MODEL_TYPE,
                 perm_train,
                 features=FEATURES,
-                target_col=TARGET,
+                target_col=TRAIN_TARGET,
                 sample_weight=perm_weights,
             )
 
@@ -2792,6 +2815,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 train_window_mode=TRAIN_WINDOW_MODE,
                 train_window_size=TRAIN_WINDOW_SIZE,
                 train_window_unit=TRAIN_WINDOW_UNIT,
+                fit_target_col=TRAIN_TARGET,
             )
             if cv_scores_w:
                 cv_mean = float(np.nanmean(cv_scores_w))
@@ -2815,7 +2839,7 @@ def run(config_ref: str | Path | None = None) -> None:
             MODEL_TYPE,
             train_df_w,
             features=FEATURES,
-            target_col=TARGET,
+            target_col=TRAIN_TARGET,
             sample_weight=train_weights_w,
         )
         importance_df_w, importance_source_w = feature_importance_frame(model_w, FEATURES)
@@ -3031,6 +3055,7 @@ def run(config_ref: str | Path | None = None) -> None:
         train_window_mode=TRAIN_WINDOW_MODE,
         train_window_size=TRAIN_WINDOW_SIZE,
         train_window_unit=TRAIN_WINDOW_UNIT,
+        fit_target_col=TRAIN_TARGET,
     )
     if cv_scores_raw:
         logger.info(
@@ -3068,7 +3093,7 @@ def run(config_ref: str | Path | None = None) -> None:
         MODEL_TYPE,
         train_df,
         features=FEATURES,
-        target_col=TARGET,
+        target_col=TRAIN_TARGET,
         sample_weight=train_weights,
     )
 
@@ -3195,7 +3220,7 @@ def run(config_ref: str | Path | None = None) -> None:
                             MODEL_TYPE,
                             df_live_train,
                             features=FEATURES,
-                            target_col=TARGET,
+                            target_col=TRAIN_TARGET,
                             sample_weight=live_weights,
                         )
 
@@ -3860,7 +3885,7 @@ def run(config_ref: str | Path | None = None) -> None:
                     MODEL_TYPE,
                     df_oos_train,
                     features=FEATURES,
-                    target_col=TARGET,
+                    target_col=TRAIN_TARGET,
                     sample_weight=final_weights,
                 )
                 final_oos_eval = evaluate_period(
@@ -4202,6 +4227,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 "rebalance_frequency": LABEL_REBALANCE_FREQUENCY,
                 "shift_days": LABEL_SHIFT_DAYS,
                 "winsorize_pct": WINSORIZE_PCT,
+                "train_target_transform": TRAIN_TARGET_TRANSFORM,
             },
             "split": {
                 "train_dates": len(train_dates),
