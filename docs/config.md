@@ -88,7 +88,14 @@ data:
   rqdata:
     daily_asset_dir: "artifacts/assets/rqdata/hk/daily/<snapshot>"
     instruments_file: "artifacts/assets/rqdata/hk/instruments/<snapshot>.parquet"
+    ex_factors_dir: "artifacts/assets/rqdata/hk/ex_factors/<snapshot>"
 ```
+
+补充：
+
+* 如果你希望 `data.price_col: tr_close`，并让价格类特征、标签、回测一起走总回报口径，推荐同时提供 `data.rqdata.ex_factors_dir`。
+* `tr_close` 会在读取 daily 数据后自动派生；原始 `close` 仍会保留在数据集中，方便对照和执行参考。
+* 若走 RQData 在线接口且显式设置 `data.rqdata.adjust_type: pre/post`，也可以把 provider 返回的调整后价格别名为 `tr_close`。
 
 ### 股票池
 
@@ -194,6 +201,12 @@ logging:
 | `start_date` | 开始日期 | `20200101` / `today` |
 | `end_date` | 结束日期 | `20241231` / `t-1` / `last_trading_day` |
 | `cache_tag` | 缓存版本标签 | 任意字符串 |
+| `price_col` | 标签、回测、基准和价格类特征使用的价格列 | `close` / `tr_close` |
+
+说明：
+
+* `data.price_col` 现在不仅控制标签和回测，也控制 `sma`、`rsi`、`macd`、`ret_*`、`rv_*` 这类价格衍生特征。
+* 想做 `close` vs `tr_close` 的 A/B，对照时只需要切这一项即可。
 
 ### `universe`
 

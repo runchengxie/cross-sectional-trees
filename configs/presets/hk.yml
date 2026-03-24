@@ -28,6 +28,7 @@ data:
     fields: ["close", "volume", "total_turnover"]
     daily_asset_dir: "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest"
     instruments_file: "artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet"
+    ex_factors_dir: "artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest"
   column_map:
     trade_date: trade_date
     ts_code: ts_code

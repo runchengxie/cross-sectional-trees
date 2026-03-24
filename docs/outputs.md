@@ -463,6 +463,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 1. Parquet 以 `(trade_date, symbol)` 为 MultiIndex。
 1. 列顺序为：`price_col` + `features` + `extra_cols` + `label` + `is_tradable`（若存在）。
+1. 当你把 `data.price_col` 切到 `tr_close` 时，另一条价格列（通常是原始 `close`）会保留在 `extra_cols`，方便做口径对照。
 1. 若启用了本地 `industry.file` join，行业列会进入 `extra_cols` 并保留在 `dataset.parquet`。
 1. 对应 schema 会写入 `summary.json -> dataset.schema`。
 

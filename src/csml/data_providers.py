@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
+import numpy as np
 import pandas as pd
 
 from .data_tools.symbols import (
@@ -788,6 +789,37 @@ def _resolve_local_instruments_file(data_cfg: Mapping | None) -> Path | None:
     return None
 
 
+def _resolve_local_reference_asset_dir(
+    data_cfg: Mapping | None,
+    dataset_name: str,
+) -> Path | None:
+    if not isinstance(data_cfg, Mapping):
+        return None
+    rq_cfg = data_cfg.get("rqdata")
+    key = f"{str(dataset_name).strip()}_dir"
+    candidates = []
+    if isinstance(rq_cfg, Mapping):
+        candidates.append(rq_cfg.get(key))
+    candidates.append(data_cfg.get(key))
+    for candidate in candidates:
+        root = (
+            _resolve_local_path(
+                candidate,
+                label=f"Local RQData {dataset_name} asset path",
+            )
+            if candidate
+            else None
+        )
+        if root is None:
+            continue
+        if (root / "data").exists():
+            return root
+        if root.name == "data" and root.is_dir():
+            return root.parent
+        raise SystemExit(f"Local RQData {dataset_name} asset directory is missing data/: {root}")
+    return None
+
+
 def has_local_rqdata_assets(data_cfg: Mapping | None) -> bool:
     return (
         _resolve_local_daily_asset_dir(data_cfg) is not None
@@ -801,6 +833,115 @@ def _read_local_table(path: Path) -> pd.DataFrame:
     if path.suffix.lower() == ".csv":
         return pd.read_csv(path)
     raise SystemExit(f"Unsupported local asset file type: {path}")
+
+
+def _normalize_reference_date_frame(
+    frame: pd.DataFrame,
+    *,
+    date_col: str,
+) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=[date_col])
+    work = frame.copy()
+    if date_col not in work.columns:
+        if isinstance(work.index, pd.MultiIndex) and date_col in work.index.names:
+            work = work.reset_index()
+        elif work.index.name == date_col:
+            work = work.reset_index()
+    if date_col not in work.columns:
+        return pd.DataFrame(columns=[date_col])
+    work[date_col] = pd.to_datetime(work[date_col], errors="coerce")
+    work = work[work[date_col].notna()].copy()
+    return work
+
+
+def _load_local_ex_factors_frame(symbol: str, data_cfg: Mapping | None) -> pd.DataFrame | None:
+    asset_dir = _resolve_local_reference_asset_dir(data_cfg, "ex_factors")
+    if asset_dir is None:
+        return None
+    asset_path = asset_dir / "data" / f"{symbol}.parquet"
+    if not asset_path.exists():
+        return pd.DataFrame(columns=["ex_date", "ex_cum_factor"])
+    frame = _normalize_reference_date_frame(pd.read_parquet(asset_path), date_col="ex_date")
+    if frame.empty:
+        return pd.DataFrame(columns=["ex_date", "ex_cum_factor"])
+    if "ex_cum_factor" not in frame.columns:
+        if "ex_factor" not in frame.columns:
+            return pd.DataFrame(columns=["ex_date", "ex_cum_factor"])
+        frame["ex_cum_factor"] = pd.to_numeric(frame["ex_factor"], errors="coerce").cumprod()
+    frame["ex_cum_factor"] = pd.to_numeric(frame["ex_cum_factor"], errors="coerce")
+    frame = frame[
+        frame["ex_cum_factor"].notna() & np.isfinite(frame["ex_cum_factor"]) & (frame["ex_cum_factor"] > 0)
+    ][["ex_date", "ex_cum_factor"]].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=["ex_date", "ex_cum_factor"])
+    frame = frame.sort_values("ex_date").drop_duplicates(subset=["ex_date"], keep="last")
+    return frame.reset_index(drop=True)
+
+
+def _rqdata_adjust_type(data_cfg: Mapping | None) -> str | None:
+    if not isinstance(data_cfg, Mapping):
+        return None
+    rq_cfg = data_cfg.get("rqdata")
+    if not isinstance(rq_cfg, Mapping) or "adjust_type" not in rq_cfg:
+        return None
+    value = str(rq_cfg.get("adjust_type") or "").strip().lower()
+    return value or None
+
+
+def _build_tr_close_series(
+    frame: pd.DataFrame,
+    *,
+    symbol: str,
+    data_cfg: Mapping | None,
+) -> pd.Series | None:
+    if frame is None or frame.empty or "close" not in frame.columns or "trade_date" not in frame.columns:
+        return None
+    close = pd.to_numeric(frame["close"], errors="coerce")
+    trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")
+
+    ex_factors = _load_local_ex_factors_frame(symbol, data_cfg)
+    if ex_factors is not None:
+        if ex_factors.empty:
+            return close.rename("tr_close")
+        ex_dates = ex_factors["ex_date"].to_numpy(dtype="datetime64[ns]")
+        trade_values = trade_dates.to_numpy(dtype="datetime64[ns]")
+        ex_cum_values = ex_factors["ex_cum_factor"].to_numpy(dtype=float)
+        idx = np.searchsorted(ex_dates, trade_values, side="right") - 1
+        period_cum = np.ones(len(frame), dtype=float)
+        valid_idx = idx >= 0
+        period_cum[valid_idx] = ex_cum_values[idx[valid_idx]]
+        tr_close = close * pd.Series(period_cum, index=frame.index, dtype=float)
+        tr_close = tr_close.where(trade_dates.notna())
+        tr_close.name = "tr_close"
+        return tr_close
+
+    adjust_type = _rqdata_adjust_type(data_cfg)
+    if adjust_type in {"pre", "post", "pre_volume", "post_volume"}:
+        return close.rename("tr_close")
+    return None
+
+
+def _augment_daily_frame(
+    df: pd.DataFrame,
+    *,
+    market: str,
+    symbol: str,
+    data_cfg: Mapping | None,
+) -> tuple[pd.DataFrame, bool]:
+    if df is None or df.empty:
+        return df, False
+    out = df.copy()
+    changed = False
+
+    tr_close = _build_tr_close_series(out, symbol=symbol, data_cfg=data_cfg)
+    if tr_close is not None:
+        existing = out["tr_close"].copy() if "tr_close" in out.columns else None
+        if existing is None or not existing.equals(tr_close):
+            out["tr_close"] = tr_close
+            changed = True
+
+    return out, changed
 
 
 def _load_daily_from_local_asset(
@@ -965,14 +1106,30 @@ def fetch_daily(
             cached = pd.read_parquet(cache_file)
             if cached is None or cached.empty:
                 return cached
-            return ensure_symbol_columns(
+            cached = ensure_symbol_columns(
                 cached,
                 context="Cached daily data",
                 priority=PROVIDER_SYMBOL_PRIORITY,
             )
+            cached, cache_changed = _augment_daily_frame(
+                cached,
+                market=market,
+                symbol=symbol,
+                data_cfg=data_cfg,
+            )
+            if cache_changed:
+                cached = cached.copy(deep=True)
+                cached.to_parquet(cache_file)
+            return cached
         df = _fetch_daily_from_provider(provider, market, symbol, start_date, end_date, client, data_cfg)
         if df is None or df.empty:
             return df
+        df, _ = _augment_daily_frame(
+            df,
+            market=market,
+            symbol=symbol,
+            data_cfg=data_cfg,
+        )
         # Ensure buffers are writable before parquet serialization.
         df = df.copy(deep=True)
         df.to_parquet(cache_file)
@@ -1058,8 +1215,14 @@ def fetch_daily(
         context="Daily data",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
+    merged, augment_changed = _augment_daily_frame(
+        merged,
+        market=market,
+        symbol=symbol,
+        data_cfg=data_cfg,
+    )
 
-    if updated:
+    if updated or augment_changed:
         merged = merged.drop_duplicates(subset=["symbol", "trade_date"], keep="last")
         merged.sort_values(["symbol", "trade_date"], inplace=True)
         # Ensure buffers are writable before parquet serialization.

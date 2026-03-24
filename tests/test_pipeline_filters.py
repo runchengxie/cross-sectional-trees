@@ -278,6 +278,97 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
 
 
 @pytest.mark.slow
+def test_pipeline_price_features_follow_price_col(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=20, freq="B")
+    symbols = ["AAA", "BBB", "CCC"]
+    frames: dict[str, pd.DataFrame] = {}
+    for idx, symbol in enumerate(symbols):
+        tr_close = np.arange(1, len(dates) + 1, dtype=float) + idx
+        close = np.full(len(dates), 100.0 + idx, dtype=float)
+        vol = np.full(len(dates), 1000.0 + idx, dtype=float)
+        frames[symbol] = pd.DataFrame(
+            {
+                "trade_date": [d.strftime("%Y%m%d") for d in dates],
+                "ts_code": symbol,
+                "close": close,
+                "tr_close": tr_close,
+                "vol": vol,
+                "amount": close * vol,
+            }
+        )
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "us",
+        "data": {
+            "provider": "tushare",
+            "start_date": "20200101",
+            "end_date": "20200131",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "tr_close",
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 1,
+            "drop_suspended": False,
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_3"],
+            "params": {"sma_windows": [3]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "price_col_tr_close",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames)
+    dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
+    aaa = dataset[dataset["symbol"] == "AAA"].sort_values("trade_date").reset_index(drop=True)
+    probe_date = pd.Timestamp("2020-01-07")
+    observed = float(aaa.loc[aaa["trade_date"] == probe_date, "sma_3"].iloc[0])
+    assert observed == pytest.approx((3.0 + 4.0 + 5.0) / 3.0)
+    assert float(aaa.loc[aaa["trade_date"] == probe_date, "close"].iloc[0]) == 100.0
+    assert float(aaa.loc[aaa["trade_date"] == probe_date, "tr_close"].iloc[0]) == 5.0
+
+
+@pytest.mark.slow
 def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch):
     dates = pd.date_range("2025-01-01", periods=12, freq="B")
     symbols = ["00005.HK", "00011.HK"]

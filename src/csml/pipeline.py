@@ -2035,6 +2035,12 @@ def run(config_ref: str | Path | None = None) -> None:
     logger.info("Engineering features ...")
 
     if PRICE_COL not in df.columns:
+        if PRICE_COL == "tr_close":
+            sys.exit(
+                "Price column 'tr_close' not found in data. "
+                "Configure data.rqdata.ex_factors_dir for local RQData assets, "
+                "or provide tr_close directly in the source daily data."
+            )
         sys.exit(f"Price column '{PRICE_COL}' not found in data.")
     if not FEATURES:
         sys.exit("Feature list is empty.")
@@ -2043,6 +2049,7 @@ def run(config_ref: str | Path | None = None) -> None:
     def add_features(group: pd.DataFrame) -> pd.DataFrame:
         group = group.sort_values("trade_date").copy()
         needed = set(FEATURES)
+        price_series = pd.to_numeric(group[PRICE_COL], errors="coerce")
 
         def _safe_ratio(
             numerator_col: str,
@@ -2064,7 +2071,7 @@ def run(config_ref: str | Path | None = None) -> None:
         if not sma_windows:
             sma_windows = _parse_window_config(feature_params.get("sma_windows"))
         for win in sorted(sma_windows):
-            group[f"sma_{win}"] = ta.sma(group["close"], length=win)
+            group[f"sma_{win}"] = ta.sma(price_series, length=win)
             if f"sma_{win}_diff" in needed:
                 group[f"sma_{win}_diff"] = group[f"sma_{win}"].pct_change()
 
@@ -2072,12 +2079,12 @@ def run(config_ref: str | Path | None = None) -> None:
         if not rsi_lengths:
             rsi_lengths = _parse_window_config(feature_params.get("rsi"))
         for length in sorted(rsi_lengths):
-            group[f"rsi_{length}"] = ta.rsi(group["close"], length=length)
+            group[f"rsi_{length}"] = ta.rsi(price_series, length=length)
 
         if "macd_hist" in needed:
             macd_cfg = feature_params.get("macd", [12, 26, 9])
             macd_fast, macd_slow, macd_signal = macd_cfg
-            macd = ta.macd(group["close"], fast=macd_fast, slow=macd_slow, signal=macd_signal)
+            macd = ta.macd(price_series, fast=macd_fast, slow=macd_slow, signal=macd_signal)
             col_name = f"MACDh_{macd_fast}_{macd_slow}_{macd_signal}"
             if macd is not None and col_name in macd.columns:
                 group["macd_hist"] = macd[col_name]
@@ -2099,13 +2106,13 @@ def run(config_ref: str | Path | None = None) -> None:
         if not ret_windows:
             ret_windows = _parse_window_config(feature_params.get("ret_windows"))
         for win in sorted(ret_windows):
-            group[f"ret_{win}"] = group["close"].pct_change(win)
+            group[f"ret_{win}"] = price_series.pct_change(win)
 
         rv_windows = set(parse_feature_windows(FEATURES, "rv_"))
         if not rv_windows:
             rv_windows = _parse_window_config(feature_params.get("rv_windows"))
         if rv_windows:
-            daily_return = group["close"].pct_change()
+            daily_return = price_series.pct_change()
             daily_return = daily_return.replace([np.inf, -np.inf], np.nan)
             for win in sorted(rv_windows):
                 group[f"rv_{win}"] = daily_return.rolling(window=win).std(ddof=0)
@@ -2270,6 +2277,10 @@ def run(config_ref: str | Path | None = None) -> None:
         FEATURES = list(dict.fromkeys(FEATURES + indicator_features))
 
     df = _ensure_symbol_alias(df)
+    price_passthrough_cols = [
+        col for col in ("close", "tr_close")
+        if col in df.columns and col != PRICE_COL
+    ]
 
     backtest_pricing_cols = ["trade_date", "symbol", "ts_code", "stock_ticker", PRICE_COL]
     if BACKTEST_TRADABLE_COL and BACKTEST_TRADABLE_COL in df.columns:
@@ -2285,6 +2296,7 @@ def run(config_ref: str | Path | None = None) -> None:
     cols = (
         ["trade_date", "symbol", "ts_code", "stock_ticker", PRICE_COL]
         + FEATURES
+        + price_passthrough_cols
         + passthrough_cols
         + meta_cols
         + [TARGET]
@@ -2354,7 +2366,13 @@ def run(config_ref: str | Path | None = None) -> None:
         label_col=TARGET,
         tradable_col="is_tradable" if "is_tradable" in df_features.columns else None,
         feature_cols=FEATURES,
-        extra_cols=["ts_code", "stock_ticker", *passthrough_cols, *([TRAIN_TARGET] if TRAIN_TARGET != TARGET else [])],
+        extra_cols=[
+            "ts_code",
+            "stock_ticker",
+            *price_passthrough_cols,
+            *passthrough_cols,
+            *([TRAIN_TARGET] if TRAIN_TARGET != TARGET else []),
+        ],
     )
     dataset = build_dataset(df_features, dataset_schema)
     df_features = dataset.frame
