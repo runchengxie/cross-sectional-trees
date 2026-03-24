@@ -351,11 +351,7 @@ industry:
 | `config/default.yml` | `configs/presets/default.yml` |
 | `config/hk_selected__xgb_regressor.yml` | `configs/experiments/variants/hk_selected__xgb_regressor.yml` |
 
-如果本地还有旧目录，执行：
-
-```bash
-csml migrate-artifacts
-```
+如果本地还有旧目录，需要手动把数据迁到新布局。仓库不再提供自动迁移命令。
 
 详见 `docs/troubleshooting.md`。
 

@@ -166,15 +166,6 @@ csml alloc-hk --config path/to/live.yml --source live --scenario-capital 1000000
 csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
 ```
 
-### csml migrate-artifacts
-
-旧目录迁移。
-
-```bash
-csml migrate-artifacts --dry-run
-csml migrate-artifacts
-```
-
 ### csml data catalog
 
 扫描 `artifacts/` 下 manifest-backed 资产，并写入 SQLite metadata catalog。

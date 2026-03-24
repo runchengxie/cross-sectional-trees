@@ -686,17 +686,11 @@ artifacts/snapshots/<name>/
 1. 然后在同一个 GitHub Release tag 下上传多份 run asset。
 1. 这条链路和 `python -m csml.release_tools.release_assets` 分开；前者是研究结果备份，后者是数据资产备份。
 
-### 一次性旧目录迁移
+### 旧目录升级说明
 
 当前仓库默认只使用 `artifacts/` 布局。
 
-如果你是从旧版本目录升级过来，本地还保留旧目录，可执行：
-
-```bash
-csml migrate-artifacts
-```
-
-默认会把这些目录搬到新布局：
+如果你是从旧版本目录升级过来，本地还保留旧目录，需要手动把这些目录搬到新布局：
 
 * `cache/` -> `artifacts/cache/`
 * `out/fundamentals/` -> `artifacts/assets/fundamentals/`

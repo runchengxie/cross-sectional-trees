@@ -24,7 +24,6 @@
 | `csml alloc-hk` | 基于持仓做港股执行前分配分析（custom 权重、估值分层、二次补仓、资金 × TopN 场景矩阵） | text / csv / json / xlsx |
 | `csml init-config` | 导出内置配置模板 | 本地 YAML |
 | `csml backup-data` | 归档本地缓存、股票池和配置 | `artifacts/snapshots/<name>/` |
-| `csml migrate-artifacts` | 一次性把旧布局迁到 `artifacts/` | 新目录结构 |
 | `csml data ...` | metadata catalog、标准层物化和 DuckDB 查询 | `artifacts/metadata/*` / `artifacts/standardized/*` |
 | `csml rqdata ...` | RQData 账号、配额、港股财报资产与 instrument 元数据工具 | 账号信息或资产目录 |
 | `csml universe ...` | 股票池构建工具（`hk-connect` / `hk-daily-assets` / `index-components`） | 股票池文件 |
@@ -121,4 +120,3 @@ artifacts/
 * `holdings` 和 `snapshot` 输出的是目标持仓，不是成交后持仓。
 * `last_trading_day` 只有在识别到 `provider=rqdata` 且交易日历可用时才会严格按交易日解析。
 * provider 回补、缓存刷新和相对日期都会影响同配置重跑结果。
-* `migrate-artifacts` 只服务旧目录升级。新仓库通常不需要执行。

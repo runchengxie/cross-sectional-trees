@@ -63,8 +63,6 @@ def __getattr__(name):
         return import_module("csml.data_tools.fetch_index_components")
     elif name == "verify_tushare_tokens":
         return import_module("csml.data_tools.verify_tushare_tokens")
-    elif name == "migrate_artifacts":
-        return import_module("csml.data_tools.migrate_artifacts")
     elif name == "backup_data":
         return import_module("csml.data_tools.backup_data")
     elif name == "ensure_symbol_columns":

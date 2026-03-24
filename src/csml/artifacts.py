@@ -21,18 +21,6 @@ LIVE_RUNS_DIR = ARTIFACTS_ROOT / "live_runs"
 SWEEPS_DIR = ARTIFACTS_ROOT / "sweeps"
 SNAPSHOTS_DIR = ARTIFACTS_ROOT / "snapshots"
 
-LEGACY_ARTIFACT_PATHS: tuple[tuple[Path, Path], ...] = (
-    (Path("cache"), CACHE_DIR),
-    (Path("out/fundamentals"), FUNDAMENTALS_DIR),
-    (Path("data_assets/rqdata"), RQDATA_ASSETS_DIR),
-    (Path("out/universe"), UNIVERSE_DIR),
-    (Path("out/runs"), RUNS_DIR),
-    (Path("out/live_runs"), LIVE_RUNS_DIR),
-    (Path("out/sweeps"), SWEEPS_DIR),
-    (Path("data_mirror"), SNAPSHOTS_DIR),
-)
-
-
 def default_path_text(path: Path) -> str:
     return path.as_posix()
 

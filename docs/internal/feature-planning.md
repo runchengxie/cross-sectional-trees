@@ -36,7 +36,6 @@
 | RQData HK 派生构建 | `csml rqdata build-hk-pit-fundamentals`、`build-hk-industry-labels`、`inspect-hk-pit-coverage` | 构建 pipeline 可读 fundamentals、行业标签文件，并检查 PIT 覆盖率 | `pipeline_fundamentals.parquet`、`industry_labels_<freq>.parquet`、coverage 报告 | 连接 raw mirror 与研究主链路 |
 | Universe 工具 | `csml universe hk-connect`、`hk-daily-assets`、`index-components` | 构建港股通 PIT universe、HK 全市场 by-date universe、指数成分文件 | `artifacts/assets/universe/...` | `hk-daily-assets` 依赖本地日线镜像 |
 | 运维辅助 | `csml backup-data`、`csml tushare verify-token` | 归档本地缓存/股票池/配置，验证 TuShare token | `artifacts/snapshots/<name>/` 或验证结果 | 研究运维与排障入口 |
-| 兼容迁移 | `csml migrate-artifacts` | 把旧 `cache/out/data_assets/data_mirror` 布局迁到 `artifacts/` | 新目录结构或 dry-run 报告 | `legacy / one-time utility`，不是长期核心研究能力 |
 
 补充：
 
@@ -69,7 +68,7 @@
 | 本地行业标签 | `<industry_changes_snapshot>/industry_labels_<freq>.parquet` | `csml rqdata build-hk-industry-labels` | 给研究主链路或分析脚本直接 join 行业列 |
 | universe 文件 | `artifacts/assets/universe/*.csv`、`*.txt` | `csml universe ...` | 研究样本边界、离线审计和资产下载入口 |
 | 本地数据快照 | `artifacts/snapshots/<name>/` | `csml backup-data` | 归档缓存、股票池、配置和额外资产路径 |
-| 兼容迁移副作用 | `cache/`、`out/`、`data_assets/` 迁到 `artifacts/` | `csml migrate-artifacts` | 旧仓库升级；不是日常研究产物 |
+| 兼容迁移副作用 | `cache/`、`out/`、`data_assets/` 迁到 `artifacts/` | 手动迁移旧目录 | 旧仓库升级；不是日常研究产物 |
 
 ### 4) 明确边界（当前不覆盖）
 
@@ -84,7 +83,7 @@
 * `holdings/snapshot` 输出的是目标持仓，不等同真实成交持仓。
 * 交易日历 token 在部分场景可能退化为自然日逻辑（无交易日历时会给告警）。
 * 数据供应商回补/修订会导致同配置不同时间结果变化。
-* `migrate-artifacts` 只服务旧目录升级；新仓库通常不需要执行。
+* 旧目录迁移只是历史兼容问题；新仓库通常不需要处理。
 
 ## 二、难点分层（工程 + 研究）
 
@@ -130,7 +129,7 @@
 | 回测与持仓消费 | 成本、退出、buffer、持仓与 live 产物 | 8-16 |
 | 研究编排工具 | `grid/sweep-linear/summarize` | 6-12 |
 | 数据资产镜像与派生工具 | `mirror-hk-*`、`build-hk-pit-fundamentals`、`build-hk-industry-labels`、覆盖率检查 | 8-16 |
-| 运维/备份/兼容辅助 | `backup-data`、token/quota/info 工具、`migrate-artifacts` | 3-6 |
+| 运维/备份/兼容辅助 | `backup-data`、token/quota/info 工具 | 3-6 |
 | 测试与回归 | 单测、集成测试、修复迭代 | 9-18 |
 | 文档与示例 | README + docs + playbooks | 4-8 |
 | 小计 |  | 72-140 |

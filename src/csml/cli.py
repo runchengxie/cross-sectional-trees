@@ -499,17 +499,6 @@ def _handle_backup_data(args) -> int:
     return 0
 
 
-def _handle_migrate_artifacts(args) -> int:
-    from .data_tools import migrate_artifacts
-
-    argv: list[str] = []
-    _append_bool_switch(argv, getattr(args, "copy", None), true_flag="--copy")
-    _append_bool_switch(argv, getattr(args, "force", None), true_flag="--force")
-    _append_bool_switch(argv, getattr(args, "dry_run", None), true_flag="--dry-run")
-    migrate_artifacts.main(argv)
-    return 0
-
-
 def _handle_holdings(args) -> int:
     from .liveops import holdings
 
@@ -926,15 +915,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     backup_data_tool.add_backup_data_args(backup_data)
     backup_data.set_defaults(func=_handle_backup_data)
-
-    migrate_artifacts = subparsers.add_parser(
-        "migrate-artifacts",
-        help="One-time migration of legacy cache/out/data_mirror paths into artifacts/",
-    )
-    from .data_tools import migrate_artifacts as migrate_artifacts_tool
-
-    migrate_artifacts_tool.add_migrate_artifacts_args(migrate_artifacts)
-    migrate_artifacts.set_defaults(func=_handle_migrate_artifacts)
 
     holdings = subparsers.add_parser("holdings", help="Show latest holdings from saved runs")
     holdings.add_argument(

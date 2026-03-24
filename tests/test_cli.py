@@ -10,7 +10,6 @@ from csml.data_tools import backup_data as backup_data_tool
 from csml.data_tools import build_hk_connect_universe as hk_connect_tool
 from csml.data_tools import build_hk_daily_asset_universe as hk_daily_assets_tool
 from csml.data_tools import fetch_index_components as index_components_tool
-from csml.data_tools import migrate_artifacts as migrate_artifacts_tool
 from csml.data_tools import rqdata_assets as rqdata_assets_tool
 from csml.data_tools import verify_tushare_tokens as verify_tushare_tool
 from csml.liveops import alloc_hk as alloc_hk_tool
@@ -185,13 +184,6 @@ def test_cli_parses_holdings_snapshot_grid_summarize_alloc():
     assert backup.config == ["configs/presets/hk.yml"]
     assert backup.include_path == ["artifacts/assets/universe"]
     assert backup.skip_missing is True
-
-    migrate = parser.parse_args(["migrate-artifacts", "--copy", "--dry-run"])
-    assert migrate.command == "migrate-artifacts"
-    assert migrate.copy is True
-    assert migrate.dry_run is True
-    assert callable(migrate.func)
-
 
 def test_cli_parses_rqdata_quota_pretty():
     parser = cli.build_parser()
@@ -1165,16 +1157,6 @@ def test_cli_handle_backup_data_passes_through_args(monkeypatch):
             "--skip-missing",
         ]
     ]
-
-
-def test_cli_handle_migrate_artifacts_passes_through_args(monkeypatch):
-    calls: list[list[str]] = []
-    monkeypatch.setattr(migrate_artifacts_tool, "main", lambda argv: calls.append(argv))
-
-    args = SimpleNamespace(copy=True, force=False, dry_run=True)
-    assert cli._handle_migrate_artifacts(args) == 0
-    assert calls == [["--copy", "--dry-run"]]
-
 
 def test_cli_handle_universe_wrappers_pass_through_args(monkeypatch):
     hk_connect_calls: list[list[str]] = []

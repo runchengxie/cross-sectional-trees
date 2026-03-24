@@ -299,13 +299,19 @@ csml init-config --market default --out configs/
 
 处理：
 
-```bash
-csml migrate-artifacts
-```
+把旧目录手动迁到新布局：
+
+* `cache/` -> `artifacts/cache/`
+* `out/fundamentals/` -> `artifacts/assets/fundamentals/`
+* `data_assets/rqdata/` -> `artifacts/assets/rqdata/`
+* `out/universe/` -> `artifacts/assets/universe/`
+* `out/runs/` -> `artifacts/runs/`
+* `out/live_runs/` -> `artifacts/live_runs/`
+* `out/sweeps/` -> `artifacts/sweeps/`
+* `data_mirror/` -> `artifacts/snapshots/`
 
 补充：
 
-* 这个命令默认执行移动，不会重新拉取 provider 数据。
-* 如果你想先看影响范围，可先执行 `csml migrate-artifacts --dry-run`。
-* 如果需要保留旧目录副本，可执行 `csml migrate-artifacts --copy`。
-* 新仓库通常不需要这个命令。只有沿用旧目录时才需要迁移。
+* 这一步只是搬目录，不会重新拉取 provider 数据。
+* 如果你想保留旧目录副本，先手动复制，再核对 `artifacts/` 下的新位置。
+* 新仓库通常不需要这一步。只有沿用旧目录时才需要迁移。
