@@ -7,6 +7,7 @@
 相关页面：
 
 * [`docs/research/README.md`](./README.md)
+* [`docs/research/hk-quarterly-target-design-and-direction-20260324.md`](./hk-quarterly-target-design-and-direction-20260324.md)
 * [`docs/research/hk-h12-w16-target-transform-review-20260324.md`](./hk-h12-w16-target-transform-review-20260324.md)
 * [`docs/playbooks/hk-selected.md`](../playbooks/hk-selected.md)
 * [`docs/config.md`](../config.md)

@@ -1,5 +1,7 @@
 # HK H12 W16 Target Transform Review 2026-03-24
 
+相关页面：`docs/research/hk-quarterly-target-design-and-direction-20260324.md`、`docs/research/hk-quarterly-pit-regime-shift-202603.md`
+
 本文件记录 `hk_sel_q_g4_fixed_pit_overlay` 研究单元在 `halflife=12`、`rolling train_window=16` 下的一次对照实验。
 
 目标不是立刻换掉当前主基线，而是回答两个问题：
