@@ -11,4 +11,5 @@
 当前文件：
 
 * `fundamental-analysis-via-machine-learning-digest.md`
+* `hk-h12-w16-target-transform-review-20260324.md`
 * `hk-quarterly-pit-regime-shift-202603.md`

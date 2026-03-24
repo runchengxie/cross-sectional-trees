@@ -2,24 +2,26 @@
 
 本页记录这条 HK 季度 `PIT core + provider valuation overlay` 研究线的最新结论。
 
-截至 `2026-03-23`，仓库里这条线最新已执行的 run 停在 `2026-03-22`。下文以这批结果为准；如果后续又跑出新实验，应先更新这页，再让其他文档引用它。
+截至 `2026-03-24`，本文已经纳入 `2026-03-22` 的抗漂移参数网格结果，以及 `2026-03-24` 的 `label transform / signal direction` follow-up。后续如果再跑出新实验，应先更新这页，再让其他文档引用它。
 
 相关页面：
 
 * [`docs/research/README.md`](./README.md)
+* [`docs/research/hk-h12-w16-target-transform-review-20260324.md`](./hk-h12-w16-target-transform-review-20260324.md)
 * [`docs/playbooks/hk-selected.md`](../playbooks/hk-selected.md)
 * [`docs/config.md`](../config.md)
 * [`docs/outputs.md`](../outputs.md)
 
 ## 1. 核心结论
 
-如果只看这一页，先记住下面 6 句：
+如果只看这一页，先记住下面 7 句：
 
 * 旧基线 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml) 在 `final_oos` 已经出现横截面排序失效。它还有 `+45.2%` 的绝对收益，但 `IC = -0.1003`、`long_short = -6.56%`、主动收益 `-10.6%`，说明高分股已经开始跑输低分股。
 * 换成 [`xgb_regressor`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) 或 [`ridge`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml) 后，`final_oos IC` 仍然为负；[`elasticnet`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml) 直接退化成常数预测。
 * 这轮问题更像 `regime shift / concept drift`。旧训练窗学到的映射关系，在 `2023-12-29` 到 `2025-09-29` 这段真留出集上失效了。
 * 只做近期样本加权还不够。`exp_decay` 单独版把负 IC 缓和到 `-0.0597`，但没有修好排序关系。
 * 第一版真正把 `final_oos IC` 翻回正值的配置，是 `halflife=12 + rolling=16`。它对应的当前基线是 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml)。
+* 后续 `xgb_regressor + zscore target` 的 follow-up 说明，“相对化 label” 这条路值得继续追，但它在 `2021-03-31` 到 `2023-09-29` 的 6 个 `walk_forward` 测试窗里一致偏 `signal_direction = -1`，而 `2023-12-29` 到 `2025-09-29` 的整体验证又更像 `+1`。这说明 challenger 线仍有阶段性方向切换，暂时不能取代 ranker 基线。
 * 这条线已经进入 `paper -> shadow -> 小仓位 canary` 的准备阶段，但还不支持单模型、唯一主信号、直接大仓上线。
 
 ## 2. 问题是什么
@@ -123,6 +125,28 @@
 2. `h06_w16` 作为并行 challenger
 3. `h12_w12` 作为防守型备选
 4. 其余点继续留在研究池，不直接升为默认配置
+
+### 5.3 2026-03-24 补充：相对化 label challenger 的方向切换
+
+在 `2026-03-24` 的 follow-up 里，又补跑了 `xgb_regressor + zscore target` 这条 challenger 线。它的代表点是配套实验记录里最强的两个 regressor 版本：`h12_w16` 和 `h18_w16`。
+
+这组补充实验最值得保留的不是“谁最近回测更高”，而是下面这个方向现象：
+
+* 主评估 `eval.signal_direction` 仍然给出 `+1`
+* 但 `walk_forward` 的 6 个测试窗，从 `2021-03-31 -> 2022-06-30` 一直到 `2022-06-30 -> 2023-09-29`，全部给出 `signal_direction = -1`
+* 同时，最近的 `final_oos` 区间又是 `2023-12-29 -> 2025-09-29`，而且在 `+1` 方向下指标是正的
+
+这说明什么：
+
+* `walk_forward` 内部并不是“方向乱跳”，恰恰相反，它在 `2021-03-31` 到 `2023-09-29` 这段里稳定地认为信号该反着用
+* 真正的冲突发生在“较早阶段的 rolling 窗口”和“较近阶段的整体留出集”之间
+* 更贴切的解释不是普通噪声，而是 `2023` 年末附近可能出现了阶段性方向切换
+
+这条发现对当前决策的含义是：
+
+* `xgb_regressor + zscore target` 仍然值得保留为正式 challenger
+* 但它还没有解决“方向随阶段切换”的问题，所以不能据此撤掉 [`h12_w16`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml) 这个 ranker 主基线
+* 后续更高优先级的工作，不是继续重复同配置，而是专门做 `signal_direction` 的稳定性实验，以及更严格的分阶段验证
 
 ## 6. 如果进入 canary，应该盯什么
 

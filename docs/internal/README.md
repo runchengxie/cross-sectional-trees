@@ -6,9 +6,8 @@
 读完你会得到什么：内部资料的入口与范围边界。
 相关页面：`docs/README.md`
 
-这个目录放内部规划和范围资料，不作为主用户手册。
+这个目录放内部规划和范围资料，不作为主用户手册。实验记录和研究结论应优先归到 `docs/research/`。
 
 当前文件：
 
 * `feature-planning.md`：功能矩阵、边界、工程难点和工时评估。
-* `hk-h12-w16-target-transform-review-20260324.md`：HK quarterly PIT + overlay 单元下，`h12_w16` 锚点与 regressor target transform challenger 的一次实验记录。

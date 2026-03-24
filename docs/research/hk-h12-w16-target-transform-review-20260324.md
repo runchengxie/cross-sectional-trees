@@ -116,3 +116,78 @@
 1. 先看 `zscore` 是否在 `eval.ic`、walk-forward 平均 `test_ic`、全样本 `active_total_return` 三项同时维持领先。
 2. 再看最优 `zscore` 点是否真正超过 `anchor ranker`。
 3. 如果 `zscore` 小扫里出现更优点，再决定是否补 ranker 的对称复扫。
+
+## Follow-up Grid 结果
+
+以上 6 条 follow-up 已全部跑完：
+
+| Arm | Run Dir |
+| --- | --- |
+| Anchor | `artifacts/runs/hk_sel_q_g4_fixed_pit_overlay_followup_anchor_rank_h12_w16_20260324_153331_2b00d531/` |
+| Zscore h06 w16 | `artifacts/runs/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h06_w16_20260324_153544_3cfdffe8/` |
+| Zscore h12 w12 | `artifacts/runs/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w12_20260324_153806_caf87a7e/` |
+| Zscore h12 w16 | `artifacts/runs/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w16_20260324_154217_682ef9ec/` |
+| Zscore h12 w20 | `artifacts/runs/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w20_20260324_154413_670c3439/` |
+| Zscore h18 w16 | `artifacts/runs/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h18_w16_20260324_154612_de5f4dc5/` |
+
+### Follow-up 核心对比
+
+| Arm | CV IC | Eval IC | WF 平均 Test IC | Final OOS IC | Final OOS Top-K 正收益占比 | 全样本 Active Return |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Anchor ranker h12 w16 | 0.0492 | 0.0225 | 0.0611 | 0.0825 | 0.7063 | -0.0277 |
+| Zscore h06 w16 | 0.0911 | -0.0168 | 0.0571 | 0.0764 | 0.7125 | 0.1091 |
+| Zscore h12 w12 | 0.0206 | -0.0187 | 0.0663 | 0.0590 | 0.6938 | 0.1380 |
+| Zscore h12 w16 | 0.0961 | -0.0061 | 0.0560 | 0.0911 | 0.7188 | 0.1766 |
+| Zscore h12 w20 | 0.0435 | 0.0262 | -0.0019 | -0.0783 | 0.6000 | 0.2586 |
+| Zscore h18 w16 | 0.0936 | -0.0101 | 0.0587 | 0.0953 | 0.7312 | 0.0599 |
+
+### Follow-up 结论
+
+这轮小扫给出的信息很清楚：
+
+* `zscore target` 这条线继续成立，而且最优点仍然集中在 `train_window=16` 附近。
+* `train_window` 从 `16` 拉到 `20` 后明显变差。虽然 `h12_w20` 的主评估 `Eval IC` 转正到 `0.0262`，但 `Final OOS IC` 掉到 `-0.0783`，`WF 平均 Test IC` 也接近零，说明窗口拉长过头后已经开始伤害近期泛化。
+* `halflife` 在 `6 / 12 / 18` 之间差异不算特别大，但 `h18_w16` 的近期表现最亮，`Final OOS IC=0.0953`、`Final OOS Top-K=0.7312`；`h12_w16` 则在 `CV IC` 和全样本 `Active Return` 上更强。
+* `h12_w12` 不值得优先追。它的 `WF 平均 Test IC` 虽然最高，但 `CV IC` 太弱，近期 `Final OOS` 也明显落后于 `w16` 组。
+* `anchor ranker` 依然没有被正面击穿。它还是唯一 `Eval IC` 稳定为正的方案，而且 `WF 平均 Test IC` 仍是很强的锚点。
+
+### 参数方向判断
+
+如果只从这轮 follow-up 读参数方向：
+
+* `train_window`：更像是 `16` 最合适，`12` 偏短，`20` 偏长。
+* `halflife`：`12` 到 `18` 都可继续保留，`6` 也不差，但暂时没有显示出明显优势。
+* 下一轮最有价值的 zscore 备选点，应优先保留 `h12_w16` 和 `h18_w16`。
+
+### Follow-up 后的当前判断
+
+更新后的优先级建议：
+
+1. 继续保留 `anchor ranker h12 w16` 作为主基线。
+2. 把 `regressor + zscore h12 w16` 作为 regressor 主 challenger。
+3. 把 `regressor + zscore h18 w16` 作为次优 challenger 保留。
+4. 暂时不要继续扩 `w20`，也不需要优先补 `w12`。
+
+补充一点，方向漂移问题依旧没消失：
+
+* `anchor`、`zscore h06 w16`、`zscore h12 w16`、`zscore h18 w16` 的 walk-forward 6 个窗口仍然全部是 `signal_direction=-1`
+* 只有 `h12_w12` 出现 `1/6` 个正方向窗口，`h12_w20` 出现 `2/6`
+
+所以这里更合适的结论是：
+
+* `相对化 target` 已经被第二轮实验继续支持
+* 但它现在更像“很强的 challenger 族群”，还不是“可以替掉 ranker 主基线的最终赢家”
+
+## 第三轮最小对照建议
+
+如果下一轮只保留最值得复验的 3 条线，建议直接用：
+
+* `configs/local/hk_sel_q_g4_fixed_pit_overlay_round3_anchor_rank_h12_w16.yml`
+* `configs/local/hk_sel_q_g4_fixed_pit_overlay_round3_reg_zscore_h12_w16.yml`
+* `configs/local/hk_sel_q_g4_fixed_pit_overlay_round3_reg_zscore_h18_w16.yml`
+
+这组的目的不是继续扫参数，而是回答一个更直接的问题：
+
+* `anchor ranker h12 w16` 作为主基线，是否还能稳定守住
+* `regressor + zscore h12 w16` 是否是更均衡的 challenger
+* `regressor + zscore h18 w16` 的近期强势是否能重复出现
