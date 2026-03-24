@@ -228,7 +228,8 @@ csml init-config --market default --out configs/
 常见原因：
 
 * provider overlay 使用的基本面因子接口只接受普通股票（`CS`）符号
-* 股票池里混入了 benchmark、ETF 或 provider 无法识别的 HK 符号
+* 股票池里混入了 ETF 或 provider 无法识别的 HK 符号
+* 较旧的 run / 较旧版本里，benchmark 也可能被顺手送进 overlay；当前版本已把 `backtest.benchmark_symbol` 排除在非价格加载之外
 
 怎么判断是否致命：
 

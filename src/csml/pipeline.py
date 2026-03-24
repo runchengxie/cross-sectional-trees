@@ -1819,13 +1819,16 @@ def run(config_ref: str | Path | None = None) -> None:
             logger.info("Benchmark symbol %s removed from modeling universe.", benchmark_symbol)
         benchmark_df = df[df["symbol"] == benchmark_symbol].copy()
         df = df[df["symbol"] != benchmark_symbol].copy()
+    symbols_for_non_price = [
+        symbol for symbol in symbols_for_data if not benchmark_symbol or symbol != benchmark_symbol
+    ]
 
     basic_df = None
     if DROP_ST or MIN_LISTED_DAYS > 0:
         try:
             if MARKET != "cn" and DROP_ST:
                 logger.info("drop_st is CN-specific; attempting basic data for market '%s'.", MARKET)
-            basic_df = data_interface.load_basic(symbols_for_data)
+            basic_df = data_interface.load_basic(symbols_for_non_price)
             if basic_df is not None and not basic_df.empty:
                 basic_df = ensure_symbol_columns(basic_df, context="Basic data")
         except Exception as exc:
@@ -1866,7 +1869,7 @@ def run(config_ref: str | Path | None = None) -> None:
             source=FUNDAMENTALS_SOURCE,
             file_path=fundamentals_file_path,
             data_interface=data_interface,
-            symbols=symbols_for_data,
+            symbols=symbols_for_non_price,
             start_date=START_DATE,
             end_date=END_DATE,
             data_cfg=data_cfg,
@@ -1905,7 +1908,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 source=FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE,
                 file_path=None,
                 data_interface=data_interface,
-                symbols=symbols_for_data,
+                symbols=symbols_for_non_price,
                 start_date=START_DATE,
                 end_date=END_DATE,
                 data_cfg=data_cfg,
@@ -1967,7 +1970,7 @@ def run(config_ref: str | Path | None = None) -> None:
             source=INDUSTRY_SOURCE,
             file_path=industry_file_path,
             data_interface=data_interface,
-            symbols=symbols_for_data,
+            symbols=symbols_for_non_price,
             start_date=START_DATE,
             end_date=END_DATE,
             data_cfg=data_cfg,
