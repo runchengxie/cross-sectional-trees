@@ -137,6 +137,7 @@ csml rqdata mirror-hk-daily \
 * 默认一个 symbol 一个缓存文件。
 * 本地已有缓存时，会按 `data.cache_refresh_days` 只刷新尾部区间。
 * 适合长期维护一套“会自己补最后几天”的研究缓存。
+* 即使你已经配置了本地 `daily_asset_dir` + `instruments_file`，pipeline 仍会先看 symbol cache；cache miss 时，本地 asset 读出的结果也会回写到 `artifacts/cache/`。所以 `daily snapshot` 和 runtime `symbol cache` 是叠加关系，不是严格二选一。
 
 ### 2. 离线运行 pipeline 需要哪两个配置
 
@@ -492,6 +493,7 @@ csml rqdata build-hk-industry-labels \
 * `M/Q` 是对本地日期网格做抽样，不是 provider 的“月度行业接口”。
 * 如果你需要精确回放切换日，保留 `industry_changes` 本体。
 * 如果你只是做行业中性、暴露控制或日常 merge，直接用 `industry_labels_<freq>` 更顺手。
+* `industry_labels_<freq>` 是派生文件，不会随着 `hk_all_daily_latest` alias 自动重建；如果 daily snapshot 前进了，而你又需要对齐新日期，记得重新跑 `build-hk-industry-labels`。
 
 接进研究配置的方式：
 

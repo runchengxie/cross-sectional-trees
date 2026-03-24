@@ -6,7 +6,7 @@
 读完你会得到什么：当前有效入口、各接口接入状态、目录清理规则，以及下一步应该补哪里的判断。  
 相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
-最后核对时间：`2026-03-23`（Asia/Shanghai）  
+最后核对时间：`2026-03-24`（Asia/Shanghai）  
 核对依据：当前工作区里的真实目录、alias / symlink、`manifest.yml`、`configs/presets/hk.yml`、`configs/presets/hk_quarterly_pit_hybrid.yml`
 
 重要说明：
@@ -58,8 +58,9 @@
 * `exchange_rate`
   短窗 probe 已经成功，但 `hk_all_2000_20260319_exchange_rate_*_latest` 这批长窗 `latest` 当前全部 `status: failed`
 * `bundles / backup`
-  当前 `artifacts/snapshots/` 里只有 `.gitkeep`
-  旧笔记里提过的 `hk_runtime_*`、`hk_full_ref_*`、`hk_connect_ref_*` 不在这个工作区里，不能当作本地现成资产
+  当前 `artifacts/snapshots/` 里已经有 `hk_trial_snapshot_20260324/`
+  它是本地 trial snapshot，不是 release bundle，也不应自动当成默认共享资产
+  旧笔记里提过的 `hk_runtime_*`、`hk_full_ref_*`、`hk_connect_ref_*` 仍不在这个工作区里，不能当作本地现成资产
 * 旧失败 probe、空目录、老的 patch / archive
   它们只说明做过尝试，不说明已经完成
 
@@ -90,6 +91,7 @@
   `industry_changes` 是切换日真相层；
   `industry_labels_d/m/q` 是研究直接 join 的标签层；
   `instrument_industry` 是 provider 快照补充层。
+* 当前 `industry_labels_d/m/q` 文件都存在，但它们最近一次构建所用的日期网格仍来自 `hk_all_2000_20260312_daily_final_latest`；如果你需要和当前 `hk_all_daily_latest` 严格同步到更晚日期，必须重跑 `build-hk-industry-labels`。
 * `hk_connect_full_by_date.csv`、`hk_connect_full_research_by_date.csv`、`hk_selected_pit_research_by_date.csv` 都是按 rebalance date 落盘的成员明细，不是“每个交易日一整张全量成员表”。
 
 ## 当前有效入口
@@ -131,11 +133,11 @@
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest`
   当前 alias，指向 `hk_all_2000_20260318_industry_changes_full_market_latest`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet`
-  当前研究最适合直接 join 的月频行业标签
+  当前研究最适合直接 join 的月频行业标签；但它最近一次构建仍基于 `20260312` 版 daily grid，当前最大 `trade_date` 也仍停在 `2026-03-11`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_d.parquet`
-  日频标签
+  日频标签；当前最大 `trade_date` 仍停在 `2026-03-11`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_q.parquet`
-  季频标签
+  季频标签；当前最大 `trade_date` 仍停在 `2026-03-11`
 * `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest`
   当前 `hk_connect` 范围的 southbound raw snapshot
 
@@ -166,12 +168,27 @@
   当前 `financial_details` 分析基线；目录下有 `normalized_long.parquet`、`analysis_manifest.yml`、`summary.md`
 * `artifacts/assets/rqdata/hk/pit_financials/hk_all_probe_2025q4_2026q1_starter_20260319/`
   更晚 as-of 的全市场 starter PIT 增量
+* `artifacts/assets/rqdata/hk/pit_financials/hk_all_probe_2025q4_2026q1_starter_20260324/`
+  更新到 `date=20260324` 的全市场 starter raw probe；当前只有 raw mirror，还没替代 `20260319` 那版 research-ready fundamentals / universe 输出
 * `artifacts/assets/rqdata/hk/pit_financials/hk_connect_probe_2025q4_2026q1_starter_20260319/`
   更晚 as-of 的 `hk_connect` starter PIT 增量
+* `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_portable_bundle_20260324/`
+  `financial_details` 的试验性便携打包目录；说明这条线还在推进，但不改变“仍非主线 fundamentals”的判断
 * `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260319_research_by_date.csv`
   对应上面全市场 starter 增量派生出的 research universe
 * `artifacts/assets/universe/hk_connect_probe_2025q4_2026q1_starter_20260319_research_by_date.csv`
   对应上面 `hk_connect` starter 增量派生出的 research universe
+
+### 当前运行时 cache 补充
+
+* `artifacts/cache/`
+  当前不是只有一层日线 symbol cache。
+* `artifacts/cache/hk_rqdata_daily_<symbol>.parquet`
+  当前本地有 `328` 个 HK 日线 cache 文件；这层会在 provider / local asset 读取后继续回写。
+* `artifacts/cache/hk_rqdata_basic_*.parquet`
+  当前本地有 `1` 个 basic cache 文件。
+* `artifacts/cache/fundamentals/hk/`
+  当前本地有 `1194` 个 fundamentals cache 文件；它们是 runtime valuation overlay cache，不是离线 raw mirror 资产。
 
 ### 当前不要引用成默认入口的路径
 
@@ -242,9 +259,11 @@
 * `hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 仍然是季度 PIT preset 默认入口。
 * `hk_selected_pit_2011_2025_latest/manifest.yml` 里仍保留了历史 `data_assets/`、`config/...` 路径痕迹；当前应以实际目录 `artifacts/assets/...` 和 preset 文件里的路径为准。
 * `hk_all_probe_2025q4_2026q1_starter_20260319/` 已生成 `pipeline_fundamentals.parquet`，请求 `3203` symbols，实际 `856` symbols 写出。
+* `hk_all_probe_2025q4_2026q1_starter_20260324/` 当前只有 raw mirror；请求 `3190` symbols，实际 `1065` symbols 写出，但还没有新的 `pipeline_fundamentals.parquet`。
 * `hk_connect_probe_2025q4_2026q1_starter_20260319/` 也已生成 `pipeline_fundamentals.parquet`，请求 `967` symbols，实际 `189` symbols 写出。
 * `financial_details` 当前最完整的 raw probe 是 `hk_financial_details_hk_all3203_superset_2000_2025_20260319/`：请求 `3203` 个 symbol、`3` 个字段、`2000q1-2025q4`，实际写出 `345` 个 parquet。
 * 对这份 raw probe 的标准化分析基线是 `analysis_hk_all3203_superset_2000_2025_local_override_v10/`；它说明“窄字段增强层”已经有可复用分析入口，但不等于已经适合升成主线宽表。
+* `2026-03-24` 又新增了一批 `financial_details` smoke / probe 目录和 `portable_bundle`；它们说明探索还在继续，但不改变“主线仍不是 financial_details 宽表”的判断。
 * 把 `financial_details` 当成“直接补齐成 `743` 字段宽表”的路线，当前仍不成立。
 
 ### 因子与公告
@@ -271,7 +290,7 @@
 * `daily/_archive_20260314/`
   这是历史中间产物归档，不是默认入口
 * `artifacts/snapshots/`
-  当前不是“有现成 bundle 等你用”的目录；它现在只有 `.gitkeep`
+  当前已经有 `hk_trial_snapshot_20260324/`，但它是本地试验快照，不等于发布级 bundle
 
 ## 现在推荐的默认组合
 
@@ -311,6 +330,7 @@
   `artifacts/assets/rqdata/hk/shares/hk_all_shares_latest`
 * `industry`
   `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet`
+  如果你要严格对齐当前 `hk_all_daily_latest` 的最近日期，先重跑 `build-hk-industry-labels`
 * `full-market universe`
   `artifacts/assets/universe/hk_all_full_by_date.csv`
 
@@ -320,11 +340,11 @@
 
 1. 保持当前主线仍然是 `未复权日线 + ex_factors + dividends + shares`，不要为了复权口径重刷 `daily`。
 2. 如果只是继续研究，优先复用 `hk_all_2000_2025_full_market_latest` 和现成 research universe，不要先去追新的大重刷。
-3. 如果要补更晚 as-of date，优先把 `20260319` 这两份 `starter` PIT probe 当成增量验证，不要把它们误当 full snapshot 替代品。
+3. 如果要补更晚 as-of date，优先把 `20260319` / `20260324` 这些 `starter` PIT probe 当成增量验证，不要把它们误当 full snapshot 替代品。
 4. `financial_details` 继续走少量 field / sample 的白名单增强路线；`analysis_hk_all3203_superset_2000_2025_local_override_v10/` 可以作为当前审阅基线。
 5. `exchange_rate` 如果还要推进，先用短窗或分段窗口 staged backfill，不要直接把 `2000-2026` 长窗 `latest` 写进脚本。
 6. 配置、文档和临时脚本优先引用 alias 或当前 preset 默认路径，减少日期写死。
-7. 如果你需要真正的备份目录，现在应该重新执行备份，而不是假设 `artifacts/snapshots/` 里已经有 bundle。
+7. 如果你需要真正可复用的备份目录，现在应该显式新建命名清晰的 snapshot，而不是默认把 `hk_trial_snapshot_20260324/` 当成发布级 bundle。
 8. 新资产下载前，先看 `manifest.yml` 和 `quota`，不要把旧失败目录误认成当前缺口。
 
 补充判断：
