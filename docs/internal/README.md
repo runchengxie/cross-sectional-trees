@@ -11,3 +11,4 @@
 当前文件：
 
 * `feature-planning.md`：功能矩阵、边界、工程难点和工时评估。
+* `hk-h12-w16-target-transform-review-20260324.md`：HK quarterly PIT + overlay 单元下，`h12_w16` 锚点与 regressor target transform challenger 的一次实验记录。
