@@ -6,7 +6,11 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from .config_utils import resolve_pipeline_config, resolve_pipeline_filename
+from .config_utils import (
+    resolve_pipeline_config,
+    resolve_pipeline_filename,
+    resolve_repo_preset_path,
+)
 
 
 def _format_bytes(value: float) -> str:
@@ -659,10 +663,7 @@ def _handle_alloc_hk(args) -> int:
 def _handle_init_config(args) -> int:
     filename = resolve_pipeline_filename(args.market)
 
-    # Load from configs/presets/ (project root) instead of packaged csml.config
-    project_root = Path(__file__).parent.parent.parent
-    presets_dir = project_root / "configs" / "presets"
-    source_path = presets_dir / filename
+    source_path = resolve_repo_preset_path(filename)
     if not source_path.exists():
         raise SystemExit(f"Preset not found: {source_path}")
     content = source_path.read_text(encoding="utf-8")
@@ -1239,7 +1240,7 @@ def build_parser() -> argparse.ArgumentParser:
     snapshot.set_defaults(func=_handle_snapshot)
 
     init_cfg = subparsers.add_parser(
-        "init-config", help="Export a packaged config template to the filesystem"
+        "init-config", help="Export a repository preset template to the filesystem"
     )
     init_cfg.add_argument(
         "--market",

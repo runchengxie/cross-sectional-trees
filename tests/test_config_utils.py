@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import pytest
 import yaml
 
-from csml.config_utils import resolve_pipeline_config
+import csml.config_utils as config_utils
+from csml.config_utils import resolve_pipeline_config, resolve_pipeline_filename
 from csml.data_tools import build_hk_connect_universe, build_hk_daily_asset_universe
 
 
@@ -79,3 +81,13 @@ def test_linear_provider_overlay_validate_variants_do_not_inherit_xgb_params():
     assert "learning_rate" not in ridge_params
     assert "n_estimators" not in elasticnet_params
     assert "learning_rate" not in elasticnet_params
+
+
+def test_pipeline_aliases_fail_fast_when_repo_configs_are_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_utils, "_iter_repo_root_candidates", lambda: [tmp_path])
+
+    with pytest.raises(SystemExit, match="Repository configs/ directory not found"):
+        resolve_pipeline_config("default")
+
+    with pytest.raises(SystemExit, match="Repository configs/ directory not found"):
+        resolve_pipeline_filename("hk")

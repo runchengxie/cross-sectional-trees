@@ -1,5 +1,10 @@
 # 《Fundamental Analysis via Machine Learning》论文精读
 
+页面性质：`paper-digest`
+最后核对时间：`2026-03-24`
+权威来源：原论文《Fundamental Analysis via Machine Learning》
+冲突优先级：如果与当前仓库实现或研究口径冲突，以当前配置、playbook 和 run 产物为准
+
 ## 一、先给一个总判断
 
 这篇论文的核心贡献有三点。

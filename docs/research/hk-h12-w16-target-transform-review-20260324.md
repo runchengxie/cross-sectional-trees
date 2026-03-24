@@ -4,6 +4,11 @@
 
 本文件记录 `hk_sel_q_g4_fixed_pit_overlay` 研究单元在 `halflife=12`、`rolling train_window=16` 下的一次对照实验。
 
+页面性质：`research-note`
+最后核对时间：`2026-03-24`
+权威来源：本页列出的实验配置、对应 run 目录和汇总指标
+冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与后续总结页冲突，以后续总结页为准
+
 目标不是立刻换掉当前主基线，而是回答两个问题：
 
 1. 在相同 anti-drift 骨架下，`xgb_regressor` 能否挑战当前最佳 `xgb_ranker`。

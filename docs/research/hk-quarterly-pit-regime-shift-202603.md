@@ -4,6 +4,11 @@
 
 截至 `2026-03-24`，本文已经纳入 `2026-03-22` 的抗漂移参数网格结果，以及 `2026-03-24` 的 `label transform / signal direction` follow-up。后续如果再跑出新实验，应先更新这页，再让其他文档引用它。
 
+页面性质：`research-note`
+最后核对时间：`2026-03-24`
+权威来源：本页引用的实验配置、run 结果和当前 playbook 收口
+冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与 `docs/playbooks/hk-selected.md` 的最新主线收口冲突，以 playbook 为准
+
 相关页面：
 
 * [`docs/research/README.md`](./README.md)

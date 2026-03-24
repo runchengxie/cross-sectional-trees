@@ -6,8 +6,10 @@
 读完你会得到什么：当前有效入口、各接口接入状态、目录清理规则，以及下一步应该补哪里的判断。  
 相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
+页面性质：`current-state`  
 最后核对时间：`2026-03-24`（Asia/Shanghai）  
-核对依据：当前工作区里的真实目录、alias / symlink、`manifest.yml`、`configs/presets/hk.yml`、`configs/presets/hk_quarterly_pit_hybrid.yml`
+权威来源：当前工作区里的真实目录、alias / symlink、`manifest.yml`、`configs/presets/hk.yml`、`configs/presets/hk_quarterly_pit_hybrid.yml`  
+冲突优先级：如果本页和 `config.used.yml`、当前 preset、或当前资产目录实际状态冲突，以后者为准
 
 重要说明：
 

@@ -18,6 +18,18 @@ cp .env.example .env
 
 鉴权与 provider 选择见 `docs/providers.md`。
 
+常见命令和依赖关系：
+
+| 任务 | 典型命令 | 需要的 extra | 额外凭证 |
+| --- | --- | --- | --- |
+| 跑默认 HK starter | `csml run --config default` | `rqdata` | RQData 账号 |
+| 跑 HK 季频 PIT fundamentals | `csml run --config configs/presets/hk_quarterly_pit_hybrid.yml` | `rqdata` | RQData 账号 |
+| DuckDB 查询标准层 | `csml data query --sql "..."` | `duckdb` | 无 |
+| 导出 HK Excel 分配表 | `csml alloc-hk --format xlsx --out ...` | `liveops-hk` | 如果走 live/provider 路径，仍需要对应数据源凭证 |
+| 计算带 `p_value` 的统计检验 | Python / `csml` 下游分析调用 `summarize_ic` | `stats` | 无 |
+
+`default` / `hk` 这些内置别名，以及 `csml init-config`，都读取仓库根目录的 `configs/`。也就是说，日常使用应在包含 `configs/` 的源码 checkout 或导出源码目录里运行。
+
 ## 最短命令是什么
 
 `csml run --config default`
@@ -41,4 +53,4 @@ cp .env.example .env
 
 ## 后续按什么路径读文档
 
-从 [docs/README.md](docs/README.md) 进入。新手直接看 `docs/get-started.md`，先看能力边界可读 `docs/capabilities.md`，常见任务路线看 `docs/cookbook.md`，按对象查细节看 `docs/cli.md` / `docs/config.md` / `docs/outputs.md`。
+从 [docs/README.md](docs/README.md) 进入。新手直接看 `docs/get-started.md`，先建立系统地图看 `docs/pipeline-overview.md`，正式研究路线从 `docs/playbooks/README.md` 进入，通用工作流速查看 `docs/cookbook.md`，按对象查细节看 `docs/cli.md` / `docs/config.md` / `docs/outputs.md`。

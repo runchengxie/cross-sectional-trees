@@ -16,7 +16,7 @@ from ..artifacts import (
     UNIVERSE_BY_DATE_FILE,
     UNIVERSE_META_FILE,
 )
-from ..config_utils import resolve_config
+from ..config_utils import repo_config_search_paths, resolve_config
 
 DEFAULTS = {
     "mode": "backtest",
@@ -90,17 +90,11 @@ def normalize_date_token(value: object, label: str) -> str | None:
 
 
 def load_yaml_config(path: str | Path | None) -> dict:
-    project_root = Path(__file__).resolve().parents[3]
-    configs_dir = project_root / "configs"
     resolved = resolve_config(
         path,
         package=None,
         default_name="universe/hk_connect.yml",
-        search_paths=[
-            str(project_root),
-            str(configs_dir),
-            str(configs_dir / "presets"),
-        ],
+        search_paths=repo_config_search_paths(),
     )
     return resolved.data
 
@@ -294,7 +288,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build HK Connect universe (PIT + liquidity).")
     parser.add_argument(
         "--config",
-        help="YAML config path (optional). If omitted, uses packaged default.",
+        help="YAML config path (optional). If omitted, uses the repository preset.",
     )
     parser.add_argument("--mode", choices=["backtest", "daily"], help="Mode: backtest or daily")
     parser.add_argument("--start-date", help="Start date in YYYYMMDD")

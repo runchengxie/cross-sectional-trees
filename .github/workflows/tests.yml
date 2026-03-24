@@ -100,3 +100,41 @@ jobs:
         run: |
           uv run python -c "import duckdb; print(duckdb.__version__)"
           uv run csml data query --help > /dev/null
+
+  liveops-hk-extra-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.11"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --extra liveops-hk
+      - name: Smoke liveops-hk extra
+        run: |
+          uv run python -c "import openpyxl; print(openpyxl.__version__)"
+          uv run csml alloc-hk --help > /dev/null
+
+  stats-extra-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.11"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --extra stats
+      - name: Smoke stats extra
+        run: |
+          uv run python -c "import scipy; print(scipy.__version__)"
+          uv run python -c "import pandas as pd; from csml.metrics import summarize_ic; series = pd.Series([0.1, -0.1, 0.2]); stats = summarize_ic(series); assert 'p_value' in stats and stats['p_value'] == stats['p_value']"

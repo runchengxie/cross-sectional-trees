@@ -1,10 +1,12 @@
 # Cookbook
 
-本页解决什么：把常见研究任务按顺序串起来。
-本页不解决什么：不展开参数细节或替代 playbooks 的场景路线。
+本页解决什么：把常见任务按通用工作流串起来，作为速查页使用。
+本页不解决什么：不替代 `docs/playbooks/README.md` 的正式研究路线入口，也不展开参数细节。
 适合谁：已经跑通一次流程、想按任务推进的人。
-读完你会得到什么：四阶段流程和每阶段的下一步指引。
-相关页面：`docs/get-started.md`、`docs/playbooks/README.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`
+读完你会得到什么：四阶段工作流和每阶段的下一步指引。
+相关页面：`docs/get-started.md`、`docs/pipeline-overview.md`、`docs/playbooks/README.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`
+
+如果你要做 HK selected 正式研究，先从 `docs/playbooks/README.md` 进入；本页更适合作为通用工作流速查。
 
 ## 研究流程概览
 
@@ -19,10 +21,22 @@
 
 按 `docs/get-started.md` 跑通一次最小流程。
 
-如果你准备做 PIT 港股研究，跑完最小流程后再跑一次：
+如果你准备做 HK 月频 starter 路线，可以再跑一次：
 
 ```bash
 csml run --config hk
+```
+
+这里的 `hk` 指的是：
+
+* 港股通 `PIT universe`
+* `provider` 基本面
+* 月频 starter 路线
+
+如果你准备做季频 `PIT fundamentals` 路线，先看 `docs/playbooks/hk-data-assets.md` 准备本地 `pipeline_fundamentals.parquet`，再跑：
+
+```bash
+csml run --config configs/presets/hk_quarterly_pit_hybrid.yml
 ```
 
 ## 阶段二：定义研究单元
@@ -83,8 +97,12 @@ csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_
 
 ### 4.1 生成 live 快照
 
+真正触发 pipeline 的 `snapshot --config ...` 只接受 `live.enabled=true` 的 live 配置；如果你只是想从已有 run 导出结果，优先用 `--run-dir` 或 `--skip-run`。
+
 ```bash
 csml snapshot --config path/to/live.yml
+csml snapshot --config path/to/live.yml --skip-run
+csml snapshot --run-dir artifacts/runs/<run_dir>
 ```
 
 ### 4.2 手数分配
@@ -108,7 +126,7 @@ csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants
 | 敏感性分析 | `csml grid --config <template> --top-k 10,20 --cost-bps 15,25` |
 | 线性模型搜索 | `csml sweep-linear --sweep-config <sweep.yml>` |
 | 查看持仓 | `csml holdings --config <template> --as-of t-1` |
-| 生成快照 | `csml snapshot --config <live.yml>` |
+| 生成快照 | `csml snapshot --config <live.yml>` 或 `csml snapshot --run-dir <run_dir>` |
 | 手数分配 | `csml alloc --config <live.yml> --source live --top-n 20 --cash 1000000` |
 | 归档数据 | `csml backup-data --name <name> --config <config>` |
 

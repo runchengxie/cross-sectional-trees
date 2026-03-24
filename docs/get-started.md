@@ -23,6 +23,7 @@ csml run --config default
 按 `data.provider` 配好鉴权变量，详见 `docs/providers.md`。
 
 注意：`default` 是内置别名，不等于 `configs/presets/default.yml`。
+这些内置别名读取仓库根目录的 `configs/`，所以应在包含 `configs/` 的源码 checkout 或导出源码目录里运行。
 
 如果你只安装基础依赖：
 
@@ -39,6 +40,7 @@ uv sync --extra dev
 ## 下一步去哪
 
 * 想继续按流程做研究：`docs/cookbook.md`
+* 想先建立系统心智模型：`docs/pipeline-overview.md`
 * 想做 HK selected 研究：`docs/playbooks/README.md`
 * 想查命令或配置定义：`docs/cli.md`、`docs/config.md`
 * 想理解产物结构：`docs/outputs.md`

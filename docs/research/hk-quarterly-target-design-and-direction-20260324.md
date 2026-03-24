@@ -6,6 +6,11 @@
 读完你会得到什么：一套当前阶段可执行的研究口径，以及下一步优先级。
 相关页面：`docs/research/hk-quarterly-pit-regime-shift-202603.md`、`docs/research/hk-h12-w16-target-transform-review-20260324.md`、`docs/concepts/model-selection.md`、`docs/concepts/benchmark-protocol.md`
 
+页面性质：`research-note`
+最后核对时间：`2026-03-24`
+权威来源：当前研究 run、follow-up 配置和本页引用的汇总结果
+冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与当前 playbook 冲突，以 playbook 的最新收口为准
+
 ## 1. 先记住 8 句
 
 * `xgb_regressor + future_return` 不等于“预测相对排名”；它是在做绝对收益回归。

@@ -11,12 +11,25 @@
 | 场景 | 推荐模板 | 关键改动 |
 |------|---------|---------|
 | 第一次跑通 | `default` | 无 |
-| 港股 PIT 正式研究 | `hk` | 可能需要 PIT 资产 |
+| 港股月频 starter（PIT universe + provider fundamentals） | `hk` | 默认读港股通 research universe，不要求本地 PIT fundamentals 文件 |
+| 港股季频 PIT 正式研究 | `configs/presets/hk_quarterly_pit_hybrid.yml` | 需要本地 `pipeline_fundamentals.parquet` |
 | 季度 benchmark protocol | `configs/experiments/baseline/hk_selected__quarterly_*.yml` + `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_*.yml` | 需要本地 `pipeline_fundamentals.parquet` |
 | 更宽的季度实验路线 | `configs/experiments/variants/hk_selected__pit_quarterly_*` | 适合继续派生专题路线 |
 | 本地实验 | `configs/local/*.yml`（个人自建，默认不跟踪）或自建实验目录 | 仅作个人派生，不当作官方入口 |
 
 > **注意**：`csml run --config default` 里的 `default` 是内置别名，不等于仓库里的 `configs/presets/default.yml`。
+>
+> 这些内置别名和 `csml init-config` 都读取仓库根目录的 `configs/`。默认使用场景是源码 checkout 或包含 `configs/` 的导出源码目录，而不是脱离仓库上下文的孤立 wheel。
+
+### `PIT` 在这个仓库里分别指什么
+
+这里最容易混淆的是，`PIT` 可能同时出现在三层语义里：
+
+* `PIT universe`：按日期变化的股票池成员关系，通常通过 `universe.by_date_file` 体现。
+* `PIT fundamentals`：按披露节奏对齐的本地财务平面文件，通常通过 `fundamentals.source=file` + `pipeline_fundamentals.parquet` 体现。
+* `季度 PIT 研究路线`：在同一研究单元里，把 `Q` 频率、PIT 财务字段和 benchmark protocol 组合起来的一整条正式研究路线。
+
+文档里提到 `hk.yml` 时，默认指第一层和部分第二层之外的 HK starter，不应自动理解成“完整季度 PIT fundamentals 路线”。
 
 ---
 

@@ -9,7 +9,7 @@ import pandas as pd
 import yaml
 
 from ..artifacts import ASSETS_DIR, UNIVERSE_DIR
-from ..config_utils import resolve_config
+from ..config_utils import repo_config_search_paths, resolve_config
 from .build_hk_connect_universe import (
     default_meta_path,
     format_output_path,
@@ -45,17 +45,11 @@ def _resolve_path(path_text: str | Path) -> Path:
 
 
 def load_yaml_config(path: str | Path | None) -> dict:
-    project_root = Path(__file__).resolve().parents[3]
-    configs_dir = project_root / "configs"
     resolved = resolve_config(
         path,
         package=None,
         default_name="universe/hk_all_assets.yml",
-        search_paths=[
-            str(project_root),
-            str(configs_dir),
-            str(configs_dir / "presets"),
-        ],
+        search_paths=repo_config_search_paths(),
     )
     return resolved.data
 
@@ -285,7 +279,10 @@ def write_outputs(
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build HK full-market universe from local daily assets.")
-    parser.add_argument("--config", help="YAML config path (optional). If omitted, uses packaged default.")
+    parser.add_argument(
+        "--config",
+        help="YAML config path (optional). If omitted, uses the repository preset.",
+    )
     parser.add_argument(
         "--daily-asset-dir",
         help=(

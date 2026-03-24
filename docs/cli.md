@@ -44,6 +44,8 @@ csml <subcommand> --help
 > `csml run --config default` 里的 `default` 是内置别名，不等于 `configs/presets/default.yml`。
 >
 > `default` 当前指向 HK starter 模板，默认 `data.provider=rqdata`。第一次跑 `default` 或 `hk` 前，先安装 `uv sync --extra dev --extra rqdata`。
+>
+> 这些内置别名以及 `csml init-config` 都读取仓库根目录的 `configs/`。默认使用场景是源码 checkout 或包含 `configs/` 的导出源码目录。
 
 ### 日期 token
 
@@ -127,8 +129,15 @@ csml holdings --run-dir artifacts/runs/<run_dir> --format csv
 
 跑 live 快照。
 
+规则先写清楚：
+
+* 如果命令会触发 pipeline 运行，也就是 `csml snapshot --config ...` 且没有传 `--skip-run` / `--run-dir`，那么配置里必须显式写 `live.enabled=true`。
+* 如果你只是想从已有 run 导出结果，优先用 `--run-dir` 或 `--skip-run`；这两种场景不要求重新跑 pipeline。
+
 ```bash
 csml snapshot --config path/to/live.yml
+csml snapshot --config path/to/live.yml --skip-run
+csml snapshot --run-dir artifacts/runs/<run_dir>
 ```
 
 ### csml alloc
@@ -212,12 +221,14 @@ csml data query --sql-file queries/top_names.sql --format csv --out artifacts/me
 
 ### csml init-config
 
-导出内置模板。
+导出仓库 preset 模板。
 
 ```bash
 csml init-config --market default --out configs/
 csml init-config --market hk --out ./custom_hk.yml --force
 ```
+
+`init-config` 读取仓库根目录的 `configs/presets/`，所以默认使用场景也是源码 checkout 或包含 `configs/` 的导出源码目录。
 
 ## RQData 命令
 

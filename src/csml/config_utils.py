@@ -7,6 +7,8 @@ from typing import Any, Mapping, Optional
 
 import yaml
 
+from .repo_paths import find_repo_root
+
 
 EXTENDS_KEY = "extends"
 
@@ -321,36 +323,62 @@ PIPELINE_ALIASES: Mapping[str, str] = {
 }
 
 
-def resolve_pipeline_config(ref: str | Path | None) -> ResolvedConfig:
-    """Resolve pipeline config from project configs/ directory."""
-    # Use project root configs/ instead of packaged csml.config
-    project_root = Path(__file__).parent.parent.parent
-    configs_dir = project_root / "configs"
-    search_paths = [
-        str(project_root),
+def _iter_repo_root_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    for start in (Path.cwd(), Path(__file__).resolve()):
+        root = find_repo_root(start)
+        if not (root / "pyproject.toml").exists():
+            continue
+        resolved = root.resolve()
+        if resolved not in candidates:
+            candidates.append(resolved)
+    return candidates
+
+
+def resolve_repo_configs_dir() -> Path:
+    """Locate the repository configs/ directory used by runtime aliases."""
+    for repo_root in _iter_repo_root_candidates():
+        configs_dir = repo_root / "configs"
+        if (configs_dir / "presets").exists():
+            return configs_dir
+
+    searched = ", ".join(str(path) for path in _iter_repo_root_candidates()) or "<none>"
+    raise SystemExit(
+        "Repository configs/ directory not found. Built-in aliases and "
+        "init-config require a source checkout or exported source tree that "
+        f"includes configs/. Searched repo roots: {searched}"
+    )
+
+
+def repo_config_search_paths() -> list[str]:
+    configs_dir = resolve_repo_configs_dir()
+    repo_root = configs_dir.parent
+    return [
+        str(repo_root),
         str(configs_dir),
         str(configs_dir / "presets"),
         str(configs_dir / "experiments"),
     ]
+
+
+def resolve_repo_preset_path(filename: str) -> Path:
+    return resolve_repo_configs_dir() / "presets" / filename
+
+
+def resolve_pipeline_config(ref: str | Path | None) -> ResolvedConfig:
+    """Resolve pipeline config from the repository configs/ directory."""
     return resolve_config(
         ref,
-        package=None,  # Disable package loading, use filesystem only
+        package=None,
         default_name="default.yml",
         aliases=PIPELINE_ALIASES,
-        search_paths=search_paths,
+        search_paths=repo_config_search_paths(),
     )
 
 
 def resolve_pipeline_filename(ref: str) -> str:
-    """Resolve pipeline config filename from project configs/ directory."""
-    project_root = Path(__file__).parent.parent.parent
-    configs_dir = project_root / "configs"
-    search_paths = [
-        str(project_root),
-        str(configs_dir),
-        str(configs_dir / "presets"),
-        str(configs_dir / "experiments"),
-    ]
+    """Resolve pipeline config filename from the repository configs/ directory."""
+    search_paths = repo_config_search_paths()
 
     alias = _resolve_alias(ref, PIPELINE_ALIASES)
     if alias:

@@ -51,7 +51,9 @@ csml run --config default
 
 * `default` 现在是 HK starter 模板。
 * 跑 `default` 或 `hk` 模板前，先安装 `--extra rqdata`。
-* 如果你要复现仓库里的 PIT 港股研究路线，优先用 `configs/presets/hk.yml`，以及 `configs/experiments/baseline/` + `configs/experiments/variants/` 下的 HK selected 官方模板。
+* `configs/presets/hk.yml` 是 HK 月频 starter：`PIT universe` + `provider` 基本面。
+* `configs/presets/hk_quarterly_pit_hybrid.yml` 才是 HK 季频 `PIT fundamentals` 入口。
+* `configs/experiments/baseline/` + `configs/experiments/variants/` 下的 HK selected 官方模板，主要建立在季度 PIT 路线之上。
 * `cn/us` 相关改动主要属于兼容维护。日常开发优先验证 `default`、`hk` 和 HK selected 路线。
 
 ## 测试
@@ -115,13 +117,15 @@ scripts/dev/run_tests.sh integration
 
 仓库现在提供 GitHub Actions workflow：`.github/workflows/tests.yml`。
 
-CI 默认拆成五段：
+CI 默认拆成七段：
 
 1. `fast`：`scripts/dev/run_tests.sh fast`
 1. `slow`：`scripts/dev/run_tests.sh slow`
 1. `integration`：`scripts/dev/run_tests.sh integration`
 1. `rqdata-extra-smoke`：安装 `--extra rqdata`，验证 optional extra 和 `csml rqdata --help`
 1. `duckdb-extra-smoke`：安装 `--extra duckdb`，验证 optional extra 和 `csml data query --help`
+1. `liveops-hk-extra-smoke`：安装 `--extra liveops-hk`，验证 `openpyxl` 和 `csml alloc-hk --help`
+1. `stats-extra-smoke`：安装 `--extra stats`，验证 `scipy` 和 `summarize_ic` 的最小调用
 
 这样可以把默认离线回归、较重离线回归、端到端流程，以及 optional extra 的安装/导入烟雾检查分开看。排查失败时，先在本地复现对应那一段。
 

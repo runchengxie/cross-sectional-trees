@@ -6,6 +6,11 @@
 读完你会得到什么：一条按当前仓库模板和最新研究结论整理过的可执行路线图。  
 相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/hk-quarterly-pit-regime-shift-202603.md`、`docs/cli.md`、`docs/config.md`
 
+页面性质：`current-state`  
+最后核对时间：`2026-03-24`  
+权威来源：当前 `configs/` 模板、相关研究笔记和 benchmark protocol  
+冲突优先级：如果与具体 run 的 `config.used.yml` 冲突，以 run 产物为准；如果与当前 benchmark protocol 冲突，以协议页为准
+
 本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-23` 的仓库内研究结论整理。  
 历史 run 里仍然保留了旧口径；复现旧结果时，请先看 `config.used.yml`。
 
