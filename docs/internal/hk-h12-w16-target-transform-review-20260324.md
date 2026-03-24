@@ -92,3 +92,27 @@
 1. 如果优先看“主评估口径是否最稳”，仍然是 `anchor ranker` 第一。
 2. 如果优先看“下一轮最值得扩展的 challenger”，是 `regressor + zscore target` 第一。
 3. 如果要给 regressor 路线保留两条 target 方案，顺序是 `zscore > rank > raw`。
+
+## 推荐 follow-up grid
+
+下一轮不建议同时扩太多变量。最小但信息量高的一组是：
+
+* 锚点：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_anchor_rank_h12_w16.yml`
+* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h06_w16.yml`
+* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w12.yml`
+* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w16.yml`
+* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w20.yml`
+* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h18_w16.yml`
+
+这组是围绕 `h12_w16` 中心点做一个十字形小扫：
+
+* `halflife` 只看 `6 / 12 / 18`
+* `train_window` 只看 `12 / 16 / 20`
+* 每次只动一个旋钮，避免解释混乱
+* `ranker` 只保留当前最佳点做锚，不重复扩 ranker 全网格
+
+建议比较顺序：
+
+1. 先看 `zscore` 是否在 `eval.ic`、walk-forward 平均 `test_ic`、全样本 `active_total_return` 三项同时维持领先。
+2. 再看最优 `zscore` 点是否真正超过 `anchor ranker`。
+3. 如果 `zscore` 小扫里出现更优点，再决定是否补 ranker 的对称复扫。
