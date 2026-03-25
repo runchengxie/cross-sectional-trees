@@ -1,4 +1,14 @@
-# RQData金融数据API文档 （港股（公测版本））
+# 港股 RQData API 参考快照
+
+本页解决什么：保留米筐港股 API 的离线语义参考，方便在离线环境下查字段和接口。
+本页不解决什么：不记录当前工作区资产状态，也不替代 CLI / playbook。
+适合谁：需要离线核对 RQData 港股接口语义的人。
+读完你会得到什么：一份可离线检索的 vendor reference snapshot，以及它和仓库主文档的边界。
+相关页面：`docs/rqdata/README.md`、`docs/playbooks/hk-rqdata-status.md`、`docs/providers.md`
+
+下方保留 vendor 文档快照。若与仓库代码、`manifest.yml`、playbook 或本地资产状态冲突，以后者为准。
+
+## RQData金融数据API文档 （港股（公测版本））
 
 > 本文档为20260319离线快照，最新版本可参考：https://www.ricequant.com/doc/rqdata/python/stock-hk
 

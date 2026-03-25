@@ -4,7 +4,7 @@
 本页不解决什么：不展开参数定义、资产整备细节或专题研究流水账。  
 适合谁：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。  
 读完你会得到什么：一条按当前仓库模板和最新研究结论整理过的可执行路线图。  
-相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/hk-quarterly-pit-regime-shift-202603.md`、`docs/cli.md`、`docs/config.md`
+相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`、`docs/cli.md`、`docs/config.md`
 
 页面性质：`current-state`  
 最后核对时间：`2026-03-24`  
@@ -40,7 +40,7 @@
 * 配置派生和模板边界看 [research-template-design.md](./research-template-design.md)
 * PIT 体检怎么解读看 `docs/concepts/pit-coverage.md`
 * benchmark 阶梯定义看 `docs/concepts/benchmark-protocol.md`
-* overlay 路线最新结论看 `docs/research/hk-quarterly-pit-regime-shift-202603.md`
+* overlay 路线最新结论看 `docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`
 
 ## 2. 主线流程
 
@@ -301,7 +301,7 @@ csml rqdata inspect-hk-pit-coverage \
 
 * 先把官方 `quarterly_pit_core_hybrid` 主线跑稳，再进入 overlay
 * 日频估值直接走 `provider_overlay`；不要把它写回稀疏 PIT 文件后再解释结果
-* 专题结论和抗漂移基线看 `docs/research/hk-quarterly-pit-regime-shift-202603.md`
+* 专题结论和抗漂移基线看 `docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`
 
 截至 `2026-03-23`，这条线的状态是：
 

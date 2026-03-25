@@ -3,10 +3,15 @@
 本页解决什么：给 HK / RQData 离线资产、仓库状态和 API 快照提供一个专题入口。
 本页不解决什么：不代替 CLI 参数文档，也不代替官方在线文档。
 适合谁：准备补 HK 离线资产、核对当前本地状态，或需要离线查 API 语义的人。
-读完你会得到什么：这组三份文档的阅读顺序，以及它们各自的分工边界。
+读完你会得到什么：这组四页文档的阅读顺序，以及它们各自的分工边界。
 相关页面：`docs/playbooks/README.md`、`docs/providers.md`、`docs/cli.md`
 
 这组资料适合单独收口成一个专题入口，但不建议把研究流程类页面整体移出 `docs/playbooks/`。
+
+这里实际上有两类页面：
+
+* 流程 / 状态页：`hk-data-assets.md`、`hk-rqdata-status.md`
+* reference snapshot：`hk-stock-data-reference.md`、`a-share-data-reference.md`
 
 原因很简单：
 
@@ -14,7 +19,7 @@
 * `hk-stock-data-reference.md` 和 `a-share-data-reference.md` 更像外部 API 的离线 reference snapshot。
 * 把它们强行塞进同一层目录，会让流程文档和参考手册的边界变糊。
 
-更合理的做法是保留原有分工，同时在这里给一个统一入口。
+更合理的做法是保留原有分工，同时在这里给一个统一入口，而不是把所有和 RQData 有关的内容都塞进一个目录。
 
 ## 建议阅读顺序
 

@@ -1,6 +1,6 @@
 # HK H12 W16 Target Transform Review 2026-03-24
 
-相关页面：`docs/research/hk-quarterly-target-design-and-direction-20260324.md`、`docs/research/hk-quarterly-pit-regime-shift-202603.md`
+相关页面：`docs/research/notes/hk-quarterly-target-design-and-direction-20260324.md`、`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`
 
 本文件记录 `hk_sel_q_g4_fixed_pit_overlay` 研究单元在 `halflife=12`、`rolling train_window=16` 下的一次对照实验。
 
@@ -20,8 +20,8 @@
 
 已跑：
 
-* Anchor：`hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_anchor`，基于 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml)
-* Challenger A：`hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_raw`，基于 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) 并固定 `halflife=12`、`rolling train_window=16`
+* Anchor：`hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_anchor`，基于 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml)
+* Challenger A：`hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_raw`，基于 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) 并固定 `halflife=12`、`rolling train_window=16`
 * Challenger B：`hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_rank`，在 Challenger A 上加 `label.train_target_transform: rank`
 * Challenger C：`hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_zscore`，在 Challenger A 上加 `label.train_target_transform: zscore`
 

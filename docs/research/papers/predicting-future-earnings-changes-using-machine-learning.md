@@ -1,4 +1,9 @@
-# Chen, Cho, Dou, Lev (2022) 论文详细解读
+# 《Predicting Future Earnings Changes Using Machine Learning and Detailed Financial Data》论文精读
+
+页面性质：`paper-digest`
+最后核对时间：`2026-03-25`
+权威来源：原论文《Predicting Future Earnings Changes Using Machine Learning and Detailed Financial Data》
+冲突优先级：如果与当前仓库实现或研究口径冲突，以当前配置、playbook 和 run 产物为准
 
 ## 论文信息
 

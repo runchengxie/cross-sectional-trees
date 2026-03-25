@@ -6,6 +6,11 @@
 读完你会得到什么：一套按优先级可执行的数据准备顺序，以及“股票池、日线、PIT、行业、备份”之间的清晰关系。  
 相关页面：`docs/playbooks/hk-selected.md`、`docs/playbooks/hk-rqdata-status.md`、`docs/rqdata/README.md`、`docs/playbooks/research-template-design.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`
 
+页面性质：`current-state`  
+最后核对时间：`2026-03-25`  
+权威来源：当前仓库代码、preset 配置、工作区 alias / `manifest.yml` 与本页引用的默认入口  
+冲突优先级：如果与当前 preset、`manifest.yml`、`docs/playbooks/hk-rqdata-status.md` 或真实资产目录冲突，以更具体的资产状态和目录为准
+
 本页已经按当前仓库代码、配置默认值和工作区里的 alias 重新整理。  
 它的重点是“怎么准备”和“各层之间怎么配合”；如果你要看当前有哪些 snapshot 已完成、哪些只是 probe、哪些目录已经过时，请再看 [hk-rqdata-status.md](./hk-rqdata-status.md)。
 
@@ -16,7 +21,7 @@
 3. PIT 路线的关键不只是把 raw mirror 拉下来，还要继续生成 `pipeline_fundamentals.parquet`；需要时再顺手派生一份 research-ready `universe by-date`。
 4. `ex_factors`、`dividends`、`shares`、`industry_changes` 属于长期有价值的底层原料层。`southbound` 是高价值补充层。`exchange_rate` 和 `financial_details` 当前仍应按 probe / staged backfill 思路推进。
 5. HK 日频估值默认仍建议走 runtime `provider_overlay`；但如果你要在 provider 访问结束前冻结 `market_cap / pe_ttm / pb` 口径，现在也支持单独镜像 `valuation` 资产。
-5. 研究配置通常走 alias；打包和 Release 工具走静态 preset。两者不是一回事，不能默认“打包脚本会自动跟随 alias”。
+6. 研究配置通常走 alias；打包和 Release 工具走静态 preset。两者不是一回事，不能默认“打包脚本会自动跟随 alias”。
 
 ## 当前默认入口
 

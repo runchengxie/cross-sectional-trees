@@ -45,11 +45,9 @@ cp .env.example .env
 
 完整能力地图见 `docs/capabilities.md`。
 
-## 跑完先看哪三个文件
+## 跑完先看什么
 
-* `summary.json`
-* `config.used.yml`
-* `positions_current.csv`
+优先看 `summary.json`、`config.used.yml` 和 `positions_current.csv`。最短跑通步骤和产物检查清单放在 `docs/get-started.md`，这里不再重复展开。
 
 ## 后续按什么路径读文档
 

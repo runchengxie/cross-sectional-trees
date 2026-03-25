@@ -11,22 +11,22 @@
 
 相关页面：
 
-* [`docs/research/README.md`](./README.md)
-* [`docs/research/hk-quarterly-target-design-and-direction-20260324.md`](./hk-quarterly-target-design-and-direction-20260324.md)
-* [`docs/research/hk-h12-w16-target-transform-review-20260324.md`](./hk-h12-w16-target-transform-review-20260324.md)
-* [`docs/playbooks/hk-selected.md`](../playbooks/hk-selected.md)
-* [`docs/config.md`](../config.md)
-* [`docs/outputs.md`](../outputs.md)
+* [`docs/research/README.md`](../README.md)
+* [`docs/research/notes/hk-quarterly-target-design-and-direction-20260324.md`](./hk-quarterly-target-design-and-direction-20260324.md)
+* [`docs/research/notes/hk-h12-w16-target-transform-review-20260324.md`](./hk-h12-w16-target-transform-review-20260324.md)
+* [`docs/playbooks/hk-selected.md`](../../playbooks/hk-selected.md)
+* [`docs/config.md`](../../config.md)
+* [`docs/outputs.md`](../../outputs.md)
 
 ## 1. 核心结论
 
 如果只看这一页，先记住下面 7 句：
 
-* 旧基线 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml) 在 `final_oos` 已经出现横截面排序失效。它还有 `+45.2%` 的绝对收益，但 `IC = -0.1003`、`long_short = -6.56%`、主动收益 `-10.6%`，说明高分股已经开始跑输低分股。
-* 换成 [`xgb_regressor`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) 或 [`ridge`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml) 后，`final_oos IC` 仍然为负；[`elasticnet`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml) 直接退化成常数预测。
+* 旧基线 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml) 在 `final_oos` 已经出现横截面排序失效。它还有 `+45.2%` 的绝对收益，但 `IC = -0.1003`、`long_short = -6.56%`、主动收益 `-10.6%`，说明高分股已经开始跑输低分股。
+* 换成 [`xgb_regressor`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) 或 [`ridge`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml) 后，`final_oos IC` 仍然为负；[`elasticnet`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml) 直接退化成常数预测。
 * 这轮问题更像 `regime shift / concept drift`。旧训练窗学到的映射关系，在 `2023-12-29` 到 `2025-09-29` 这段真留出集上失效了。
 * 只做近期样本加权还不够。`exp_decay` 单独版把负 IC 缓和到 `-0.0597`，但没有修好排序关系。
-* 第一版真正把 `final_oos IC` 翻回正值的配置，是 `halflife=12 + rolling=16`。它对应的当前基线是 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml)。
+* 第一版真正把 `final_oos IC` 翻回正值的配置，是 `halflife=12 + rolling=16`。它对应的当前基线是 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml)。
 * 后续 `xgb_regressor + zscore target` 的 follow-up 说明，“相对化 label” 这条路值得继续追，但它在 `2021-03-31` 到 `2023-09-29` 的 6 个 `walk_forward` 测试窗里一致偏 `signal_direction = -1`，而 `2023-12-29` 到 `2025-09-29` 的整体验证又更像 `+1`。这说明 challenger 线仍有阶段性方向切换，暂时不能取代 ranker 基线。
 * 这条线已经进入 `paper -> shadow -> 小仓位 canary` 的准备阶段，但还不支持单模型、唯一主信号、直接大仓上线。
 
@@ -54,10 +54,10 @@
 
 | 配置 | `final_oos IC` | `final_oos long_short` | 主动收益 | 当前定位 |
 | --- | --- | --- | --- | --- |
-| [`xgb_ranker` 旧基线](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml) | `-0.1003` | `-6.56%` | `-10.6%` | 旧基线已失效 |
-| [`xgb_regressor` 对照](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) | `-0.0951` | `-4.83%` | `-15.4%` | 证明这不是 ranker 特有问题 |
-| [`ridge` 对照](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml) | `-0.1159` | `-4.49%` | `+3.30%` | 可以做温和 sleeve，不是修复方案 |
-| [`elasticnet` 对照](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml) | `NaN` | 退化 | `pred_nunique = 1` | 当前口径下应排除 |
+| [`xgb_ranker` 旧基线](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml) | `-0.1003` | `-6.56%` | `-10.6%` | 旧基线已失效 |
+| [`xgb_regressor` 对照](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) | `-0.0951` | `-4.83%` | `-15.4%` | 证明这不是 ranker 特有问题 |
+| [`ridge` 对照](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml) | `-0.1159` | `-4.49%` | `+3.30%` | 可以做温和 sleeve，不是修复方案 |
+| [`elasticnet` 对照](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml) | `NaN` | 退化 | `pred_nunique = 1` | 当前口径下应排除 |
 
 从这组结果能得出两点：
 
@@ -71,9 +71,9 @@
 | 配置 | `final_oos IC` | `final_oos long_short` | 主动收益 | 当前结论 |
 | --- | --- | --- | --- | --- |
 | 旧基线 | `-0.1003` | `-6.56%` | `-10.6%` | 排序失效 |
-| [`exp_decay`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_validate.yml) | `-0.0597` | `-2.11%` | `-9.50%` | 方向改善，但还不够 |
-| [`exp_decay + rolling=16`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_validate.yml) | `+0.0825` | `+0.68%` | `+13.7%` | 第一版真正翻正，应提升为新基线 |
-| [`exp_decay + rolling=16 + group cap=3`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_groupcap_validate.yml) | `+0.0825` | `+0.68%` | `+6.9%` | 信号没变，但收益和夏普下降，不适合默认开启 |
+| [`exp_decay`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_validate.yml) | `-0.0597` | `-2.11%` | `-9.50%` | 方向改善，但还不够 |
+| [`exp_decay + rolling=16`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_validate.yml) | `+0.0825` | `+0.68%` | `+13.7%` | 第一版真正翻正，应提升为新基线 |
+| [`exp_decay + rolling=16 + group cap=3`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_exp_decay_rolling_groupcap_validate.yml) | `+0.0825` | `+0.68%` | `+6.9%` | 信号没变，但收益和夏普下降，不适合默认开启 |
 
 这组结果的实际含义是：
 
@@ -94,7 +94,7 @@
 
 当前默认基线是：
 
-* [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml)
+* [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml)
 
 它等价于：
 
@@ -115,15 +115,15 @@
 
 | 版本 | 当前角色 | 关键原因 |
 | --- | --- | --- |
-| [`h12_w16`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml) | 默认 canary 基线 | `final_oos IC` 最高，`walk_forward` 最稳定，方向没有来回翻 |
-| [`h06_w16`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h06_w16_validate.yml) | 并行 challenger | 收益弹性最强，`final_oos long_short = +4.33%`、主动收益 `+30.9%`，但最后一窗方向翻到 `1.0`，稳定性略弱 |
-| [`h12_w12`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w12_validate.yml) | 偏防守备选 | `max_drawdown = -1.75%`，但 `cv_ic` 近零，`walk_forward` 有 `4` 正 `2` 负 |
-| [`h18_w12`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h18_w12_validate.yml) | 研究池保留 | `final_oos` 不差，但 `walk_forward` 已经是 `3` 正 `3` 负，方向切换更明显 |
+| [`h12_w16`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml) | 默认 canary 基线 | `final_oos IC` 最高，`walk_forward` 最稳定，方向没有来回翻 |
+| [`h06_w16`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h06_w16_validate.yml) | 并行 challenger | 收益弹性最强，`final_oos long_short = +4.33%`、主动收益 `+30.9%`，但最后一窗方向翻到 `1.0`，稳定性略弱 |
+| [`h12_w12`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w12_validate.yml) | 偏防守备选 | `max_drawdown = -1.75%`，但 `cv_ic` 近零，`walk_forward` 有 `4` 正 `2` 负 |
+| [`h18_w12`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h18_w12_validate.yml) | 研究池保留 | `final_oos` 不差，但 `walk_forward` 已经是 `3` 正 `3` 负，方向切换更明显 |
 
 这轮 9 个点里还有两个额外信息值得保留：
 
 * `rolling = 20` 的三个点都重新回到了 `final_oos IC < 0`，说明窗口一拉长，旧 regime 污染又回来了。
-* [`h18_w16`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h18_w16_validate.yml) 虽然 `final_oos IC` 仍为正，但 `long_short` 已经转负，不适合升级成默认基线。
+* [`h18_w16`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h18_w16_validate.yml) 虽然 `final_oos IC` 仍为正，但 `long_short` 已经转负，不适合升级成默认基线。
 
 所以当前更稳妥的顺序是：
 
@@ -151,7 +151,7 @@
 这条发现对当前决策的含义是：
 
 * `xgb_regressor + zscore target` 仍然值得保留为正式 challenger
-* 但它还没有解决“方向随阶段切换”的问题，所以不能据此撤掉 [`h12_w16`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml) 这个 ranker 主基线
+* 但它还没有解决“方向随阶段切换”的问题，所以不能据此撤掉 [`h12_w16`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml) 这个 ranker 主基线
 * 后续更高优先级的工作，不是继续重复同配置，而是专门做 `signal_direction` 的稳定性实验，以及更严格的分阶段验证
 
 ## 6. 如果进入 canary，应该盯什么
@@ -169,19 +169,19 @@
 
 | 实验 | 它回答了什么 | 当前一句话结论 |
 | --- | --- | --- |
-| [`validate_dense_wf`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml) | 负 IC 是不是真问题 | 是真问题；更密的 `walk_forward` 只让漂移画像更清楚 |
-| [`xgb_regressor_validate`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) | 是不是 ranker 特别脆 | 不是；回归器也一起失真 |
-| [`ridge_validate`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml) | 简单线性映射会不会更稳 | 能当温和 sleeve，但没有修复排序 |
-| [`elasticnet_validate`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml) | 稀疏线性模型能不能更稳 | 当前口径下直接退化，应排除 |
-| [`construction_grid`](../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_construction_grid.yml) | 只调 `top_k / buffer` 有多大帮助 | 只有二阶影响；`top_k = 20` 好于 `25`，`buffer` 基本不改结论，而且这张表只覆盖 `2` 个 backtest periods，不适合过度外推 |
+| [`validate_dense_wf`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml) | 负 IC 是不是真问题 | 是真问题；更密的 `walk_forward` 只让漂移画像更清楚 |
+| [`xgb_regressor_validate`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) | 是不是 ranker 特别脆 | 不是；回归器也一起失真 |
+| [`ridge_validate`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml) | 简单线性映射会不会更稳 | 能当温和 sleeve，但没有修复排序 |
+| [`elasticnet_validate`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml) | 稀疏线性模型能不能更稳 | 当前口径下直接退化，应排除 |
+| [`construction_grid`](../../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_construction_grid.yml) | 只调 `top_k / buffer` 有多大帮助 | 只有二阶影响；`top_k = 20` 好于 `25`，`buffer` 基本不改结论，而且这张表只覆盖 `2` 个 backtest periods，不适合过度外推 |
 
 ## 8. 复现入口
 
 如果只是复现当前主结论，优先跑下面这些配置：
 
-* 旧基线：[`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml)
-* 标准诊断：[`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml)
-* 当前抗漂移基线：[`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml)
-* 当前三个最值得继续观察的点：[`h12_w16`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml)、[`h06_w16`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h06_w16_validate.yml)、[`h12_w12`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w12_validate.yml)
+* 旧基线：[`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml)
+* 标准诊断：[`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_validate_dense_wf.yml)
+* 当前抗漂移基线：[`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml)
+* 当前三个最值得继续观察的点：[`h12_w16`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml)、[`h06_w16`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h06_w16_validate.yml)、[`h12_w12`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w12_validate.yml)
 
 如果只是看文档层面的最新建议，不需要再从头阅读旧的实验流水账；本页已经把当前仍然有效的信息整理成了最终口径。
