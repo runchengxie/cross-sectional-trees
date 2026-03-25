@@ -36,6 +36,7 @@ EXPECTED_RQDATA_OUTPUT_DATASETS = {
     "ex_factors",
     "dividends",
     "shares",
+    "valuation",
     "exchange_rate",
     "announcement",
     "southbound",

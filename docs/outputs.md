@@ -44,13 +44,14 @@ artifacts/
 * `ex_factors`
 * `dividends`
 * `shares`
+* `valuation`
 * `exchange_rate`
 * `announcement`
 * `southbound`
 * `instrument_industry`
 * `industry_changes`
 
-这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-exchange-rate`、`csml rqdata mirror-hk-announcement`、`csml rqdata mirror-hk-southbound`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
+这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-valuation`、`csml rqdata mirror-hk-exchange-rate`、`csml rqdata mirror-hk-announcement`、`csml rqdata mirror-hk-southbound`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
 如果你继续执行 `csml rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
 如果你继续执行 `csml rqdata build-hk-industry-labels`，默认还会在对应的 `industry_changes` 目录下生成一份本地行业标签文件。
 
@@ -105,6 +106,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 * `ex_factors` 保留 `rqdatac.get_ex_factor` 返回的字段名，并额外写入 legacy `ts_code`。
 * `dividends` 保留 `rqdatac.get_dividend` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
 * `shares` 保留 `rqdatac.get_shares` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
+* `valuation` 保留 `rqdatac.get_factor` 返回的因子列，并额外写入 legacy `ts_code`、`order_book_id` 和 `trade_date`。这类资产适合冻结 `market_cap / pe_ttm / pb` 一类日频估值口径，但它本身不是 pipeline 默认直读入口。
 * `exchange_rate` 保留 `rqdatac.get_exchange_rate` 返回的字段名，固定要求至少有 `date` 和 `currency_pair`；`date` 会规范成字符串 `YYYYMMDD`。
 * `announcement` 保留 `rqdatac.hk.get_announcement` 返回的字段名，并额外写入 legacy `ts_code`、`order_book_id` 和 `info_date`。
 * `southbound` 固定写出 `date`、legacy `ts_code`、`order_book_id`、`trading_type`、`eligible`；其中 `trading_type` 表示 `sh` / `sz` 渠道，`eligible` 当前固定为 `1`。

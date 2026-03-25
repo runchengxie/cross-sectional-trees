@@ -45,6 +45,11 @@
 - RQData：仅 `market=hk` 且 `endpoint=get_factor`；若未显式指定 `fundamentals.fields`，默认请求 `hk_total_market_val`、`pe_ratio_ttm`、`pb_ratio_ttm`。如需标准列名可通过 `fundamentals.column_map` 映射为 `market_cap`/`pe_ttm`/`pb`。
 - EODHD：不支持 provider 基本面，请改用 `fundamentals.source=file`。
 
+补充：
+
+- 如果你只是平时跑研究，HK 日频估值仍优先走 `fundamentals.provider_overlay`。
+- 如果你的 RQData 访问权限即将结束，或者你明确要做长期离线归档，可以额外用 `csml rqdata mirror-hk-valuation` 冻结这批 provider 估值原始镜像。
+
 ## `fundamentals.provider_overlay`
 
 当主基本面走 `fundamentals.source=file` 且文件是稀疏 PIT 财报时，推荐把日频估值放到 `fundamentals.provider_overlay`，让 pipeline 直接把 provider 估值并到 daily panel：
@@ -82,6 +87,7 @@ EODHD：HK symbol 最终为 `<code>.HK`，`data.eodhd.hk_symbol_mode` 支持 `st
 - 如果你要让整条研究链路切到总回报价格，额外提供 `data.rqdata.ex_factors_dir`，再把 `data.price_col` 设成 `tr_close`。pipeline 会按 `ex_cum_factor` 在读取日线后自动派生 `tr_close`；`sma/rsi/macd/ret/rv`、标签、回测和 benchmark 会一起改走这条列，原始 `close` 仍保留在输出里。
 - `backtest.benchmark_symbol` 只会额外拉取价格数据用于基准收益；它不会再参与 `load_basic`、fundamentals、provider overlay 或 industry labels 这些非价格加载，所以像 `02800.HK` 这类 benchmark ETF 不会再触发基本面 warning。
 - 财务镜像与平面 fundamentals：用 `csml rqdata mirror-hk-pit-financials` / `mirror-hk-financial-details`，再用 `build-hk-pit-fundamentals` 生成供 pipeline 读取的平面文件。
+- 日频估值归档：如果你要长期保留 provider 口径的 `market_cap / pe_ttm / pb`，可以用 `csml rqdata mirror-hk-valuation` 额外镜像 `get_factor` 结果；默认研究主线仍是 runtime `provider_overlay`，不是直接读取这份 raw asset。
 - 参考数据归档：用 `csml rqdata mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` 归档复权、分红和股本原料；用 `mirror-hk-instrument-industry` / `mirror-hk-industry-changes` 归档行业快照和行业变更区间。raw mirror 资产本身不会被 pipeline 直接读取；如果你先用 `build-hk-industry-labels` 生成 `industry_labels_<freq>.parquet`，就可以再通过顶层 `industry.file` 接入研究配置。
 - 镜像资产默认写到 `artifacts/assets/rqdata/`，与 `artifacts/cache/` 的查询缓存是两套目录。
 - 默认研究口径是港股通 PIT universe；若需要更广覆盖，优先用 `configs/presets/universe/hk_all_assets.yml` 或 `csml universe hk-daily-assets` 先生成更宽的 universe，再做镜像。

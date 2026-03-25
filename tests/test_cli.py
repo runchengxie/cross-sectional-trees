@@ -565,6 +565,36 @@ def test_append_passthrough_strips_leading_separator():
     assert industry_changes.mapping_date == "20251231"
     assert callable(industry_changes.func)
 
+    valuation = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-valuation",
+            "--symbols-file",
+            "artifacts/assets/universe/hk_all_full_symbols.txt",
+            "--start-date",
+            "20000101",
+            "--end-date",
+            "20260324",
+            "--field",
+            "ps_ratio_ttm",
+            "--batch-size",
+            "10",
+            "--name",
+            "hk_all_2000_20260324_valuation_full_market_latest",
+            "--resume",
+        ]
+    )
+    assert valuation.command == "rqdata"
+    assert valuation.rq_command == "mirror-hk-valuation"
+    assert valuation.symbols_file == "artifacts/assets/universe/hk_all_full_symbols.txt"
+    assert valuation.start_date == "20000101"
+    assert valuation.end_date == "20260324"
+    assert valuation.field == ["ps_ratio_ttm"]
+    assert valuation.batch_size == 10
+    assert valuation.name == "hk_all_2000_20260324_valuation_full_market_latest"
+    assert valuation.resume is True
+    assert callable(valuation.func)
+
     pit_fundamentals = parser.parse_args(
         [
             "rqdata",

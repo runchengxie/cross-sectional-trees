@@ -15,6 +15,7 @@
 2. 日线层优先分成两套看待：可复用、可备份的 `daily snapshot`，以及日常研究会自动刷新的 `symbol cache`。前者用于归档和离线复用，后者用于平时跑研究补尾部。
 3. PIT 路线的关键不只是把 raw mirror 拉下来，还要继续生成 `pipeline_fundamentals.parquet`；需要时再顺手派生一份 research-ready `universe by-date`。
 4. `ex_factors`、`dividends`、`shares`、`industry_changes` 属于长期有价值的底层原料层。`southbound` 是高价值补充层。`exchange_rate` 和 `financial_details` 当前仍应按 probe / staged backfill 思路推进。
+5. HK 日频估值默认仍建议走 runtime `provider_overlay`；但如果你要在 provider 访问结束前冻结 `market_cap / pe_ttm / pb` 口径，现在也支持单独镜像 `valuation` 资产。
 5. 研究配置通常走 alias；打包和 Release 工具走静态 preset。两者不是一回事，不能默认“打包脚本会自动跟随 alias”。
 
 ## 当前默认入口
@@ -47,6 +48,7 @@
 | PIT 财务镜像 | `csml rqdata mirror-hk-pit-financials` | `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/` | 否，需继续构建 flat file | 保留按 symbol 分开的原始 PIT 财务资产 |
 | 平面 fundamentals 文件 | `csml rqdata build-hk-pit-fundamentals` | `<pit_snapshot>/pipeline_fundamentals.parquet` | 是，`fundamentals.source=file` 时直读 | 给 pipeline 直接读取的 PIT 平面文件 |
 | 参考数据镜像 | `mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 否 | 保留复权、分红、股本原料 |
+| 日频估值镜像 | `mirror-hk-valuation` | `artifacts/assets/rqdata/hk/valuation/<snapshot>/` | 否 | 冻结 `get_factor` 的 `market_cap / pe_ttm / pb` 等日频估值口径 |
 | 汇率镜像 | `mirror-hk-exchange-rate` | `artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/` | 否 | 给 `financial_details` 或跨币种派生提供汇率原料 |
 | 港股通原始资格历史 | `mirror-hk-southbound` | `artifacts/assets/rqdata/hk/southbound/<snapshot>/` | 否 | 做资格审计、渠道回放和纳入日期核对 |
 | 公告原始镜像 | `mirror-hk-announcement` | `artifacts/assets/rqdata/hk/announcement/<snapshot>/` | 否 | 做事件研究、披露时点回放和公告分类审计 |
@@ -65,7 +67,7 @@
 4. 决定日线层走哪条路：独立 `daily snapshot` 还是仅靠 pipeline symbol cache。
 5. 如果走 PIT 路线，再镜像 `pit_financials`。
 6. 继续执行 `build-hk-pit-fundamentals`，必要时同时派生 research-ready `universe by-date` 和 symbol 列表。
-7. 如果你需要复权、总回报、市值或股本口径，再补 `ex_factors`、`dividends`、`shares`。
+7. 如果你需要复权、总回报、市值或股本口径，再补 `ex_factors`、`dividends`、`shares`；如果你还要保留 provider 原始 `PE/PB/market_cap` 口径，再额外补一份 `valuation`。
 8. 如果你要做行业中性、行业暴露或切换日回放，再补 `industry_changes`，然后派生 `industry_labels_<freq>`；`instrument_industry` 只在你明确需要 provider 快照时再补。
 9. 如果你要保留港股通资格历史，再补 `southbound`。
 10. 如果你要做跨币种 `financial_details` 处理，再补 `exchange_rate`。
@@ -264,6 +266,7 @@ csml rqdata build-hk-pit-fundamentals \
   如果你还想保留 `quarter`、`info_date`、`fiscal_year`、`rice_create_tm` 等 PIT 元数据列
 * `--field-profile`、`--field`、`--fields-file`
   如果你要在 flat file 里只保留一部分值列
+  `2026-03-25` 之后，`--field-profile full` 已经会正确覆盖 asset manifest 里的 starter 选择，适合把 `hk_all` 这种 full snapshot 重建成真正的 `743` 字段 flat file
 
 这也是为什么当前 research universe 不建议手工维护：  
 更稳妥的方式是直接从本地 flat fundamentals 反推，保证“股票池”和“本地财报可用性”始终一致。
@@ -292,7 +295,7 @@ csml rqdata mirror-hk-shares \
   --start-date 20100101 \
   --end-date 20260318 \
   --name hk_connect_full_2010_20260318_shares_latest \
-  --resume
+ --resume
 ```
 
 这些资产的定位：
@@ -301,17 +304,37 @@ csml rqdata mirror-hk-shares \
 * 它们更像原料层，给后续复权、总回报、市值、流通股本等派生使用。
 * `mirror-hk-shares` 默认会拉一组常用股本字段；需要额外列时再补 `--field` 或 `--fields-file`。
 
+如果你的目标不是“以后自己从价格和股本近似重建”，而是要把 provider 的日频估值口径原样冻住，再单独补一份：
+
+```bash
+csml rqdata mirror-hk-valuation \
+  --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt \
+  --start-date 20000101 \
+  --end-date 20260324 \
+  --name hk_all_2000_20260324_valuation_full_market_latest \
+  --resume
+```
+
+这条线的定位要分清：
+
+* 它保存的是 `rqdatac.get_factor` 的 provider 口径，不是你本地从 `close * shares` 反推的近似值。
+* 默认字段就是 `hk_total_market_val`、`pe_ratio_ttm`、`pb_ratio_ttm`；需要更多估值列时再补 `--field`。
+* 它不是 pipeline 默认读取入口；研究主线仍然优先走 `fundamentals.provider_overlay`。
+* 它更适合“访问权限快结束，想把以后难以稳定还原的日频估值先冻住”这种场景。
+
 按当前工作区的磁盘体量看：
 
 * `daily` 全市场 snapshot 约 `318M`
 * `pit_financials` 全市场宽表 snapshot 约 `1.5G`
+* `pipeline_fundamentals.parquet` 全字段 flat file 约 `23M`
 * `ex_factors` 约 `23M`
 * `dividends` 约 `20M`
 * `shares` 约 `31M`
+* `valuation` 全市场日频估值镜像约 `196M`
 * `industry_changes` 约 `57M`
 
 所以真正的大头是 `daily` 和 `pit_financials`。  
-`ex_factors/dividends/shares/industry_changes` 这组原料层并不重，长期保留通常是划算的。
+`ex_factors/dividends/shares/industry_changes` 这组原料层并不重，`valuation` 也只是中等体量；长期保留通常是划算的。
 
 ### 5. `exchange_rate`：当前仍按 probe 和 staged backfill 处理
 

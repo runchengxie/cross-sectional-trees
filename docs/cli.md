@@ -312,6 +312,14 @@ csml rqdata mirror-hk-dividends --by-date-file artifacts/assets/universe/hk_conn
 csml rqdata mirror-hk-shares --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_shares_latest
 ```
 
+### csml rqdata mirror-hk-valuation
+
+拉取港股日频估值因子原始镜像，默认包含 `hk_total_market_val`、`pe_ratio_ttm`、`pb_ratio_ttm`。
+
+```bash
+csml rqdata mirror-hk-valuation --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20000101 --end-date 20260324 --name hk_all_2000_20260324_valuation_full_market_latest --resume
+```
+
 ### csml rqdata mirror-hk-announcement
 
 拉取港股公司公告原始记录。

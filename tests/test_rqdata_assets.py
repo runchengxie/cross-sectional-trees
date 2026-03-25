@@ -280,6 +280,58 @@ class _FakeRQDailyMirrorClient:
         return pd.DataFrame()
 
 
+class _FakeRQValuationClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_factor(self, order_book_ids, factors, start_date=None, end_date=None, **kwargs):
+        request_ids = [str(item) for item in (order_book_ids if isinstance(order_book_ids, list) else [order_book_ids])]
+        self.calls.append(
+            {
+                "order_book_ids": request_ids,
+                "factors": list(factors) if isinstance(factors, (list, tuple)) else [str(factors)],
+                "start_date": start_date,
+                "end_date": end_date,
+                "kwargs": dict(kwargs),
+            }
+        )
+        frames: list[pd.DataFrame] = []
+        if "00005.XHKG" in request_ids:
+            frames.append(
+                pd.DataFrame(
+                    {
+                        "hk_total_market_val": [1000.0, 1010.0],
+                        "pe_ratio_ttm": [8.0, 8.1],
+                        "pb_ratio_ttm": [1.1, 1.2],
+                    },
+                    index=pd.MultiIndex.from_tuples(
+                        [
+                            ("00005.XHKG", pd.Timestamp("2025-01-02")),
+                            ("00005.XHKG", pd.Timestamp("2025-01-03")),
+                        ],
+                        names=["order_book_id", "date"],
+                    ),
+                )
+            )
+        if "00011.XHKG" in request_ids:
+            frames.append(
+                pd.DataFrame(
+                    {
+                        "hk_total_market_val": [2000.0],
+                        "pe_ratio_ttm": [10.5],
+                        "pb_ratio_ttm": [1.4],
+                    },
+                    index=pd.MultiIndex.from_tuples(
+                        [("00011.XHKG", pd.Timestamp("2025-01-03"))],
+                        names=["order_book_id", "date"],
+                    ),
+                )
+            )
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames).sort_index()
+
+
 class _FakeRQExchangeRateClient:
     def __init__(self):
         self.calls: list[dict] = []
@@ -898,6 +950,65 @@ def test_mirror_hk_daily_writes_manifest_and_assets(tmp_path, monkeypatch):
     assert manifest["query"]["end_date"] == "20250103"
     assert manifest["query"]["skip_suspended"] is True
     assert manifest["query"]["fields"] == list(rqdata_assets.DEFAULT_HK_DAILY_FIELDS)
+    assert manifest["totals"]["symbols_requested"] == 2
+    assert manifest["totals"]["symbols_written"] == 2
+    assert manifest["missing_symbols"] == []
+
+
+def test_mirror_hk_valuation_writes_manifest_and_assets(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FakeRQValuationClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20250103",
+        field=[],
+        fields_file=[],
+        symbol=["00005.HK", "00011.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=20,
+        out_root="artifacts/assets/rqdata",
+        name="valuation_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_valuation(args, client) == 0
+
+    assert client.calls == [
+        {
+            "order_book_ids": ["00005.XHKG", "00011.XHKG"],
+            "factors": list(rqdata_assets.DEFAULT_HK_VALUATION_FIELDS),
+            "start_date": "20250101",
+            "end_date": "20250103",
+            "kwargs": {"market": "hk"},
+        }
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_demo"
+    data = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert data["trade_date"].tolist() == ["20250102", "20250103"]
+    assert data["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert data["order_book_id"].tolist() == ["00005.XHKG", "00005.XHKG"]
+    assert data["hk_total_market_val"].tolist() == [1000.0, 1010.0]
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "valuation"
+    assert manifest["api"] == "rqdatac.get_factor"
+    assert manifest["query"]["start_date"] == "20250101"
+    assert manifest["query"]["end_date"] == "20250103"
+    assert manifest["query"]["date_column"] == "trade_date"
+    assert manifest["query"]["fields"] == list(rqdata_assets.DEFAULT_HK_VALUATION_FIELDS)
     assert manifest["totals"]["symbols_requested"] == 2
     assert manifest["totals"]["symbols_written"] == 2
     assert manifest["missing_symbols"] == []
@@ -1789,6 +1900,86 @@ def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, m
     assert output_manifest["totals"]["output_rows"] == 3
     assert output_manifest["totals"]["duplicate_rows_seen"] == 2
     assert output_manifest["totals"]["duplicate_rows_dropped"] == 1
+
+
+def test_build_hk_pit_fundamentals_file_field_profile_full_overrides_manifest_selection(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    manifest = {
+        "dataset": "pit_financials",
+        "query": {"fields": ["revenue"]},
+        "columns": [
+            "quarter",
+            "info_date",
+            "fiscal_year",
+            "standard",
+            "if_adjusted",
+            "rice_create_tm",
+            "revenue",
+            "net_profit",
+            "order_book_id",
+            "ts_code",
+        ],
+    }
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "quarter": ["2024q4"],
+            "info_date": pd.to_datetime(["2025-03-20"]),
+            "fiscal_year": pd.to_datetime(["2024-12-31"]),
+            "standard": ["IFRS"],
+            "if_adjusted": [0],
+            "rice_create_tm": pd.to_datetime(["2025-03-20 09:00:00"]),
+            "revenue": [100.0],
+            "net_profit": [10.0],
+            "order_book_id": ["00005.XHKG"],
+            "ts_code": ["00005.HK"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    monkeypatch.setattr(rqdata_assets, "_load_hk_financial_fields", lambda: ["revenue", "net_profit"])
+    out_path = repo_root / "artifacts" / "assets" / "fundamentals" / "pit_fundamentals_full.parquet"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        field_profile=["full"],
+        field=[],
+        fields_file=[],
+        out=str(out_path),
+        source_universe_by_date=None,
+        universe_by_date_out=None,
+        symbols_out=None,
+        keep_meta=False,
+        duplicate_policy="keep-last",
+        force=False,
+    )
+
+    assert rqdata_assets.build_hk_pit_fundamentals_file(args) == 0
+
+    fundamentals = pd.read_parquet(out_path)
+    assert fundamentals.columns.tolist() == ["trade_date", "ts_code", "revenue", "net_profit"]
+
+    output_manifest = yaml.safe_load(
+        (
+            repo_root
+            / "artifacts"
+            / "assets"
+            / "fundamentals"
+            / "pit_fundamentals_full.manifest.yml"
+        ).read_text(encoding="utf-8")
+    )
+    assert output_manifest["query"]["fields"] == ["revenue", "net_profit"]
+    assert output_manifest["query"]["field_profile"] == ["full"]
+    assert output_manifest["query"]["field_source"] == "explicit"
 
 
 def test_build_hk_pit_fundamentals_file_normalizes_whitespace_fields_and_derives_universe(

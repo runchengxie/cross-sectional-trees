@@ -268,6 +268,13 @@ def _handle_rqdata_mirror_hk_daily(args) -> int:
     return rqdata_assets.mirror_hk_daily(args, rqdatac)
 
 
+def _handle_rqdata_mirror_hk_valuation(args) -> int:
+    from .data_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_valuation(args, rqdatac)
+
+
 def _handle_rqdata_mirror_hk_pit_financials(args) -> int:
     from .data_tools import rqdata_assets
 
@@ -749,6 +756,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_daily_mirror_args(rq_daily)
     rq_daily.set_defaults(func=_handle_rqdata_mirror_hk_daily)
+
+    rq_valuation = rq_sub.add_parser(
+        "mirror-hk-valuation",
+        help="Mirror HK daily valuation factors into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_valuation_mirror_args(rq_valuation)
+    rq_valuation.set_defaults(func=_handle_rqdata_mirror_hk_valuation)
 
     rq_pit = rq_sub.add_parser(
         "mirror-hk-pit-financials",

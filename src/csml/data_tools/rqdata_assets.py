@@ -18,7 +18,11 @@ from ..artifacts import (
     RQDATA_ASSETS_DIR as DEFAULT_RQDATA_ASSETS_DIR,
 )
 from ..config_utils import resolve_pipeline_config
-from ..data_providers import _fetch_daily_rqdata, _to_rqdata_symbol
+from ..data_providers import (
+    DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS,
+    _fetch_daily_rqdata,
+    _to_rqdata_symbol,
+)
 from ..rebalance import get_rebalance_dates
 from .backup_data import _git_metadata
 
@@ -39,6 +43,7 @@ DEFAULT_HK_DAILY_FIELDS = (
     "volume",
     "total_turnover",
 )
+DEFAULT_HK_VALUATION_FIELDS = tuple(DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS.values())
 DEFAULT_HK_SHARES_FIELDS = (
     "total",
     "circulation_a",
@@ -1132,6 +1137,49 @@ def _normalize_hk_dated_payload(
     normalized["order_book_id"] = canonical_order_book_ids.where(
         canonical_order_book_ids.notna(),
         raw_request_ids,
+    )
+    return normalized
+
+
+def _normalize_hk_valuation_payload(
+    payload,
+    *,
+    request_id_metadata: Mapping[str, Mapping[str, str | None]],
+) -> pd.DataFrame | pd.Series | None:
+    if payload is None:
+        return None
+    if isinstance(payload, pd.Series):
+        frame = payload.to_frame(name=str(payload.name or "value"))
+    elif isinstance(payload, pd.DataFrame):
+        frame = payload.copy()
+    else:
+        frame = pd.DataFrame(payload)
+    if frame.empty and len(frame.columns) == 0:
+        return frame
+
+    if isinstance(frame.index, pd.MultiIndex):
+        raw_request_ids = frame.index.get_level_values(0).map(lambda value: str(value or "").strip())
+        order_book_ids = raw_request_ids.map(
+            lambda value: (request_id_metadata.get(value) or {}).get("order_book_id") or value
+        )
+        trade_dates = pd.to_datetime(frame.index.get_level_values(-1), errors="coerce")
+        valid_trade_date = pd.Series(trade_dates.notna(), index=frame.index)
+        normalized = frame.loc[valid_trade_date.values].copy()
+        normalized.index = pd.MultiIndex.from_arrays(
+            [
+                order_book_ids[valid_trade_date.values].tolist(),
+                trade_dates[valid_trade_date.values].strftime("%Y%m%d").tolist(),
+            ],
+            names=["order_book_id", "trade_date"],
+        )
+        return normalized
+
+    trade_dates = pd.to_datetime(frame.index, errors="coerce")
+    valid_trade_date = pd.Series(trade_dates.notna(), index=frame.index)
+    normalized = frame.loc[valid_trade_date.values].copy()
+    normalized.index = pd.Index(
+        trade_dates[valid_trade_date.values].strftime("%Y%m%d").tolist(),
+        name="trade_date",
     )
     return normalized
 
@@ -2778,6 +2826,37 @@ def mirror_hk_daily(args, rqdatac) -> int:
         f"({totals['symbols']} symbols, {totals['files']} files, {totals['rows']} rows, {totals['bytes']} bytes, status={status})"
     )
     return result_code
+
+
+def mirror_hk_valuation(args, rqdatac) -> int:
+    fields, field_metadata = _resolve_default_plus_explicit_fields(
+        args,
+        default_fields=DEFAULT_HK_VALUATION_FIELDS,
+        source_label="default_plus_explicit",
+    )
+    return _mirror_dated_dataset(
+        args=args,
+        rqdatac=rqdatac,
+        dataset_name="valuation",
+        api_name="rqdatac.get_factor",
+        date_column="trade_date",
+        fields=fields,
+        field_metadata=field_metadata,
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
+            symbols,
+            start_date=start_date,
+            end_date=end_date,
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        ),
+        normalize_payload=_normalize_hk_valuation_payload,
+        fetch_batch=lambda order_book_ids, selected_fields, start_date, end_date: rqdatac.get_factor(
+            list(order_book_ids),
+            list(selected_fields),
+            start_date,
+            end_date,
+            market="hk",
+        ),
+    )
 
 
 def _mirror_dated_dataset(
@@ -5378,7 +5457,7 @@ def _resolve_build_fields(
     manifest: Mapping[str, object] | None,
     available_columns: Sequence[str],
 ) -> tuple[list[str], dict]:
-    if getattr(args, "field", None) or getattr(args, "fields_file", None):
+    if getattr(args, "field_profile", None) or getattr(args, "field", None) or getattr(args, "fields_file", None):
         fields, metadata = _resolve_fields(args)
         fields = _normalize_field_list(fields)
         metadata["source"] = "explicit"
@@ -7003,6 +7082,18 @@ def add_hk_daily_mirror_args(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=DEFAULT_MIRROR_MAX_BACKOFF_SECONDS,
         help=f"Maximum retry backoff in seconds. Default: {DEFAULT_MIRROR_MAX_BACKOFF_SECONDS}.",
+    )
+
+
+def add_hk_valuation_mirror_args(parser: argparse.ArgumentParser) -> None:
+    add_hk_dated_mirror_args(
+        parser,
+        supports_fields=True,
+        field_help=(
+            "Extra HK valuation factor name. The default archive fields "
+            "hk_total_market_val/pe_ratio_ttm/pb_ratio_ttm are always included."
+        ),
+        fields_file_help="Text file with one extra HK valuation factor name per line. Repeatable.",
     )
 
 

@@ -52,6 +52,9 @@
 
 当前有用，但不要写成默认主线入口的：
 
+* `valuation`
+  `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260324_valuation_full_market_latest/`
+  当前全市场 `get_factor` 日频估值镜像已经落盘；适合长期归档 `market_cap / pe_ttm / pb` provider 口径，但仍不是默认 pipeline 入口
 * `instrument_industry`
   当前 `m/q latest` 还是基于 `1547` symbol 旧口径快照；`3203` symbol 的全市场月频尝试目录已经改名成 `*_incomplete`，而且 `manifest.yml` 里是全量 `missing_remote`
 * `financial_details`
@@ -86,6 +89,7 @@
 | `ex_factors` | 全市场 `3203` symbol 基线 | API payload 固定 schema | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `dividends` | 全市场 `3203` symbol 基线 | API payload 固定 schema | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `shares` | 全市场 `3203` symbol 基线 | 默认 `7` 个字段 | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
+| `valuation` | 按全市场日线 symbol 集请求 `3212` symbols，最终 `3204` symbols 有值 | 默认 `3` 个字段：`hk_total_market_val / pe_ratio_ttm / pb_ratio_ttm` | query `2000-01-01` 到 `2026-03-24`；provider 实际最早日调整到 `2000-01-03` | 稳定补充层 | 否 |
 | `industry_changes` | 全市场 `3203` symbol 基线 | level-1 映射 `11` 字段 + `industry_labels_d/m/q` | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `instrument_industry` | `m/q latest` 只基于 `1547` symbol 旧口径；`3203` symbol 全市场月频尝试为空 | `6` 个字段 | `2000-01-01` 到 `2026-03-18` | 旧口径快照 + incomplete 尝试 | 否 |
 | `southbound` | 只覆盖 `hk_connect`；`by_date` 联合集 `967` symbols | `2` 个字段 | canonical snapshot 现为 `2014-11-17` 到 `2026-03-24`；`2026-03-25` 又重新合并了一次 base raw + tail patch | 稳定补充层 | 否 |
@@ -94,12 +98,12 @@
 补充：
 
 * 全市场在这页里指当前本地 symbol source 或 snapshot 口径，不等于每个 symbol 都一定从 remote 拿到了有效数据。
-* `PB`、`PE`、`market_cap` 这类估值或衍生层，不在这张 raw mirror 表里；它们走 provider overlay / merge 的另一条链路。
+* `PB`、`PE`、`market_cap` 这类估值层，现在既可以走 runtime provider overlay / merge，也可以保留成离线 `valuation` raw mirror；当前本地两条链路都存在。
 * 行业层建议按三层理解：
   `industry_changes` 是切换日真相层；
   `industry_labels_d/m/q` 是研究直接 join 的标签层；
   `instrument_industry` 是 provider 快照补充层。
-* 当前 `industry_labels_d/m/q` 文件都存在，但它们最近一次构建所用的日期网格仍来自 `hk_all_2000_20260312_daily_final_latest`；如果你需要和当前 `hk_all_daily_latest` 严格同步到更晚日期，必须重跑 `build-hk-industry-labels`。
+* `2026-03-25` 已按当前 `hk_all_daily_latest` 重新构建 `industry_labels_d/m/q`；三份文件现在都对齐到 `2026-03-18` 这版 daily grid。
 * `hk_connect_full_by_date.csv`、`hk_connect_full_research_by_date.csv`、`hk_selected_pit_research_by_date.csv` 都是按 rebalance date 落盘的成员明细，不是“每个交易日一整张全量成员表”。
 
 ## 当前有效入口
@@ -127,7 +131,7 @@
 * `artifacts/assets/rqdata/hk/instruments/hk_connect_full_latest.parquet`
   当前 alias，指向 `hk_connect_full_20260318.parquet`
 * `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/pipeline_fundamentals.parquet`
-  当前更完整的全市场 PIT 平面文件
+  当前更完整的全市场 PIT 平面文件；`2026-03-25` 已重建为 `743` 个 value columns、`98,436` 行、`3,135` symbols
 * `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/pipeline_fundamentals.parquet`
   当前 `hk_connect` 宽 PIT 平面文件
 * `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet`
@@ -138,14 +142,16 @@
   当前 alias，指向 `hk_all_2000_20260318_dividends_full_market_latest`
 * `artifacts/assets/rqdata/hk/shares/hk_all_shares_latest`
   当前 alias，指向 `hk_all_2000_20260318_shares_full_market_latest`
+* `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260324_valuation_full_market_latest`
+  当前全市场 valuation raw mirror；`3204` symbols、`10,978,716` 行、约 `196 MB`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest`
   当前 alias，指向 `hk_all_2000_20260318_industry_changes_full_market_latest`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet`
-  当前研究最适合直接 join 的月频行业标签；但它最近一次构建仍基于 `20260312` 版 daily grid，当前最大 `trade_date` 也仍停在 `2026-03-11`
+  当前研究最适合直接 join 的月频行业标签；`2026-03-25` 已重建，当前最大 `trade_date=2026-03-18`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_d.parquet`
-  日频标签；当前最大 `trade_date` 仍停在 `2026-03-11`
+  日频标签；`2026-03-25` 已重建，当前最大 `trade_date=2026-03-18`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_q.parquet`
-  季频标签；当前最大 `trade_date` 仍停在 `2026-03-11`
+  季频标签；`2026-03-25` 已重建，当前最大 `trade_date=2026-03-18`
 * `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest`
   当前 `hk_connect` 范围的 southbound canonical snapshot；`2026-03-25` 的 manifest 已明确记录 base raw snapshot 与 `2026-03-19` 到 `2026-03-24` tail patch 的本地合并结果
 * `artifacts/assets/rqdata/hk/announcement/hk_selected_2000_20260324_announcement_latest`
@@ -186,6 +192,8 @@
   更新到 `date=20260324` 的 `hk_connect` starter 增量；目录下已经有 `pipeline_fundamentals.parquet`
 * `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_portable_bundle_20260324/`
   `financial_details` 的试验性便携打包目录；说明这条线还在推进，但不改变“仍非主线 fundamentals”的判断
+* `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260324_valuation_full_market_latest/`
+  当前全市场日频估值镜像；适合长期归档 provider 口径，但研究主线仍优先 runtime `provider_overlay`
 * `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260319_research_by_date.csv`
   对应上面全市场 starter 增量派生出的 research universe
 * `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260324_research_by_date.csv`
@@ -275,6 +283,7 @@
 补充：
 
 * `hk_all_2000_2025_full_market_latest` 是当前更完整的全市场 PIT snapshot；目录下已经有 `pipeline_fundamentals.parquet`。
+  `2026-03-25` 这次重建后，`pipeline_fundamentals.parquet` 已经恢复成真正的全字段 flat file：`743` 个 value columns、`745` 列总宽度、`98,436` 行、`3,135` 个 symbol、压缩后约 `23 MB`。
 * `hk_connect_full_2000_2025_full_latest/pipeline_fundamentals.parquet` 也是当前有效入口。
 * `hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 仍然是季度 PIT preset 默认入口。
 * `hk_selected_pit_2011_2025_latest/manifest.yml` 里仍保留了历史 `data_assets/`、`config/...` 路径痕迹；当前应以实际目录 `artifacts/assets/...` 和 preset 文件里的路径为准。
@@ -293,7 +302,7 @@
 
 | API | 仓库接入 | 当前本地状态 | 建议 |
 | --- | --- | --- | --- |
-| `get_factor` | runtime overlay 支持 | 无离线 mirror | 保持 runtime 用法，不必单独囤。 |
+| `get_factor` | runtime overlay + `mirror-hk-valuation` | 全市场 `3` 字段 valuation snapshot 已落盘 | 平时研究仍优先 runtime overlay；如果要防 provider 权限失效，这份离线镜像值得保留。 |
 | `get_all_factor_names` | 未接入 | 无 | 需要字段浏览时再补。 |
 | `hk.get_announcement` | 已接，`mirror-hk-announcement` | `hk_selected` 范围小规模 raw snapshot 已落盘 | 继续按 `hk_selected` / `hk_connect` 小范围保留，不要直接升成全市场主线。 |
 
@@ -351,9 +360,12 @@
   `artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest`
   `artifacts/assets/rqdata/hk/dividends/hk_all_dividends_latest`
   `artifacts/assets/rqdata/hk/shares/hk_all_shares_latest`
+* `valuation`
+  `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260324_valuation_full_market_latest`
+  这是 provider 口径的 `market_cap / pe_ttm / pb` 离线冻存，不是默认 pipeline 入口
 * `industry`
   `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet`
-  如果你要严格对齐当前 `hk_all_daily_latest` 的最近日期，先重跑 `build-hk-industry-labels`
+  当前已对齐到 `hk_all_daily_latest` 的最近日期 `2026-03-18`
 * `full-market universe`
   `artifacts/assets/universe/hk_all_full_by_date.csv`
 
@@ -373,7 +385,7 @@
 补充判断：
 
 * 当前最有价值的仍然是研究会反复扫的底层原料：`daily`、`pit_financials`、`ex_factors`、`dividends`、`shares`、`industry_changes`。
-* 当前不值得升级成主线缓存对象的，主要是 `exchange_rate` 长窗镜像、`financial_details` 宽表化、`instrument_industry` 全市场月频、`get_factor` 离线囤积、`get_turnover_rate`，以及全市场化的 `hk.get_announcement`。
+* 当前不值得升级成“更宽、更杂”主线缓存对象的，主要是 `exchange_rate` 长窗镜像、`financial_details` 宽表化、`instrument_industry` 全市场月频、`get_turnover_rate`、大而全 `get_factor` factor zoo，以及全市场化的 `hk.get_announcement`。
 * 如果你还想优先补“以后可能会后悔没下”的东西，当前优先级通常是把 `southbound` 和行业相关资产保持干净，其次才是继续追更宽的补充层接口。
 
 ## 最小检查命令
