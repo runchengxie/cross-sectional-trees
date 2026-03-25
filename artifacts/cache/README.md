@@ -6,10 +6,14 @@
 
 - `hk_rqdata_daily_<symbol>.parquet`
   当配置 `data.cache_mode=symbol` 时，按 市场/数据源/标的代码（market/provider/symbol）作为键值生成的日线价格缓存。
+- `hk_rqdata_daily_<symbol>_<start>_<end>.parquet`
+  当配置 `data.cache_mode=range` 或 `window` 时，按请求区间落单独文件。
 - `hk_rqdata_basic*.parquet`
-  缓存的基础信息/标的（basic/instrument）数据表。
-- `fundamentals/hk/hk_rqdata_fundamentals_<symbol>_<start>_<end>_<digest>.parquet`
-  缓存的数据源基本面数据或估值叠加（valuation overlay）结果。哈希摘要（digest）取决于请求的接口（endpoint）、字段（fields）、参数（params）以及列映射关系（column mapping）。
+  缓存的基础信息/标的（basic/instrument）数据表。未传 symbol 子集时通常写成 `hk_rqdata_basic.parquet`；传了显式 symbol 集时会写成 `hk_rqdata_basic_<digest>.parquet`。
+- `fundamentals/hk/hk_rqdata[_<cache_tag>]_fundamentals_<symbol>_<start>_<end>_<digest>.parquet`
+  缓存的数据源基本面数据或估值叠加（valuation overlay）结果。`cache_tag` 会插到 `provider` 后面形成独立命名空间。哈希摘要（digest）取决于请求的接口（endpoint）、字段（fields）、参数（params）以及列映射关系（column mapping）。
+- `fundamentals/hk/provider_valuation_merge/*.parquet`
+  provider 估值叠加与本地 fundamentals 合并阶段的中间缓存，和顶层 `fundamentals/hk/*.parquet` 不同层。
 - 其他数据源或不同的 `cache_tag` 值可能会在同级目录下生成带有不同前缀的文件。
 
 ## 日线缓存表结构 
@@ -37,6 +41,7 @@
 
 ```bash
 find artifacts/cache -maxdepth 1 -name 'hk_rqdata_daily_*.parquet' | wc -l
-find artifacts/cache/fundamentals/hk -name '*.parquet' | wc -l
+find artifacts/cache/fundamentals/hk -maxdepth 1 -name '*.parquet' | wc -l
+find artifacts/cache/fundamentals/hk/provider_valuation_merge -maxdepth 1 -name '*.parquet' | wc -l
 ls artifacts/cache | sed -n '1,40p'
 ```

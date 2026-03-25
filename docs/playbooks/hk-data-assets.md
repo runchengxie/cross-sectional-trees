@@ -566,8 +566,10 @@ eval:
 
 当前工作区里更贴近这一路线的增量命名是：
 
-* `hk_all_probe_2025q4_2026q1_starter_20260319`
-* `hk_connect_probe_2025q4_2026q1_starter_20260319`
+* `hk_all_probe_2025q4_2026q1_starter_20260324`
+* `hk_connect_probe_2025q4_2026q1_starter_20260324`
+
+`20260319` 那一批仍在本地，但当前更晚的 `20260324` starter 已经补出了 `pipeline_fundamentals.parquet` 和对应的 research universe，继续做增量 as-of 验证时应优先看这批。
 
 这类增量更适合：
 

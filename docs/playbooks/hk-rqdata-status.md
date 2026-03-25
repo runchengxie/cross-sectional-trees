@@ -7,7 +7,7 @@
 相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
 页面性质：`current-state`  
-最后核对时间：`2026-03-24`（Asia/Shanghai）  
+最后核对时间：`2026-03-25`（Asia/Shanghai）  
 权威来源：当前工作区里的真实目录、alias / symlink、`manifest.yml`、`configs/presets/hk.yml`、`configs/presets/hk_quarterly_pit_hybrid.yml`  
 冲突优先级：如果本页和 `config.used.yml`、当前 preset、或当前资产目录实际状态冲突，以后者为准
 
@@ -38,7 +38,7 @@
   目录下已经有 `industry_labels_d/m/q.parquet`
 * `southbound`
   `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest/`
-  当前 canonical snapshot 已本地合并到 `2026-03-24`；它是稳定补充层，不是默认研究入口
+  当前 canonical snapshot 已在 `2026-03-25` 重新做过本地 merge，覆盖到 `2026-03-24`；它是稳定补充层，不是默认研究入口
 * `announcement`
   `artifacts/assets/rqdata/hk/announcement/hk_selected_2015_20260324_announcement_latest/`
   当前只有 `hk_selected` 范围的小规模原始镜像，适合事件研究和披露时点回放
@@ -58,8 +58,10 @@
   `hk_financial_details_hk_all3203_superset_2000_2025_20260319/` 这份 raw probe 可用，`analysis_hk_all3203_superset_2000_2025_local_override_v10/` 这份分析基线也可复用，但它仍然是增强层，不是主线 fundamentals
 * `pit_financials` 的 `starter` 增量 probe
   `hk_all_probe_2025q4_2026q1_starter_20260319/`
+  `hk_all_probe_2025q4_2026q1_starter_20260324/`
   `hk_connect_probe_2025q4_2026q1_starter_20260319/`
-  这两份适合做更晚 as-of 的窄增量验证，不是对 full snapshot 的替代
+  `hk_connect_probe_2025q4_2026q1_starter_20260324/`
+  这几份都适合做更晚 as-of 的窄增量验证；`20260324` 这批已经补出了 `pipeline_fundamentals.parquet` 和对应 research universe，但仍不是对 full snapshot 的替代
 * `exchange_rate`
   短窗 probe 已经成功，但 `hk_all_2000_20260319_exchange_rate_*_latest` 这批长窗 `latest` 当前全部 `status: failed`
 * `bundles / backup`
@@ -86,7 +88,7 @@
 | `shares` | 全市场 `3203` symbol 基线 | 默认 `7` 个字段 | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `industry_changes` | 全市场 `3203` symbol 基线 | level-1 映射 `11` 字段 + `industry_labels_d/m/q` | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `instrument_industry` | `m/q latest` 只基于 `1547` symbol 旧口径；`3203` symbol 全市场月频尝试为空 | `6` 个字段 | `2000-01-01` 到 `2026-03-18` | 旧口径快照 + incomplete 尝试 | 否 |
-| `southbound` | 只覆盖 `hk_connect`；`by_date` 联合集 `967` symbols | `2` 个字段 | canonical snapshot 现为 `2014-11-17` 到 `2026-03-24`；其中 `2026-03-19` 到 `2026-03-24` 是 tail patch 合并进来的 `4` 个交易日 | 稳定补充层 | 否 |
+| `southbound` | 只覆盖 `hk_connect`；`by_date` 联合集 `967` symbols | `2` 个字段 | canonical snapshot 现为 `2014-11-17` 到 `2026-03-24`；`2026-03-25` 又重新合并了一次 base raw + tail patch | 稳定补充层 | 否 |
 | `announcement` | `hk_selected` `222` symbols probe | API payload 固定 schema | `2015-01-01` 到 `2026-03-24` | 小范围补充层 | 否 |
 
 补充：
@@ -145,7 +147,7 @@
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_q.parquet`
   季频标签；当前最大 `trade_date` 仍停在 `2026-03-11`
 * `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest`
-  当前 `hk_connect` 范围的 southbound canonical snapshot；base raw snapshot 已和 `2026-03-19` 到 `2026-03-24` 的 tail patch 本地合并
+  当前 `hk_connect` 范围的 southbound canonical snapshot；`2026-03-25` 的 manifest 已明确记录 base raw snapshot 与 `2026-03-19` 到 `2026-03-24` tail patch 的本地合并结果
 * `artifacts/assets/rqdata/hk/announcement/hk_selected_2015_20260324_announcement_latest`
   当前已落盘的 `announcement` raw snapshot；范围是 `hk_selected`
 
@@ -177,15 +179,21 @@
 * `artifacts/assets/rqdata/hk/pit_financials/hk_all_probe_2025q4_2026q1_starter_20260319/`
   更晚 as-of 的全市场 starter PIT 增量
 * `artifacts/assets/rqdata/hk/pit_financials/hk_all_probe_2025q4_2026q1_starter_20260324/`
-  更新到 `date=20260324` 的全市场 starter raw probe；当前只有 raw mirror，还没替代 `20260319` 那版 research-ready fundamentals / universe 输出
+  更新到 `date=20260324` 的全市场 starter 增量；目录下已经有 `pipeline_fundamentals.parquet`
 * `artifacts/assets/rqdata/hk/pit_financials/hk_connect_probe_2025q4_2026q1_starter_20260319/`
   更晚 as-of 的 `hk_connect` starter PIT 增量
+* `artifacts/assets/rqdata/hk/pit_financials/hk_connect_probe_2025q4_2026q1_starter_20260324/`
+  更新到 `date=20260324` 的 `hk_connect` starter 增量；目录下已经有 `pipeline_fundamentals.parquet`
 * `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_portable_bundle_20260324/`
   `financial_details` 的试验性便携打包目录；说明这条线还在推进，但不改变“仍非主线 fundamentals”的判断
 * `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260319_research_by_date.csv`
   对应上面全市场 starter 增量派生出的 research universe
+* `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260324_research_by_date.csv`
+  对应 `20260324` 全市场 starter 增量派生出的 research universe
 * `artifacts/assets/universe/hk_connect_probe_2025q4_2026q1_starter_20260319_research_by_date.csv`
   对应上面 `hk_connect` starter 增量派生出的 research universe
+* `artifacts/assets/universe/hk_connect_probe_2025q4_2026q1_starter_20260324_research_by_date.csv`
+  对应 `20260324` `hk_connect` starter 增量派生出的 research universe
 
 ### 当前运行时 cache 补充
 
@@ -193,10 +201,13 @@
   当前不是只有一层日线 symbol cache。
 * `artifacts/cache/hk_rqdata_daily_<symbol>.parquet`
   当前本地有 `328` 个 HK 日线 cache 文件；这层会在 provider / local asset 读取后继续回写。
+  当前没看到 `hk_rqdata_daily_<symbol>_<start>_<end>.parquet` 这类 `range/window` 命名，说明现有日线 runtime cache 仍全部落在 `symbol` 模式。
 * `artifacts/cache/hk_rqdata_basic_*.parquet`
-  当前本地有 `1` 个 basic cache 文件。
+  当前本地有 `2` 个 basic cache 文件，而且都是带 digest 的 symbol-subset cache；当前没有未加哈希的 `hk_rqdata_basic.parquet`。
 * `artifacts/cache/fundamentals/hk/`
-  当前本地有 `1194` 个 fundamentals cache 文件；它们是 runtime valuation overlay cache，不是离线 raw mirror 资产。
+  当前顶层有 `1194` 个 fundamentals cache 文件；其中默认 namespace `hk_rqdata_*` 有 `972` 个，`hk_selected_tr_close` 这个 `cache_tag` namespace 另有 `222` 个。
+* `artifacts/cache/fundamentals/hk/provider_valuation_merge/`
+  当前还有 `222` 个 merge-stage parquet；把这层也算上时，`artifacts/cache/fundamentals/hk/` 下总共有 `1416` 个 parquet。它们都是 runtime valuation overlay / merge cache，不是离线 raw mirror 资产。
 
 ### 当前不要引用成默认入口的路径
 
@@ -206,6 +217,7 @@
 * `artifacts/assets/rqdata/hk/exchange_rate/hk_all_2000_20260319_exchange_rate_tty_latest/`
 
 这些目录名字看起来像“当前 alias”，但 `manifest.yml` 都是 `status: failed`，不能当作稳定入口。  
+另外 `hk_exchange_rate_probe_202501/`、`hk_exchange_rate_probe_2025_fullyear/` 和 `hk_exchange_rate_probe_2025_fullyear_minimal/` 这几类更长窗 probe 当前也都是 `status: failed`。  
 当前真正成功的 `exchange_rate` 资产是短窗 probe：
 
 * `hk_exchange_rate_probe_20250210_20250211_minimal/`
@@ -266,9 +278,12 @@
 * `hk_connect_full_2000_2025_full_latest/pipeline_fundamentals.parquet` 也是当前有效入口。
 * `hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 仍然是季度 PIT preset 默认入口。
 * `hk_selected_pit_2011_2025_latest/manifest.yml` 里仍保留了历史 `data_assets/`、`config/...` 路径痕迹；当前应以实际目录 `artifacts/assets/...` 和 preset 文件里的路径为准。
-* `hk_all_probe_2025q4_2026q1_starter_20260319/` 已生成 `pipeline_fundamentals.parquet`，请求 `3203` symbols，实际 `856` symbols 写出。
-* `hk_all_probe_2025q4_2026q1_starter_20260324/` 当前只有 raw mirror；请求 `3190` symbols，实际 `1065` symbols 写出，但还没有新的 `pipeline_fundamentals.parquet`。
-* `hk_connect_probe_2025q4_2026q1_starter_20260319/` 也已生成 `pipeline_fundamentals.parquet`，请求 `967` symbols，实际 `189` symbols 写出。
+* `hk_all_probe_2025q4_2026q1_starter_20260319/` 已生成 `pipeline_fundamentals.parquet`；raw mirror 请求 `3203` symbols、实际 `856` symbols 写出，平面文件当前覆盖 `310` 个 symbol。
+* `hk_all_probe_2025q4_2026q1_starter_20260324/` 现在也已生成 `pipeline_fundamentals.parquet`；raw mirror 请求 `3190` symbols、实际 `1065` symbols 写出，平面文件当前覆盖 `520` 个 symbol。
+* `hk_connect_probe_2025q4_2026q1_starter_20260319/` 也已生成 `pipeline_fundamentals.parquet`；raw mirror 请求 `967` symbols、实际 `189` symbols 写出，平面文件当前覆盖 `131` 个 symbol。
+* `hk_connect_probe_2025q4_2026q1_starter_20260324/` 现在也已生成 `pipeline_fundamentals.parquet`；raw mirror 请求 `967` symbols、实际 `293` symbols 写出，平面文件当前覆盖 `232` 个 symbol。
+* `hk_all_probe_2025q4_2026q1_starter_20260324_research_by_date.csv` 已存在，当前覆盖 `314` 个 rebalance date、`520` 个 symbol。
+* `hk_connect_probe_2025q4_2026q1_starter_20260324_research_by_date.csv` 也已存在，当前覆盖 `137` 个 rebalance date、`232` 个 symbol。
 * `financial_details` 当前最完整的 raw probe 是 `hk_financial_details_hk_all3203_superset_2000_2025_20260319/`：请求 `3203` 个 symbol、`3` 个字段、`2000q1-2025q4`，实际写出 `345` 个 parquet。
 * 对这份 raw probe 的标准化分析基线是 `analysis_hk_all3203_superset_2000_2025_local_override_v10/`；它说明“窄字段增强层”已经有可复用分析入口，但不等于已经适合升成主线宽表。
 * `2026-03-24` 又新增了一批 `financial_details` smoke / probe 目录和 `portable_bundle`；它们说明探索还在继续，但不改变“主线仍不是 financial_details 宽表”的判断。
