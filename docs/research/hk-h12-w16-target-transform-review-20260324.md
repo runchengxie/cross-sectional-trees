@@ -6,8 +6,10 @@
 
 页面性质：`research-note`
 最后核对时间：`2026-03-24`
-权威来源：本页列出的实验配置、对应 run 目录和汇总指标
+权威来源：本页列出的公共基线配置、本地派生配置名、对应 run 目录和汇总指标
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与后续总结页冲突，以后续总结页为准
+
+> 注：本页涉及的 anchor / follow-up / round3 派生配置当时保存在作者本地 `configs/local/`，默认不纳入版本控制。为避免把个人文件误当成仓库入口，下文只保留派生配置名，并给出可追溯的已入库公共起点；最终仍以各 run 目录里的 `config.used.yml` 为准。
 
 目标不是立刻换掉当前主基线，而是回答两个问题：
 
@@ -18,10 +20,10 @@
 
 已跑：
 
-* `configs/local/hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_anchor.yml`
-* `configs/local/hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_raw.yml`
-* `configs/local/hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_rank.yml`
-* `configs/local/hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_zscore.yml`
+* Anchor：`hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_anchor`，基于 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml)
+* Challenger A：`hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_raw`，基于 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml`](../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) 并固定 `halflife=12`、`rolling train_window=16`
+* Challenger B：`hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_rank`，在 Challenger A 上加 `label.train_target_transform: rank`
+* Challenger C：`hk_sel_q_g4_fixed_pit_overlay_xgb_reg_antidrift_h12_w16_zscore`，在 Challenger A 上加 `label.train_target_transform: zscore`
 
 ## 已有 run
 
@@ -102,14 +104,14 @@
 
 ## 推荐 follow-up grid
 
-下一轮不建议同时扩太多变量。最小但信息量高的一组是：
+下一轮不建议同时扩太多变量。最小但信息量高的一组是以下 6 个本地派生 arm：
 
-* 锚点：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_anchor_rank_h12_w16.yml`
-* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h06_w16.yml`
-* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w12.yml`
-* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w16.yml`
-* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w20.yml`
-* Challenger：`configs/local/hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h18_w16.yml`
+* 锚点：`hk_sel_q_g4_fixed_pit_overlay_followup_anchor_rank_h12_w16`
+* Challenger：`hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h06_w16`
+* Challenger：`hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w12`
+* Challenger：`hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w16`
+* Challenger：`hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h12_w20`
+* Challenger：`hk_sel_q_g4_fixed_pit_overlay_followup_reg_zscore_h18_w16`
 
 这组是围绕 `h12_w16` 中心点做一个十字形小扫：
 
@@ -189,9 +191,9 @@
 
 如果下一轮只保留最值得复验的 3 条线，建议直接用：
 
-* `configs/local/hk_sel_q_g4_fixed_pit_overlay_round3_anchor_rank_h12_w16.yml`
-* `configs/local/hk_sel_q_g4_fixed_pit_overlay_round3_reg_zscore_h12_w16.yml`
-* `configs/local/hk_sel_q_g4_fixed_pit_overlay_round3_reg_zscore_h18_w16.yml`
+* `hk_sel_q_g4_fixed_pit_overlay_round3_anchor_rank_h12_w16`
+* `hk_sel_q_g4_fixed_pit_overlay_round3_reg_zscore_h12_w16`
+* `hk_sel_q_g4_fixed_pit_overlay_round3_reg_zscore_h18_w16`
 
 这组的目的不是继续扫参数，而是回答一个更直接的问题：
 
