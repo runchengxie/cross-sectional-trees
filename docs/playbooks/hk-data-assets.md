@@ -49,6 +49,7 @@
 | 参考数据镜像 | `mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 否 | 保留复权、分红、股本原料 |
 | 汇率镜像 | `mirror-hk-exchange-rate` | `artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/` | 否 | 给 `financial_details` 或跨币种派生提供汇率原料 |
 | 港股通原始资格历史 | `mirror-hk-southbound` | `artifacts/assets/rqdata/hk/southbound/<snapshot>/` | 否 | 做资格审计、渠道回放和纳入日期核对 |
+| 公告原始镜像 | `mirror-hk-announcement` | `artifacts/assets/rqdata/hk/announcement/<snapshot>/` | 否 | 做事件研究、披露时点回放和公告分类审计 |
 | 行业真相层 | `mirror-hk-industry-changes` | `artifacts/assets/rqdata/hk/industry_changes/<snapshot>/` | 否，需继续派生 labels | 保留行业切换区间，适合回放切换日 |
 | 行业快照层 | `mirror-hk-instrument-industry` | `artifacts/assets/rqdata/hk/instrument_industry/<snapshot>/` | 否 | 按指定日期拿 provider 快照，便于核对 |
 | 本地行业标签文件 | `build-hk-industry-labels` | `<industry_changes_snapshot>/industry_labels_<freq>.parquet` | 是，配 `industry.file` 后直读 | 给研究直接 join 的日/月/季行业标签 |

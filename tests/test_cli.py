@@ -461,6 +461,33 @@ def test_append_passthrough_strips_leading_separator():
     assert shares.name == "shares_demo"
     assert callable(shares.func)
 
+    announcement = parser.parse_args(
+        [
+            "rqdata",
+            "mirror-hk-announcement",
+            "--symbols-file",
+            "artifacts/assets/universe/hk_selected_pit_research_symbols.txt",
+            "--start-date",
+            "20250101",
+            "--end-date",
+            "20250331",
+            "--field",
+            "title",
+            "--batch-size",
+            "10",
+            "--resume",
+        ]
+    )
+    assert announcement.command == "rqdata"
+    assert announcement.rq_command == "mirror-hk-announcement"
+    assert announcement.symbols_file == "artifacts/assets/universe/hk_selected_pit_research_symbols.txt"
+    assert announcement.start_date == "20250101"
+    assert announcement.end_date == "20250331"
+    assert announcement.field == ["title"]
+    assert announcement.batch_size == 10
+    assert announcement.resume is True
+    assert callable(announcement.func)
+
     southbound = parser.parse_args(
         [
             "rqdata",

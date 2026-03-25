@@ -310,6 +310,13 @@ def _handle_rqdata_mirror_hk_exchange_rate(args) -> int:
     return rqdata_assets.mirror_hk_exchange_rate(args, rqdatac)
 
 
+def _handle_rqdata_mirror_hk_announcement(args) -> int:
+    from .data_tools import rqdata_assets
+
+    rqdatac = _init_rqdatac(args)
+    return rqdata_assets.mirror_hk_announcement(args, rqdatac)
+
+
 def _handle_rqdata_mirror_hk_southbound(args) -> int:
     from .data_tools import rqdata_assets
 
@@ -784,6 +791,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rqdata_assets.add_hk_exchange_rate_mirror_args(rq_exchange_rate)
     rq_exchange_rate.set_defaults(func=_handle_rqdata_mirror_hk_exchange_rate)
+
+    rq_announcement = rq_sub.add_parser(
+        "mirror-hk-announcement",
+        help="Mirror HK company announcements into parquet + manifest assets",
+    )
+    rqdata_assets.add_hk_announcement_mirror_args(rq_announcement)
+    rq_announcement.set_defaults(func=_handle_rqdata_mirror_hk_announcement)
 
     rq_southbound = rq_sub.add_parser(
         "mirror-hk-southbound",

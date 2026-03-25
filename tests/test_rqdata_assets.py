@@ -76,7 +76,11 @@ class _FakeRQPitClient:
                 )
                 index.append((order_book_id, "2025q1"))
         if not rows:
-            return pd.DataFrame()
+            empty_columns = list(fields) if fields else []
+            return pd.DataFrame(
+                columns=empty_columns,
+                index=pd.MultiIndex.from_arrays([[], []], names=["order_book_id", "info_date"]),
+            )
         return pd.DataFrame(
             rows,
             index=pd.MultiIndex.from_tuples(index, names=["order_book_id", "quarter"]),
@@ -544,6 +548,88 @@ class _FakeRQSouthboundHKApi:
 class _FakeRQSouthboundClient:
     def __init__(self):
         self.hk = _FakeRQSouthboundHKApi()
+
+
+class _FakeRQAnnouncementHKApi:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_announcement(self, *, order_book_ids, start_date=None, end_date=None, fields=None, market="hk"):
+        self.calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "start_date": start_date,
+                "end_date": end_date,
+                "fields": None if fields is None else list(fields),
+                "market": market,
+            }
+        )
+        rows: list[dict] = []
+        index: list[tuple[str, pd.Timestamp]] = []
+        for order_book_id in order_book_ids:
+            if order_book_id == "00005.XHKG":
+                rows.append(
+                    {
+                        "media": "HKEXnews",
+                        "title": "FY2024 results",
+                        "language": "EN",
+                        "file_type": "pdf",
+                        "announcement_link": "https://example.com/00005",
+                        "first_category": "Results",
+                        "second_category": "Annual",
+                        "third_category": "Final",
+                        "rice_create_tm": pd.Timestamp("2025-03-20 09:00:00"),
+                    }
+                )
+                index.append((order_book_id, pd.Timestamp("2025-03-20")))
+            elif order_book_id == "00011.XHKG":
+                rows.extend(
+                    [
+                        {
+                            "media": "HKEXnews",
+                            "title": "Special dividend",
+                            "language": "EN",
+                            "file_type": "pdf",
+                            "announcement_link": "https://example.com/00011-1",
+                            "first_category": "Dividend",
+                            "second_category": "Special",
+                            "third_category": "Cash",
+                            "rice_create_tm": pd.Timestamp("2025-03-21 09:15:00"),
+                        },
+                        {
+                            "media": "HKEXnews",
+                            "title": "2024 annual report",
+                            "language": "EN",
+                            "file_type": "pdf",
+                            "announcement_link": "https://example.com/00011-2",
+                            "first_category": "Report",
+                            "second_category": "Annual",
+                            "third_category": "Final",
+                            "rice_create_tm": pd.Timestamp("2025-03-24 07:30:00"),
+                        },
+                    ]
+                )
+                index.extend(
+                    [
+                        (order_book_id, pd.Timestamp("2025-03-21")),
+                        (order_book_id, pd.Timestamp("2025-03-24")),
+                    ]
+                )
+        if not rows:
+            return pd.DataFrame()
+        frame = pd.DataFrame(
+            rows,
+            index=pd.MultiIndex.from_tuples(index, names=["order_book_id", "info_date"]),
+        )
+        if fields:
+            available = [field for field in fields if field in frame.columns]
+            frame = frame.loc[:, available]
+        return frame
+
+
+class _FakeRQAnnouncementClient:
+    def __init__(self):
+        self.hk = _FakeRQAnnouncementHKApi()
 
 
 class _FlakyRQPitClient:
@@ -1106,6 +1192,93 @@ def test_mirror_hk_southbound_writes_symbol_history_assets(tmp_path, monkeypatch
         {"trading_type": "sz", "date": "20250102"},
         {"trading_type": "sh", "date": "20250131"},
         {"trading_type": "sz", "date": "20250131"},
+    ]
+
+
+def test_mirror_hk_announcement_writes_symbol_history_assets(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+    monkeypatch.setattr(rqdata_assets, "_ensure_rqdatac_hk_plugin", lambda: None)
+
+    client = _FakeRQAnnouncementClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250301",
+        end_date="20250331",
+        field=["title", "announcement_link"],
+        fields_file=[],
+        symbol=["00005.HK", "00011.HK", "00012.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=2,
+        out_root="artifacts/assets/rqdata",
+        name="announcement_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_announcement(args, client) == 0
+
+    assert client.hk.calls == [
+        {
+            "order_book_ids": ["00005.XHKG", "00011.XHKG"],
+            "start_date": "20250301",
+            "end_date": "20250331",
+            "fields": ["title", "announcement_link"],
+            "market": "hk",
+        },
+        {
+            "order_book_ids": ["00012.XHKG"],
+            "start_date": "20250301",
+            "end_date": "20250331",
+            "fields": ["title", "announcement_link"],
+            "market": "hk",
+        },
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "announcement" / "announcement_demo"
+    assert (output_dir / "fields.txt").read_text(encoding="utf-8") == "title\nannouncement_link\n"
+    assert (output_dir / "symbols.txt").read_text(encoding="utf-8") == "00005.HK\n00011.HK\n00012.HK\n"
+
+    frame_5 = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert frame_5["info_date"].tolist() == [pd.Timestamp("2025-03-20")]
+    assert frame_5["title"].tolist() == ["FY2024 results"]
+
+    frame_11 = pd.read_parquet(output_dir / "data" / "00011.HK.parquet")
+    assert frame_11["info_date"].tolist() == [pd.Timestamp("2025-03-21"), pd.Timestamp("2025-03-24")]
+    assert frame_11["announcement_link"].tolist() == [
+        "https://example.com/00011-1",
+        "https://example.com/00011-2",
+    ]
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["dataset"] == "announcement"
+    assert manifest["api"] == "rqdatac.hk.get_announcement"
+    assert manifest["query"]["start_date"] == "20250301"
+    assert manifest["query"]["end_date"] == "20250331"
+    assert manifest["query"]["fields"] == ["title", "announcement_link"]
+    assert manifest["totals"]["symbols_requested"] == 3
+    assert manifest["totals"]["symbols_written"] == 2
+    assert manifest["missing_symbols"] == ["00012.HK"]
+
+    client.hk.calls.clear()
+    args.resume = True
+    assert rqdata_assets.mirror_hk_announcement(args, client) == 0
+    assert client.hk.calls == [
+        {
+            "order_book_ids": ["00012.XHKG"],
+            "start_date": "20250301",
+            "end_date": "20250331",
+            "fields": ["title", "announcement_link"],
+            "market": "hk",
+        }
     ]
 
 

@@ -312,6 +312,14 @@ csml rqdata mirror-hk-dividends --by-date-file artifacts/assets/universe/hk_conn
 csml rqdata mirror-hk-shares --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_shares_latest
 ```
 
+### csml rqdata mirror-hk-announcement
+
+拉取港股公司公告原始记录。
+
+```bash
+csml rqdata mirror-hk-announcement --symbols-file artifacts/assets/universe/hk_selected_pit_research_symbols.txt --start-date 20150101 --end-date 20260324 --name hk_selected_2015_20260324_announcement_latest
+```
+
 ### csml rqdata mirror-hk-southbound
 
 拉取港股通成分历史。

@@ -38,7 +38,10 @@
   目录下已经有 `industry_labels_d/m/q.parquet`
 * `southbound`
   `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest/`
-  它是稳定补充层，不是默认研究入口
+  当前 canonical snapshot 已本地合并到 `2026-03-24`；它是稳定补充层，不是默认研究入口
+* `announcement`
+  `artifacts/assets/rqdata/hk/announcement/hk_selected_2015_20260324_announcement_latest/`
+  当前只有 `hk_selected` 范围的小规模原始镜像，适合事件研究和披露时点回放
 * `universe`
   `artifacts/assets/universe/hk_connect_full_by_date.csv`
   `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
@@ -83,7 +86,8 @@
 | `shares` | 全市场 `3203` symbol 基线 | 默认 `7` 个字段 | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `industry_changes` | 全市场 `3203` symbol 基线 | level-1 映射 `11` 字段 + `industry_labels_d/m/q` | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `instrument_industry` | `m/q latest` 只基于 `1547` symbol 旧口径；`3203` symbol 全市场月频尝试为空 | `6` 个字段 | `2000-01-01` 到 `2026-03-18` | 旧口径快照 + incomplete 尝试 | 否 |
-| `southbound` | 只覆盖 `hk_connect`；`by_date` 联合集 `967` symbols | `2` 个字段 | `2014-11-17` 到 `2026-03-18`，共 `137` 个 rebalance date | 稳定补充层 | 否 |
+| `southbound` | 只覆盖 `hk_connect`；`by_date` 联合集 `967` symbols | `2` 个字段 | canonical snapshot 现为 `2014-11-17` 到 `2026-03-24`；其中 `2026-03-19` 到 `2026-03-24` 是 tail patch 合并进来的 `4` 个交易日 | 稳定补充层 | 否 |
+| `announcement` | `hk_selected` `222` symbols probe | API payload 固定 schema | `2015-01-01` 到 `2026-03-24` | 小范围补充层 | 否 |
 
 补充：
 
@@ -141,7 +145,9 @@
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_q.parquet`
   季频标签；当前最大 `trade_date` 仍停在 `2026-03-11`
 * `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest`
-  当前 `hk_connect` 范围的 southbound raw snapshot
+  当前 `hk_connect` 范围的 southbound canonical snapshot；base raw snapshot 已和 `2026-03-19` 到 `2026-03-24` 的 tail patch 本地合并
+* `artifacts/assets/rqdata/hk/announcement/hk_selected_2015_20260324_announcement_latest`
+  当前已落盘的 `announcement` raw snapshot；范围是 `hk_selected`
 
 ### 当前有效的 universe 入口
 
@@ -274,7 +280,7 @@
 | --- | --- | --- | --- |
 | `get_factor` | runtime overlay 支持 | 无离线 mirror | 保持 runtime 用法，不必单独囤。 |
 | `get_all_factor_names` | 未接入 | 无 | 需要字段浏览时再补。 |
-| `hk.get_announcement` | 未接入 | 无 | 当前不是主线。 |
+| `hk.get_announcement` | 已接，`mirror-hk-announcement` | `hk_selected` 范围小规模 raw snapshot 已落盘 | 继续按 `hk_selected` / `hk_connect` 小范围保留，不要直接升成全市场主线。 |
 
 ## 目录清理规则
 
@@ -352,7 +358,7 @@
 补充判断：
 
 * 当前最有价值的仍然是研究会反复扫的底层原料：`daily`、`pit_financials`、`ex_factors`、`dividends`、`shares`、`industry_changes`。
-* 当前不值得升级成主线缓存对象的，主要是 `exchange_rate` 长窗镜像、`financial_details` 宽表化、`instrument_industry` 全市场月频、`get_factor` 离线囤积、`get_turnover_rate`、`hk.get_announcement`。
+* 当前不值得升级成主线缓存对象的，主要是 `exchange_rate` 长窗镜像、`financial_details` 宽表化、`instrument_industry` 全市场月频、`get_factor` 离线囤积、`get_turnover_rate`，以及全市场化的 `hk.get_announcement`。
 * 如果你还想优先补“以后可能会后悔没下”的东西，当前优先级通常是把 `southbound` 和行业相关资产保持干净，其次才是继续追更宽的补充层接口。
 
 ## 最小检查命令

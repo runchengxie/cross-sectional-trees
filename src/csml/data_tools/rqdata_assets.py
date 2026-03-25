@@ -489,6 +489,27 @@ def _resolve_default_plus_explicit_fields(
     return fields, metadata
 
 
+def _resolve_optional_explicit_fields(
+    args,
+    *,
+    empty_source_label: str = "api_default",
+    explicit_source_label: str = "explicit",
+) -> tuple[list[str], dict]:
+    fields: list[str] = []
+    if getattr(args, "field", None):
+        fields.extend(str(item).strip() for item in args.field if str(item).strip())
+    for path_text in getattr(args, "fields_file", None) or []:
+        fields.extend(_load_text_list(path_text, label="Fields file"))
+    fields = _dedupe_preserve_order(fields, strip=False)
+    metadata = {
+        "count": len(fields),
+        "base_fields": [],
+        "fields_file": [str(_resolve_path(path_text)) for path_text in (args.fields_file or [])],
+        "source": explicit_source_label if fields else empty_source_label,
+    }
+    return fields, metadata
+
+
 def _resolve_hk_industry_source(args) -> str:
     source = str(getattr(args, "source", DEFAULT_HK_INDUSTRY_SOURCE) or DEFAULT_HK_INDUSTRY_SOURCE).strip()
     if not source:
@@ -1348,6 +1369,8 @@ def _prepare_asset_frame(frame: pd.DataFrame | pd.Series | None, *, symbol_map: 
         return frame.copy()
 
     normalized = _normalize_frame_columns(frame.reset_index())
+    if normalized.empty and "order_book_id" not in normalized.columns:
+        return normalized
     if "order_book_id" not in normalized.columns:
         if len(symbol_map) == 1:
             normalized["order_book_id"] = next(iter(symbol_map.keys()))
@@ -3979,6 +4002,39 @@ def mirror_hk_exchange_rate(args, rqdatac) -> int:
         f"status={status})"
     )
     return result_code
+
+
+def mirror_hk_announcement(args, rqdatac) -> int:
+    _ensure_rqdatac_hk_plugin()
+    hk_api = getattr(rqdatac, "hk", None)
+    if hk_api is None or not hasattr(hk_api, "get_announcement"):
+        raise SystemExit("rqdatac.hk.get_announcement is unavailable. Check rqdatac-hk installation.")
+
+    fields, field_metadata = _resolve_optional_explicit_fields(args)
+    return _mirror_dated_dataset(
+        args=args,
+        rqdatac=rqdatac,
+        dataset_name="announcement",
+        api_name="rqdatac.hk.get_announcement",
+        date_column="info_date",
+        fields=fields,
+        field_metadata=field_metadata,
+        sort_columns=("rice_create_tm", "first_category", "second_category", "third_category", "title"),
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
+            symbols,
+            start_date=start_date,
+            end_date=end_date,
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        ),
+        normalize_payload=_normalize_hk_dated_payload,
+        fetch_batch=lambda order_book_ids, selected_fields, start_date, end_date: hk_api.get_announcement(
+            order_book_ids=list(order_book_ids),
+            start_date=start_date,
+            end_date=end_date,
+            fields=list(selected_fields) if selected_fields else None,
+            market="hk",
+        ),
+    )
 
 
 def mirror_hk_southbound(args, rqdatac) -> int:
@@ -7111,6 +7167,15 @@ def add_hk_exchange_rate_mirror_args(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=DEFAULT_MIRROR_MAX_BACKOFF_SECONDS,
         help=f"Maximum retry backoff in seconds. Default: {DEFAULT_MIRROR_MAX_BACKOFF_SECONDS}.",
+    )
+
+
+def add_hk_announcement_mirror_args(parser: argparse.ArgumentParser) -> None:
+    add_hk_dated_mirror_args(
+        parser,
+        supports_fields=True,
+        field_help="Announcement field name passed to rqdatac.hk.get_announcement. Repeatable.",
+        fields_file_help="Text file with one announcement field name per line. Repeatable.",
     )
 
 
