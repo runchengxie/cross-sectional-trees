@@ -29,6 +29,7 @@
 | `notes/hk-quarterly-pit-regime-shift-202603.md` | 旧 quarterly overlay 基线失效，`ranker h12_w16` 抗漂移版本仍是当前更稳的基线 | 是，已反映到 `docs/playbooks/hk-selected.md` 和相关配置口径 |
 | `notes/hk-h12-w16-target-transform-review-20260324.md` | `zscore target` 是当前更值得跟踪的 regressor challenger，但还不能替代 ranker 主基线 | 部分沉淀，摘要已被后续总结页吸收 |
 | `notes/hk-quarterly-target-design-and-direction-20260324.md` | 相对化 label 已升级成正式研究副线，但方向切换问题仍需单独验证 | 是，当前是这组 follow-up 的汇总结论页 |
+| `notes/hk-quarterly-price-col-ab-20260325.md` | `tr_close` 不足以让 ranker 主线改默认，但对 `reg_zscore` challenger 是正向加成 | 部分沉淀，当前作为价格口径 A/B 的独立汇总页保留 |
 
 ## 时点型页面头部模板
 
@@ -57,3 +58,4 @@
 * `notes/hk-h12-w16-target-transform-review-20260324.md`
 * `notes/hk-quarterly-target-design-and-direction-20260324.md`
 * `notes/hk-quarterly-pit-regime-shift-202603.md`
+* `notes/hk-quarterly-price-col-ab-20260325.md`

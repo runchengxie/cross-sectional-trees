@@ -2,10 +2,10 @@
 
 本页记录这条 HK 季度 `PIT core + provider valuation overlay` 研究线的最新结论。
 
-截至 `2026-03-24`，本文已经纳入 `2026-03-22` 的抗漂移参数网格结果，以及 `2026-03-24` 的 `label transform / signal direction` follow-up。后续如果再跑出新实验，应先更新这页，再让其他文档引用它。
+截至 `2026-03-25`，本文已经纳入 `2026-03-22` 的抗漂移参数网格结果、`2026-03-24` 的 `label transform / signal direction` follow-up，以及 `2026-03-25` 的 `close / tr_close` 价格口径 A/B。后续如果再跑出新实验，应先更新这页，再让其他文档引用它。
 
 页面性质：`research-note`
-最后核对时间：`2026-03-24`
+最后核对时间：`2026-03-25`
 权威来源：本页引用的实验配置、run 结果和当前 playbook 收口
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与 `docs/playbooks/hk-selected.md` 的最新主线收口冲突，以 playbook 为准
 
@@ -20,7 +20,7 @@
 
 ## 1. 核心结论
 
-如果只看这一页，先记住下面 7 句：
+如果只看这一页，先记住下面 8 句：
 
 * 旧基线 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml) 在 `final_oos` 已经出现横截面排序失效。它还有 `+45.2%` 的绝对收益，但 `IC = -0.1003`、`long_short = -6.56%`、主动收益 `-10.6%`，说明高分股已经开始跑输低分股。
 * 换成 [`xgb_regressor`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_validate.yml) 或 [`ridge`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_ridge_validate.yml) 后，`final_oos IC` 仍然为负；[`elasticnet`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_elasticnet_validate.yml) 直接退化成常数预测。
@@ -28,6 +28,7 @@
 * 只做近期样本加权还不够。`exp_decay` 单独版把负 IC 缓和到 `-0.0597`，但没有修好排序关系。
 * 第一版真正把 `final_oos IC` 翻回正值的配置，是 `halflife=12 + rolling=16`。它对应的当前基线是 [`hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_validate.yml)。
 * 后续 `xgb_regressor + zscore target` 的 follow-up 说明，“相对化 label” 这条路值得继续追，但它在 `2021-03-31` 到 `2023-09-29` 的 6 个 `walk_forward` 测试窗里一致偏 `signal_direction = -1`，而 `2023-12-29` 到 `2025-09-29` 的整体验证又更像 `+1`。这说明 challenger 线仍有阶段性方向切换，暂时不能取代 ranker 基线。
+* `2026-03-25` 的 `close / tr_close` A/B 说明，`tr_close` 不该直接升成整个 quarterly overlay 单元的默认价格口径；它对 ranker 主线帮助有限，但对 `xgb_regressor + zscore target` 的两个 challenger 都是正向加成，因此后续方向规则实验应优先接在 regressor + `tr_close` 支线。
 * 这条线已经进入 `paper -> shadow -> 小仓位 canary` 的准备阶段，但还不支持单模型、唯一主信号、直接大仓上线。
 
 ## 2. 问题是什么
@@ -153,6 +154,36 @@
 * `xgb_regressor + zscore target` 仍然值得保留为正式 challenger
 * 但它还没有解决“方向随阶段切换”的问题，所以不能据此撤掉 [`h12_w16`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_validate.yml) 这个 ranker 主基线
 * 后续更高优先级的工作，不是继续重复同配置，而是专门做 `signal_direction` 的稳定性实验，以及更严格的分阶段验证
+
+### 5.4 2026-03-25 补充：`close / tr_close` 价格口径 A/B
+
+在 `2026-03-25` 的 follow-up 里，又补跑了 6 个本地 arm：`ranker h12_w16`、`reg_zscore h12_w16`、`reg_zscore h18_w16`，分别做 `close` 和 `tr_close` 对照。
+
+先记住两点边界：
+
+* 这组实验讨论的是“这条研究单元默认该用哪种价格口径”，不是“财务上分红应不应该算”的原则争论。
+* 在本项目里把 `price_col` 从 `close` 切到 `tr_close`，会一起改动价格派生特征、训练标签、回测收益和 benchmark 口径，所以它必须按路线单独评估，不能直接凭定义推广。
+
+这组 A/B 的结果可以压缩成下面这张表：
+
+| Arm | `close`：Final OOS IC / Sharpe | `tr_close`：Final OOS IC / Sharpe | 当前解读 |
+| --- | --- | --- | --- |
+| `ranker h12_w16` | `0.0825 / 2.009` | `0.0791 / 2.710` | 最近 OOS 更亮，但全样本 `eval IC` 从 `+0.0225` 变成 `-0.0499`，全样本 backtest Sharpe 也从 `-0.394` 变成 `-0.441`；不值得据此把 ranker 主线直接切到 `tr_close` |
+| `reg_zscore h12_w16` | `0.0911 / 2.599` | `0.1131 / 2.793` | 最近 OOS 和全样本 backtest 同时改善，turnover 也从 `0.442` 降到 `0.405`；更适合保留 `tr_close` 分支继续往下做 |
+| `reg_zscore h18_w16` | `0.0953 / 2.558` | `0.1173 / 2.963` | 最近 OOS 最强，且全样本 backtest Sharpe 从 `-0.134` 抬到 `-0.014`；同样值得保留 `tr_close` 分支 |
+
+这轮 follow-up 还顺手验证了数据面：
+
+* 代表性的 `close` / `tr_close` run 做 `provider_overlay` 审计时，都是 `167/167` symbols cache hit、估值列覆盖率 `100%`、`valuation_age_days = 0`。
+* 6 个 run 的 warning 模式完全一致，都只跳过 `02828.HK`、`03033.HK`、`03067.HK` 这 3 个符号各一次。
+* 所以这轮差异不该解释成“分红或估值数据没下齐”；更像是少量非普通股产品在 overlay 阶段被降级跳过，而主样本链路本身是干净的。
+
+这一步对当前主线和副线的含义是：
+
+* ranker 主线仍然维持现有 `close` 口径基线，不因为这轮 A/B 直接改默认
+* `reg_zscore` 两个 challenger 后续更该沿着 `tr_close` 分支继续推进
+* 下一步最该做的，不是再扩一轮价格口径网格，而是把 `signal_direction` 的离线规则回放优先接到 `reg_zscore_h12_w16_tr_close`，`h18_w16_tr_close` 作为次 challenger
+* 研究执行顺序上，更合理的是“主线继续用 ranker 往前推，副线先用脚本层验证简单方向规则，再决定要不要把新规则接进正式流程”
 
 ## 6. 如果进入 canary，应该盯什么
 
