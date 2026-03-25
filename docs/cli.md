@@ -317,7 +317,7 @@ csml rqdata mirror-hk-shares --by-date-file artifacts/assets/universe/hk_connect
 拉取港股公司公告原始记录。
 
 ```bash
-csml rqdata mirror-hk-announcement --symbols-file artifacts/assets/universe/hk_selected_pit_research_symbols.txt --start-date 20150101 --end-date 20260324 --name hk_selected_2015_20260324_announcement_latest
+csml rqdata mirror-hk-announcement --symbols-file artifacts/assets/universe/hk_selected_pit_research_symbols.txt --start-date 20000101 --end-date 20260324 --name hk_selected_2000_20260324_announcement_latest
 ```
 
 ### csml rqdata mirror-hk-southbound

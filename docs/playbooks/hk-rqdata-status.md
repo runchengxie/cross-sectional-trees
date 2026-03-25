@@ -40,8 +40,8 @@
   `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest/`
   当前 canonical snapshot 已在 `2026-03-25` 重新做过本地 merge，覆盖到 `2026-03-24`；它是稳定补充层，不是默认研究入口
 * `announcement`
-  `artifacts/assets/rqdata/hk/announcement/hk_selected_2015_20260324_announcement_latest/`
-  当前只有 `hk_selected` 范围的小规模原始镜像，适合事件研究和披露时点回放
+  `artifacts/assets/rqdata/hk/announcement/hk_selected_2000_20260324_announcement_latest/`
+  当前只有 `hk_selected` 范围的小规模原始镜像；查询窗口已前推到 `2000-01-01`，但当前最早实际 `info_date` 仍是 `2014-08-01`
 * `universe`
   `artifacts/assets/universe/hk_connect_full_by_date.csv`
   `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
@@ -89,7 +89,7 @@
 | `industry_changes` | 全市场 `3203` symbol 基线 | level-1 映射 `11` 字段 + `industry_labels_d/m/q` | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `instrument_industry` | `m/q latest` 只基于 `1547` symbol 旧口径；`3203` symbol 全市场月频尝试为空 | `6` 个字段 | `2000-01-01` 到 `2026-03-18` | 旧口径快照 + incomplete 尝试 | 否 |
 | `southbound` | 只覆盖 `hk_connect`；`by_date` 联合集 `967` symbols | `2` 个字段 | canonical snapshot 现为 `2014-11-17` 到 `2026-03-24`；`2026-03-25` 又重新合并了一次 base raw + tail patch | 稳定补充层 | 否 |
-| `announcement` | `hk_selected` `222` symbols probe | API payload 固定 schema | `2015-01-01` 到 `2026-03-24` | 小范围补充层 | 否 |
+| `announcement` | `hk_selected` `222` symbols probe | API payload 固定 schema | query `2000-01-01` 到 `2026-03-24`；当前最早实际 `info_date=2014-08-01` | 小范围补充层 | 否 |
 
 补充：
 
@@ -148,8 +148,8 @@
   季频标签；当前最大 `trade_date` 仍停在 `2026-03-11`
 * `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest`
   当前 `hk_connect` 范围的 southbound canonical snapshot；`2026-03-25` 的 manifest 已明确记录 base raw snapshot 与 `2026-03-19` 到 `2026-03-24` tail patch 的本地合并结果
-* `artifacts/assets/rqdata/hk/announcement/hk_selected_2015_20260324_announcement_latest`
-  当前已落盘的 `announcement` raw snapshot；范围是 `hk_selected`
+* `artifacts/assets/rqdata/hk/announcement/hk_selected_2000_20260324_announcement_latest`
+  当前已落盘的 `announcement` raw snapshot；范围是 `hk_selected`，查询窗口从 `2000-01-01` 开始，但当前实际返回的最早公告日期仍是 `2014-08-01`
 
 ### 当前有效的 universe 入口
 
