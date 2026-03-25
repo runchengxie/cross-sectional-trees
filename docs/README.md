@@ -18,6 +18,7 @@
 | 我想查配置键、模板入口和默认行为 | `docs/config.md` |
 | 我想查输出目录、文件和字段 | `docs/outputs.md` |
 | 我想查 provider 差异、凭证和日期 token | `docs/providers.md` |
+| 我想理解为什么当前只保留四个模型，以及别的算法何时值得引入 | `docs/concepts/model-landscape.md` |
 | 我想查 HK / RQData 专题资料 | `docs/rqdata/README.md` |
 | 我想看研究笔记和当前结论沉淀状态 | `docs/research/README.md` |
 
