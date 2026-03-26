@@ -326,6 +326,7 @@ logging:
 * `cost_model.name=side_bps` 适合分开配置 long/short、开仓/平仓 bps；`short_borrow_bps_per_day` 用于短端持有期借券成本近似。
 * `slippage_model.name=bps` 表示固定单边滑点；`participation` 会按 `trade_weight * portfolio_value / amount_col` 估计冲击成本。
 * `constraints.min_amount` 和 `slippage_model.amount_col` 读取的是仓库标准化后的列名；常见 provider 原始字段如 `total_turnover` 会先映射成 `amount`。
+* 若想避免 `open` 入场直接读取同日总成交额带来的轻微 look-ahead，可把 `amount_col` 设成派生流动性代理列，例如 `adv20_amount` 或 `medadv20_amount`；它们分别表示按 symbol 计算、排除当日后的过去 `20` 个交易日平均/中位成交额。
 
 ### `logging`
 

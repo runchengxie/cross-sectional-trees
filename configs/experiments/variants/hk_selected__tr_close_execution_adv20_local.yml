@@ -1,0 +1,20 @@
+## Monthly HK selected baseline with local assets, unified total-return pricing,
+## and lagged ADV execution liquidity proxies to avoid same-day amount look-ahead.
+extends:
+  - configs/experiments/variants/hk_selected__execution_stress_local.yml
+
+data:
+  price_col: tr_close
+  cache_tag: hk_selected_tr_close_exec_adv20_local_v1
+  rqdata:
+    adjust_type: pre
+
+eval:
+  run_name: hk_sel_xgb_reg_tr_close_exec_adv20_local
+
+backtest:
+  execution:
+    slippage_model:
+      amount_col: adv20_amount
+    constraints:
+      amount_col: adv20_amount

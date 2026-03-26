@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -8,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 logger = logging.getLogger("csml")
+_EXECUTION_LIQUIDITY_PROXY_PATTERN = re.compile(r"^(adv|medadv)\d+_amount$")
 
 
 def _warn_if_purge_too_small(
@@ -46,7 +48,10 @@ def _rqdata_fields_for_standard_columns(columns: set[str]) -> list[str]:
     }
     fields: list[str] = []
     for column in sorted(columns):
-        raw = raw_map.get(str(column).strip())
+        normalized = str(column).strip()
+        raw = raw_map.get(normalized)
+        if raw is None and _EXECUTION_LIQUIDITY_PROXY_PATTERN.fullmatch(normalized):
+            raw = "total_turnover"
         if raw and raw not in fields:
             fields.append(raw)
     return fields

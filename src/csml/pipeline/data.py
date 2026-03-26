@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -32,6 +33,62 @@ from ..rebalance import estimate_rebalance_gap, get_rebalance_dates
 from ..transform import apply_cross_sectional_series_transform, apply_cross_sectional_transform
 
 logger = logging.getLogger("csml")
+_EXECUTION_LIQUIDITY_PROXY_PATTERN = re.compile(r"^(?P<kind>adv|medadv)(?P<window>\d+)_amount$")
+
+
+def _parse_execution_liquidity_proxy_column(column: str) -> tuple[str, int] | None:
+    match = _EXECUTION_LIQUIDITY_PROXY_PATTERN.fullmatch(str(column).strip())
+    if match is None:
+        return None
+    window = int(match.group("window"))
+    if window <= 0:
+        return None
+    return match.group("kind"), window
+
+
+def _derive_execution_liquidity_proxy_columns(
+    df: pd.DataFrame,
+    required_columns: set[str],
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+    if "amount" not in df.columns:
+        return df
+
+    out = df
+    derived_columns: list[str] = []
+    amount = pd.to_numeric(out["amount"], errors="coerce")
+    grouped_amount = amount.groupby(out["symbol"])
+
+    for column in sorted(required_columns):
+        if column in out.columns:
+            continue
+        parsed = _parse_execution_liquidity_proxy_column(column)
+        if parsed is None:
+            continue
+
+        kind, window = parsed
+        lagged = grouped_amount.shift(1)
+        if kind == "adv":
+            proxy = lagged.groupby(out["symbol"]).transform(
+                lambda series: series.rolling(window=window, min_periods=1).mean()
+            )
+        else:
+            proxy = lagged.groupby(out["symbol"]).transform(
+                lambda series: series.rolling(window=window, min_periods=1).median()
+            )
+
+        if out is df:
+            out = df.copy()
+        out[column] = pd.to_numeric(proxy, errors="coerce")
+        derived_columns.append(column)
+
+    if derived_columns:
+        logger.info(
+            "Derived execution liquidity proxy columns from lagged amount: %s",
+            derived_columns,
+        )
+    return out
 
 
 def _resolve_fundamentals_cache_dir(
@@ -263,6 +320,7 @@ def _load_research_panel(
     df = ensure_symbol_columns(df, context="Daily panel")
     df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
     df.sort_values(["symbol", "trade_date"], inplace=True)
+    df = _derive_execution_liquidity_proxy_columns(df, execution_pricing_cols)
     missing_execution_cols = [
         col for col in sorted(execution_pricing_cols) if col not in df.columns
     ]
