@@ -1328,6 +1328,18 @@ def run(config_ref: str | Path | None = None) -> None:
         if not windows:
             logger.info("Walk-forward evaluation skipped: insufficient windows.")
         else:
+            if len(windows) < WF_N_WINDOWS:
+                logger.warning(
+                    "Walk-forward requested %s windows but only %s fit "
+                    "(test_size=%s, step_size=%s, anchor_end=%s). "
+                    "Reduce eval.test_size / eval.walk_forward.test_size, "
+                    "set a smaller eval.walk_forward.step_size, or lower n_windows.",
+                    WF_N_WINDOWS,
+                    len(windows),
+                    wf_test_size,
+                    WF_STEP_SIZE,
+                    WF_ANCHOR_END,
+                )
             logger.info("Walk-forward evaluation: %s windows.", len(windows))
             for window_meta in windows:
                 window_result, window_importance_rows = _evaluate_walk_forward_window(

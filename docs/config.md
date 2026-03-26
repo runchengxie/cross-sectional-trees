@@ -4,7 +4,7 @@
 本页不解决什么：不展开研究路线与概念选择。
 适合谁：需要查配置定义与模板的人。
 读完你会得到什么：配置键的权威定义与常用模板入口。
-相关页面：`docs/concepts/model-selection.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/universe-modes.md`、`docs/concepts/data-sources.md`
+相关页面：`docs/concepts/model-selection.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/universe-modes.md`、`docs/concepts/data-sources.md`、`docs/concepts/execution-costs.md`
 
 ## 常用模板速查
 
@@ -286,6 +286,22 @@ logging:
 | `save_scored_artifact` | 单独保存 `eval_scored.parquet` | 默认 `false` |
 | `purge_days` | 泄漏防护天数 | 默认 `horizon_days + shift_days` |
 
+### `eval.walk_forward`
+
+| 键 | 说明 | 常见值 |
+|---|------|--------|
+| `enabled` | 开启 walk-forward | `true` / `false` |
+| `n_windows` | 目标窗口数 | `2`, `4`, `6` |
+| `test_size` | 每个测试窗长度；为空时继承 `eval.test_size` | `0.2`, `0.3`, `null` |
+| `step_size` | 窗口步长；为空时默认等于 `test_size` | `0.1`, `0.2`, `null` |
+| `anchor_end` | 是否从样本尾部向前锚定窗口 | `true` / `false` |
+
+说明：
+
+* `eval.walk_forward.test_size: null` 不表示“小窗默认值”，而是直接继承 `eval.test_size`。
+* 当 `anchor_end=true` 且 `step_size=null` 时，步长默认等于测试窗长度；如果 `test_size` 本身很大，例如 `0.6`，请求 `4` 个窗口时往往只能放下最后 `1` 个窗口。
+* 现在 run 日志会在“请求窗口数”大于“实际可放下窗口数”时给出显式告警，避免把 `walk_forward.n_windows` 当成最终产出数量。
+
 ### `backtest`
 
 | 键 | 说明 | 常见值 |
@@ -305,6 +321,7 @@ logging:
 * `backtest.group_col + max_names_per_group` 是组合构造阶段的最小版暴露约束，不会改变模型打分，也不等于完整行业中性化。
 * `backtest.execution` 会在 `transaction_cost_bps`、`exit_price_policy` 和 `data.price_col` 之上做更细的 execution 建模；不配时仍沿用原有默认行为。
 * `execution.entry_policy.price_col` / `execution.exit_policy.price_col` 只影响回测与持仓构造，不会改变标签、基准或价格类特征的 `data.price_col` 口径。
+* 成本、滑点、`tr_close` 与现金分红账本的关系，单独见 `docs/concepts/execution-costs.md`。
 
 ### `backtest.execution`
 

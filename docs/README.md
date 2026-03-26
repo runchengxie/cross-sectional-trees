@@ -17,6 +17,7 @@
 | 我想查命令和参数 | `docs/cli.md` |
 | 我想查 metadata catalog、标准层物化或 DuckDB 查询 | `docs/cli.md` |
 | 我想查配置键、模板入口和默认行为 | `docs/config.md` |
+| 我想理解成本、滑点、`tr_close` 和现金分红假设 | `docs/concepts/execution-costs.md` |
 | 我想查输出目录、文件和字段 | `docs/outputs.md` |
 | 我想查 provider 差异、凭证和日期 token | `docs/providers.md` |
 | 我想理解为什么当前只保留四个模型，以及别的算法何时值得引入 | `docs/concepts/model-landscape.md` |
@@ -38,6 +39,6 @@
 通用工作流速查：`docs/cookbook.md`  
 参考手册：`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md`  
 专题资料：`docs/rqdata/`  
-概念解释：`docs/concepts/`  
+概念解释：`docs/concepts/`（包括 `docs/concepts/execution-costs.md`）  
 开发与内部：`docs/dev.md`、`docs/internal/`  
 研究笔记与论文精读：`docs/research/`
