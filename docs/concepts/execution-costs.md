@@ -2,7 +2,7 @@
 
 本页解决什么：把仓库当前的交易成本、滑点、`tr_close` 和分红处理假设放到一页里。
 本页不解决什么：不提供 broker 级 TCA，不重建真实现金账本。
-适合谁：正在看 HK selected 回测、想知道结果里哪些是“执行近似”，哪些是“总回报价格代理”的读者。
+适合谁：正在看 HK selected 回测、想知道结果里哪些是执行近似，哪些是总回报价格代理的读者。
 读完你会得到什么：当前算法、数据依赖、适用范围和已知限制。
 相关页面：`docs/config.md`、`docs/outputs.md`、`src/csml/execution.py`、`src/csml/data_providers.py`
 
@@ -13,7 +13,7 @@
 1. 默认研究线常用 `transaction_cost_bps`，这是单一平面成本近似。
 2. `backtest.execution` 提供更细的 execution 结构：买卖分边费用、固定滑点、participation 滑点、开平仓价列和最小流动性约束。
 
-这已经比“玩具回测”更进一步，但它仍不是成交后 TCA。真正缺的主要不是更多 if/else，而是：
+这已经比简易回测更进一步，但它仍不是成交后 TCA。目前缺失的包括：
 
 * 用真实成交回报去校准参数。
 * 在需要时引入更细市场数据。
@@ -31,7 +31,7 @@
 * 用 `trade_weight * portfolio_value / amount_col` 估计成交额占当日流动性的比例。
 * 在这个比例上叠加 `base_bps` 和 `impact_bps * participation^power`。
 
-所以它更像“容量 / 冲击 stress model”，不是经过真实订单回报校准过的 TCA 曲线。
+所以目前的状态是容量 / 冲击 stress model。
 
 ## 为什么现在建议用 `adv20_amount`
 
@@ -48,7 +48,7 @@
 
 ## `tr_close` 是什么，不是什么
 
-`tr_close` 在仓库里表示“总回报价格代理”，不是“现金到账账本”。
+`tr_close` 在仓库里表示总回报价格代理。
 
 当前实现依赖两条路之一：
 

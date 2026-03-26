@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
@@ -122,6 +123,48 @@ def flatten_intraday_payload(
     return frame[keep].sort_values(["rq_order_book_id", "trade_datetime"]).reset_index(drop=True)
 
 
+def _default_parts_dir(output_path: Path) -> Path:
+    return output_path.parent / f"{output_path.stem}.parts"
+
+
+def _batch_part_path(parts_dir: Path, batch_index: int) -> Path:
+    return parts_dir / f"batch_{batch_index:04d}.parquet"
+
+
+def _count_part_rows(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return int(len(pd.read_parquet(path, columns=["rq_order_book_id"])))
+
+
+def merge_batch_parts(parts_dir: Path, output_path: Path) -> tuple[int, int]:
+    part_files = sorted(parts_dir.glob("batch_*.parquet"))
+    if not part_files:
+        raise SystemExit(f"No batch parquet files found under: {parts_dir}")
+
+    writer = None
+    total_rows = 0
+    total_symbols: set[str] = set()
+    try:
+        for part_path in part_files:
+            table = pq.read_table(part_path)
+            total_rows += int(table.num_rows)
+            if "rq_order_book_id" in table.column_names:
+                total_symbols.update(table["rq_order_book_id"].to_pylist())
+            if table.num_rows == 0:
+                continue
+            if writer is None:
+                writer = pq.ParquetWriter(output_path, table.schema)
+            writer.write_table(table)
+        if writer is None:
+            empty = flatten_intraday_payload(pd.DataFrame(), order_book_to_ts_code={})
+            empty.to_parquet(output_path, index=False)
+    finally:
+        if writer is not None:
+            writer.close()
+    return total_rows, len(total_symbols)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Download HK intraday bars from RQData and save a flat parquet cache."
@@ -145,6 +188,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--meta-output",
         help="Optional metadata JSON path. Defaults to <output>.meta.json beside the parquet.",
+    )
+    parser.add_argument(
+        "--parts-dir",
+        help="Optional batch checkpoint directory. Defaults to <output_stem>.parts beside the output parquet.",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip batch files that already exist under --parts-dir and only download missing batches.",
     )
     return parser
 
@@ -186,60 +238,68 @@ def main() -> None:
         else output_path.with_suffix(".meta.json")
     )
     meta_path.parent.mkdir(parents=True, exist_ok=True)
+    parts_dir = (
+        resolve_repo_path(args.parts_dir)
+        if args.parts_dir
+        else _default_parts_dir(output_path)
+    )
+    parts_dir.mkdir(parents=True, exist_ok=True)
 
     quota_before = rqdatac.user.get_quota()
-    chunks: list[pd.DataFrame] = []
     batch_rows: list[dict[str, int | str]] = []
     total = len(order_book_ids)
     for start in range(0, total, int(args.batch_size)):
+        batch_index = start // int(args.batch_size) + 1
         batch = order_book_ids[start : start + int(args.batch_size)]
-        payload = rqdatac.get_price(
-            batch,
-            args.start_date,
-            args.end_date,
-            frequency=args.frequency,
-            fields=list(args.fields),
-            market="hk",
-            expect_df=True,
-        )
-        frame = flatten_intraday_payload(payload, order_book_to_ts_code=order_book_to_ts_code)
-        if not frame.empty:
-            chunks.append(frame)
+        part_path = _batch_part_path(parts_dir, batch_index)
+        status = "downloaded"
+        if args.resume and part_path.exists():
+            rows = _count_part_rows(part_path)
+            status = "reused"
+        else:
+            payload = rqdatac.get_price(
+                batch,
+                args.start_date,
+                args.end_date,
+                frequency=args.frequency,
+                fields=list(args.fields),
+                market="hk",
+                expect_df=True,
+            )
+            frame = flatten_intraday_payload(payload, order_book_to_ts_code=order_book_to_ts_code)
+            frame.to_parquet(part_path, index=False)
+            rows = int(len(frame))
         batch_rows.append(
             {
-                "batch": start // int(args.batch_size) + 1,
+                "batch": batch_index,
                 "symbols": len(batch),
-                "rows": int(len(frame)),
+                "rows": rows,
+                "status": status,
+                "part_file": _display_path(part_path),
             }
         )
         print(
-            f"batch {start // int(args.batch_size) + 1}: "
-            f"{start + len(batch)}/{total} symbols, {len(frame)} rows"
+            f"batch {batch_index}: "
+            f"{start + len(batch)}/{total} symbols, {rows} rows, {status}"
         )
 
-    if chunks:
-        result = pd.concat(chunks, ignore_index=True)
-        result = result.sort_values(["rq_order_book_id", "trade_datetime"]).reset_index(drop=True)
-    else:
-        result = flatten_intraday_payload(
-            pd.DataFrame(),
-            order_book_to_ts_code=order_book_to_ts_code,
-        )
-
-    result.to_parquet(output_path, index=False)
+    total_rows, total_symbols = merge_batch_parts(parts_dir, output_path)
     quota_after = rqdatac.user.get_quota()
+    merged_columns = list(pq.ParquetFile(output_path).schema.names)
 
     meta = {
         "dataset": "hk_intraday_cache",
         "symbols_file": _display_path(symbol_file),
         "symbols_requested": int(len(symbols)),
-        "symbols_downloaded": int(result["rq_order_book_id"].nunique()) if not result.empty else 0,
+        "symbols_downloaded": int(total_symbols),
         "start_date": str(args.start_date),
         "end_date": str(args.end_date),
         "frequency": str(args.frequency),
         "fields": list(args.fields),
-        "rows": int(len(result)),
-        "columns": list(result.columns),
+        "rows": int(total_rows),
+        "columns": merged_columns,
+        "parts_dir": _display_path(parts_dir),
+        "resume": bool(args.resume),
         "quota_before": quota_before,
         "quota_after": quota_after,
         "bytes_used_delta": float(quota_after["bytes_used"] - quota_before["bytes_used"]),
@@ -250,7 +310,7 @@ def main() -> None:
 
     print(f"saved parquet: {output_path}")
     print(f"saved meta: {meta_path}")
-    print(f"rows={len(result)} quota_delta={meta['bytes_used_delta']}")
+    print(f"rows={total_rows} quota_delta={meta['bytes_used_delta']}")
 
 
 if __name__ == "__main__":
