@@ -11,6 +11,9 @@ data:
 
 eval:
   run_name: hk_sel_xgb_reg_tr_close_exec_adv20_local
+  walk_forward:
+    test_size: 0.15
+    step_size: 0.15
 
 backtest:
   execution:

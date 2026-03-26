@@ -108,6 +108,23 @@
 * `artifacts/reports/hk_all_5m_20240501_20260326_slippage_daily.parquet`
 * `artifacts/reports/hk_all_5m_20240501_20260326_slippage_summary.json`
 * `artifacts/reports/hk_all_5m_20240501_20260326_slippage_liquidity.csv`
+* `artifacts/reports/hk_execution_calibration_candidates_20260326.csv`
+
+### `VWAP` 口径说明
+
+这批报告里的 `buy_open_to_vwap_bps` 现在不是简单的 `amount / volume`。
+
+原因是：
+
+* 当前已落盘的 HK `5m` parquet 来自 provider 默认 `adjust_type=pre` 的价格序列。
+* 长窗历史上，直接用原始 `amount / volume` 去对比复权后的 `open`，会把 `VWAP` 估偏。
+
+所以当前脚本改成了：
+
+* `vwap_method=bar_price_volume_proxy`
+* 用每根 bar 的 `OHLC` 均价按 bar `volume` 加权，近似整天的 session price center
+
+这更适合当前这批缓存做经验校准，但仍然只是 proxy，不是 tick 级真实 VWAP。
 
 ### 合并总口径的高层读法
 
@@ -116,13 +133,13 @@
 * `1,245,688` 个 symbol-day
 * `2827` 个 symbols
 * `468` 个 trade dates
-* `abs_open_to_vwap_bps` 中位数约 `254.81 bps`
+* `abs_open_to_vwap_bps` 中位数约 `147.66 bps`
 * `abs_open_to_close_bps` 中位数约 `117.99 bps`
 
 但这组数不能直接拿去当你的策略滑点参数，因为它混了大量极端不活跃的小票。看 liquidity bucket 更有意义：
 
 * bucket 1 的 `session_amount` 中位数是 `0`，这批几乎就是“不应交易”的样本
-* bucket 3 到 5 的 `abs_open_to_vwap_bps` 中位数大约在 `243` 到 `256 bps`
+* bucket 3 到 5 的 `abs_open_to_vwap_bps` 中位数大约在 `143` 到 `153 bps`
 * bucket 5 的 `session_amount` 中位数约 `69.15M`
 
 所以更合理的读法是：
@@ -130,6 +147,86 @@
 * 这份报告首先用来做“不可交易样本识别”和“按流动性分层的经验校准”
 * 不要把全市场 raw 中位数直接灌进 `slippage_bps`
 * 真正用于 `hk_selected` 或港股通组合时，应先按 `adv20_amount`、研究池、价格门槛等条件过滤
+
+### `hk_selected` / 港股通研究池的候选参数
+
+`artifacts/reports/hk_execution_calibration_candidates_20260326.csv` 已经把全市场 `5m` 报告缩到了两个更贴近研究的口径：
+
+* `hk_selected`：按 research symbol 集过滤，再加 `open >= 5`
+* `hk_connect_research`：按港股通 research symbol 集过滤，再加 `open >= 5`
+
+更实用的几档读法：
+
+* `hk_selected + min_amount >= 10M`
+  `buy_open_to_vwap_bps` 中位数约 `3.90 bps`，`p75` 约 `140.00 bps`
+* `hk_connect_research + min_amount >= 20M`
+  `buy_open_to_vwap_bps` 中位数约 `1.75 bps`，`p75` 约 `146.91 bps`
+* 两条线在 `50M` 档都落到 `buy_open_to_vwap_bps` 中位数约 `4` 到 `5 bps`，但 `p90` 仍在 `339` 到 `370 bps`
+
+所以当前更适合落成三档 execution 候选，而不是假装自己已经做完 broker TCA：
+
+* `balanced`
+
+```yaml
+backtest:
+  execution:
+    slippage_model:
+      name: participation
+      amount_col: adv20_amount
+      base_bps: 4
+      impact_bps: 50
+      portfolio_value: 1000000
+      power: 0.5
+      max_participation: 0.05
+    constraints:
+      min_price: 5
+      min_amount: 10000000
+      amount_col: adv20_amount
+```
+
+* `connect_conservative`
+
+```yaml
+backtest:
+  execution:
+    slippage_model:
+      name: participation
+      amount_col: adv20_amount
+      base_bps: 4
+      impact_bps: 50
+      portfolio_value: 1000000
+      power: 0.5
+      max_participation: 0.05
+    constraints:
+      min_price: 5
+      min_amount: 20000000
+      amount_col: adv20_amount
+```
+
+* `stress`
+
+```yaml
+backtest:
+  execution:
+    slippage_model:
+      name: participation
+      amount_col: adv20_amount
+      base_bps: 8
+      impact_bps: 80
+      portfolio_value: 1000000
+      power: 0.5
+      max_participation: 0.03
+    constraints:
+      min_price: 5
+      min_amount: 50000000
+      amount_col: adv20_amount
+```
+
+解释：
+
+* 这里的 `base_bps` 对齐的是研究池过滤后的 `open -> VWAP proxy` 中位数量级。
+* `impact_bps` 不是直接拟合 `p75/p90`，而是把这批分钟线结果当成“压力带”来定一个更保守的 participation 曲线。
+* 在当前 `portfolio_value=1m`、`top_k=20` 的设定下，单笔 trade participation 通常很低，真正决定结果的大多还是 `base_bps` 和 `min_amount`；如果你要做容量分析，先改 `portfolio_value`，再谈 `impact_bps`。
 
 ## quota 现实
 
@@ -155,4 +252,5 @@
 1. 先用 `artifacts/reports/hk_all_5m_20240501_20260326_slippage_liquidity.csv` 看不同流动性桶的经验滑点量级。
 2. 再把 `hk_selected` 或港股通研究池按 `adv20_amount` / 价格 / 最低成交额过滤，抽出更贴近策略的样本。
 3. 在 execution 配置里优先使用 `adv20_amount` 或 `medadv20_amount`，不要退回 `open + same-day amount`。
-4. 如果后面要更细的盘中执行研究，再决定是否值得补 `1m`；不要在 `1GB/day` 试用 quota 下先把自己拖进更重的数据维护。
+4. 现阶段如果要补正式研究参数，优先从 `balanced` 或 `connect_conservative` 开始；不要直接用全市场 raw 中位数。
+5. 如果后面要更细的盘中执行研究，再决定是否值得补 `1m`；不要在 `1GB/day` 试用 quota 下先把自己拖进更重的数据维护。

@@ -89,6 +89,21 @@
 * 你在做容量边界、分批执行、集合竞价或盘口冲击
 * 你要做真实现金分红账本
 
+## 当前 HK `5m` 校准报告还要再记一个口径
+
+当前工作区里的 HK `5m` 缓存是 provider 默认 `adjust_type=pre` 的价格序列。  
+因此，如果直接拿 `amount / volume` 去对比历史复权后的 `open`，长期样本上的 `VWAP` 会失真。
+
+所以仓库里的 intraday 滑点报告当前采用的是：
+
+* `vwap_method=bar_price_volume_proxy`
+* 用每根 `5m` bar 的 `OHLC` 均价按 bar `volume` 加权，近似 session price center
+
+这能让现有缓存继续用于经验校准，但要明确：
+
+* 它是可复用的研究 proxy，不是 tick 级真实 VWAP
+* 如果后面要做更严肃的盘中执行研究，优先考虑重新下载 `adjust_type=none` 的分钟线，或直接引入更细成交数据
+
 ## 推荐的下一步
 
 优先级从高到低通常是：
