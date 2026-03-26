@@ -3,7 +3,6 @@ import pandas as pd
 
 from csml.project_tools import build_hk_connect_universe as hk_universe
 from csml.project_tools import build_hk_daily_asset_universe as hk_daily_assets
-from csml.project_tools import fetch_index_components as index_components
 
 
 @pytest.mark.parametrize(
@@ -148,22 +147,3 @@ def test_discover_daily_asset_dir_falls_back_to_full_latest(monkeypatch, tmp_pat
     resolved = hk_daily_assets.discover_daily_asset_dir()
 
     assert resolved == full_dir.parent
-
-
-def test_month_bounds_handles_leap_year():
-    assert index_components.month_bounds("202402") == ("20240201", "20240229")
-
-
-def test_month_bounds_rejects_invalid_month():
-    with pytest.raises(SystemExit, match="month must be between 01 and 12."):
-        index_components.month_bounds("202413")
-
-
-def test_require_token_ignores_legacy_alias(monkeypatch):
-    monkeypatch.setattr(index_components, "load_dotenv", lambda: None)
-    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
-    monkeypatch.delenv("TUSHARE_TOKEN_2", raising=False)
-    monkeypatch.setenv("TUSHARE_API_KEY", "legacy-only")
-
-    with pytest.raises(SystemExit, match="Please set TUSHARE_TOKEN or TUSHARE_TOKEN_2 before running."):
-        index_components.require_token()

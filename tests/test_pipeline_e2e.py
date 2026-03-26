@@ -52,9 +52,9 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200331",
             "cache_dir": str(tmp_path / "cache"),
@@ -210,9 +210,9 @@ def test_pipeline_run_offline_with_train_target_transform(tmp_path, monkeypatch)
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200331",
             "cache_dir": str(tmp_path / "cache"),
@@ -325,9 +325,9 @@ def test_pipeline_run_uses_explicit_log_file(tmp_path, monkeypatch):
     output_dir = tmp_path / "runs"
     explicit_log_path = tmp_path / "custom.log"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200331",
             "cache_dir": str(tmp_path / "cache"),
@@ -436,9 +436,9 @@ def test_pipeline_ic_uses_rebalance_dates(tmp_path, monkeypatch):
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200430",
             "cache_dir": str(tmp_path / "cache"),
@@ -541,9 +541,9 @@ def test_pipeline_run_offline_with_ridge(tmp_path, monkeypatch):
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200331",
             "cache_dir": str(tmp_path / "cache"),
@@ -630,9 +630,9 @@ def test_pipeline_run_offline_with_xgb_ranker(tmp_path, monkeypatch):
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200331",
             "cache_dir": str(tmp_path / "cache"),
@@ -727,9 +727,9 @@ def test_pipeline_walk_forward_feature_stability_outputs(tmp_path, monkeypatch):
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200530",
             "cache_dir": str(tmp_path / "cache"),
@@ -850,9 +850,9 @@ def test_pipeline_records_exp_decay_and_train_window_summary(tmp_path, monkeypat
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200430",
             "cache_dir": str(tmp_path / "cache"),

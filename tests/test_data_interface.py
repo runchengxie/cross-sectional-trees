@@ -5,39 +5,22 @@ import pytest
 from csml.data_interface import DataInterface
 
 
-def test_data_interface_ignores_legacy_tushare_alias(tmp_path, monkeypatch):
-    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
-    monkeypatch.delenv("TUSHARE_TOKEN_2", raising=False)
-    monkeypatch.setenv("TUSHARE_API_KEY", "legacy-only")
-
-    with pytest.raises(SystemExit, match="Please set TUSHARE_TOKEN or TUSHARE_TOKEN_2 first."):
+def test_data_interface_rejects_non_hk_market(tmp_path):
+    with pytest.raises(SystemExit, match="supports only market='hk'"):
         DataInterface(
             market="cn",
-            data_cfg={"provider": "tushare", "retry": {"max_attempts": 1}},
+            data_cfg={"provider": "rqdata", "retry": {"max_attempts": 1}},
             cache_dir=tmp_path / "cache",
         )
 
 
-def test_data_interface_loads_primary_tushare_tokens_only(tmp_path, monkeypatch):
-    monkeypatch.setenv("TUSHARE_TOKEN", "primary")
-    monkeypatch.setenv("TUSHARE_TOKEN_2", "secondary")
-    monkeypatch.setenv("TUSHARE_API_KEY", "legacy-only")
-
-    def _fail_make_client(_self, _token):
-        raise RuntimeError("stop after token collection")
-
-    monkeypatch.setattr(DataInterface, "_make_tushare_client", _fail_make_client)
-
-    with pytest.raises(RuntimeError, match="stop after token collection"):
+def test_data_interface_rejects_non_rqdata_provider(tmp_path):
+    with pytest.raises(SystemExit, match="supports only provider='rqdata'"):
         DataInterface(
-            market="cn",
+            market="hk",
             data_cfg={"provider": "tushare", "retry": {"max_attempts": 1}},
             cache_dir=tmp_path / "cache",
         )
-
-    interface = DataInterface.__new__(DataInterface)
-    tokens = DataInterface._load_tushare_tokens(interface)
-    assert tokens == ["primary", "secondary"]
 
 
 def test_data_interface_skips_rqdatac_init_when_local_assets_configured(tmp_path, monkeypatch):
@@ -82,7 +65,6 @@ def test_fetch_fundamentals_can_suppress_retry_warning_logs(tmp_path, monkeypatc
     interface.max_attempts = 1
     interface.backoff_seconds = 0.0
     interface.max_backoff_seconds = 0.0
-    interface.rotate_tokens = False
 
     def _raise(*_args, **_kwargs):
         raise ValueError("order_book_ids: at least one valid instrument expected, got none")

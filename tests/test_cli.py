@@ -9,9 +9,7 @@ from csml.config_utils import resolve_pipeline_config
 from csml.data_tools import backup_data as backup_data_tool
 from csml.data_tools import build_hk_connect_universe as hk_connect_tool
 from csml.data_tools import build_hk_daily_asset_universe as hk_daily_assets_tool
-from csml.data_tools import fetch_index_components as index_components_tool
 from csml.data_tools import rqdata_assets as rqdata_assets_tool
-from csml.data_tools import verify_tushare_tokens as verify_tushare_tool
 from csml.liveops import alloc_hk as alloc_hk_tool
 from csml.liveops import snapshot as snapshot_tool
 from csml.project_tools import alloc as alloc_tool
@@ -688,7 +686,7 @@ def test_append_passthrough_strips_leading_separator():
     assert callable(pit_coverage.func)
 
 
-def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
+def test_cli_parses_init_config_universe_and_rqdata_info():
     parser = cli.build_parser()
 
     init_cfg = parser.parse_args(
@@ -756,29 +754,6 @@ def test_cli_parses_init_config_universe_rqdata_info_and_tushare_verify():
     assert hk_daily_assets.config == "configs/presets/universe/hk_all_assets.yml"
     assert hk_daily_assets.args == ["--", "--start-date", "20000104", "--end-date", "20251231"]
     assert callable(hk_daily_assets.func)
-
-    index_components = parser.parse_args(
-        [
-            "universe",
-            "index-components",
-            "--",
-            "--index-code",
-            "000300.SH",
-            "--month",
-            "202501",
-        ]
-    )
-    assert index_components.command == "universe"
-    assert index_components.uni_command == "index-components"
-    assert index_components.args == ["--", "--index-code", "000300.SH", "--month", "202501"]
-    assert callable(index_components.func)
-
-    verify_token = parser.parse_args(["tushare", "verify-token"])
-    assert verify_token.command == "tushare"
-    assert verify_token.tushare_command == "verify-token"
-    assert verify_token.args == []
-    assert callable(verify_token.func)
-
 
 def test_cli_handle_holdings_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
@@ -1218,11 +1193,9 @@ def test_cli_handle_backup_data_passes_through_args(monkeypatch):
 def test_cli_handle_universe_wrappers_pass_through_args(monkeypatch):
     hk_connect_calls: list[list[str]] = []
     hk_daily_calls: list[list[str]] = []
-    index_calls: list[list[str]] = []
 
     monkeypatch.setattr(hk_connect_tool, "main", lambda argv: hk_connect_calls.append(argv))
     monkeypatch.setattr(hk_daily_assets_tool, "main", lambda argv: hk_daily_calls.append(argv))
-    monkeypatch.setattr(index_components_tool, "main", lambda argv: index_calls.append(argv))
 
     hk_connect_args = SimpleNamespace(
         config="configs/presets/universe/hk_connect.yml",
@@ -1235,9 +1208,6 @@ def test_cli_handle_universe_wrappers_pass_through_args(monkeypatch):
         args=["--", "--start-date", "20000104", "--end-date", "20251231"],
     )
     assert cli._handle_universe_hk_daily_assets(hk_daily_args) == 0
-
-    index_args = SimpleNamespace(args=["--", "--index-code", "000300.SH", "--month", "202501"])
-    assert cli._handle_universe_index_components(index_args) == 0
 
     assert hk_connect_calls == [
         [
@@ -1259,16 +1229,6 @@ def test_cli_handle_universe_wrappers_pass_through_args(monkeypatch):
             "20251231",
         ]
     ]
-    assert index_calls == [["--index-code", "000300.SH", "--month", "202501"]]
-
-
-def test_cli_handle_tushare_verify_calls_verifier(monkeypatch):
-    calls: list[list[str]] = []
-    monkeypatch.setattr(verify_tushare_tool, "main", lambda argv=None: calls.append(argv or []))
-
-    args = SimpleNamespace(args=["--", "--verbose"])
-    assert cli._handle_tushare_verify(args) == 0
-    assert calls == [["--verbose"]]
 
 
 def test_cli_handle_init_config_writes_default_configs_dir(tmp_path, monkeypatch, capsys):

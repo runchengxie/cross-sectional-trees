@@ -1,6 +1,6 @@
 # cross-sectional-machine-learning
 
-使用 TuShare / RQData / EODHD 日线数据做截面因子研究、评估和持仓快照。默认文档与模板以港股研究为主，A 股与美股口径主要用于兼容和对照。
+使用 RQData 日线数据做港股截面因子研究、评估和持仓快照。当前仓库边界是 `HK-only + RQData-only + 保留本地资产直读`。
 
 ## 这项目是干嘛的
 
@@ -40,7 +40,7 @@ cp .env.example .env
 
 * 研究汇总与敏感性分析：`csml summarize` / `csml grid` / `csml sweep-linear`
 * live 结果查看与分配：`csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk`（含 HK 执行前场景矩阵）
-* 数据与运维工具：`csml rqdata ...` / `csml universe ...` / `csml tushare verify-token`
+* 数据与运维工具：`csml rqdata ...` / `csml universe ...`
 * 数据分层与查询：`csml data catalog` / `csml data materialize` / `csml data query`
 
 完整能力地图见 `docs/capabilities.md`。

@@ -78,12 +78,12 @@ csml universe hk-connect \
   -- --mode daily
 ```
 
-### 指数成分
+### HK 全市场日线资产
 
 ```bash
-csml universe index-components \
-  -- --index-code 000300.SH \
-  --month 202501
+csml universe hk-daily-assets \
+  --config configs/presets/universe/hk_all_assets.yml \
+  -- --end-date 20251231
 ```
 
 更多用法见 `docs/cli.md` 的「universe」命令部分。

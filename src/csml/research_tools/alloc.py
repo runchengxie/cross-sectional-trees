@@ -84,10 +84,6 @@ def _resolve_market(cfg: dict, symbols: list[str]) -> str | None:
         text = str(symbol or "").strip().upper()
         if text.endswith(".HK") or text.endswith(".XHKG"):
             inferred.add("hk")
-        elif text.endswith(".SH") or text.endswith(".SZ"):
-            inferred.add("cn")
-        elif text.endswith(".XSHG") or text.endswith(".XSHE"):
-            inferred.add("cn")
     if len(inferred) == 1:
         return next(iter(inferred))
     return None
@@ -111,12 +107,12 @@ def _to_rq_order_book_id(symbol: str, market: str | None) -> str:
     text = str(symbol or "").strip().upper()
     if not text:
         return text
-    if text.endswith(".XHKG") or text.endswith(".XSHG") or text.endswith(".XSHE"):
+    if text.endswith(".XHKG"):
         return text
-    if text.endswith(".SH"):
-        return f"{text[:-3]}.XSHG"
-    if text.endswith(".SZ"):
-        return f"{text[:-3]}.XSHE"
+    if text.endswith(".XSHG") or text.endswith(".XSHE") or text.endswith(".SH") or text.endswith(".SZ"):
+        raise SystemExit(
+            f"Unsupported symbol '{symbol}'. This project currently supports only HK symbols."
+        )
 
     if text.endswith(".HK") or market == "hk":
         if text.endswith(".HK"):
@@ -127,7 +123,9 @@ def _to_rq_order_book_id(symbol: str, market: str | None) -> str:
             text = text.zfill(5)
         return f"{text}.XHKG"
 
-    return text
+    raise SystemExit(
+        f"Unsupported symbol '{symbol}'. This project currently supports only HK symbols."
+    )
 
 
 def _resolve_price_date(rqdatac, as_of: pd.Timestamp, market: str | None) -> pd.Timestamp:

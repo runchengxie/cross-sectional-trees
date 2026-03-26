@@ -1,53 +1,30 @@
 # 数据源指南
 
-本页解决什么：选择数据 provider 的决策与权衡。
-本页不解决什么：不展开配置键的权威定义。
-适合谁：需要在 provider 之间做选择的人。
-读完你会得到什么：provider 选择建议与使用边界。
+本页解决什么：说明当前仓库为什么只保留 HK + RQData，以及什么时候走在线接口、什么时候走本地资产。  
+本页不解决什么：不展开完整配置键定义。  
+适合谁：准备开始跑项目，或想确认“现在到底支持什么”的读者。  
+读完你会得到什么：当前 provider 边界、最短配置和本地资产模式的使用方式。  
 相关页面：`docs/config.md`、`docs/providers.md`、`docs/cli.md`
 
-这个文档帮你选择和配置数据 provider。
+## 当前结论
 
-## 支持的 provider
+当前仓库没有 provider 选择题。
 
-| Provider | 支持的市场 | 特点 |
-|----------|-----------|------|
-| `tushare` | A 股 | 免费额度有限，适合 A 股研究 |
-| `rqdata` | 港股、A 股、美股 | 收费，覆盖全，历史数据好 |
-| `eodhd` | 港股、A 股、美股 | 收费，API 稳定 |
+正式支持边界只有一条：
 
-## 快速决策
+* `provider=rqdata`
+* `market=hk`
+* 可选本地 HK 资产直读
 
-| 你的情况 | 推荐 provider |
-|---------|-------------|
-| 做港股研究 | `rqdata` |
-| 做 A 股研究 | `tushare` 或 `rqdata` |
-| 做美股研究 | `rqdata` 或 `eodhd` |
-| 想先跑通看看 | `rqdata`（需要账号）或 `tushare`（免费额度） |
+历史上的其他 provider 和市场口径不再是当前项目的正式支持面。
 
-## 配置示例
-
-### TuShare（A股）
+## 最短配置
 
 ```yaml
-data:
-  provider: tushare
-  start_date: "20200101"
-  end_date: "20241231"
-```
+market: hk
 
-环境变量：
-
-```bash
-export TUSHARE_TOKEN=your_token_here
-```
-
-### RQData（港股）
-
-```yaml
 data:
   provider: rqdata
-  market: hk
   start_date: "20200101"
   end_date: "20241231"
 ```
@@ -59,37 +36,29 @@ export RQDATA_USERNAME=your_username
 export RQDATA_PASSWORD=your_password
 ```
 
-### EODHD
+## 什么时候直接走在线 RQData
 
-```yaml
-data:
-  provider: eodhd
-  market: hk
-  start_date: "20200101"
-  end_date: "20241231"
-```
+适合：
 
-环境变量：
+* 刚开始跑 starter
+* 需要快速验证一个实验
+* 只需要日线、基础信息和 HK 日频估值
 
-```bash
-export EODHD_API_TOKEN=your_token_here
-```
+优点：
 
-## provider 差异
+* 配置最短
+* 不需要提前准备资产目录
+* 与默认模板一致
 
-| 差异点 | TuShare | RQData | EODHD |
-|--------|---------|--------|-------|
-| 港股通支持 | 有限 | 完整 | 完整 |
-| PIT 财报 | 不支持 | 支持 | 不支持 |
-| 历史数据质量 | 一般 | 好 | 好 |
-| 交易日历（last_trading_day） | 不严格（回退自然日） | 严格（需要 rqdatac 交易日历） | 不严格（回退自然日） |
-| 免费额度 | 有 | 无 | 有 |
+## 什么时候切到本地资产模式
 
-详见 `docs/providers.md`。
+适合：
 
-## 本地资产模式
+* 想冻结一版研究输入
+* 试用资格有限，希望离线继续复现
+* 准备做更大范围的 HK 资产研究
 
-如果你已经有本地数据，可以不走 provider，直接读本地文件：
+示例：
 
 ```yaml
 data:
@@ -99,12 +68,10 @@ data:
     instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
 ```
 
-这样即使没有网络，也能跑研究。
+这时 pipeline 会直接读本地 daily / instruments 文件，不再初始化 `rqdatac`。
 
-详见 `docs/config.md` 的「本地 HK 资产直读」部分。
+## 进一步阅读
 
-## 相关文档
-
-- 配置参数：`docs/config.md`
-- provider 差异详情：`docs/providers.md`
-- CLI 命令：`docs/cli.md`
+* 想看 provider 细节：`docs/providers.md`
+* 想看本地 HK 资产准备顺序：`docs/playbooks/hk-data-assets.md`
+* 想看配置键：`docs/config.md`

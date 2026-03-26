@@ -34,8 +34,8 @@
 | RQData 账号/字段探针 | `csml rqdata info`、`csml rqdata quota`、`csml rqdata list-hk-financial-fields` | 检查账号初始化、配额与 HK 财报字段元数据 | 账号/配额/字段清单 | 运维排障和下载前探测 |
 | RQData HK 原始资产镜像 | `csml rqdata export-hk-instruments`、`mirror-hk-daily`、`mirror-hk-pit-financials`、`mirror-hk-financial-details`、`mirror-hk-ex-factors`、`mirror-hk-dividends`、`mirror-hk-shares`、`mirror-hk-exchange-rate`、`mirror-hk-announcement`、`mirror-hk-southbound`、`mirror-hk-instrument-industry`、`mirror-hk-industry-changes` | 把 HK instrument、行情、PIT 财报、参考数据、announcement、southbound、行业资产冻结为可复用目录 | `artifacts/assets/rqdata/hk/<dataset>/<snapshot>/` | 属于正式 CLI，不是边角脚本 |
 | RQData HK 派生构建 | `csml rqdata build-hk-pit-fundamentals`、`build-hk-industry-labels`、`inspect-hk-pit-coverage` | 构建 pipeline 可读 fundamentals、行业标签文件，并检查 PIT 覆盖率 | `pipeline_fundamentals.parquet`、`industry_labels_<freq>.parquet`、coverage 报告 | 连接 raw mirror 与研究主链路 |
-| Universe 工具 | `csml universe hk-connect`、`hk-daily-assets`、`index-components` | 构建港股通 PIT universe、HK 全市场 by-date universe、指数成分文件 | `artifacts/assets/universe/...` | `hk-daily-assets` 依赖本地日线镜像 |
-| 运维辅助 | `csml backup-data`、`csml tushare verify-token` | 归档本地缓存/股票池/配置，验证 TuShare token | `artifacts/snapshots/<name>/` 或验证结果 | 研究运维与排障入口 |
+| Universe 工具 | `csml universe hk-connect`、`hk-daily-assets` | 构建港股通 PIT universe、HK 全市场 by-date universe | `artifacts/assets/universe/...` | `hk-daily-assets` 依赖本地日线镜像 |
+| 运维辅助 | `csml backup-data` | 归档本地缓存/股票池/配置 | `artifacts/snapshots/<name>/` | 研究运维与排障入口 |
 
 补充：
 
@@ -47,7 +47,7 @@
 | 模块 | 已实现能力 | 关键参数入口 | 典型风险点 |
 | --- | --- | --- | --- |
 | Universe | `auto/pit/static` 股票池，按日期过滤、停牌/上市天数/成交额过滤 | `universe.*` | 过滤顺序改变结果；PIT 数据缺失 |
-| Data | `tushare/rqdata/eodhd`，market-aware symbol 规则，缓存与重试；RQData 支持直接读取本地 daily/instruments 资产 | `market`、`data.*` | 多 provider 口径不一致；在线/离线双路径结果漂移 |
+| Data | `rqdata`，HK symbol 规则，缓存与重试；支持直接读取本地 daily/instruments 资产 | `market`、`data.*` | 在线/离线双路径结果漂移 |
 | Fundamentals | `provider/file` 两路并入，列映射、`ffill`、缺失策略；支持 `provider_overlay` 叠加 provider 日频估值 | `fundamentals.*` | provider 能力不对齐；PIT 与日频估值 merge 口径不一致 |
 | Industry | 支持从本地 `industry_labels_<freq>.parquet` join 行业标签 | `industry.*` | 行业标签频率与研究频率错配 |
 | Label | `fixed/next_rebalance`，shift 与截尾 | `label.*` | 时序泄漏、标签口径偏差 |

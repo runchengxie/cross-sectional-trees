@@ -23,7 +23,6 @@
 | 刷新数据 catalog | `csml data catalog` |
 | 物化标准层 | `csml data materialize --name <> ...` |
 | DuckDB 查询标准层 | `csml data query --sql <>` |
-| 验证 TuShare token | `csml tushare verify-token` |
 
 ## 查看帮助
 
@@ -38,7 +37,7 @@ csml <subcommand> --help
 
 `--config` 支持：
 
-- 内置别名：`default` / `cn` / `hk` / `us`
+- 内置别名：`default` / `hk`
 - 本地 YAML 路径：`configs/presets/hk.yml`
 
 > `csml run --config default` 里的 `default` 是内置别名，不等于 `configs/presets/default.yml`。
@@ -402,24 +401,6 @@ csml universe hk-connect --config configs/presets/universe/hk_connect.yml -- --m
 
 ```bash
 csml universe hk-daily-assets --config configs/presets/universe/hk_all_assets.yml -- --end-date 20251231
-```
-
-### csml universe index-components
-
-拉取指数成分。
-
-```bash
-csml universe index-components -- --index-code 000300.SH --month 202501
-```
-
-## TuShare 命令
-
-### csml tushare verify-token
-
-验证本地 `TUSHARE_TOKEN` / `TUSHARE_TOKEN_2` 是否可用。
-
-```bash
-csml tushare verify-token
 ```
 
 ## 相关文档

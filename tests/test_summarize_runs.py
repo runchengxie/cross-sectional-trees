@@ -109,13 +109,13 @@ def test_summarize_runs_collects_metrics_and_flags(tmp_path):
 
     run_b = runs_dir / "beta_20260102_130000_abcd1234"
     summary_b = {
-        "data": {"market": "us"},
+        "data": {"market": "hk"},
         "eval": {"ic": {"mean": 0.01, "ir": 0.2}, "long_short": -0.03},
         "backtest": {"enabled": False},
     }
     config_b = {
-        "market": "us",
-        "data": {"provider": "eodhd", "start_date": "20200101", "end_date": "20201231"},
+        "market": "hk",
+        "data": {"provider": "rqdata", "start_date": "20200101", "end_date": "20201231"},
         "universe": {"mode": "static"},
         "label": {"horizon_days": 10, "shift_days": 2},
         "eval": {
@@ -311,7 +311,7 @@ def test_summarize_runs_default_output_and_recursive_scan(tmp_path):
 
     summary = {
         "run": {"name": "gamma", "timestamp": "20260103_140000", "config_hash": "1234abcd"},
-        "data": {"market": "cn", "provider": "tushare"},
+        "data": {"market": "hk", "provider": "rqdata"},
         "eval": {"ic": {"mean": 0.02, "ir": 0.3}, "long_short": 0.01},
         "backtest": {
             "enabled": True,
@@ -327,7 +327,7 @@ def test_summarize_runs_default_output_and_recursive_scan(tmp_path):
             },
         },
     }
-    config = {"market": "cn", "eval": {"top_k": 10}, "backtest": {"top_k": 10}}
+    config = {"market": "hk", "eval": {"top_k": 10}, "backtest": {"top_k": 10}}
     _write_run(run_dir, summary, config)
 
     summarize_runs.main(["--runs-dir", str(runs_dir), "--runs-dir", str(tmp_path / "missing")])

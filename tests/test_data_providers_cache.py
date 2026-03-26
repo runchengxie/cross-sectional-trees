@@ -23,7 +23,7 @@ def test_fetch_daily_symbol_cache_refresh_window_merges_monotonic(tmp_path, monk
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     symbol = "AAA"
-    cache_file = cache_dir / "us_tushare_daily_AAA.parquet"
+    cache_file = cache_dir / "hk_rqdata_daily_AAA.parquet"
 
     cached = _daily_frame(symbol, "20200101", "20200105", close_offset=0.0)
     cached.to_parquet(cache_file)
@@ -37,13 +37,13 @@ def test_fetch_daily_symbol_cache_refresh_window_merges_monotonic(tmp_path, monk
     monkeypatch.setattr(data_providers, "_fetch_daily_from_provider", fake_fetch)
 
     data_cfg = {
-        "provider": "tushare",
+        "provider": "rqdata",
         "cache_mode": "symbol",
         "cache_refresh_days": 2,
         "cache_refresh_on_hit": False,
     }
     result = data_providers.fetch_daily(
-        "us",
+        "hk",
         symbol,
         "20200102",
         "20200107",
@@ -73,7 +73,7 @@ def test_fetch_daily_symbol_cache_refresh_on_hit_triggers_tail_refresh(tmp_path,
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     symbol = "AAA"
-    cache_file = cache_dir / "us_tushare_daily_AAA.parquet"
+    cache_file = cache_dir / "hk_rqdata_daily_AAA.parquet"
 
     cached = _daily_frame(symbol, "20200101", "20200105", close_offset=0.0)
     cached.to_parquet(cache_file)
@@ -87,13 +87,13 @@ def test_fetch_daily_symbol_cache_refresh_on_hit_triggers_tail_refresh(tmp_path,
     monkeypatch.setattr(data_providers, "_fetch_daily_from_provider", fake_fetch)
 
     data_cfg = {
-        "provider": "tushare",
+        "provider": "rqdata",
         "cache_mode": "symbol",
         "cache_refresh_days": 2,
         "cache_refresh_on_hit": True,
     }
     result = data_providers.fetch_daily(
-        "us",
+        "hk",
         symbol,
         "20200102",
         "20200105",
@@ -115,7 +115,7 @@ def test_fetch_daily_symbol_cache_skips_small_leading_calendar_gap(tmp_path, mon
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     symbol = "AAA"
-    cache_file = cache_dir / "us_tushare_daily_AAA.parquet"
+    cache_file = cache_dir / "hk_rqdata_daily_AAA.parquet"
 
     cached = _daily_frame(symbol, "20200102", "20200105", close_offset=0.0)
     cached.to_parquet(cache_file)
@@ -129,13 +129,13 @@ def test_fetch_daily_symbol_cache_skips_small_leading_calendar_gap(tmp_path, mon
     monkeypatch.setattr(data_providers, "_fetch_daily_from_provider", fake_fetch)
 
     data_cfg = {
-        "provider": "tushare",
+        "provider": "rqdata",
         "cache_mode": "symbol",
         "cache_refresh_days": 0,
         "cache_refresh_on_hit": False,
     }
     result = data_providers.fetch_daily(
-        "us",
+        "hk",
         symbol,
         "20200101",
         "20200105",
@@ -157,7 +157,7 @@ def test_fetch_daily_symbol_cache_fetches_large_leading_gap(tmp_path, monkeypatc
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     symbol = "AAA"
-    cache_file = cache_dir / "us_tushare_daily_AAA.parquet"
+    cache_file = cache_dir / "hk_rqdata_daily_AAA.parquet"
 
     cached = _daily_frame(symbol, "20200110", "20200112", close_offset=0.0)
     cached.to_parquet(cache_file)
@@ -171,13 +171,13 @@ def test_fetch_daily_symbol_cache_fetches_large_leading_gap(tmp_path, monkeypatc
     monkeypatch.setattr(data_providers, "_fetch_daily_from_provider", fake_fetch)
 
     data_cfg = {
-        "provider": "tushare",
+        "provider": "rqdata",
         "cache_mode": "symbol",
         "cache_refresh_days": 0,
         "cache_refresh_on_hit": False,
     }
     result = data_providers.fetch_daily(
-        "us",
+        "hk",
         symbol,
         "20200101",
         "20200112",

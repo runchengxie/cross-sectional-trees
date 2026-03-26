@@ -401,24 +401,6 @@ def _handle_universe_hk_daily_assets(args) -> int:
     return 0
 
 
-def _handle_universe_index_components(args) -> int:
-    from .data_tools import fetch_index_components
-
-    argv: list[str] = []
-    _append_passthrough(argv, args.args)
-    fetch_index_components.main(argv)
-    return 0
-
-
-def _handle_tushare_verify(args) -> int:
-    from .data_tools import verify_tushare_tokens
-
-    argv: list[str] = []
-    _append_passthrough(argv, args.args)
-    verify_tushare_tokens.main(argv)
-    return 0
-
-
 def _handle_grid(args) -> int:
     from .commands import run_grid
 
@@ -710,7 +692,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="Run the main training/eval/backtest pipeline")
     run.add_argument(
         "--config",
-        help="Path to YAML config or built-in name (default/hk/cn/us; cn/us are compatibility templates).",
+        help="Path to YAML config or built-in name (default/hk).",
     )
     run.set_defaults(func=_handle_run)
 
@@ -899,19 +881,6 @@ def build_parser() -> argparse.ArgumentParser:
     hk_daily_assets.add_argument("--config", help="YAML config path (optional).")
     hk_daily_assets.add_argument("args", nargs=argparse.REMAINDER)
     hk_daily_assets.set_defaults(func=_handle_universe_hk_daily_assets)
-
-    index_components = uni_sub.add_parser(
-        "index-components", help="Fetch index constituents (TuShare)"
-    )
-    index_components.add_argument("args", nargs=argparse.REMAINDER)
-    index_components.set_defaults(func=_handle_universe_index_components)
-
-    tushare = subparsers.add_parser("tushare", help="TuShare utilities")
-    tu_sub = tushare.add_subparsers(dest="tushare_command", required=True)
-
-    verify = tu_sub.add_parser("verify-token", help="Verify TuShare token(s)")
-    verify.add_argument("args", nargs=argparse.REMAINDER)
-    verify.set_defaults(func=_handle_tushare_verify)
 
     grid = subparsers.add_parser("grid", help="Run Top-K × cost grid and summarize results")
     from .commands import run_grid
@@ -1273,7 +1242,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_cfg.add_argument(
         "--market",
         default="default",
-        help="Template to export (default/hk/cn/us; prefer default or hk for new setups).",
+        help="Template to export (default/hk).",
     )
     init_cfg.add_argument(
         "--out",

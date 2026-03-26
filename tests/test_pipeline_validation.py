@@ -11,9 +11,9 @@ from csml.data_interface import DataInterface
 
 def _base_config(tmp_path):
     return {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200110",
             "cache_dir": str(tmp_path / "cache"),

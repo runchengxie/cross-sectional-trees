@@ -54,7 +54,7 @@ csml run --config default
 * `configs/presets/hk.yml` 是 HK 月频 starter：`PIT universe` + `provider` 基本面。
 * `configs/presets/hk_quarterly_pit_hybrid.yml` 才是 HK 季频 `PIT fundamentals` 入口。
 * `configs/experiments/baseline/` + `configs/experiments/variants/` 下的 HK selected 官方模板，主要建立在季度 PIT 路线之上。
-* `cn/us` 相关改动主要属于兼容维护。日常开发优先验证 `default`、`hk` 和 HK selected 路线。
+* 日常开发优先验证 `default`、`hk` 和 HK selected 路线；当前仓库不再维护其他非 HK 主线。
 
 ## 测试
 

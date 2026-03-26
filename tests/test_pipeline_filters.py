@@ -82,9 +82,9 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "eodhd",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200131",
             "cache_dir": str(tmp_path / "cache"),
@@ -99,7 +99,7 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
             "drop_st": True,
         },
         "fundamentals": {
-            "enabled": True,
+            "enabled": False,
             "source": "provider",
             "required": False,
         },
@@ -165,14 +165,14 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
     tmp_path, monkeypatch
 ):
     dates = pd.date_range("2020-01-01", periods=15, freq="B")
-    symbols = ["AAA", "BBB"]
+    symbols = ["AAA.HK", "BBB.HK"]
     frames = _build_frames(symbols, dates, include_amount=False)
 
     universe_path = tmp_path / "universe_by_date.csv"
     pd.DataFrame(
         {
             "trade_date": ["20200101", "20200101", "20200113", "20200113", "20200116"],
-            "ts_code": ["AAA", "BBB", "AAA", "BBB", "BBB"],
+            "ts_code": ["AAA.HK", "BBB.HK", "AAA.HK", "BBB.HK", "BBB.HK"],
         }
     ).to_csv(universe_path, index=False)
 
@@ -187,9 +187,9 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "eodhd",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200131",
             "cache_dir": str(tmp_path / "cache"),
@@ -203,7 +203,7 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
             "drop_suspended": False,
         },
         "fundamentals": {
-            "enabled": True,
+            "enabled": False,
             "source": "provider",
             "required": False,
         },
@@ -273,8 +273,8 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
         pricing_df["trade_date"] == dropped_date, "symbol"
     ].tolist()
 
-    assert "AAA" not in selection_symbols
-    assert "AAA" in pricing_symbols
+    assert "AAA.HK" not in selection_symbols
+    assert "AAA.HK" in pricing_symbols
 
 
 @pytest.mark.slow
@@ -296,9 +296,9 @@ def test_pipeline_backtest_pricing_includes_execution_columns(tmp_path, monkeypa
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "eodhd",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200131",
             "cache_dir": str(tmp_path / "cache"),
@@ -407,9 +407,9 @@ def test_pipeline_price_features_follow_price_col(tmp_path, monkeypatch):
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200131",
             "cache_dir": str(tmp_path / "cache"),
@@ -2049,9 +2049,9 @@ def test_pipeline_feature_formulas(tmp_path, monkeypatch):
 
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
+        "market": "hk",
         "data": {
-            "provider": "tushare",
+            "provider": "rqdata",
             "start_date": "20200101",
             "end_date": "20200131",
             "cache_dir": str(tmp_path / "cache"),

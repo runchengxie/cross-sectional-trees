@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Mapping, Optional
 import logging
 import os
 import time
+from typing import Callable, Mapping, Optional
 
 import numpy as np
 import pandas as pd
@@ -108,116 +108,59 @@ class DataInterface:
     logger: logging.Logger = field(default_factory=lambda: logging.getLogger("csml"))
     provider: str = field(init=False)
     client: object = field(init=False, default=None)
-    tushare_tokens: list[str] = field(default_factory=list)
-    tushare_token_idx: int = 0
     max_attempts: int = field(init=False)
     backoff_seconds: float = field(init=False)
     max_backoff_seconds: float = field(init=False)
-    rotate_tokens: bool = field(init=False)
 
     def __post_init__(self) -> None:
         self.market = normalize_market(self.market)
         self.data_cfg = self.data_cfg if isinstance(self.data_cfg, Mapping) else {}
         self.provider = resolve_provider(self.data_cfg)
-        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.market != "hk":
+            raise SystemExit(
+                f"Unsupported market '{self.market}'. This project currently supports only market='hk'."
+            )
+        if self.provider != "rqdata":
+            raise SystemExit(
+                f"Unsupported data.provider '{self.provider}'. This project currently supports only provider='rqdata'."
+            )
 
         retry_cfg = self.data_cfg.get("retry") if isinstance(self.data_cfg, Mapping) else None
         retry_cfg = retry_cfg if isinstance(retry_cfg, Mapping) else {}
         self.max_attempts = max(1, int(retry_cfg.get("max_attempts", 1)))
         self.backoff_seconds = float(retry_cfg.get("backoff_seconds", 0.5))
         self.max_backoff_seconds = float(retry_cfg.get("max_backoff_seconds", 5.0))
-        self.rotate_tokens = bool(retry_cfg.get("rotate_tokens", True))
 
         self._init_client()
 
-    def _load_tushare_tokens(self) -> list[str]:
-        raw_tokens = [
-            os.getenv("TUSHARE_TOKEN"),
-            os.getenv("TUSHARE_TOKEN_2"),
-        ]
-        tokens: list[str] = []
-        for token in raw_tokens:
-            if token and token not in tokens:
-                tokens.append(token)
-        return tokens
-
-    def _make_tushare_client(self, token: str):
-        import tushare as ts
+    def _init_client(self) -> None:
+        if has_local_rqdata_assets(self.data_cfg):
+            self.logger.info("Using local RQData daily/instruments assets; skipping rqdatac.init.")
+            self.client = None
+            return
 
         try:
-            return ts.pro_api(token)
-        except TypeError:
-            ts.set_token(token)
-            return ts.pro_api()
-
-    def _init_client(self) -> None:
-        if self.provider == "tushare":
-            self.tushare_tokens = self._load_tushare_tokens()
-            if not self.tushare_tokens:
-                raise SystemExit(
-                    "Please set TUSHARE_TOKEN or TUSHARE_TOKEN_2 first."
-                )
-            self.tushare_token_idx = 0
-            self.client = self._make_tushare_client(self.tushare_tokens[self.tushare_token_idx])
-            return
-
-        if self.provider == "rqdata":
-            if has_local_rqdata_assets(self.data_cfg):
-                self.logger.info("Using local RQData daily/instruments assets; skipping rqdatac.init.")
-                self.client = None
-                return
-            try:
-                import rqdatac
-            except ImportError as exc:
-                raise SystemExit(f"rqdatac is required for provider='rqdata' ({exc}).") from exc
-            rq_cfg = self.data_cfg.get("rqdata") or {}
-            init_kwargs = {}
-            if isinstance(rq_cfg, dict) and isinstance(rq_cfg.get("init"), dict):
-                init_kwargs.update(rq_cfg.get("init"))
-            env_username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
-            env_password = os.getenv("RQDATA_PASSWORD")
-            if env_username and "username" not in init_kwargs:
-                init_kwargs["username"] = env_username
-            if env_password and "password" not in init_kwargs:
-                init_kwargs["password"] = env_password
-            try:
-                rqdatac.init(**init_kwargs)
-            except Exception as exc:
-                raise SystemExit(f"rqdatac.init failed: {exc}") from exc
-            _patch_rqdatac_adjust_price_readonly(self.logger)
-            self.client = rqdatac
-            return
-
-        if self.provider == "eodhd":
-            eod_cfg = self.data_cfg.get("eodhd") or {}
-            api_token = (
-                (eod_cfg.get("api_token") if isinstance(eod_cfg, Mapping) else None)
-                or os.getenv("EODHD_API_TOKEN")
-                or os.getenv("EODHD_API_KEY")
-            )
-            if not api_token:
-                raise SystemExit("Please set EODHD_API_TOKEN (or data.eodhd.api_token) first.")
-            client = {"api_token": api_token}
-            if isinstance(eod_cfg, Mapping):
-                if eod_cfg.get("base_url"):
-                    client["base_url"] = eod_cfg.get("base_url")
-                if eod_cfg.get("exchange"):
-                    client["exchange"] = eod_cfg.get("exchange")
-                if eod_cfg.get("timeout"):
-                    client["timeout"] = eod_cfg.get("timeout")
-            self.client = client
-            return
-
-        raise SystemExit(f"Unsupported data.provider '{self.provider}'.")
-
-    def _rotate_tushare_token(self) -> None:
-        if self.provider != "tushare":
-            return
-        if not self.rotate_tokens or len(self.tushare_tokens) <= 1:
-            return
-        self.tushare_token_idx = (self.tushare_token_idx + 1) % len(self.tushare_tokens)
-        self.client = self._make_tushare_client(self.tushare_tokens[self.tushare_token_idx])
-        self.logger.info("Switched Tushare token to index %s.", self.tushare_token_idx)
+            import rqdatac
+        except ImportError as exc:
+            raise SystemExit(f"rqdatac is required for provider='rqdata' ({exc}).") from exc
+        rq_cfg = self.data_cfg.get("rqdata") or {}
+        init_kwargs = {}
+        if isinstance(rq_cfg, dict) and isinstance(rq_cfg.get("init"), dict):
+            init_kwargs.update(rq_cfg.get("init"))
+        env_username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
+        env_password = os.getenv("RQDATA_PASSWORD")
+        if env_username and "username" not in init_kwargs:
+            init_kwargs["username"] = env_username
+        if env_password and "password" not in init_kwargs:
+            init_kwargs["password"] = env_password
+        try:
+            rqdatac.init(**init_kwargs)
+        except Exception as exc:
+            raise SystemExit(f"rqdatac.init failed: {exc}") from exc
+        _patch_rqdatac_adjust_price_readonly(self.logger)
+        self.client = rqdatac
 
     def _with_retry(
         self,
@@ -242,7 +185,6 @@ class DataInterface:
                         exc,
                         exc_info=log_traceback,
                     )
-                self._rotate_tushare_token()
                 if attempt < self.max_attempts:
                     sleep_for = min(
                         self.backoff_seconds * (2 ** (attempt - 1)),

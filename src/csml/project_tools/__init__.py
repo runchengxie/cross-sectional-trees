@@ -60,10 +60,6 @@ def __getattr__(name):
         return import_module("csml.data_tools.build_hk_connect_universe")
     elif name == "build_hk_daily_asset_universe":
         return import_module("csml.data_tools.build_hk_daily_asset_universe")
-    elif name == "fetch_index_components":
-        return import_module("csml.data_tools.fetch_index_components")
-    elif name == "verify_tushare_tokens":
-        return import_module("csml.data_tools.verify_tushare_tokens")
     elif name == "backup_data":
         return import_module("csml.data_tools.backup_data")
     elif name == "ensure_symbol_columns":

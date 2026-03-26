@@ -1,8 +1,6 @@
 config_name,category,market,universe,rebalance_frequency,features,model_type,purpose,extends
-presets/default.yml,preset,cn,tushare,M,price_only,xgb_regressor,A-share default template,
+presets/default.yml,preset,hk,rqdata,M,price_only,xgb_regressor,HK default starter template,
 presets/hk.yml,preset,hk,rqdata,M,price_only,xgb_regressor,HK default template,
-presets/cn.yml,preset,cn,rqdata,M,price_only,xgb_regressor,China A-share template,
-presets/us.yml,preset,us,eodhd,M,price_only,xgb_regressor,US market template,
 presets/universe/hk_connect.yml,preset_universe,hk,hk_connect,PIT,N/A,N/A,HK Connect PIT universe definition,
 presets/universe/hk_all_assets.yml,preset_universe,hk,all_assets,PIT,N/A,N/A,All HK assets universe definition,
 presets/universe/pit_selected.yml,preset_universe,hk,selected,PIT,N/A,N/A,Selected PIT universe definition,

@@ -311,15 +311,9 @@ PIPELINE_ALIASES: Mapping[str, str] = {
     "default": "default.yml",
     "default.yml": "default.yml",
     "default.yaml": "default.yml",
-    "cn": "cn.yml",
-    "cn.yml": "cn.yml",
-    "cn.yaml": "cn.yml",
     "hk": "hk.yml",
     "hk.yml": "hk.yml",
     "hk.yaml": "hk.yml",
-    "us": "us.yml",
-    "us.yml": "us.yml",
-    "us.yaml": "us.yml",
 }
 
 

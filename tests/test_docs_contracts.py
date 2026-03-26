@@ -27,7 +27,6 @@ EXPECTED_CAPABILITY_TOKENS = [
     "`csml data ...`",
     "`csml rqdata ...`",
     "`csml universe ...`",
-    "`csml tushare verify-token`",
 ]
 EXPECTED_RQDATA_OUTPUT_DATASETS = {
     "daily",

@@ -40,8 +40,6 @@ configs/
 ├── presets/           # 内置预设（market 默认配置）
 │   ├── default.yml
 │   ├── hk.yml
-│   ├── cn.yml
-│   ├── us.yml
 │   └── universe/      # 股票池配置
 ├── experiments/       # 研究实验配置
 │   ├── baseline/      # 基线配置
@@ -54,7 +52,7 @@ configs/
 
 | 块 | 作用 | 常见键 |
 |----|------|--------|
-| `market` | 市场 | `cn` / `hk` / `us` |
+| `market` | 市场 | `hk` |
 | `data` | 数据源、日期、缓存 | `provider`, `start_date`, `end_date`, `cache_tag` |
 | `universe` | 股票池 | `mode`, `by_date_file`, `symbols` |
 | `fundamentals` | 基本面 | `enabled`, `source`, `features` |
@@ -72,8 +70,8 @@ configs/
 
 ```yaml
 data:
-  provider: rqdata        # tushare / rqdata / eodhd
-  market: hk             # cn / hk / us
+  provider: rqdata       # 当前仅支持 rqdata
+  market: hk             # 当前仅支持 hk
   start_date: "20200101" # 或 "today", "t-1"
   end_date: "20241231"
   cache_tag: "experiment_a"  # 隔离实验版本
@@ -222,7 +220,7 @@ logging:
 
 | 键 | 说明 | 常见值 |
 |---|------|--------|
-| `provider` | 数据源 | `tushare` / `rqdata` / `eodhd` |
+| `provider` | 数据源 | `rqdata` |
 | `start_date` | 开始日期 | `20200101` / `today` |
 | `end_date` | 结束日期 | `20241231` / `t-1` / `last_trading_day` |
 | `cache_tag` | 缓存版本标签 | 任意字符串 |

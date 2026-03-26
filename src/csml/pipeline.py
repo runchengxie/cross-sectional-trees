@@ -1,9 +1,9 @@
-"""pipeline.py - Cross-sectional factor mining with pluggable regressors (multi-market).
+"""pipeline.py - Cross-sectional factor mining for the HK + RQData workflow.
 Usage:
     $ csml run
     $ csml run --config config/default.yml
-    $ csml run --config cn
-    # provider-specific auth may be required (e.g. TUSHARE_TOKEN/TUSHARE_TOKEN_2)
+    $ csml run --config hk
+    # rqdatac auth may be required (RQDATA_USERNAME/RQDATA_PASSWORD)
 """
 import argparse
 import hashlib
@@ -1207,36 +1207,13 @@ def run(config_ref: str | Path | None = None) -> None:
     data_interface = DataInterface(MARKET, data_cfg, cache_dir=CACHE_DIR, logger=logger)
     provider = data_interface.provider
 
-    DEFAULT_SYMBOLS_BY_MARKET = {
-        "cn": [
-            "600519.SH",
-            "601318.SH",
-            "600036.SH",
-            "000858.SZ",
-            "000333.SZ",
-            "600887.SH",
-            "600276.SH",
-            "601888.SH",
-            "000001.SZ",
-            "002415.SZ",
-        ],
-        "hk": [
-            "00700.HK",
-            "00005.HK",
-            "00941.HK",
-            "00001.HK",
-            "00388.HK",
-        ],
-        "us": [
-            "AAPL",
-            "MSFT",
-            "NVDA",
-            "AMZN",
-            "GOOGL",
-        ],
-    }
-
-    DEFAULT_SYMBOLS = DEFAULT_SYMBOLS_BY_MARKET.get(MARKET, DEFAULT_SYMBOLS_BY_MARKET["cn"])
+    DEFAULT_SYMBOLS = [
+        "00700.HK",
+        "00005.HK",
+        "00941.HK",
+        "00001.HK",
+        "00388.HK",
+    ]
 
     UNIVERSE_MODE = str(universe_cfg.get("mode", "auto")).strip().lower()
     if UNIVERSE_MODE not in {"auto", "pit", "static"}:
@@ -1764,21 +1741,13 @@ def run(config_ref: str | Path | None = None) -> None:
             FUNDAMENTALS_PROVIDER, MARKET
         ):
             message = (
-                "Fundamentals provider mode currently supports Tushare and "
-                "RQData market=hk; use source=file instead."
+                "Fundamentals provider mode currently supports only RQData market=hk; "
+                "use source=file instead."
             )
             if FUNDAMENTALS_REQUIRED:
                 sys.exit(message)
             logger.warning("%s Fundamentals disabled.", message)
             FUNDAMENTALS_ENABLED = False
-        if FUNDAMENTALS_SOURCE == "provider" and FUNDAMENTALS_PROVIDER == "tushare":
-            endpoint_name = fundamentals_cfg.get("endpoint") or data_cfg.get("fundamentals_endpoint")
-            if not endpoint_name:
-                message = "fundamentals.endpoint is required for provider mode."
-                if FUNDAMENTALS_REQUIRED:
-                    sys.exit(message)
-                logger.warning("%s Fundamentals disabled.", message)
-                FUNDAMENTALS_ENABLED = False
         if FUNDAMENTALS_SOURCE == "file" and not FUNDAMENTALS_FILE:
             message = "fundamentals.file is required when fundamentals.source=file."
             if FUNDAMENTALS_REQUIRED:
@@ -1822,22 +1791,7 @@ def run(config_ref: str | Path | None = None) -> None:
             FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER, MARKET
         ):
             message = (
-                "fundamentals.provider_overlay currently supports only Tushare and "
-                "RQData market=hk."
-            )
-            if FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED:
-                sys.exit(message)
-            logger.warning("%s Provider overlay disabled.", message)
-            FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = False
-        elif (
-            FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER == "tushare"
-            and not (
-                provider_overlay_cfg.get("endpoint")
-                or data_cfg.get("fundamentals_endpoint")
-            )
-        ):
-            message = (
-                "fundamentals.provider_overlay.endpoint is required for provider=tushare."
+                "fundamentals.provider_overlay currently supports only RQData market=hk."
             )
             if FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED:
                 sys.exit(message)
@@ -4623,7 +4577,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Cross-sectional factor pipeline")
     parser.add_argument(
         "--config",
-        help="Path to YAML config or built-in name (default/hk/cn/us; cn/us are compatibility templates).",
+        help="Path to YAML config or built-in name (default/hk).",
     )
     args = parser.parse_args(argv)
     run(args.config)

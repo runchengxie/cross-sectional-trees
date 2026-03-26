@@ -33,8 +33,8 @@ def _build_scored_data() -> pd.DataFrame:
 def test_grid_reuses_single_pipeline_run(tmp_path, monkeypatch):
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
-        "data": {"provider": "tushare", "price_col": "close"},
+        "market": "hk",
+        "data": {"provider": "rqdata", "price_col": "close"},
         "label": {"target_col": "future_return", "horizon_days": 5, "shift_days": 0},
         "eval": {
             "n_quantiles": 3,
@@ -131,8 +131,8 @@ def test_grid_reuses_single_pipeline_run(tmp_path, monkeypatch):
 def test_grid_supports_buffer_sweep(tmp_path, monkeypatch):
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
-        "data": {"provider": "tushare", "price_col": "close"},
+        "market": "hk",
+        "data": {"provider": "rqdata", "price_col": "close"},
         "label": {"target_col": "future_return", "horizon_days": 5, "shift_days": 0},
         "eval": {
             "n_quantiles": 3,
@@ -230,8 +230,8 @@ def test_grid_supports_buffer_sweep(tmp_path, monkeypatch):
 def test_grid_supports_weighting_sweep(tmp_path, monkeypatch):
     output_dir = tmp_path / "runs"
     config = {
-        "market": "us",
-        "data": {"provider": "tushare", "price_col": "close"},
+        "market": "hk",
+        "data": {"provider": "rqdata", "price_col": "close"},
         "label": {"target_col": "future_return", "horizon_days": 5, "shift_days": 0},
         "eval": {
             "n_quantiles": 3,

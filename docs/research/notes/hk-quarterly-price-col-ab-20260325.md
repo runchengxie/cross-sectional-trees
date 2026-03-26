@@ -24,14 +24,14 @@
 
 ## 2. 实验矩阵
 
-| Arm | 本地配置 | Run Dir |
+| Arm | 实验标识 | Run Dir |
 | --- | --- | --- |
-| Ranker h12 w16 close | `configs/local/hk_sel_q_g4_price_ab_ranker_h12_w16_close.yml` | `artifacts/runs/hk_sel_q_g4_price_ab_ranker_h12_w16_close_20260325_224250_2da24d57/` |
-| Ranker h12 w16 tr_close | `configs/local/hk_sel_q_g4_price_ab_ranker_h12_w16_tr_close.yml` | `artifacts/runs/hk_sel_q_g4_price_ab_ranker_h12_w16_tr_close_20260325_225706_5f30b4fa/` |
-| Reg zscore h12 w16 close | `configs/local/hk_sel_q_g4_price_ab_reg_zscore_h12_w16_close.yml` | `artifacts/runs/hk_sel_q_g4_price_ab_reg_zscore_h12_w16_close_20260325_225204_6d2290aa/` |
-| Reg zscore h12 w16 tr_close | `configs/local/hk_sel_q_g4_price_ab_reg_zscore_h12_w16_tr_close.yml` | `artifacts/runs/hk_sel_q_g4_price_ab_reg_zscore_h12_w16_tr_close_20260325_231418_f5c1ac48/` |
-| Reg zscore h18 w16 close | `configs/local/hk_sel_q_g4_price_ab_reg_zscore_h18_w16_close.yml` | `artifacts/runs/hk_sel_q_g4_price_ab_reg_zscore_h18_w16_close_20260325_225417_d2b91012/` |
-| Reg zscore h18 w16 tr_close | `configs/local/hk_sel_q_g4_price_ab_reg_zscore_h18_w16_tr_close.yml` | `artifacts/runs/hk_sel_q_g4_price_ab_reg_zscore_h18_w16_tr_close_20260325_231843_4d216e4d/` |
+| Ranker h12 w16 close | `hk_sel_q_g4_price_ab_ranker_h12_w16_close` | `artifacts/runs/hk_sel_q_g4_price_ab_ranker_h12_w16_close_20260325_224250_2da24d57/` |
+| Ranker h12 w16 tr_close | `hk_sel_q_g4_price_ab_ranker_h12_w16_tr_close` | `artifacts/runs/hk_sel_q_g4_price_ab_ranker_h12_w16_tr_close_20260325_225706_5f30b4fa/` |
+| Reg zscore h12 w16 close | `hk_sel_q_g4_price_ab_reg_zscore_h12_w16_close` | `artifacts/runs/hk_sel_q_g4_price_ab_reg_zscore_h12_w16_close_20260325_225204_6d2290aa/` |
+| Reg zscore h12 w16 tr_close | `hk_sel_q_g4_price_ab_reg_zscore_h12_w16_tr_close` | `artifacts/runs/hk_sel_q_g4_price_ab_reg_zscore_h12_w16_tr_close_20260325_231418_f5c1ac48/` |
+| Reg zscore h18 w16 close | `hk_sel_q_g4_price_ab_reg_zscore_h18_w16_close` | `artifacts/runs/hk_sel_q_g4_price_ab_reg_zscore_h18_w16_close_20260325_225417_d2b91012/` |
+| Reg zscore h18 w16 tr_close | `hk_sel_q_g4_price_ab_reg_zscore_h18_w16_tr_close` | `artifacts/runs/hk_sel_q_g4_price_ab_reg_zscore_h18_w16_tr_close_20260325_231843_4d216e4d/` |
 
 ## 3. 结果摘要
 

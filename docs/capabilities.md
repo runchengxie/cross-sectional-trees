@@ -26,8 +26,7 @@
 | `csml backup-data` | 归档本地缓存、股票池和配置 | `artifacts/snapshots/<name>/` |
 | `csml data ...` | metadata catalog、标准层物化和 DuckDB 查询 | `artifacts/metadata/*` / `artifacts/standardized/*` |
 | `csml rqdata ...` | RQData 账号、配额、港股财报资产与 instrument 元数据工具 | 账号信息或资产目录 |
-| `csml universe ...` | 股票池构建工具（`hk-connect` / `hk-daily-assets` / `index-components`） | 股票池文件 |
-| `csml tushare verify-token` | 验证 TuShare token | 验证结果 |
+| `csml universe ...` | 股票池构建工具（`hk-connect` / `hk-daily-assets`） | 股票池文件 |
 
 参数细节见 `docs/cli.md`。
 
@@ -42,11 +41,9 @@
 
 ### 数据与市场
 
-* 支持 `tushare`、`rqdata`、`eodhd`。
-* 支持 `cn`、`hk`、`us` 三个市场口径。
-* 当前工作流以 `hk` 为主。
-* `default` / `hk` 内置模板默认走 HK + RQData starter 路线。
-* `cn/us` 主要保留基础兼容、对照实验和已有配置切换能力。
+* 只支持 `rqdata`。
+* 只支持 `hk` 市场口径。
+* 当前工作流就是 HK + RQData starter 路线。
 * 支持缓存、重试、相对日期和绝对日期。
 
 provider 差异见 `docs/providers.md`。
@@ -56,7 +53,7 @@ provider 差异见 `docs/providers.md`。
 * 支持 `auto`、`pit`、`static` 三种股票池模式。
 * 支持按日期股票池文件。
 * 支持停牌处理、最小样本数控制和流动性过滤。
-* 提供港股通、HK 全市场日线资产和指数成分股票池构建工具。
+* 提供港股通和 HK 全市场日线资产股票池构建工具。
 
 ### 基本面
 
