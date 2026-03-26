@@ -411,7 +411,7 @@ uv run python -m csml.research.hk_financial_details \
 
 补充：
 
-* 仓库默认映射表在 `src/csml/research/hk_financial_details_subject_mapping.csv`
+* 仓库默认映射表在 `configs/field_profiles/hk_financial_details_subject_mapping.csv`
 * `--mapping-file` 是叠加覆盖层，适合把人工审核过的新规则放进 `configs/local/`
 * 未知 `subject` 默认保持原样，不会被强行归一化
 

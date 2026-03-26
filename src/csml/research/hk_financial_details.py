@@ -8,9 +8,18 @@ from typing import Any
 import pandas as pd
 import yaml
 
+from ..config_utils import resolve_repo_configs_dir
 
-MODULE_DIR = Path(__file__).resolve().parent
-DEFAULT_MAPPING_FILE = MODULE_DIR / "hk_financial_details_subject_mapping.csv"
+
+def _resolve_default_mapping_file() -> Path:
+    filename = "hk_financial_details_subject_mapping.csv"
+    try:
+        return resolve_repo_configs_dir() / "field_profiles" / filename
+    except SystemExit:
+        return Path.cwd().resolve() / "configs" / "field_profiles" / filename
+
+
+DEFAULT_MAPPING_FILE = _resolve_default_mapping_file()
 REQUIRED_COLUMNS = {
     "amount",
     "currency",
