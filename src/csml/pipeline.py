@@ -957,6 +957,839 @@ def _sample_rebalance_frame(
     return sampled, rebalance_dates
 
 
+def _evaluate_walk_forward_window(
+    window_meta: dict,
+    *,
+    context: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    df_model_sorted = context["df_model_sorted"]
+    all_date_start_rows = context["all_date_start_rows"]
+    all_date_end_rows = context["all_date_end_rows"]
+    all_date_to_pos = context["all_date_to_pos"]
+    train_window_mode = context["train_window_mode"]
+    train_window_size = context["train_window_size"]
+    train_window_unit = context["train_window_unit"]
+    signal_direction = context["signal_direction"]
+    signal_direction_mode = context["signal_direction_mode"]
+    features = context["features"]
+    target = context["target"]
+    n_splits = context["n_splits"]
+    embargo_steps = context["embargo_steps"]
+    purge_steps = context["purge_steps"]
+    model_cfg = context["model_cfg"]
+    min_abs_ic_to_flip = context["min_abs_ic_to_flip"]
+    sample_weight_mode = context["sample_weight_mode"]
+    sample_weight_params = context["sample_weight_params"]
+    train_target = context["train_target"]
+    model_type = context["model_type"]
+    model_params = context["model_params"]
+    report_train_ic = context["report_train_ic"]
+    sample_on_rebalance_dates = context["sample_on_rebalance_dates"]
+    rebalance_frequency = context["rebalance_frequency"]
+    valid_dates_set = context["valid_dates_set"]
+    wf_perm_test_enabled = context["wf_perm_test_enabled"]
+    wf_perm_test_runs = context["wf_perm_test_runs"]
+    wf_perm_test_seed = context["wf_perm_test_seed"]
+    n_quantiles = context["n_quantiles"]
+    top_k = context["top_k"]
+    eval_buffer_exit = context["eval_buffer_exit"]
+    eval_buffer_entry = context["eval_buffer_entry"]
+    wf_backtest_enabled = context["wf_backtest_enabled"]
+    backtest_signal_direction_raw = context["backtest_signal_direction_raw"]
+    df_full = context["df_full"]
+    price_col = context["price_col"]
+    backtest_rebalance_frequency = context["backtest_rebalance_frequency"]
+    label_shift_days = context["label_shift_days"]
+    backtest_cost_bps_effective = context["backtest_cost_bps_effective"]
+    backtest_trading_days_per_year = context["backtest_trading_days_per_year"]
+    backtest_exit_mode = context["backtest_exit_mode"]
+    backtest_exit_horizon_days = context["backtest_exit_horizon_days"]
+    backtest_long_only = context["backtest_long_only"]
+    backtest_short_k = context["backtest_short_k"]
+    backtest_buffer_exit = context["backtest_buffer_exit"]
+    backtest_buffer_entry = context["backtest_buffer_entry"]
+    backtest_group_col = context["backtest_group_col"]
+    backtest_max_names_per_group = context["backtest_max_names_per_group"]
+    backtest_tradable_col = context["backtest_tradable_col"]
+    backtest_exit_price_policy = context["backtest_exit_price_policy"]
+    backtest_exit_fallback_policy = context["backtest_exit_fallback_policy"]
+    execution_model = context["execution_model"]
+    backtest_pricing_df = context["backtest_pricing_df"]
+    benchmark_df = context["benchmark_df"]
+    backtest_top_k = context["backtest_top_k"]
+    wf_feature_top_k = context["wf_feature_top_k"]
+
+    window_id = int(window_meta["window"])
+    train_dates = _apply_model_train_window(
+        window_meta["train_dates"],
+        label=f"walk_forward window {window_id}",
+        train_window_mode=train_window_mode,
+        train_window_size=train_window_size,
+        train_window_unit=train_window_unit,
+    )
+    test_dates = window_meta["test_dates"]
+    train_df_w = _slice_trade_dates(
+        df_model_sorted,
+        all_date_start_rows,
+        all_date_end_rows,
+        all_date_to_pos,
+        train_dates,
+    )
+    test_df_w = _slice_trade_dates(
+        df_model_sorted,
+        all_date_start_rows,
+        all_date_end_rows,
+        all_date_to_pos,
+        test_dates,
+    )
+    result = {
+        "window": window_id,
+        "train_start": pd.to_datetime(train_dates[0]).strftime("%Y-%m-%d")
+        if len(train_dates)
+        else pd.to_datetime(window_meta["train_start"]).strftime("%Y-%m-%d"),
+        "train_end": pd.to_datetime(train_dates[-1]).strftime("%Y-%m-%d")
+        if len(train_dates)
+        else pd.to_datetime(window_meta["train_end"]).strftime("%Y-%m-%d"),
+        "test_start": pd.to_datetime(window_meta["test_start"]).strftime("%Y-%m-%d"),
+        "test_end": pd.to_datetime(window_meta["test_end"]).strftime("%Y-%m-%d"),
+        "status": "ok",
+    }
+    if train_df_w.empty or test_df_w.empty:
+        result["status"] = "insufficient_data"
+        return result, []
+
+    direction = signal_direction
+    cv_stats = None
+    if signal_direction_mode == "cv_ic":
+        cv_scores_w = time_series_cv_ic(
+            train_df_w,
+            features,
+            target,
+            n_splits,
+            embargo_steps,
+            purge_steps,
+            model_cfg,
+            1.0,
+            sample_weight_mode=sample_weight_mode,
+            sample_weight_params=sample_weight_params,
+            train_window_mode=train_window_mode,
+            train_window_size=train_window_size,
+            train_window_unit=train_window_unit,
+            fit_target_col=train_target,
+        )
+        if cv_scores_w:
+            cv_mean = float(np.nanmean(cv_scores_w))
+            cv_std = float(np.nanstd(cv_scores_w))
+            if np.isfinite(cv_mean) and cv_mean != 0 and abs(cv_mean) >= min_abs_ic_to_flip:
+                direction = float(np.sign(cv_mean))
+            cv_stats = {
+                "mean": cv_mean,
+                "std": cv_std,
+                "scores": [float(score) for score in cv_scores_w],
+            }
+
+    model_w = build_model(model_type, model_params)
+    train_weights_w = build_sample_weight(
+        train_df_w,
+        sample_weight_mode,
+        params=sample_weight_params,
+    )
+    fit_model(
+        model_w,
+        model_type,
+        train_df_w,
+        features=features,
+        target_col=train_target,
+        sample_weight=train_weights_w,
+    )
+    importance_df_w, importance_source_w = feature_importance_frame(model_w, features)
+    importance_rows: list[dict[str, Any]] = []
+    if not importance_df_w.empty:
+        for _, row in importance_df_w.iterrows():
+            importance_rows.append(
+                {
+                    "window": window_id,
+                    "train_start": result["train_start"],
+                    "train_end": result["train_end"],
+                    "test_start": result["test_start"],
+                    "test_end": result["test_end"],
+                    "feature": str(row["feature"]),
+                    "importance": float(row["importance"]),
+                    "importance_source": importance_source_w,
+                }
+            )
+
+    train_eval = train_df_w.copy()
+    train_eval["pred"] = model_w.predict(train_eval[features])
+    train_ic_raw_stats = None
+    if signal_direction_mode == "train_ic":
+        train_ic_raw = daily_ic_series(train_eval, target, "pred")
+        train_ic_raw_stats = summarize_ic(train_ic_raw)
+        raw_mean = train_ic_raw_stats.get("mean", np.nan)
+        if np.isfinite(raw_mean) and raw_mean != 0:
+            direction = float(np.sign(raw_mean))
+        else:
+            direction = 1.0
+
+    train_signal_col = "pred"
+    if direction != 1.0:
+        train_eval["signal"] = train_eval["pred"] * direction
+        train_signal_col = "signal"
+
+    train_ic_stats = {}
+    if report_train_ic:
+        train_ic_stats = summarize_ic(daily_ic_series(train_eval, target, train_signal_col))
+
+    test_eval = test_df_w.copy()
+    test_eval["pred"] = model_w.predict(test_eval[features])
+    test_eval["signal_eval"] = test_eval["pred"] * direction
+    eval_allowed_dates_w = test_dates if sample_on_rebalance_dates else None
+    eval_df_w, rebalance_dates_w = _sample_rebalance_frame(
+        test_eval,
+        frequency=rebalance_frequency,
+        valid_dates=valid_dates_set,
+        allowed_dates=eval_allowed_dates_w,
+    )
+
+    signal_col_w = "signal_eval"
+    ic_stats_w = summarize_ic(daily_ic_series(eval_df_w, target, signal_col_w))
+    pearson_ic_stats_w = summarize_ic(
+        daily_ic_series(eval_df_w, target, signal_col_w, method="pearson")
+    )
+    error_metrics_w = regression_error_metrics(eval_df_w[target], eval_df_w[signal_col_w])
+    hit_rate_w = hit_rate(eval_df_w[target], eval_df_w[signal_col_w])
+
+    perm_stats_w = None
+    if wf_perm_test_enabled:
+        perm_scores = _permutation_test_ic(
+            train_df_w,
+            test_df_w,
+            wf_perm_test_runs,
+            wf_perm_test_seed,
+            direction,
+            model_type=model_type,
+            model_params=model_params,
+            features=features,
+            fit_target_col=train_target,
+            target_col=target,
+            sample_weight_mode=sample_weight_mode,
+            sample_weight_params=sample_weight_params,
+            eval_dates=rebalance_dates_w,
+        )
+        if perm_scores:
+            perm_stats_w = {
+                "mean": float(np.nanmean(perm_scores)),
+                "std": float(np.nanstd(perm_scores)),
+                "scores": [float(score) for score in perm_scores],
+                "runs": int(len(perm_scores)),
+            }
+
+    quantile_ts_w = quantile_returns(eval_df_w, signal_col_w, target, n_quantiles)
+    quantile_mean_w = quantile_ts_w.mean() if not quantile_ts_w.empty else pd.Series(dtype=float)
+    long_short_w = (
+        float(quantile_mean_w.iloc[-1] - quantile_mean_w.iloc[0])
+        if not quantile_mean_w.empty
+        else None
+    )
+
+    k_w = min(top_k, eval_df_w["symbol"].nunique())
+    if k_w > 0 and rebalance_dates_w:
+        turnover_series_w = estimate_turnover(
+            eval_df_w,
+            signal_col_w,
+            k_w,
+            rebalance_dates_w,
+            buffer_exit=eval_buffer_exit,
+            buffer_entry=eval_buffer_entry,
+        )
+    else:
+        turnover_series_w = pd.Series(dtype=float, name="turnover")
+    turnover_mean_w = float(turnover_series_w.mean()) if not turnover_series_w.empty else None
+
+    topk_positive_w = topk_positive_ratio(eval_df_w, signal_col_w, target, k_w)
+
+    bt_stats_w = None
+    bt_benchmark_stats_w = None
+    bt_active_stats_w = None
+    if wf_backtest_enabled:
+        bt_direction = (
+            direction if backtest_signal_direction_raw is None else backtest_signal_direction_raw
+        )
+        bt_pred_col = "pred"
+        test_start = pd.to_datetime(window_meta["test_start"])
+        test_end = pd.to_datetime(window_meta["test_end"])
+        test_full_w = df_full[
+            (df_full["trade_date"] >= test_start) & (df_full["trade_date"] <= test_end)
+        ].copy()
+        if test_full_w.empty:
+            bt_result_w = None
+        else:
+            test_full_w["pred"] = model_w.predict(test_full_w[features])
+            if bt_direction != 1.0:
+                test_full_w["signal_bt"] = test_full_w["pred"] * bt_direction
+                bt_pred_col = "signal_bt"
+            bt_rebalance = get_rebalance_dates(
+                sorted(test_full_w["trade_date"].unique()), backtest_rebalance_frequency
+            )
+            if valid_dates_set:
+                bt_rebalance = [d for d in bt_rebalance if d in valid_dates_set]
+            try:
+                bt_result_w = backtest_topk(
+                    test_full_w,
+                    pred_col=bt_pred_col,
+                    price_col=price_col,
+                    rebalance_dates=bt_rebalance,
+                    top_k=backtest_top_k,
+                    shift_days=label_shift_days,
+                    cost_bps=backtest_cost_bps_effective,
+                    trading_days_per_year=backtest_trading_days_per_year,
+                    exit_mode=backtest_exit_mode,
+                    exit_horizon_days=backtest_exit_horizon_days,
+                    long_only=backtest_long_only,
+                    short_k=backtest_short_k,
+                    buffer_exit=backtest_buffer_exit,
+                    buffer_entry=backtest_buffer_entry,
+                    group_col=backtest_group_col if backtest_group_col in test_full_w.columns else None,
+                    max_names_per_group=backtest_max_names_per_group,
+                    tradable_col=backtest_tradable_col
+                    if backtest_tradable_col in backtest_pricing_df.columns
+                    else None,
+                    exit_price_policy=backtest_exit_price_policy,
+                    exit_fallback_policy=backtest_exit_fallback_policy,
+                    execution=execution_model,
+                    pricing_data=backtest_pricing_df,
+                )
+            except ValueError:
+                bt_result_w = None
+        if bt_result_w is not None:
+            bt_stats_w, bt_net_w, _, _, bt_periods_w = bt_result_w
+            if benchmark_df is not None and not benchmark_df.empty:
+                bench_series_w, bench_periods_w = build_benchmark_series(
+                    benchmark_df,
+                    execution_model.entry_policy.price_col,
+                    execution_model.exit_policy.price_col,
+                    bt_periods_w,
+                )
+                if not bench_series_w.empty:
+                    bt_benchmark_stats_w = summarize_period_returns(
+                        bench_series_w,
+                        bench_periods_w,
+                        backtest_trading_days_per_year,
+                    )
+                    periods_per_year = bt_stats_w.get("periods_per_year", np.nan)
+                    bt_active_stats_w, _ = summarize_active_returns(
+                        bt_net_w, bench_series_w, periods_per_year
+                    )
+
+    result.update(
+        {
+            "signal_direction": direction,
+            "signal_direction_mode": signal_direction_mode,
+            "cv_ic": cv_stats,
+            "train_ic": train_ic_stats if report_train_ic else None,
+            "train_ic_raw": train_ic_raw_stats,
+            "test_ic": ic_stats_w,
+            "test_pearson_ic": pearson_ic_stats_w,
+            "error_metrics": error_metrics_w,
+            "hit_rate": hit_rate_w,
+            "topk_positive_ratio": topk_positive_w,
+            "long_short": long_short_w,
+            "turnover_mean": turnover_mean_w,
+            "backtest": {
+                "stats": bt_stats_w,
+                "benchmark": bt_benchmark_stats_w,
+                "active": bt_active_stats_w,
+            }
+            if wf_backtest_enabled
+            else None,
+            "permutation_test": perm_stats_w,
+            "feature_importance_source": importance_source_w,
+            "feature_importance_top": [
+                {"feature": str(item["feature"]), "importance": float(item["importance"])}
+                for _, item in importance_df_w.head(wf_feature_top_k).iterrows()
+            ],
+        }
+    )
+    return result, importance_rows
+
+
+def _evaluate_period(
+    label: str,
+    model_eval: Any,
+    test_df_full: pd.DataFrame,
+    test_dates: np.ndarray,
+    *,
+    context: Mapping[str, Any],
+    run_perm_test: bool,
+    perm_train_df: Optional[pd.DataFrame] = None,
+    perm_test_df: Optional[pd.DataFrame] = None,
+    allow_live_fallback: bool = True,
+) -> dict[str, Any]:
+    features = context["features"]
+    target = context["target"]
+    signal_direction = context["signal_direction"]
+    backtest_signal_direction = context["backtest_signal_direction"]
+    sample_on_rebalance_dates = context["sample_on_rebalance_dates"]
+    rebalance_frequency = context["rebalance_frequency"]
+    valid_dates_set = context["valid_dates_set"]
+    perm_test_runs = context["perm_test_runs"]
+    perm_test_seed = context["perm_test_seed"]
+    model_type = context["model_type"]
+    model_params = context["model_params"]
+    train_target = context["train_target"]
+    sample_weight_mode = context["sample_weight_mode"]
+    sample_weight_params = context["sample_weight_params"]
+    label_horizon_mode = context["label_horizon_mode"]
+    label_horizon_effective = context["label_horizon_effective"]
+    n_quantiles = context["n_quantiles"]
+    top_k = context["top_k"]
+    eval_buffer_exit = context["eval_buffer_exit"]
+    eval_buffer_entry = context["eval_buffer_entry"]
+    transaction_cost_bps = context["transaction_cost_bps"]
+    bucket_ic_enabled = context["bucket_ic_enabled"]
+    bucket_ic_schemes = context["bucket_ic_schemes"]
+    bucket_ic_method = context["bucket_ic_method"]
+    bucket_ic_min_count = context["bucket_ic_min_count"]
+    backtest_rebalance_frequency = context["backtest_rebalance_frequency"]
+    backtest_enabled = context["backtest_enabled"]
+    live_enabled = context["live_enabled"]
+    backtest_top_k = context["backtest_top_k"]
+    label_shift_days = context["label_shift_days"]
+    backtest_weighting = context["backtest_weighting"]
+    backtest_buffer_exit = context["backtest_buffer_exit"]
+    backtest_buffer_entry = context["backtest_buffer_entry"]
+    backtest_long_only = context["backtest_long_only"]
+    backtest_short_k = context["backtest_short_k"]
+    backtest_tradable_col = context["backtest_tradable_col"]
+    backtest_group_col = context["backtest_group_col"]
+    backtest_max_names_per_group = context["backtest_max_names_per_group"]
+    execution_model = context["execution_model"]
+    positions_by_rebalance_live = context["positions_by_rebalance_live"]
+    backtest_cost_bps_effective = context["backtest_cost_bps_effective"]
+    backtest_trading_days_per_year = context["backtest_trading_days_per_year"]
+    backtest_exit_mode = context["backtest_exit_mode"]
+    backtest_exit_horizon_days = context["backtest_exit_horizon_days"]
+    backtest_pricing_df = context["backtest_pricing_df"]
+    backtest_exit_price_policy = context["backtest_exit_price_policy"]
+    backtest_exit_fallback_policy = context["backtest_exit_fallback_policy"]
+    benchmark_df = context["benchmark_df"]
+    price_col = context["price_col"]
+    passthrough_cols = context["passthrough_cols"]
+    bucket_cols = context["bucket_cols"]
+
+    label_prefix = f"[{label}] " if label else ""
+    default_series = pd.Series(dtype=float)
+    default_frame = pd.DataFrame()
+    result = {
+        "ic_series": default_series,
+        "ic_stats": {},
+        "pearson_ic_series": default_series,
+        "pearson_ic_stats": {},
+        "error_metrics": {},
+        "hit_rate": {},
+        "topk_positive_ratio": {},
+        "bucket_ic": [],
+        "quantile_ts": default_frame,
+        "quantile_mean": default_series,
+        "turnover_series": default_series,
+        "positions_by_rebalance": None,
+        "bt_stats": None,
+        "bt_net_series": pd.Series(dtype=float, name="net_return"),
+        "bt_gross_series": pd.Series(dtype=float, name="gross_return"),
+        "bt_turnover_series": pd.Series(dtype=float, name="turnover"),
+        "bt_benchmark_series": pd.Series(dtype=float, name="benchmark_return"),
+        "bt_active_series": pd.Series(dtype=float, name="active_return"),
+        "bt_benchmark_stats": None,
+        "bt_active_stats": None,
+        "bt_periods": [],
+        "perm_stats": None,
+        "scored_data": default_frame,
+        "eval_rebalance_dates": [],
+        "backtest_rebalance_dates": [],
+    }
+    if test_df_full is None or test_df_full.empty:
+        logger.info("%sEvaluation skipped: no data.", label_prefix)
+        return result
+
+    eval_df_full = test_df_full.copy()
+    eval_df_full["pred"] = model_eval.predict(eval_df_full[features])
+    eval_df_full["signal_eval"] = eval_df_full["pred"] * signal_direction
+    eval_df_full["signal_backtest"] = eval_df_full["pred"] * backtest_signal_direction
+    if signal_direction != 1.0:
+        logger.info("%sSignal direction applied to ranking: %s", label_prefix, signal_direction)
+
+    eval_allowed_dates = test_dates if sample_on_rebalance_dates else None
+    eval_df, rebalance_dates_eval = _sample_rebalance_frame(
+        eval_df_full,
+        frequency=rebalance_frequency,
+        valid_dates=valid_dates_set,
+        allowed_dates=eval_allowed_dates,
+    )
+    result["eval_rebalance_dates"] = rebalance_dates_eval
+
+    signal_col = "signal_eval"
+    ic_series = daily_ic_series(eval_df, target, signal_col)
+    ic_stats = summarize_ic(ic_series)
+    logger.info(
+        "%sRebalance-date IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
+        label_prefix,
+        ic_stats["mean"],
+        ic_stats["std"],
+        ic_stats["ir"],
+        ic_stats["t_stat"],
+        ic_stats["p_value"],
+        ic_stats["n"],
+    )
+    result["ic_series"] = ic_series
+    result["ic_stats"] = ic_stats
+
+    pearson_ic_series = daily_ic_series(eval_df, target, signal_col, method="pearson")
+    pearson_ic_stats = summarize_ic(pearson_ic_series)
+    logger.info(
+        "%sRebalance-date Pearson IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
+        label_prefix,
+        pearson_ic_stats["mean"],
+        pearson_ic_stats["std"],
+        pearson_ic_stats["ir"],
+        pearson_ic_stats["t_stat"],
+        pearson_ic_stats["p_value"],
+        pearson_ic_stats["n"],
+    )
+    result["pearson_ic_series"] = pearson_ic_series
+    result["pearson_ic_stats"] = pearson_ic_stats
+
+    error_metrics = regression_error_metrics(eval_df[target], eval_df[signal_col])
+    result["error_metrics"] = error_metrics
+    if error_metrics and error_metrics.get("n", 0) > 0:
+        logger.info(
+            "%sError metrics: MAE=%.6f, RMSE=%.6f, R2=%.4f (n=%s)",
+            label_prefix,
+            error_metrics.get("mae", np.nan),
+            error_metrics.get("rmse", np.nan),
+            error_metrics.get("r2", np.nan),
+            error_metrics.get("n", 0),
+        )
+
+    hit_stats = hit_rate(eval_df[target], eval_df[signal_col])
+    result["hit_rate"] = hit_stats
+    if hit_stats and hit_stats.get("n", 0) > 0:
+        logger.info(
+            "%sHit rate: %.2f%% (n=%s)",
+            label_prefix,
+            hit_stats.get("hit_rate", np.nan) * 100,
+            hit_stats.get("n", 0),
+        )
+
+    if run_perm_test:
+        if perm_train_df is None or perm_test_df is None:
+            raise SystemExit("Permutation test requested but data was not provided.")
+        logger.info("%sPermutation test (shuffle train labels within date) ...", label_prefix)
+        perm_scores = _permutation_test_ic(
+            perm_train_df,
+            perm_test_df,
+            perm_test_runs,
+            perm_test_seed,
+            signal_direction,
+            model_type=model_type,
+            model_params=model_params,
+            features=features,
+            fit_target_col=train_target,
+            target_col=target,
+            sample_weight_mode=sample_weight_mode,
+            sample_weight_params=sample_weight_params,
+            eval_dates=rebalance_dates_eval,
+        )
+        if perm_scores:
+            perm_mean = np.nanmean(perm_scores)
+            perm_std = np.nanstd(perm_scores)
+            logger.info(
+                "%sPermutation IC: mean=%.4f, std=%.4f, runs=%s",
+                label_prefix,
+                perm_mean,
+                perm_std,
+                len(perm_scores),
+            )
+            logger.info("%sPermutation ICs: %s", label_prefix, [f"{s:.4f}" for s in perm_scores])
+            result["perm_stats"] = {
+                "mean": float(perm_mean),
+                "std": float(perm_std),
+                "scores": [float(score) for score in perm_scores],
+                "runs": int(len(perm_scores)),
+            }
+
+    trade_dates_sorted_full = sorted(eval_df_full["trade_date"].unique())
+    rebalance_dates_full = get_rebalance_dates(trade_dates_sorted_full, rebalance_frequency)
+    rebalance_gap = estimate_rebalance_gap(trade_dates_sorted_full, rebalance_dates_full)
+    if (
+        backtest_exit_mode == "rebalance"
+        and np.isfinite(rebalance_gap)
+        and label_horizon_mode == "fixed"
+    ):
+        gap_diff = abs(rebalance_gap - label_horizon_effective)
+        if gap_diff >= max(3.0, rebalance_gap * 0.25):
+            logger.warning(
+                "%sLabel horizon (%s days) differs from rebalance gap (median %.1f days).",
+                label_prefix,
+                label_horizon_effective,
+                rebalance_gap,
+            )
+
+    quantile_ts = quantile_returns(eval_df, signal_col, target, n_quantiles)
+    quantile_mean = quantile_ts.mean() if not quantile_ts.empty else pd.Series(dtype=float)
+    result["quantile_ts"] = quantile_ts
+    result["quantile_mean"] = quantile_mean
+    if not quantile_mean.empty:
+        for q_idx, value in quantile_mean.items():
+            logger.info("%sQ%s mean return: %.4f%%", label_prefix, int(q_idx) + 1, value * 100)
+        long_short = quantile_mean.iloc[-1] - quantile_mean.iloc[0]
+        logger.info("%sLong-short (Q%s-Q1): %.4f%%", label_prefix, n_quantiles, long_short * 100)
+    else:
+        logger.info("%sQuantile returns not available - insufficient symbols per date.", label_prefix)
+
+    k = min(top_k, eval_df["symbol"].nunique()) if not eval_df.empty else 0
+    if k > 0 and rebalance_dates_eval:
+        turnover_series = estimate_turnover(
+            eval_df,
+            signal_col,
+            k,
+            rebalance_dates_eval,
+            buffer_exit=eval_buffer_exit,
+            buffer_entry=eval_buffer_entry,
+        )
+    else:
+        turnover_series = pd.Series(dtype=float, name="turnover")
+    result["turnover_series"] = turnover_series
+    if not turnover_series.empty:
+        turnover = turnover_series.mean()
+        cost_drag = 2 * (transaction_cost_bps / 10000.0) * turnover
+        logger.info(
+            "%sTop-%s turnover per rebalance: %.2f%% (n=%s)",
+            label_prefix,
+            k,
+            turnover * 100,
+            len(turnover_series),
+        )
+        logger.info(
+            "%sApprox cost drag per rebalance: %.2f%% at %s bps per side",
+            label_prefix,
+            cost_drag * 100,
+            transaction_cost_bps,
+        )
+
+    topk_stats = topk_positive_ratio(eval_df, signal_col, target, k)
+    result["topk_positive_ratio"] = topk_stats
+    if topk_stats and topk_stats.get("n_dates", 0) > 0:
+        logger.info(
+            "%sTop-%s positive ratio: %.2f%% (n=%s)",
+            label_prefix,
+            k,
+            topk_stats.get("topk_positive_ratio", np.nan) * 100,
+            topk_stats.get("n_dates", 0),
+        )
+
+    if bucket_ic_enabled and bucket_ic_schemes:
+        bucket_frames = []
+        for scheme in bucket_ic_schemes:
+            col = scheme["column"]
+            if col not in eval_df.columns:
+                continue
+            bucket_type = str(scheme.get("type", "category")).strip().lower()
+            if bucket_type not in {"category", "quantile"}:
+                bucket_type = "category"
+            data_for_bucket = eval_df.copy()
+            bucket_col = col
+            if bucket_type == "quantile":
+                n_bins = int(scheme.get("n_bins") or 0)
+                if n_bins < 2:
+                    continue
+                bucket_col = f"bucket_{scheme['name']}"
+                data_for_bucket[bucket_col] = assign_daily_quantile_bucket(
+                    data_for_bucket, col, n_bins
+                )
+            summary_df = bucket_ic_summary(
+                data_for_bucket,
+                target,
+                signal_col,
+                bucket_col,
+                method=bucket_ic_method,
+                min_count=bucket_ic_min_count,
+            )
+            if not summary_df.empty:
+                summary_df.insert(0, "scheme", scheme["name"])
+                summary_df.insert(1, "type", bucket_type)
+                if bucket_type == "quantile":
+                    summary_df.insert(2, "n_bins", int(scheme.get("n_bins") or 0))
+                summary_df["method"] = bucket_ic_method
+                bucket_frames.append(summary_df)
+        if bucket_frames:
+            bucket_df = pd.concat(bucket_frames, ignore_index=True)
+            result["bucket_ic"] = bucket_df.to_dict(orient="records")
+
+    _, bt_rebalance = _sample_rebalance_frame(
+        eval_df_full,
+        frequency=backtest_rebalance_frequency,
+        valid_dates=valid_dates_set,
+    )
+    result["backtest_rebalance_dates"] = bt_rebalance
+    bt_pred_col = "signal_backtest"
+
+    positions_by_rebalance = None
+    if backtest_enabled or not live_enabled or not allow_live_fallback:
+        positions_by_rebalance = build_positions_by_rebalance(
+            eval_df_full,
+            pred_col=bt_pred_col,
+            price_col=price_col,
+            rebalance_dates=bt_rebalance,
+            top_k=backtest_top_k,
+            shift_days=label_shift_days,
+            weighting=backtest_weighting,
+            buffer_exit=backtest_buffer_exit,
+            buffer_entry=backtest_buffer_entry,
+            long_only=backtest_long_only,
+            short_k=backtest_short_k,
+            tradable_col=backtest_tradable_col if backtest_tradable_col in eval_df_full.columns else None,
+            group_col=backtest_group_col if backtest_group_col in eval_df_full.columns else None,
+            max_names_per_group=backtest_max_names_per_group,
+            execution=execution_model,
+        )
+    if allow_live_fallback and live_enabled and not backtest_enabled:
+        positions_by_rebalance = positions_by_rebalance_live
+    result["positions_by_rebalance"] = positions_by_rebalance
+
+    bt_result = None
+    bt_attempted = False
+    if backtest_enabled:
+        bt_attempted = True
+        try:
+            bt_result = backtest_topk(
+                eval_df_full,
+                pred_col=bt_pred_col,
+                price_col=price_col,
+                rebalance_dates=bt_rebalance,
+                top_k=backtest_top_k,
+                shift_days=label_shift_days,
+                cost_bps=backtest_cost_bps_effective,
+                trading_days_per_year=backtest_trading_days_per_year,
+                exit_mode=backtest_exit_mode,
+                exit_horizon_days=backtest_exit_horizon_days,
+                long_only=backtest_long_only,
+                short_k=backtest_short_k,
+                weighting=backtest_weighting,
+                buffer_exit=backtest_buffer_exit,
+                buffer_entry=backtest_buffer_entry,
+                group_col=backtest_group_col if backtest_group_col in eval_df_full.columns else None,
+                max_names_per_group=backtest_max_names_per_group,
+                tradable_col=backtest_tradable_col
+                if backtest_tradable_col in backtest_pricing_df.columns
+                else None,
+                exit_price_policy=backtest_exit_price_policy,
+                exit_fallback_policy=backtest_exit_fallback_policy,
+                execution=execution_model,
+                pricing_data=backtest_pricing_df,
+            )
+        except ValueError as exc:
+            logger.warning("%sBacktest skipped: %s", label_prefix, exc)
+            bt_result = None
+
+    if bt_attempted:
+        if bt_result is None:
+            logger.info("%sBacktest not available - insufficient data.", label_prefix)
+        else:
+            stats, net_series, gross_series, bt_turnover_series, period_info = bt_result
+            result["bt_stats"] = stats
+            result["bt_net_series"] = net_series
+            result["bt_gross_series"] = gross_series
+            result["bt_turnover_series"] = bt_turnover_series
+            result["bt_periods"] = period_info
+            mode_text = "long-only" if backtest_long_only else "long-short"
+            logger.info(
+                "%sBacktest (%s, top-K, exit_mode=%s):",
+                label_prefix,
+                mode_text,
+                backtest_exit_mode,
+            )
+            logger.info("%s  periods: %s", label_prefix, stats["periods"])
+            logger.info("%s  total return: %.2f%%", label_prefix, stats["total_return"] * 100)
+            logger.info("%s  ann return: %.2f%%", label_prefix, stats["ann_return"] * 100)
+            logger.info("%s  ann vol: %.2f%%", label_prefix, stats["ann_vol"] * 100)
+            logger.info("%s  sharpe: %.2f", label_prefix, stats["sharpe"])
+            logger.info("%s  max drawdown: %.2f%%", label_prefix, stats["max_drawdown"] * 100)
+            if not np.isnan(stats["avg_turnover"]):
+                logger.info("%s  avg turnover: %.2f%%", label_prefix, stats["avg_turnover"] * 100)
+                logger.info(
+                    "%s  avg cost drag: %.2f%%",
+                    label_prefix,
+                    stats["avg_cost_drag"] * 100,
+                )
+            _warn_if_delay_exit_lag(
+                label_prefix=label_prefix,
+                exit_price_policy=backtest_exit_price_policy,
+                stats=stats,
+            )
+
+            if benchmark_df is not None and not benchmark_df.empty:
+                bench_series, bench_periods = build_benchmark_series(
+                    benchmark_df,
+                    execution_model.entry_policy.price_col,
+                    execution_model.exit_policy.price_col,
+                    period_info,
+                )
+                if not bench_series.empty:
+                    result["bt_benchmark_series"] = bench_series
+                    bt_benchmark_stats = summarize_period_returns(
+                        bench_series, bench_periods, backtest_trading_days_per_year
+                    )
+                    result["bt_benchmark_stats"] = bt_benchmark_stats
+                    logger.info(
+                        "%s  benchmark total return: %.2f%%",
+                        label_prefix,
+                        bt_benchmark_stats["total_return"] * 100,
+                    )
+                    periods_per_year = stats.get("periods_per_year", np.nan)
+                    bt_active_stats, bt_active_series = summarize_active_returns(
+                        net_series, bench_series, periods_per_year
+                    )
+                    result["bt_active_stats"] = bt_active_stats
+                    result["bt_active_series"] = bt_active_series
+                    if bt_active_stats and bt_active_stats.get("n", 0) > 0:
+                        logger.info(
+                            "%s  active total return: %.2f%%",
+                            label_prefix,
+                            bt_active_stats["active_total_return"] * 100,
+                        )
+                        if np.isfinite(bt_active_stats.get("information_ratio", np.nan)):
+                            logger.info(
+                                "%s  information ratio: %.2f",
+                                label_prefix,
+                                bt_active_stats["information_ratio"],
+                            )
+                        if np.isfinite(bt_active_stats.get("beta", np.nan)):
+                            logger.info("%s  beta: %.2f", label_prefix, bt_active_stats["beta"])
+                        if np.isfinite(bt_active_stats.get("alpha", np.nan)):
+                            logger.info(
+                                "%s  alpha (ann): %.2f%%",
+                                label_prefix,
+                                bt_active_stats["alpha"] * 100,
+                            )
+
+    scored_cols = [
+        "trade_date",
+        "symbol",
+        price_col,
+        target,
+        "pred",
+        "signal_eval",
+        "signal_backtest",
+    ]
+    scored_cols.extend(passthrough_cols)
+    scored_cols.extend(bucket_cols)
+    scored_cols = list(dict.fromkeys(scored_cols))
+    if backtest_tradable_col and backtest_tradable_col in eval_df_full.columns:
+        scored_cols.append(backtest_tradable_col)
+    result["scored_data"] = eval_df_full[scored_cols].copy()
+    return result
+
+
 def _load_research_panel(
     *,
     data_interface: DataInterface,
@@ -2759,298 +3592,7 @@ def run(config_ref: str | Path | None = None) -> None:
     # -----------------------------------------------------------------------------
     logger.info("Time-series cross-validation (IC) ...")
 
-
     walk_forward_importance_rows: list[dict[str, Any]] = []
-
-    def evaluate_window(window_meta: dict) -> dict:
-        window_id = int(window_meta["window"])
-        train_dates = _apply_model_train_window(
-            window_meta["train_dates"],
-            label=f"walk_forward window {window_id}",
-            train_window_mode=TRAIN_WINDOW_MODE,
-            train_window_size=TRAIN_WINDOW_SIZE,
-            train_window_unit=TRAIN_WINDOW_UNIT,
-        )
-        test_dates = window_meta["test_dates"]
-        train_df_w = _slice_trade_dates(
-            df_model_sorted,
-            all_date_start_rows,
-            all_date_end_rows,
-            all_date_to_pos,
-            train_dates,
-        )
-        test_df_w = _slice_trade_dates(
-            df_model_sorted,
-            all_date_start_rows,
-            all_date_end_rows,
-            all_date_to_pos,
-            test_dates,
-        )
-        result = {
-            "window": window_id,
-            "train_start": pd.to_datetime(train_dates[0]).strftime("%Y-%m-%d")
-            if len(train_dates)
-            else pd.to_datetime(window_meta["train_start"]).strftime("%Y-%m-%d"),
-            "train_end": pd.to_datetime(train_dates[-1]).strftime("%Y-%m-%d")
-            if len(train_dates)
-            else pd.to_datetime(window_meta["train_end"]).strftime("%Y-%m-%d"),
-            "test_start": pd.to_datetime(window_meta["test_start"]).strftime("%Y-%m-%d"),
-            "test_end": pd.to_datetime(window_meta["test_end"]).strftime("%Y-%m-%d"),
-            "status": "ok",
-        }
-        if train_df_w.empty or test_df_w.empty:
-            result["status"] = "insufficient_data"
-            return result
-
-        direction = SIGNAL_DIRECTION
-        cv_stats = None
-        if SIGNAL_DIRECTION_MODE == "cv_ic":
-            cv_scores_w = time_series_cv_ic(
-                train_df_w,
-                FEATURES,
-                TARGET,
-                N_SPLITS,
-                EMBARGO_STEPS,
-                PURGE_STEPS,
-                MODEL_CFG,
-                1.0,
-                sample_weight_mode=SAMPLE_WEIGHT_MODE,
-                sample_weight_params=SAMPLE_WEIGHT_PARAMS,
-                train_window_mode=TRAIN_WINDOW_MODE,
-                train_window_size=TRAIN_WINDOW_SIZE,
-                train_window_unit=TRAIN_WINDOW_UNIT,
-                fit_target_col=TRAIN_TARGET,
-            )
-            if cv_scores_w:
-                cv_mean = float(np.nanmean(cv_scores_w))
-                cv_std = float(np.nanstd(cv_scores_w))
-                if np.isfinite(cv_mean) and cv_mean != 0 and abs(cv_mean) >= MIN_ABS_IC_TO_FLIP:
-                    direction = float(np.sign(cv_mean))
-                cv_stats = {
-                    "mean": cv_mean,
-                    "std": cv_std,
-                    "scores": [float(score) for score in cv_scores_w],
-                }
-
-        model_w = build_model(MODEL_TYPE, MODEL_PARAMS)
-        train_weights_w = build_sample_weight(
-            train_df_w,
-            SAMPLE_WEIGHT_MODE,
-            params=SAMPLE_WEIGHT_PARAMS,
-        )
-        fit_model(
-            model_w,
-            MODEL_TYPE,
-            train_df_w,
-            features=FEATURES,
-            target_col=TRAIN_TARGET,
-            sample_weight=train_weights_w,
-        )
-        importance_df_w, importance_source_w = feature_importance_frame(model_w, FEATURES)
-        if not importance_df_w.empty:
-            for _, row in importance_df_w.iterrows():
-                walk_forward_importance_rows.append(
-                    {
-                        "window": window_id,
-                        "train_start": result["train_start"],
-                        "train_end": result["train_end"],
-                        "test_start": result["test_start"],
-                        "test_end": result["test_end"],
-                        "feature": str(row["feature"]),
-                        "importance": float(row["importance"]),
-                        "importance_source": importance_source_w,
-                    }
-                )
-
-        train_eval = train_df_w.copy()
-        train_eval["pred"] = model_w.predict(train_eval[FEATURES])
-        train_ic_raw_stats = None
-        if SIGNAL_DIRECTION_MODE == "train_ic":
-            train_ic_raw = daily_ic_series(train_eval, TARGET, "pred")
-            train_ic_raw_stats = summarize_ic(train_ic_raw)
-            raw_mean = train_ic_raw_stats.get("mean", np.nan)
-            if np.isfinite(raw_mean) and raw_mean != 0:
-                direction = float(np.sign(raw_mean))
-            else:
-                direction = 1.0
-
-        train_signal_col = "pred"
-        if direction != 1.0:
-            train_eval["signal"] = train_eval["pred"] * direction
-            train_signal_col = "signal"
-
-        train_ic_stats = {}
-        if REPORT_TRAIN_IC:
-            train_ic_stats = summarize_ic(daily_ic_series(train_eval, TARGET, train_signal_col))
-
-        test_eval = test_df_w.copy()
-        test_eval["pred"] = model_w.predict(test_eval[FEATURES])
-        test_eval["signal_eval"] = test_eval["pred"] * direction
-        eval_allowed_dates_w = test_dates if SAMPLE_ON_REBALANCE_DATES else None
-        eval_df_w, rebalance_dates_w = _sample_rebalance_frame(
-            test_eval,
-            frequency=REBALANCE_FREQUENCY,
-            valid_dates=valid_dates_set,
-            allowed_dates=eval_allowed_dates_w,
-        )
-
-        signal_col_w = "signal_eval"
-        ic_stats_w = summarize_ic(daily_ic_series(eval_df_w, TARGET, signal_col_w))
-        pearson_ic_stats_w = summarize_ic(
-            daily_ic_series(eval_df_w, TARGET, signal_col_w, method="pearson")
-        )
-        error_metrics_w = regression_error_metrics(eval_df_w[TARGET], eval_df_w[signal_col_w])
-        hit_rate_w = hit_rate(eval_df_w[TARGET], eval_df_w[signal_col_w])
-
-        perm_stats_w = None
-        if WF_PERM_TEST_ENABLED:
-            perm_scores = _permutation_test_ic(
-                train_df_w,
-                test_df_w,
-                WF_PERM_TEST_RUNS,
-                WF_PERM_TEST_SEED,
-                direction,
-                model_type=MODEL_TYPE,
-                model_params=MODEL_PARAMS,
-                features=FEATURES,
-                fit_target_col=TRAIN_TARGET,
-                target_col=TARGET,
-                sample_weight_mode=SAMPLE_WEIGHT_MODE,
-                sample_weight_params=SAMPLE_WEIGHT_PARAMS,
-                eval_dates=rebalance_dates_w,
-            )
-            if perm_scores:
-                perm_stats_w = {
-                    "mean": float(np.nanmean(perm_scores)),
-                    "std": float(np.nanstd(perm_scores)),
-                    "scores": [float(score) for score in perm_scores],
-                    "runs": int(len(perm_scores)),
-                }
-
-        quantile_ts_w = quantile_returns(eval_df_w, signal_col_w, TARGET, N_QUANTILES)
-        quantile_mean_w = quantile_ts_w.mean() if not quantile_ts_w.empty else pd.Series(dtype=float)
-        long_short_w = (
-            float(quantile_mean_w.iloc[-1] - quantile_mean_w.iloc[0])
-            if not quantile_mean_w.empty
-            else None
-        )
-
-        k_w = min(TOP_K, eval_df_w["symbol"].nunique())
-        if k_w > 0 and rebalance_dates_w:
-            turnover_series_w = estimate_turnover(
-                eval_df_w,
-                signal_col_w,
-                k_w,
-                rebalance_dates_w,
-                buffer_exit=EVAL_BUFFER_EXIT,
-                buffer_entry=EVAL_BUFFER_ENTRY,
-            )
-        else:
-            turnover_series_w = pd.Series(dtype=float, name="turnover")
-        turnover_mean_w = (
-            float(turnover_series_w.mean()) if not turnover_series_w.empty else None
-        )
-
-        topk_positive_w = topk_positive_ratio(eval_df_w, signal_col_w, TARGET, k_w)
-
-        bt_stats_w = None
-        bt_benchmark_stats_w = None
-        bt_active_stats_w = None
-        if WF_BACKTEST_ENABLED:
-            bt_direction = direction if BACKTEST_SIGNAL_DIRECTION_RAW is None else BACKTEST_SIGNAL_DIRECTION_RAW
-            bt_pred_col = "pred"
-            test_start = pd.to_datetime(window_meta["test_start"])
-            test_end = pd.to_datetime(window_meta["test_end"])
-            test_full_w = df_full[
-                (df_full["trade_date"] >= test_start) & (df_full["trade_date"] <= test_end)
-            ].copy()
-            if test_full_w.empty:
-                bt_result_w = None
-            else:
-                test_full_w["pred"] = model_w.predict(test_full_w[FEATURES])
-                if bt_direction != 1.0:
-                    test_full_w["signal_bt"] = test_full_w["pred"] * bt_direction
-                    bt_pred_col = "signal_bt"
-                bt_rebalance = get_rebalance_dates(
-                    sorted(test_full_w["trade_date"].unique()), BACKTEST_REBALANCE_FREQUENCY
-                )
-                if valid_dates_set:
-                    bt_rebalance = [d for d in bt_rebalance if d in valid_dates_set]
-                try:
-                    bt_result_w = backtest_topk(
-                        test_full_w,
-                        pred_col=bt_pred_col,
-                        price_col=PRICE_COL,
-                        rebalance_dates=bt_rebalance,
-                        top_k=BACKTEST_TOP_K,
-                        shift_days=LABEL_SHIFT_DAYS,
-                        cost_bps=BACKTEST_COST_BPS_EFFECTIVE,
-                        trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
-                        exit_mode=BACKTEST_EXIT_MODE,
-                        exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
-                        long_only=BACKTEST_LONG_ONLY,
-                        short_k=BACKTEST_SHORT_K,
-                        buffer_exit=BACKTEST_BUFFER_EXIT,
-                        buffer_entry=BACKTEST_BUFFER_ENTRY,
-                        group_col=BACKTEST_GROUP_COL
-                        if BACKTEST_GROUP_COL in test_full_w.columns
-                        else None,
-                        max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
-                        tradable_col=BACKTEST_TRADABLE_COL
-                        if BACKTEST_TRADABLE_COL in backtest_pricing_df.columns
-                        else None,
-                        exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
-                        exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
-                        execution=execution_model,
-                        pricing_data=backtest_pricing_df,
-                    )
-                except ValueError:
-                    bt_result_w = None
-            if bt_result_w is not None:
-                bt_stats_w, bt_net_w, _, _, bt_periods_w = bt_result_w
-                if benchmark_df is not None and not benchmark_df.empty:
-                    bench_series_w, bench_periods_w = build_benchmark_series(
-                        benchmark_df, PRICE_COL, bt_periods_w
-                    )
-                    if not bench_series_w.empty:
-                        bt_benchmark_stats_w = summarize_period_returns(
-                            bench_series_w, bench_periods_w, BACKTEST_TRADING_DAYS_PER_YEAR
-                        )
-                        periods_per_year = bt_stats_w.get("periods_per_year", np.nan)
-                        bt_active_stats_w, _ = summarize_active_returns(
-                            bt_net_w, bench_series_w, periods_per_year
-                        )
-
-        result.update(
-            {
-                "signal_direction": direction,
-                "signal_direction_mode": SIGNAL_DIRECTION_MODE,
-                "cv_ic": cv_stats,
-                "train_ic": train_ic_stats if REPORT_TRAIN_IC else None,
-                "train_ic_raw": train_ic_raw_stats,
-                "test_ic": ic_stats_w,
-                "test_pearson_ic": pearson_ic_stats_w,
-                "error_metrics": error_metrics_w,
-                "hit_rate": hit_rate_w,
-                "topk_positive_ratio": topk_positive_w,
-                "long_short": long_short_w,
-                "turnover_mean": turnover_mean_w,
-                "backtest": {
-                    "stats": bt_stats_w,
-                    "benchmark": bt_benchmark_stats_w,
-                    "active": bt_active_stats_w,
-                }
-                if WF_BACKTEST_ENABLED
-                else None,
-                "permutation_test": perm_stats_w,
-                "feature_importance_source": importance_source_w,
-                "feature_importance_top": [
-                    {"feature": str(item["feature"]), "importance": float(item["importance"])}
-                    for _, item in importance_df_w.head(WF_FEATURE_TOP_K).iterrows()
-                ],
-            }
-        )
-        return result
 
     cv_scores_raw = time_series_cv_ic(
         train_df,
@@ -3296,446 +3838,70 @@ def run(config_ref: str | Path | None = None) -> None:
             "refusing to fall back to backtest holdings."
         )
 
-    def evaluate_period(
-        label: str,
-        model_eval: Any,
-        test_df_full: pd.DataFrame,
-        test_dates: np.ndarray,
-        *,
-        run_perm_test: bool,
-        perm_train_df: Optional[pd.DataFrame] = None,
-        perm_test_df: Optional[pd.DataFrame] = None,
-        allow_live_fallback: bool = True,
-    ) -> dict:
-        label_prefix = f"[{label}] " if label else ""
-        default_series = pd.Series(dtype=float)
-        default_frame = pd.DataFrame()
-        result = {
-            "ic_series": default_series,
-            "ic_stats": {},
-            "pearson_ic_series": default_series,
-            "pearson_ic_stats": {},
-            "error_metrics": {},
-            "hit_rate": {},
-            "topk_positive_ratio": {},
-            "bucket_ic": [],
-            "quantile_ts": default_frame,
-            "quantile_mean": default_series,
-            "turnover_series": default_series,
-            "positions_by_rebalance": None,
-            "bt_stats": None,
-            "bt_net_series": pd.Series(dtype=float, name="net_return"),
-            "bt_gross_series": pd.Series(dtype=float, name="gross_return"),
-            "bt_turnover_series": pd.Series(dtype=float, name="turnover"),
-            "bt_benchmark_series": pd.Series(dtype=float, name="benchmark_return"),
-            "bt_active_series": pd.Series(dtype=float, name="active_return"),
-            "bt_benchmark_stats": None,
-            "bt_active_stats": None,
-            "bt_periods": [],
-            "perm_stats": None,
-            "scored_data": default_frame,
-            "eval_rebalance_dates": [],
-            "backtest_rebalance_dates": [],
-        }
-        if test_df_full is None or test_df_full.empty:
-            logger.info("%sEvaluation skipped: no data.", label_prefix)
-            return result
-
-        eval_df_full = test_df_full.copy()
-        eval_df_full["pred"] = model_eval.predict(eval_df_full[FEATURES])
-        eval_df_full["signal_eval"] = eval_df_full["pred"] * SIGNAL_DIRECTION
-        eval_df_full["signal_backtest"] = eval_df_full["pred"] * BACKTEST_SIGNAL_DIRECTION
-        if SIGNAL_DIRECTION != 1.0:
-            logger.info("%sSignal direction applied to ranking: %s", label_prefix, SIGNAL_DIRECTION)
-
-        eval_allowed_dates = test_dates if SAMPLE_ON_REBALANCE_DATES else None
-        eval_df, rebalance_dates_eval = _sample_rebalance_frame(
-            eval_df_full,
-            frequency=REBALANCE_FREQUENCY,
-            valid_dates=valid_dates_set,
-            allowed_dates=eval_allowed_dates,
-        )
-        result["eval_rebalance_dates"] = rebalance_dates_eval
-
-        signal_col = "signal_eval"
-        ic_series = daily_ic_series(eval_df, TARGET, signal_col)
-        ic_stats = summarize_ic(ic_series)
-        logger.info(
-            "%sRebalance-date IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
-            label_prefix,
-            ic_stats["mean"],
-            ic_stats["std"],
-            ic_stats["ir"],
-            ic_stats["t_stat"],
-            ic_stats["p_value"],
-            ic_stats["n"],
-        )
-        result["ic_series"] = ic_series
-        result["ic_stats"] = ic_stats
-
-        pearson_ic_series = daily_ic_series(eval_df, TARGET, signal_col, method="pearson")
-        pearson_ic_stats = summarize_ic(pearson_ic_series)
-        logger.info(
-            "%sRebalance-date Pearson IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
-            label_prefix,
-            pearson_ic_stats["mean"],
-            pearson_ic_stats["std"],
-            pearson_ic_stats["ir"],
-            pearson_ic_stats["t_stat"],
-            pearson_ic_stats["p_value"],
-            pearson_ic_stats["n"],
-        )
-        result["pearson_ic_series"] = pearson_ic_series
-        result["pearson_ic_stats"] = pearson_ic_stats
-
-        error_metrics = regression_error_metrics(eval_df[TARGET], eval_df[signal_col])
-        result["error_metrics"] = error_metrics
-        if error_metrics and error_metrics.get("n", 0) > 0:
-            logger.info(
-                "%sError metrics: MAE=%.6f, RMSE=%.6f, R2=%.4f (n=%s)",
-                label_prefix,
-                error_metrics.get("mae", np.nan),
-                error_metrics.get("rmse", np.nan),
-                error_metrics.get("r2", np.nan),
-                error_metrics.get("n", 0),
-            )
-
-        hit_stats = hit_rate(eval_df[TARGET], eval_df[signal_col])
-        result["hit_rate"] = hit_stats
-        if hit_stats and hit_stats.get("n", 0) > 0:
-            logger.info(
-                "%sHit rate: %.2f%% (n=%s)",
-                label_prefix,
-                hit_stats.get("hit_rate", np.nan) * 100,
-                hit_stats.get("n", 0),
-            )
-
-        if run_perm_test:
-            if perm_train_df is None or perm_test_df is None:
-                raise SystemExit("Permutation test requested but data was not provided.")
-            logger.info("%sPermutation test (shuffle train labels within date) ...", label_prefix)
-            perm_scores = _permutation_test_ic(
-                perm_train_df,
-                perm_test_df,
-                PERM_TEST_RUNS,
-                PERM_TEST_SEED,
-                SIGNAL_DIRECTION,
-                model_type=MODEL_TYPE,
-                model_params=MODEL_PARAMS,
-                features=FEATURES,
-                fit_target_col=TRAIN_TARGET,
-                target_col=TARGET,
-                sample_weight_mode=SAMPLE_WEIGHT_MODE,
-                sample_weight_params=SAMPLE_WEIGHT_PARAMS,
-                eval_dates=rebalance_dates_eval,
-            )
-            if perm_scores:
-                perm_mean = np.nanmean(perm_scores)
-                perm_std = np.nanstd(perm_scores)
-                logger.info(
-                    "%sPermutation IC: mean=%.4f, std=%.4f, runs=%s",
-                    label_prefix,
-                    perm_mean,
-                    perm_std,
-                    len(perm_scores),
-                )
-                logger.info("%sPermutation ICs: %s", label_prefix, [f"{s:.4f}" for s in perm_scores])
-                result["perm_stats"] = {
-                    "mean": float(perm_mean),
-                    "std": float(perm_std),
-                    "scores": [float(score) for score in perm_scores],
-                    "runs": int(len(perm_scores)),
-                }
-
-        trade_dates_sorted_full = sorted(eval_df_full["trade_date"].unique())
-        rebalance_dates_full = get_rebalance_dates(trade_dates_sorted_full, REBALANCE_FREQUENCY)
-        rebalance_gap = estimate_rebalance_gap(trade_dates_sorted_full, rebalance_dates_full)
-        if (
-            BACKTEST_EXIT_MODE == "rebalance"
-            and np.isfinite(rebalance_gap)
-            and LABEL_HORIZON_MODE == "fixed"
-        ):
-            gap_diff = abs(rebalance_gap - label_horizon_effective)
-            if gap_diff >= max(3.0, rebalance_gap * 0.25):
-                logger.warning(
-                    "%sLabel horizon (%s days) differs from rebalance gap (median %.1f days).",
-                    label_prefix,
-                    label_horizon_effective,
-                    rebalance_gap,
-                )
-
-        quantile_ts = quantile_returns(eval_df, signal_col, TARGET, N_QUANTILES)
-        quantile_mean = quantile_ts.mean() if not quantile_ts.empty else pd.Series(dtype=float)
-        result["quantile_ts"] = quantile_ts
-        result["quantile_mean"] = quantile_mean
-        if not quantile_mean.empty:
-            for q_idx, value in quantile_mean.items():
-                logger.info("%sQ%s mean return: %.4f%%", label_prefix, int(q_idx) + 1, value * 100)
-            long_short = quantile_mean.iloc[-1] - quantile_mean.iloc[0]
-            logger.info(
-                "%sLong-short (Q%s-Q1): %.4f%%", label_prefix, N_QUANTILES, long_short * 100
-            )
-        else:
-            logger.info("%sQuantile returns not available - insufficient symbols per date.", label_prefix)
-
-        k = min(TOP_K, eval_df["symbol"].nunique()) if not eval_df.empty else 0
-        if k > 0 and rebalance_dates_eval:
-            turnover_series = estimate_turnover(
-                eval_df,
-                signal_col,
-                k,
-                rebalance_dates_eval,
-                buffer_exit=EVAL_BUFFER_EXIT,
-                buffer_entry=EVAL_BUFFER_ENTRY,
-            )
-        else:
-            turnover_series = pd.Series(dtype=float, name="turnover")
-        result["turnover_series"] = turnover_series
-        if not turnover_series.empty:
-            turnover = turnover_series.mean()
-            cost_drag = 2 * (TRANSACTION_COST_BPS / 10000.0) * turnover
-            logger.info(
-                "%sTop-%s turnover per rebalance: %.2f%% (n=%s)",
-                label_prefix,
-                k,
-                turnover * 100,
-                len(turnover_series),
-            )
-            logger.info(
-                "%sApprox cost drag per rebalance: %.2f%% at %s bps per side",
-                label_prefix,
-                cost_drag * 100,
-                TRANSACTION_COST_BPS,
-            )
-
-        topk_stats = topk_positive_ratio(eval_df, signal_col, TARGET, k)
-        result["topk_positive_ratio"] = topk_stats
-        if topk_stats and topk_stats.get("n_dates", 0) > 0:
-            logger.info(
-                "%sTop-%s positive ratio: %.2f%% (n=%s)",
-                label_prefix,
-                k,
-                topk_stats.get("topk_positive_ratio", np.nan) * 100,
-                topk_stats.get("n_dates", 0),
-            )
-
-        if BUCKET_IC_ENABLED and BUCKET_IC_SCHEMES:
-            bucket_frames = []
-            for scheme in BUCKET_IC_SCHEMES:
-                col = scheme["column"]
-                if col not in eval_df.columns:
-                    continue
-                bucket_type = str(scheme.get("type", "category")).strip().lower()
-                if bucket_type not in {"category", "quantile"}:
-                    bucket_type = "category"
-                data_for_bucket = eval_df.copy()
-                bucket_col = col
-                if bucket_type == "quantile":
-                    n_bins = int(scheme.get("n_bins") or 0)
-                    if n_bins < 2:
-                        continue
-                    bucket_col = f"bucket_{scheme['name']}"
-                    data_for_bucket[bucket_col] = assign_daily_quantile_bucket(
-                        data_for_bucket, col, n_bins
-                    )
-                summary_df = bucket_ic_summary(
-                    data_for_bucket,
-                    TARGET,
-                    signal_col,
-                    bucket_col,
-                    method=BUCKET_IC_METHOD,
-                    min_count=BUCKET_IC_MIN_COUNT,
-                )
-                if not summary_df.empty:
-                    summary_df.insert(0, "scheme", scheme["name"])
-                    summary_df.insert(1, "type", bucket_type)
-                    if bucket_type == "quantile":
-                        summary_df.insert(2, "n_bins", int(scheme.get("n_bins") or 0))
-                    summary_df["method"] = BUCKET_IC_METHOD
-                    bucket_frames.append(summary_df)
-            if bucket_frames:
-                bucket_df = pd.concat(bucket_frames, ignore_index=True)
-                result["bucket_ic"] = bucket_df.to_dict(orient="records")
-
-        _, bt_rebalance = _sample_rebalance_frame(
-            eval_df_full,
-            frequency=BACKTEST_REBALANCE_FREQUENCY,
-            valid_dates=valid_dates_set,
-        )
-        result["backtest_rebalance_dates"] = bt_rebalance
-        bt_pred_col = "signal_backtest"
-
-        positions_by_rebalance = None
-        if BACKTEST_ENABLED or not LIVE_ENABLED or not allow_live_fallback:
-            positions_by_rebalance = build_positions_by_rebalance(
-                eval_df_full,
-                pred_col=bt_pred_col,
-                price_col=PRICE_COL,
-                rebalance_dates=bt_rebalance,
-                top_k=BACKTEST_TOP_K,
-                shift_days=LABEL_SHIFT_DAYS,
-                weighting=BACKTEST_WEIGHTING,
-                buffer_exit=BACKTEST_BUFFER_EXIT,
-                buffer_entry=BACKTEST_BUFFER_ENTRY,
-                long_only=BACKTEST_LONG_ONLY,
-                short_k=BACKTEST_SHORT_K,
-                tradable_col=BACKTEST_TRADABLE_COL
-                if BACKTEST_TRADABLE_COL in eval_df_full.columns
-                else None,
-                group_col=BACKTEST_GROUP_COL
-                if BACKTEST_GROUP_COL in eval_df_full.columns
-                else None,
-                max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
-                execution=execution_model,
-            )
-        if allow_live_fallback and LIVE_ENABLED and not BACKTEST_ENABLED:
-            positions_by_rebalance = positions_by_rebalance_live
-        result["positions_by_rebalance"] = positions_by_rebalance
-
-        bt_result = None
-        bt_attempted = False
-        if BACKTEST_ENABLED:
-            bt_attempted = True
-            try:
-                bt_result = backtest_topk(
-                    eval_df_full,
-                    pred_col=bt_pred_col,
-                    price_col=PRICE_COL,
-                    rebalance_dates=bt_rebalance,
-                    top_k=BACKTEST_TOP_K,
-                    shift_days=LABEL_SHIFT_DAYS,
-                    cost_bps=BACKTEST_COST_BPS_EFFECTIVE,
-                    trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
-                    exit_mode=BACKTEST_EXIT_MODE,
-                    exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
-                    long_only=BACKTEST_LONG_ONLY,
-                    short_k=BACKTEST_SHORT_K,
-                    weighting=BACKTEST_WEIGHTING,
-                    buffer_exit=BACKTEST_BUFFER_EXIT,
-                    buffer_entry=BACKTEST_BUFFER_ENTRY,
-                    group_col=BACKTEST_GROUP_COL
-                    if BACKTEST_GROUP_COL in eval_df_full.columns
-                    else None,
-                    max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
-                    tradable_col=BACKTEST_TRADABLE_COL
-                    if BACKTEST_TRADABLE_COL in backtest_pricing_df.columns
-                    else None,
-                    exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
-                    exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
-                    execution=execution_model,
-                    pricing_data=backtest_pricing_df,
-                )
-            except ValueError as exc:
-                logger.warning("%sBacktest skipped: %s", label_prefix, exc)
-                bt_result = None
-
-        if bt_attempted:
-            if bt_result is None:
-                logger.info("%sBacktest not available - insufficient data.", label_prefix)
-            else:
-                stats, net_series, gross_series, bt_turnover_series, period_info = bt_result
-                result["bt_stats"] = stats
-                result["bt_net_series"] = net_series
-                result["bt_gross_series"] = gross_series
-                result["bt_turnover_series"] = bt_turnover_series
-                result["bt_periods"] = period_info
-                mode_text = "long-only" if BACKTEST_LONG_ONLY else "long-short"
-                logger.info(
-                    "%sBacktest (%s, top-K, exit_mode=%s):",
-                    label_prefix,
-                    mode_text,
-                    BACKTEST_EXIT_MODE,
-                )
-                logger.info("%s  periods: %s", label_prefix, stats["periods"])
-                logger.info("%s  total return: %.2f%%", label_prefix, stats["total_return"] * 100)
-                logger.info("%s  ann return: %.2f%%", label_prefix, stats["ann_return"] * 100)
-                logger.info("%s  ann vol: %.2f%%", label_prefix, stats["ann_vol"] * 100)
-                logger.info("%s  sharpe: %.2f", label_prefix, stats["sharpe"])
-                logger.info("%s  max drawdown: %.2f%%", label_prefix, stats["max_drawdown"] * 100)
-                if not np.isnan(stats["avg_turnover"]):
-                    logger.info("%s  avg turnover: %.2f%%", label_prefix, stats["avg_turnover"] * 100)
-                    logger.info(
-                        "%s  avg cost drag: %.2f%%",
-                        label_prefix,
-                        stats["avg_cost_drag"] * 100,
-                    )
-                _warn_if_delay_exit_lag(
-                    label_prefix=label_prefix,
-                    exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
-                    stats=stats,
-                )
-
-                if benchmark_df is not None and not benchmark_df.empty:
-                    bench_series, bench_periods = build_benchmark_series(
-                        benchmark_df,
-                        execution_model.entry_policy.price_col,
-                        execution_model.exit_policy.price_col,
-                        period_info,
-                    )
-                    if not bench_series.empty:
-                        result["bt_benchmark_series"] = bench_series
-                        bt_benchmark_stats = summarize_period_returns(
-                            bench_series, bench_periods, BACKTEST_TRADING_DAYS_PER_YEAR
-                        )
-                        result["bt_benchmark_stats"] = bt_benchmark_stats
-                        logger.info(
-                            "%s  benchmark total return: %.2f%%",
-                            label_prefix,
-                            bt_benchmark_stats["total_return"] * 100,
-                        )
-                        periods_per_year = stats.get("periods_per_year", np.nan)
-                        bt_active_stats, bt_active_series = summarize_active_returns(
-                            net_series, bench_series, periods_per_year
-                        )
-                        result["bt_active_stats"] = bt_active_stats
-                        result["bt_active_series"] = bt_active_series
-                        if bt_active_stats and bt_active_stats.get("n", 0) > 0:
-                            logger.info(
-                                "%s  active total return: %.2f%%",
-                                label_prefix,
-                                bt_active_stats["active_total_return"] * 100,
-                            )
-                            if np.isfinite(bt_active_stats.get("information_ratio", np.nan)):
-                                logger.info(
-                                    "%s  information ratio: %.2f",
-                                    label_prefix,
-                                    bt_active_stats["information_ratio"],
-                                )
-                            if np.isfinite(bt_active_stats.get("beta", np.nan)):
-                                logger.info("%s  beta: %.2f", label_prefix, bt_active_stats["beta"])
-                            if np.isfinite(bt_active_stats.get("alpha", np.nan)):
-                                logger.info(
-                                    "%s  alpha (ann): %.2f%%",
-                                    label_prefix,
-                                    bt_active_stats["alpha"] * 100,
-                                )
-
-        scored_cols = [
-            "trade_date",
-            "symbol",
-            PRICE_COL,
-            TARGET,
-            "pred",
-            "signal_eval",
-            "signal_backtest",
-        ]
-        scored_cols.extend(passthrough_cols)
-        scored_cols.extend(bucket_cols)
-        scored_cols = list(dict.fromkeys(scored_cols))
-        if BACKTEST_TRADABLE_COL and BACKTEST_TRADABLE_COL in eval_df_full.columns:
-            scored_cols.append(BACKTEST_TRADABLE_COL)
-        result["scored_data"] = eval_df_full[scored_cols].copy()
-        return result
-
     BACKTEST_SIGNAL_DIRECTION = (
         SIGNAL_DIRECTION if BACKTEST_SIGNAL_DIRECTION_RAW is None else BACKTEST_SIGNAL_DIRECTION_RAW
     )
 
-    eval_main = evaluate_period(
+    period_eval_context = {
+        "features": FEATURES,
+        "target": TARGET,
+        "signal_direction": SIGNAL_DIRECTION,
+        "backtest_signal_direction": BACKTEST_SIGNAL_DIRECTION,
+        "sample_on_rebalance_dates": SAMPLE_ON_REBALANCE_DATES,
+        "rebalance_frequency": REBALANCE_FREQUENCY,
+        "valid_dates_set": valid_dates_set,
+        "perm_test_runs": PERM_TEST_RUNS,
+        "perm_test_seed": PERM_TEST_SEED,
+        "model_type": MODEL_TYPE,
+        "model_params": MODEL_PARAMS,
+        "train_target": TRAIN_TARGET,
+        "sample_weight_mode": SAMPLE_WEIGHT_MODE,
+        "sample_weight_params": SAMPLE_WEIGHT_PARAMS,
+        "label_horizon_mode": LABEL_HORIZON_MODE,
+        "label_horizon_effective": label_horizon_effective,
+        "n_quantiles": N_QUANTILES,
+        "top_k": TOP_K,
+        "eval_buffer_exit": EVAL_BUFFER_EXIT,
+        "eval_buffer_entry": EVAL_BUFFER_ENTRY,
+        "transaction_cost_bps": TRANSACTION_COST_BPS,
+        "bucket_ic_enabled": BUCKET_IC_ENABLED,
+        "bucket_ic_schemes": BUCKET_IC_SCHEMES,
+        "bucket_ic_method": BUCKET_IC_METHOD,
+        "bucket_ic_min_count": BUCKET_IC_MIN_COUNT,
+        "backtest_rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,
+        "backtest_enabled": BACKTEST_ENABLED,
+        "live_enabled": LIVE_ENABLED,
+        "backtest_top_k": BACKTEST_TOP_K,
+        "label_shift_days": LABEL_SHIFT_DAYS,
+        "backtest_weighting": BACKTEST_WEIGHTING,
+        "backtest_buffer_exit": BACKTEST_BUFFER_EXIT,
+        "backtest_buffer_entry": BACKTEST_BUFFER_ENTRY,
+        "backtest_long_only": BACKTEST_LONG_ONLY,
+        "backtest_short_k": BACKTEST_SHORT_K,
+        "backtest_tradable_col": BACKTEST_TRADABLE_COL,
+        "backtest_group_col": BACKTEST_GROUP_COL,
+        "backtest_max_names_per_group": BACKTEST_MAX_NAMES_PER_GROUP,
+        "execution_model": execution_model,
+        "positions_by_rebalance_live": positions_by_rebalance_live,
+        "backtest_cost_bps_effective": BACKTEST_COST_BPS_EFFECTIVE,
+        "backtest_trading_days_per_year": BACKTEST_TRADING_DAYS_PER_YEAR,
+        "backtest_exit_mode": BACKTEST_EXIT_MODE,
+        "backtest_exit_horizon_days": BACKTEST_EXIT_HORIZON_DAYS,
+        "backtest_pricing_df": backtest_pricing_df,
+        "backtest_exit_price_policy": BACKTEST_EXIT_PRICE_POLICY,
+        "backtest_exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
+        "benchmark_df": benchmark_df,
+        "price_col": PRICE_COL,
+        "passthrough_cols": passthrough_cols,
+        "bucket_cols": bucket_cols,
+    }
+
+    eval_main = _evaluate_period(
         "Test",
         model,
         test_df_full,
         test_dates,
+        context=period_eval_context,
         run_perm_test=PERM_TEST_ENABLED,
         perm_train_df=train_df,
         perm_test_df=test_df,
@@ -3816,6 +3982,64 @@ def run(config_ref: str | Path | None = None) -> None:
 
     walk_forward_results: list[dict] = []
     if WF_ENABLED:
+        walk_forward_context = {
+            "df_model_sorted": df_model_sorted,
+            "all_date_start_rows": all_date_start_rows,
+            "all_date_end_rows": all_date_end_rows,
+            "all_date_to_pos": all_date_to_pos,
+            "train_window_mode": TRAIN_WINDOW_MODE,
+            "train_window_size": TRAIN_WINDOW_SIZE,
+            "train_window_unit": TRAIN_WINDOW_UNIT,
+            "signal_direction": SIGNAL_DIRECTION,
+            "signal_direction_mode": SIGNAL_DIRECTION_MODE,
+            "features": FEATURES,
+            "target": TARGET,
+            "n_splits": N_SPLITS,
+            "embargo_steps": EMBARGO_STEPS,
+            "purge_steps": PURGE_STEPS,
+            "model_cfg": MODEL_CFG,
+            "min_abs_ic_to_flip": MIN_ABS_IC_TO_FLIP,
+            "sample_weight_mode": SAMPLE_WEIGHT_MODE,
+            "sample_weight_params": SAMPLE_WEIGHT_PARAMS,
+            "train_target": TRAIN_TARGET,
+            "model_type": MODEL_TYPE,
+            "model_params": MODEL_PARAMS,
+            "report_train_ic": REPORT_TRAIN_IC,
+            "sample_on_rebalance_dates": SAMPLE_ON_REBALANCE_DATES,
+            "rebalance_frequency": REBALANCE_FREQUENCY,
+            "valid_dates_set": valid_dates_set,
+            "wf_perm_test_enabled": WF_PERM_TEST_ENABLED,
+            "wf_perm_test_runs": WF_PERM_TEST_RUNS,
+            "wf_perm_test_seed": WF_PERM_TEST_SEED,
+            "n_quantiles": N_QUANTILES,
+            "top_k": TOP_K,
+            "eval_buffer_exit": EVAL_BUFFER_EXIT,
+            "eval_buffer_entry": EVAL_BUFFER_ENTRY,
+            "wf_backtest_enabled": WF_BACKTEST_ENABLED,
+            "backtest_signal_direction_raw": BACKTEST_SIGNAL_DIRECTION_RAW,
+            "df_full": df_full,
+            "price_col": PRICE_COL,
+            "backtest_rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,
+            "label_shift_days": LABEL_SHIFT_DAYS,
+            "backtest_cost_bps_effective": BACKTEST_COST_BPS_EFFECTIVE,
+            "backtest_trading_days_per_year": BACKTEST_TRADING_DAYS_PER_YEAR,
+            "backtest_exit_mode": BACKTEST_EXIT_MODE,
+            "backtest_exit_horizon_days": BACKTEST_EXIT_HORIZON_DAYS,
+            "backtest_long_only": BACKTEST_LONG_ONLY,
+            "backtest_short_k": BACKTEST_SHORT_K,
+            "backtest_buffer_exit": BACKTEST_BUFFER_EXIT,
+            "backtest_buffer_entry": BACKTEST_BUFFER_ENTRY,
+            "backtest_group_col": BACKTEST_GROUP_COL,
+            "backtest_max_names_per_group": BACKTEST_MAX_NAMES_PER_GROUP,
+            "backtest_tradable_col": BACKTEST_TRADABLE_COL,
+            "backtest_exit_price_policy": BACKTEST_EXIT_PRICE_POLICY,
+            "backtest_exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
+            "execution_model": execution_model,
+            "backtest_pricing_df": backtest_pricing_df,
+            "benchmark_df": benchmark_df,
+            "backtest_top_k": BACKTEST_TOP_K,
+            "wf_feature_top_k": WF_FEATURE_TOP_K,
+        }
         try:
             wf_test_size = float(WF_TEST_SIZE)
         except (TypeError, ValueError):
@@ -3833,7 +4057,12 @@ def run(config_ref: str | Path | None = None) -> None:
         else:
             logger.info("Walk-forward evaluation: %s windows.", len(windows))
             for window_meta in windows:
-                walk_forward_results.append(evaluate_window(window_meta))
+                window_result, window_importance_rows = _evaluate_walk_forward_window(
+                    window_meta,
+                    context=walk_forward_context,
+                )
+                walk_forward_results.append(window_result)
+                walk_forward_importance_rows.extend(window_importance_rows)
     walk_forward_importance_df = pd.DataFrame(walk_forward_importance_rows)
     walk_forward_feature_stability_df = _summarize_walk_forward_feature_stability(
         walk_forward_importance_df,
@@ -3915,11 +4144,12 @@ def run(config_ref: str | Path | None = None) -> None:
                     target_col=TRAIN_TARGET,
                     sample_weight=final_weights,
                 )
-                final_oos_eval = evaluate_period(
+                final_oos_eval = _evaluate_period(
                     "Final OOS",
                     final_model,
                     oos_df_full,
                     final_oos_dates,
+                    context=period_eval_context,
                     run_perm_test=False,
                     allow_live_fallback=False,
                 )

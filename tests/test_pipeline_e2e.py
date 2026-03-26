@@ -830,6 +830,124 @@ def test_pipeline_walk_forward_feature_stability_outputs(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
+def test_pipeline_walk_forward_backtest_benchmark_summary(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=90, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    benchmark_symbol = "02800.HK"
+    frames = _build_daily_frames(symbols + [benchmark_symbol], dates)
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return frames[symbol].copy()
+
+    def fake_load_basic(self, symbols=None) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", fake_load_basic)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20200101",
+            "end_date": "20200530",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "next_rebalance",
+            "rebalance_frequency": "W",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5", "ret_5"],
+            "params": {"sma_windows": [5], "ret_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": False,
+            "output_dir": str(output_dir),
+            "run_name": "e2e_wf_benchmark",
+            "walk_forward": {
+                "enabled": True,
+                "n_windows": 2,
+                "test_size": 0.2,
+                "step_size": 0.2,
+                "backtest_enabled": True,
+                "feature_top_k": 1,
+            },
+        },
+        "backtest": {
+            "enabled": True,
+            "top_k": 2,
+            "rebalance_frequency": "W",
+            "transaction_cost_bps": 0,
+            "long_only": True,
+            "exit_mode": "rebalance",
+            "benchmark_symbol": benchmark_symbol,
+        },
+    }
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    pipeline.run(str(config_path))
+
+    run_dirs = list(Path(output_dir).glob("e2e_wf_benchmark_*"))
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    walk_forward_results = summary["walk_forward"]["results"]
+    assert walk_forward_results
+    assert any(result.get("backtest") for result in walk_forward_results)
+    assert any(
+        result.get("backtest") and result["backtest"].get("benchmark") is not None
+        for result in walk_forward_results
+    )
+
+
+@pytest.mark.integration
 def test_pipeline_records_exp_decay_and_train_window_summary(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=80, freq="B")
     symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
