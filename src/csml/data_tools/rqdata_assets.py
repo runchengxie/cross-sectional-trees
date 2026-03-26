@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -2860,6 +2860,66 @@ def mirror_hk_valuation(args, rqdatac) -> int:
     )
 
 
+def _collect_pending_mirror_items(
+    *,
+    items: Sequence[str],
+    data_dir: Path,
+    skip_existing: bool,
+    item_to_symbol: Callable[[str], str],
+    load_existing: Callable[[Path], tuple[object, pd.DataFrame]],
+    record_entry: Callable[..., None],
+) -> list[str]:
+    pending_items: list[str] = []
+    for item in items:
+        symbol = item_to_symbol(item)
+        out_path = data_dir / f"{symbol}.parquet"
+        if skip_existing and out_path.exists():
+            try:
+                entry, symbol_frame = load_existing(out_path)
+            except Exception:
+                pending_items.append(item)
+                continue
+            record_entry(
+                symbol=symbol,
+                entry=entry,
+                symbol_frame=symbol_frame,
+                record_status="skipped_existing",
+                attempts=0,
+                started_at_value=None,
+                finished_at_value=_path_mtime_iso(out_path),
+            )
+            continue
+        pending_items.append(item)
+    return pending_items
+
+
+def _run_partitioned_mirror_batches(
+    *,
+    pending_items: Sequence[str],
+    batch_size: int,
+    process_batch: Callable[[list[str]], None],
+    quota_blocked: Callable[[], bool],
+    on_quota_blocked: Callable[[], None],
+    on_completed_without_quota: Callable[[], None],
+    on_exception: Callable[[Exception], None],
+    on_finalize: Callable[[], None],
+) -> None:
+    try:
+        for batch_items in _chunked(pending_items, batch_size):
+            process_batch(list(batch_items))
+            if quota_blocked():
+                break
+        if quota_blocked():
+            on_quota_blocked()
+        else:
+            on_completed_without_quota()
+    except Exception as exc:
+        on_exception(exc)
+        raise
+    finally:
+        on_finalize()
+
+
 def _mirror_dated_dataset(
     *,
     args,
@@ -3220,75 +3280,62 @@ def _mirror_dated_dataset(
             }
         )
 
-    try:
-        if resume:
-            _validate_dated_resume_inputs(
-                output_dir=output_dir,
-                dataset_name=dataset_name,
-                fields=fields,
-                symbols=symbols,
-                start_date=start_date,
-                end_date=end_date,
+    if resume:
+        _validate_dated_resume_inputs(
+            output_dir=output_dir,
+            dataset_name=dataset_name,
+            fields=fields,
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    _write_text_list(output_dir / "fields.txt", list(fields))
+    _write_text_list(output_dir / "symbols.txt", symbols)
+
+    pending_symbols = _collect_pending_mirror_items(
+        items=symbols,
+        data_dir=data_dir,
+        skip_existing=skip_existing,
+        item_to_symbol=lambda symbol: symbol,
+        load_existing=lambda path: _load_existing_dated_entry(
+            path,
+            date_column=date_column,
+            fields=fields,
+        ),
+        record_entry=_record_entry,
+    )
+
+    def _quota_blocked() -> bool:
+        return quota_blocked
+
+    def _on_quota_blocked() -> None:
+        quota_finished_at = _timestamp_now()
+        for symbol in pending_symbols:
+            if symbol in audit_by_symbol:
+                continue
+            _record_non_entry(
+                symbol=symbol,
+                order_book_id=primary_order_book_id_by_symbol[symbol],
+                record_status="quota_blocked",
+                attempts=0,
+                started_at_value=None,
+                finished_at_value=quota_finished_at,
+                error_text=error,
             )
 
-        _write_text_list(output_dir / "fields.txt", list(fields))
-        _write_text_list(output_dir / "symbols.txt", symbols)
-
-        pending_symbols: list[str] = []
-        for symbol in symbols:
-            out_path = data_dir / f"{symbol}.parquet"
-            if skip_existing and out_path.exists():
-                try:
-                    entry, symbol_frame = _load_existing_dated_entry(
-                        out_path,
-                        date_column=date_column,
-                        fields=fields,
-                    )
-                except Exception:
-                    pending_symbols.append(symbol)
-                    continue
-                _record_entry(
-                    symbol=symbol,
-                    entry=entry,
-                    symbol_frame=symbol_frame,
-                    record_status="skipped_existing",
-                    attempts=0,
-                    started_at_value=None,
-                    finished_at_value=_path_mtime_iso(out_path),
-                )
-                continue
-            pending_symbols.append(symbol)
-
-        for batch_symbols in _chunked(
-            pending_symbols,
-            getattr(args, "batch_size", DEFAULT_BATCH_SIZE),
-        ):
-            _process_batch(batch_symbols)
-            if quota_blocked:
-                break
-
-        if quota_blocked:
-            quota_finished_at = _timestamp_now()
-            for symbol in pending_symbols:
-                if symbol in audit_by_symbol:
-                    continue
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=primary_order_book_id_by_symbol[symbol],
-                    record_status="quota_blocked",
-                    attempts=0,
-                    started_at_value=None,
-                    finished_at_value=quota_finished_at,
-                    error_text=error,
-                )
-        elif result_code == 1 and status == "completed":
+    def _on_completed_without_quota() -> None:
+        nonlocal status
+        if result_code == 1 and status == "completed":
             status = "completed_with_failures"
-    except Exception as exc:
+
+    def _on_exception(exc: Exception) -> None:
+        nonlocal status, error, result_code
         status = "failed"
         error = str(exc)
         result_code = max(result_code, 1)
-        raise
-    finally:
+
+    def _on_finalize() -> None:
         finished_at = _timestamp_now()
         for symbol in symbols:
             if symbol in audit_by_symbol:
@@ -3329,6 +3376,17 @@ def _mirror_dated_dataset(
             config_ref=getattr(args, "config", None),
         )
         _write_manifest(output_dir / "manifest.yml", manifest)
+
+    _run_partitioned_mirror_batches(
+        pending_items=pending_symbols,
+        batch_size=getattr(args, "batch_size", DEFAULT_BATCH_SIZE),
+        process_batch=_process_batch,
+        quota_blocked=_quota_blocked,
+        on_quota_blocked=_on_quota_blocked,
+        on_completed_without_quota=_on_completed_without_quota,
+        on_exception=_on_exception,
+        on_finalize=_on_finalize,
+    )
 
     totals = {
         "files": len(entries_by_symbol),
@@ -3661,75 +3719,61 @@ def _mirror_dataset(
             }
         )
 
-    try:
-        if resume:
-            _validate_resume_inputs(
-                output_dir=output_dir,
-                dataset_name=dataset_name,
-                fields=fields,
-                symbols=symbols,
-                start_quarter=args.start_quarter,
-                end_quarter=args.end_quarter,
-                statements=args.statements,
-                query_date=getattr(args, "date", None),
+    if resume:
+        _validate_resume_inputs(
+            output_dir=output_dir,
+            dataset_name=dataset_name,
+            fields=fields,
+            symbols=symbols,
+            start_quarter=args.start_quarter,
+            end_quarter=args.end_quarter,
+            statements=args.statements,
+            query_date=getattr(args, "date", None),
+        )
+
+    _write_text_list(output_dir / "fields.txt", fields)
+    _write_text_list(output_dir / "symbols.txt", symbols)
+
+    pending_order_book_ids = _collect_pending_mirror_items(
+        items=order_book_ids,
+        data_dir=data_dir,
+        skip_existing=skip_existing,
+        item_to_symbol=lambda order_book_id: symbol_map[order_book_id],
+        load_existing=lambda path: _load_existing_entry(path, fields=fields),
+        record_entry=_record_entry,
+    )
+
+    def _quota_blocked() -> bool:
+        return quota_blocked
+
+    def _on_quota_blocked() -> None:
+        quota_finished_at = _timestamp_now()
+        for order_book_id in pending_order_book_ids:
+            symbol = symbol_map[order_book_id]
+            if symbol in audit_by_symbol:
+                continue
+            _record_non_entry(
+                symbol=symbol,
+                order_book_id=order_book_id,
+                record_status="quota_blocked",
+                attempts=0,
+                started_at_value=None,
+                finished_at_value=quota_finished_at,
+                error_text=error,
             )
 
-        _write_text_list(output_dir / "fields.txt", fields)
-        _write_text_list(output_dir / "symbols.txt", symbols)
-
-        pending_order_book_ids: list[str] = []
-        for order_book_id in order_book_ids:
-            symbol = symbol_map[order_book_id]
-            out_path = data_dir / f"{symbol}.parquet"
-            if skip_existing and out_path.exists():
-                try:
-                    entry, symbol_frame = _load_existing_entry(out_path, fields=fields)
-                except Exception:
-                    pending_order_book_ids.append(order_book_id)
-                    continue
-                _record_entry(
-                    symbol=symbol,
-                    entry=entry,
-                    symbol_frame=symbol_frame,
-                    record_status="skipped_existing",
-                    attempts=0,
-                    started_at_value=None,
-                    finished_at_value=_path_mtime_iso(out_path),
-                )
-                continue
-            pending_order_book_ids.append(order_book_id)
-
-        for batch_order_book_ids in _chunked(
-            pending_order_book_ids,
-            getattr(args, "batch_size", DEFAULT_BATCH_SIZE),
-        ):
-            _process_batch(batch_order_book_ids)
-            if quota_blocked:
-                break
-
-        if quota_blocked:
-            quota_finished_at = _timestamp_now()
-            for order_book_id in pending_order_book_ids:
-                symbol = symbol_map[order_book_id]
-                if symbol in audit_by_symbol:
-                    continue
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=order_book_id,
-                    record_status="quota_blocked",
-                    attempts=0,
-                    started_at_value=None,
-                    finished_at_value=quota_finished_at,
-                    error_text=error,
-                )
-        elif result_code == 1 and status == "completed":
+    def _on_completed_without_quota() -> None:
+        nonlocal status
+        if result_code == 1 and status == "completed":
             status = "completed_with_failures"
-    except Exception as exc:
+
+    def _on_exception(exc: Exception) -> None:
+        nonlocal status, error, result_code
         status = "failed"
         error = str(exc)
         result_code = max(result_code, 1)
-        raise
-    finally:
+
+    def _on_finalize() -> None:
         finished_at = _timestamp_now()
         for order_book_id in order_book_ids:
             symbol = symbol_map[order_book_id]
@@ -3772,6 +3816,17 @@ def _mirror_dataset(
             config_ref=getattr(args, "config", None),
         )
         _write_manifest(output_dir / "manifest.yml", manifest)
+
+    _run_partitioned_mirror_batches(
+        pending_items=pending_order_book_ids,
+        batch_size=getattr(args, "batch_size", DEFAULT_BATCH_SIZE),
+        process_batch=_process_batch,
+        quota_blocked=_quota_blocked,
+        on_quota_blocked=_on_quota_blocked,
+        on_completed_without_quota=_on_completed_without_quota,
+        on_exception=_on_exception,
+        on_finalize=_on_finalize,
+    )
 
     totals = {
         "files": len(entries_by_symbol),

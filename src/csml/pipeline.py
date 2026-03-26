@@ -759,6 +759,1194 @@ def config_hash(cfg: dict) -> str:
     return hashlib.md5(dumped.encode("utf-8")).hexdigest()[:8]
 
 
+def _resolve_holdout_len(value: object | None, n_dates: int) -> int:
+    if value is None:
+        return 0
+    if n_dates <= 0:
+        return 0
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        raise SystemExit("eval.final_oos.size must be a number.")
+    if size <= 0:
+        return 0
+    if size < 1:
+        return max(1, int(np.floor(n_dates * size)))
+    return int(size)
+
+
+def _apply_model_train_window(
+    train_dates_input: np.ndarray | list[pd.Timestamp],
+    *,
+    label: str,
+    train_window_mode: str,
+    train_window_size: int | None,
+    train_window_unit: str,
+) -> np.ndarray:
+    train_dates_array = np.asarray(pd.to_datetime(train_dates_input), dtype="datetime64[ns]")
+    if train_dates_array.size == 0:
+        return train_dates_array
+    windowed_dates = select_train_window_dates(
+        train_dates_array,
+        mode=train_window_mode,
+        size=train_window_size,
+        unit=train_window_unit,
+    )
+    if (
+        train_window_mode == "rolling"
+        and windowed_dates.size > 0
+        and windowed_dates.size < train_dates_array.size
+    ):
+        logger.info(
+            "Applied model.train_window to %s: using %s/%s dates (%s -> %s).",
+            label,
+            len(windowed_dates),
+            len(train_dates_array),
+            pd.to_datetime(windowed_dates[0]).strftime("%Y-%m-%d"),
+            pd.to_datetime(windowed_dates[-1]).strftime("%Y-%m-%d"),
+        )
+    return windowed_dates
+
+
+def _slice_with_train_window(
+    ordered: pd.DataFrame,
+    start_rows: np.ndarray,
+    end_rows: np.ndarray,
+    date_to_pos: dict[pd.Timestamp, int],
+    train_dates_input: np.ndarray | list[pd.Timestamp],
+    *,
+    label: str,
+    train_window_mode: str,
+    train_window_size: int | None,
+    train_window_unit: str,
+) -> tuple[pd.DataFrame, np.ndarray]:
+    windowed_dates = _apply_model_train_window(
+        train_dates_input,
+        label=label,
+        train_window_mode=train_window_mode,
+        train_window_size=train_window_size,
+        train_window_unit=train_window_unit,
+    )
+    if windowed_dates.size == 0:
+        return ordered.iloc[0:0].copy(), windowed_dates
+    frame = _slice_trade_dates(
+        ordered,
+        start_rows,
+        end_rows,
+        date_to_pos,
+        windowed_dates,
+    )
+    return frame, windowed_dates
+
+
+def _days_to_steps(days: int, gap_days: Optional[float]) -> int:
+    if days <= 0:
+        return 0
+    if gap_days is None or not np.isfinite(gap_days) or gap_days <= 0:
+        return int(days)
+    return max(0, int(math.ceil(days / gap_days)))
+
+
+def _permute_target_within_date(
+    data: pd.DataFrame,
+    target_col: str,
+    rng: np.random.Generator,
+) -> pd.DataFrame:
+    def _permute(group: pd.DataFrame) -> pd.DataFrame:
+        group = group.copy()
+        group[target_col] = rng.permutation(group[target_col].values)
+        return group
+
+    return data.groupby("trade_date", group_keys=False, sort=False).apply(_permute)
+
+
+def _permutation_test_ic(
+    train_data: pd.DataFrame,
+    test_data: pd.DataFrame,
+    n_runs: int,
+    seed: Optional[int],
+    signal_direction: float,
+    *,
+    model_type: str,
+    model_params: Mapping[str, Any],
+    features: list[str],
+    fit_target_col: str,
+    target_col: str,
+    sample_weight_mode: str,
+    sample_weight_params: Mapping[str, Any],
+    eval_dates: Optional[list[pd.Timestamp]] = None,
+) -> list[float]:
+    scores = []
+    eval_date_values = sorted(set(pd.to_datetime(eval_dates))) if eval_dates else None
+    if eval_date_values:
+        (
+            test_data_sorted,
+            _,
+            test_date_start_rows,
+            test_date_end_rows,
+            test_date_to_pos,
+        ) = _build_trade_date_slices(test_data)
+        eval_test_data = _slice_trade_dates(
+            test_data_sorted,
+            test_date_start_rows,
+            test_date_end_rows,
+            test_date_to_pos,
+            eval_date_values,
+        )
+    else:
+        eval_test_data = test_data
+    for idx in range(n_runs):
+        run_seed = None if seed is None else seed + idx
+        rng = np.random.default_rng(run_seed)
+        perm_train = _permute_target_within_date(train_data, fit_target_col, rng)
+
+        perm_model = build_model(model_type, model_params)
+        perm_weights = build_sample_weight(
+            perm_train,
+            sample_weight_mode,
+            params=sample_weight_params,
+        )
+        fit_model(
+            perm_model,
+            model_type,
+            perm_train,
+            features=features,
+            target_col=fit_target_col,
+            sample_weight=perm_weights,
+        )
+
+        perm_test = eval_test_data.copy()
+        perm_test["pred"] = perm_model.predict(perm_test[features])
+        if signal_direction != 1.0:
+            perm_test["pred"] = perm_test["pred"] * signal_direction
+
+        ic_values = daily_ic_series(perm_test, target_col, "pred")
+        scores.append(float(ic_values.mean()) if not ic_values.empty else np.nan)
+    return scores
+
+
+def _sample_rebalance_frame(
+    frame: pd.DataFrame,
+    *,
+    frequency: str,
+    valid_dates: Optional[set[pd.Timestamp]] = None,
+    allowed_dates: Optional[np.ndarray] = None,
+) -> tuple[pd.DataFrame, list[pd.Timestamp]]:
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=frame.columns if frame is not None else []), []
+    (
+        frame_sorted,
+        trade_dates_sorted,
+        frame_date_start_rows,
+        frame_date_end_rows,
+        frame_date_to_pos,
+    ) = _build_trade_date_slices(frame)
+    rebalance_dates = get_rebalance_dates(trade_dates_sorted, frequency)
+    if valid_dates:
+        rebalance_dates = [d for d in rebalance_dates if d in valid_dates]
+    if allowed_dates is not None:
+        allowed_dates_set = set(pd.to_datetime(allowed_dates))
+        rebalance_dates = [d for d in rebalance_dates if d in allowed_dates_set]
+    sampled = _slice_trade_dates(
+        frame_sorted,
+        frame_date_start_rows,
+        frame_date_end_rows,
+        frame_date_to_pos,
+        rebalance_dates,
+    )
+    return sampled, rebalance_dates
+
+
+def _load_research_panel(
+    *,
+    data_interface: DataInterface,
+    symbols: list[str],
+    market: str,
+    start_date: str,
+    end_date: str,
+    execution_pricing_cols: set[str],
+    price_col: str,
+    benchmark_symbol: str | None,
+    drop_st: bool,
+    min_listed_days: int,
+    drop_suspended: bool,
+    suspended_policy: str,
+    min_turnover: float,
+    fundamentals_enabled: bool,
+    fundamentals_source: str,
+    fundamentals_file_path: Optional[Path],
+    data_cfg: Mapping[str, Any],
+    fundamentals_cfg: Mapping[str, Any],
+    requested_features: list[str],
+    fundamentals_ffill: bool,
+    fundamentals_ffill_limit: Optional[int],
+    fundamentals_log_mcap: bool,
+    fundamentals_mcap_col: str,
+    fundamentals_log_mcap_col: str,
+    fundamentals_auto_add: bool,
+    provider_overlay_enabled: bool,
+    provider_overlay_cfg: Mapping[str, Any],
+    provider_overlay_auto_add: bool,
+    provider_overlay_features: list[str],
+    industry_enabled: bool,
+    industry_file_path: Optional[Path],
+    industry_cfg: Mapping[str, Any],
+    industry_keep_columns: list[str],
+    industry_ffill: bool,
+    industry_ffill_limit: Optional[int],
+    label_horizon_mode: str,
+    label_rebalance_frequency: str,
+) -> dict[str, Any]:
+    benchmark_symbol = str(benchmark_symbol).strip() if benchmark_symbol else None
+    symbols_for_data = symbols[:]
+    if benchmark_symbol and benchmark_symbol not in symbols_for_data:
+        symbols_for_data.append(benchmark_symbol)
+
+    frames = []
+    for symbol in symbols_for_data:
+        logger.info("Fetching daily data for %s (%s) ...", symbol, market)
+        try:
+            data = data_interface.fetch_daily(symbol, start_date, end_date)
+        except Exception as exc:
+            logger.warning("Skipping %s after retries (%s).", symbol, exc)
+            data = pd.DataFrame()
+        if not data.empty:
+            frames.append(data)
+
+    if not frames:
+        sys.exit("No data returned - check symbols and date range.")
+
+    df = pd.concat(frames, ignore_index=True)
+    df = ensure_symbol_columns(df, context="Daily panel")
+    df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
+    df.sort_values(["symbol", "trade_date"], inplace=True)
+    missing_execution_cols = [
+        col for col in sorted(execution_pricing_cols) if col not in df.columns
+    ]
+    if missing_execution_cols:
+        sys.exit(
+            "Daily data is missing execution pricing columns required by backtest.execution: "
+            + ", ".join(missing_execution_cols)
+        )
+
+    benchmark_df = None
+    if benchmark_symbol:
+        if benchmark_symbol in symbols:
+            logger.info("Benchmark symbol %s removed from modeling universe.", benchmark_symbol)
+        benchmark_df = df[df["symbol"] == benchmark_symbol].copy()
+        df = df[df["symbol"] != benchmark_symbol].copy()
+    symbols_for_non_price = [
+        symbol for symbol in symbols_for_data if not benchmark_symbol or symbol != benchmark_symbol
+    ]
+
+    basic_df = None
+    if drop_st or min_listed_days > 0:
+        try:
+            if market != "cn" and drop_st:
+                logger.info("drop_st is CN-specific; attempting basic data for market '%s'.", market)
+            basic_df = data_interface.load_basic(symbols_for_non_price)
+            if basic_df is not None and not basic_df.empty:
+                basic_df = ensure_symbol_columns(basic_df, context="Basic data")
+        except Exception as exc:
+            logger.warning("Basic data load failed (%s); skipping ST/listed filters.", exc)
+            basic_df = None
+
+    if drop_st and basic_df is not None and "name" in basic_df.columns:
+        st_codes = basic_df[
+            basic_df["name"].str.contains("ST", case=False, na=False)
+        ]["symbol"]
+        df = df[~df["symbol"].isin(st_codes)].copy()
+
+    if min_listed_days > 0 and basic_df is not None and "list_date" in basic_df.columns:
+        list_dates = basic_df.copy()
+        list_dates["list_date"] = pd.to_datetime(
+            list_dates["list_date"], format="%Y%m%d", errors="coerce"
+        )
+        list_date_map = list_dates.set_index("symbol")["list_date"].to_dict()
+        df["list_date"] = df["symbol"].map(list_date_map)
+        df = df[df["list_date"].notna()].copy()
+        df = df[
+            df["trade_date"] >= df["list_date"] + pd.Timedelta(days=min_listed_days)
+        ].copy()
+
+    df["is_tradable"] = True
+    if drop_suspended:
+        if "amount" in df.columns:
+            tradable_mask = (df["vol"] > 0) & (df["amount"] > 0)
+        else:
+            tradable_mask = df["vol"] > 0
+        tradable_mask = tradable_mask.fillna(False)
+        df["is_tradable"] = tradable_mask
+        if suspended_policy == "filter":
+            df = df[df["is_tradable"]].copy()
+
+    if min_turnover > 0 and "amount" in df.columns:
+        df = df[df["amount"] >= min_turnover].copy()
+
+    features = list(requested_features)
+    fundamentals_cols: list[str] = []
+    industry_cols: list[str] = []
+    fund_cache_dir: Optional[Path] = None
+    provider_overlay_cache_dir: Optional[Path] = None
+
+    if fundamentals_enabled:
+        requested_feature_names = set(features)
+        fundamentals_frames, fund_cache_dir = _load_fundamentals_frames(
+            source=fundamentals_source,
+            file_path=fundamentals_file_path,
+            data_interface=data_interface,
+            symbols=symbols_for_non_price,
+            start_date=start_date,
+            end_date=end_date,
+            data_cfg=data_cfg,
+            fundamentals_cfg=fundamentals_cfg,
+            market=market,
+            item_label="fundamentals",
+        )
+
+        if fundamentals_frames:
+            fund_df = pd.concat(fundamentals_frames, ignore_index=True)
+            fund_df = _prepare_panel_join_frame(
+                fund_df,
+                fundamentals_cfg.get("column_map"),
+                item_label="Fundamentals",
+            )
+            fund_df = _derive_requested_fundamental_fields(
+                fund_df, requested_feature_names
+            )
+            df, fundamentals_cols = _merge_fundamentals_panel(
+                df,
+                fund_df,
+                ffill=fundamentals_ffill,
+                ffill_limit=fundamentals_ffill_limit,
+                merge_label="Fundamentals",
+            )
+            logger.info(
+                "Merged fundamentals: %s rows, %s columns.",
+                len(fund_df),
+                len(fundamentals_cols),
+            )
+        else:
+            logger.warning("Fundamentals enabled but no data was loaded.")
+
+        if provider_overlay_enabled:
+            overlay_frames, provider_overlay_cache_dir = _load_fundamentals_frames(
+                source="provider",
+                file_path=None,
+                data_interface=data_interface,
+                symbols=symbols_for_non_price,
+                start_date=start_date,
+                end_date=end_date,
+                data_cfg=data_cfg,
+                fundamentals_cfg=provider_overlay_cfg,
+                market=market,
+                item_label="provider valuation overlay",
+                log_retry_failures=False,
+                log_retry_traceback=False,
+            )
+            if overlay_frames:
+                overlay_df = pd.concat(overlay_frames, ignore_index=True)
+                overlay_df = _prepare_panel_join_frame(
+                    overlay_df,
+                    provider_overlay_cfg.get("column_map"),
+                    item_label="Provider overlay",
+                )
+                overlay_value_cols = [
+                    col
+                    for col in overlay_df.columns
+                    if col in {"market_cap", "pe_ttm", "pb", fundamentals_mcap_col}
+                ]
+                if overlay_value_cols and "valuation_trade_date" not in overlay_df.columns:
+                    overlay_df["valuation_trade_date"] = overlay_df["trade_date"]
+                df, overlay_cols = _merge_fundamentals_panel(
+                    df,
+                    overlay_df,
+                    ffill=False,
+                    ffill_limit=None,
+                    merge_label="Provider overlay",
+                )
+                logger.info(
+                    "Merged provider overlay: %s rows, %s columns.",
+                    len(overlay_df),
+                    len(overlay_cols),
+                )
+            else:
+                logger.warning("Provider overlay enabled but no overlay data was loaded.")
+
+        if "days_since_report" in features and "report_trade_date" in df.columns:
+            report_trade_date = pd.to_datetime(df["report_trade_date"], errors="coerce")
+            df["days_since_report"] = (df["trade_date"] - report_trade_date).dt.days
+        if "valuation_age_days" in features and "valuation_trade_date" in df.columns:
+            valuation_trade_date = pd.to_datetime(df["valuation_trade_date"], errors="coerce")
+            df["valuation_age_days"] = (df["trade_date"] - valuation_trade_date).dt.days
+        if fundamentals_log_mcap and fundamentals_mcap_col in df.columns:
+            df[fundamentals_log_mcap_col] = np.where(
+                df[fundamentals_mcap_col] > 0,
+                np.log(df[fundamentals_mcap_col]),
+                np.nan,
+            )
+            if (
+                (fundamentals_auto_add or provider_overlay_auto_add)
+                and fundamentals_log_mcap_col not in features
+            ):
+                features = list(dict.fromkeys(features + [fundamentals_log_mcap_col]))
+
+    if industry_enabled:
+        industry_frames, _ = _load_fundamentals_frames(
+            source="file",
+            file_path=industry_file_path,
+            data_interface=data_interface,
+            symbols=symbols_for_non_price,
+            start_date=start_date,
+            end_date=end_date,
+            data_cfg=data_cfg,
+            fundamentals_cfg=industry_cfg,
+            market=market,
+            item_label="industry labels",
+        )
+        if industry_frames:
+            industry_df = pd.concat(industry_frames, ignore_index=True)
+            industry_df = _prepare_panel_join_frame(
+                industry_df,
+                industry_cfg.get("column_map"),
+                item_label="Industry",
+            )
+            industry_df = _select_panel_join_columns(
+                industry_df,
+                keep_columns=industry_keep_columns,
+                item_label="Industry",
+            )
+            df, industry_cols = _merge_fundamentals_panel(
+                df,
+                industry_df,
+                ffill=industry_ffill,
+                ffill_limit=industry_ffill_limit,
+                merge_label="Industry",
+            )
+            logger.info(
+                "Merged industry labels: %s rows, %s columns.",
+                len(industry_df),
+                len(industry_cols),
+            )
+        else:
+            logger.warning("Industry join enabled but no industry data was loaded.")
+
+    label_next_rebalance_map = None
+    label_horizon_gap = None
+    label_horizon_mode_effective = label_horizon_mode
+    if label_horizon_mode == "next_rebalance":
+        label_trade_dates = sorted(df["trade_date"].unique())
+        label_rebalance_dates = get_rebalance_dates(
+            label_trade_dates, label_rebalance_frequency
+        )
+        if len(label_rebalance_dates) < 2:
+            logger.warning(
+                "label.horizon_mode=next_rebalance but insufficient rebalance dates; "
+                "falling back to fixed horizon_days."
+            )
+            label_horizon_mode_effective = "fixed"
+        else:
+            rebalance_array = np.array(label_rebalance_dates)
+            trade_array = np.array(label_trade_dates)
+            idx = np.searchsorted(rebalance_array, trade_array, side="right")
+            next_dates = [
+                rebalance_array[i] if i < len(rebalance_array) else pd.NaT
+                for i in idx
+            ]
+            label_next_rebalance_map = dict(zip(label_trade_dates, next_dates))
+            label_horizon_gap = estimate_rebalance_gap(
+                label_trade_dates, label_rebalance_dates
+            )
+            if np.isfinite(label_horizon_gap):
+                logger.info(
+                    "Label horizon set to next rebalance date (median gap %.1f days).",
+                    label_horizon_gap,
+                )
+
+    return {
+        "df": df,
+        "benchmark_df": benchmark_df,
+        "symbols_for_non_price": symbols_for_non_price,
+        "fundamentals_cols": fundamentals_cols,
+        "industry_cols": industry_cols,
+        "fund_cache_dir": fund_cache_dir,
+        "provider_overlay_cache_dir": provider_overlay_cache_dir,
+        "features": features,
+        "label_horizon_mode": label_horizon_mode_effective,
+        "label_next_rebalance_map": label_next_rebalance_map,
+        "label_horizon_gap": label_horizon_gap,
+    }
+
+
+def _prepare_feature_dataset(
+    *,
+    df: pd.DataFrame,
+    features: list[str],
+    feature_params: Mapping[str, Any],
+    price_col: str,
+    target: str,
+    label_shift_days: int,
+    label_horizon_days: int,
+    label_horizon_mode: str,
+    label_next_rebalance_map: Optional[dict[pd.Timestamp, pd.Timestamp]],
+    fundamentals_allow_missing: bool,
+    bucket_ic_enabled: bool,
+    bucket_ic_schemes: list[dict[str, Any]],
+    feature_missing_features: list[str],
+    feature_missing_method: str,
+    feature_missing_add_indicators: bool,
+    feature_missing_suffix: str,
+    industry_cols: list[str],
+    execution_pricing_cols: set[str],
+    backtest_tradable_col: str | None,
+    universe_by_date: Optional[pd.DataFrame],
+    winsorize_pct: float | None,
+    cs_method: str,
+    cs_winsorize_pct: float | None,
+    train_target: str,
+    train_target_transform: str,
+    sample_on_rebalance_dates: bool,
+    rebalance_frequency: str,
+    min_symbols_per_date: int,
+) -> dict[str, Any]:
+    logger.info("Engineering features ...")
+    if price_col not in df.columns:
+        if price_col == "tr_close":
+            sys.exit(
+                "Price column 'tr_close' not found in data. "
+                "Configure data.rqdata.ex_factors_dir for local RQData assets, "
+                "or provide tr_close directly in the source daily data."
+            )
+        sys.exit(f"Price column '{price_col}' not found in data.")
+    if not features:
+        sys.exit("Feature list is empty.")
+
+    features = list(features)
+
+    def add_features(group: pd.DataFrame) -> pd.DataFrame:
+        group = group.sort_values("trade_date").copy()
+        needed = set(features)
+        price_series = pd.to_numeric(group[price_col], errors="coerce")
+
+        def _safe_ratio(
+            numerator_col: str,
+            denominator_col: str,
+            out_col: str,
+        ) -> None:
+            if out_col not in needed:
+                return
+            if numerator_col not in group.columns or denominator_col not in group.columns:
+                return
+            numerator = pd.to_numeric(group[numerator_col], errors="coerce")
+            denominator = pd.to_numeric(group[denominator_col], errors="coerce")
+            valid_denominator = denominator.where(denominator.notna() & (denominator != 0))
+            ratio = numerator / valid_denominator
+            group[out_col] = ratio.replace([np.inf, -np.inf], np.nan)
+
+        sma_windows = set(parse_feature_windows(features, "sma_"))
+        sma_windows.update(parse_feature_windows(features, "sma_", "_diff"))
+        if not sma_windows:
+            sma_windows = _parse_window_config(feature_params.get("sma_windows"))
+        for win in sorted(sma_windows):
+            group[f"sma_{win}"] = ta.sma(price_series, length=win)
+            if f"sma_{win}_diff" in needed:
+                group[f"sma_{win}_diff"] = group[f"sma_{win}"].pct_change()
+
+        rsi_lengths = set(parse_feature_windows(features, "rsi_"))
+        if not rsi_lengths:
+            rsi_lengths = _parse_window_config(feature_params.get("rsi"))
+        for length in sorted(rsi_lengths):
+            group[f"rsi_{length}"] = ta.rsi(price_series, length=length)
+
+        if "macd_hist" in needed:
+            macd_cfg = feature_params.get("macd", [12, 26, 9])
+            macd_fast, macd_slow, macd_signal = macd_cfg
+            macd = ta.macd(price_series, fast=macd_fast, slow=macd_slow, signal=macd_signal)
+            col_name = f"MACDh_{macd_fast}_{macd_slow}_{macd_signal}"
+            if macd is not None and col_name in macd.columns:
+                group["macd_hist"] = macd[col_name]
+            else:
+                group["macd_hist"] = np.nan
+
+        volume_windows = set(parse_feature_windows(features, "volume_sma", "_ratio"))
+        if not volume_windows:
+            volume_windows = _parse_window_config(feature_params.get("volume_sma_windows"))
+        for win in sorted(volume_windows):
+            volume_sma = ta.sma(group["vol"], length=win)
+            if volume_sma is None:
+                volume_sma = group["vol"].rolling(window=win).mean()
+            group[f"volume_sma{win}"] = volume_sma
+            if f"volume_sma{win}_ratio" in needed:
+                group[f"volume_sma{win}_ratio"] = group["vol"] / group[f"volume_sma{win}"]
+
+        ret_windows = set(parse_feature_windows(features, "ret_"))
+        if not ret_windows:
+            ret_windows = _parse_window_config(feature_params.get("ret_windows"))
+        for win in sorted(ret_windows):
+            group[f"ret_{win}"] = price_series.pct_change(win)
+
+        rv_windows = set(parse_feature_windows(features, "rv_"))
+        if not rv_windows:
+            rv_windows = _parse_window_config(feature_params.get("rv_windows"))
+        if rv_windows:
+            daily_return = price_series.pct_change()
+            daily_return = daily_return.replace([np.inf, -np.inf], np.nan)
+            for win in sorted(rv_windows):
+                group[f"rv_{win}"] = daily_return.rolling(window=win).std(ddof=0)
+
+        if "log_vol" in needed:
+            group["log_vol"] = np.log1p(group["vol"].clip(lower=0))
+
+        if (
+            "sales" in needed
+            or "profit_margin" in needed
+            or "operating_margin" in needed
+            or "cfo_margin" in needed
+        ):
+            revenue = (
+                pd.to_numeric(group["revenue"], errors="coerce")
+                if "revenue" in group.columns
+                else pd.Series(np.nan, index=group.index, dtype=float)
+            )
+            operating_revenue = (
+                pd.to_numeric(group["operating_revenue"], errors="coerce")
+                if "operating_revenue" in group.columns
+                else pd.Series(np.nan, index=group.index, dtype=float)
+            )
+            group["sales"] = revenue.combine_first(operating_revenue)
+        if (
+            "debt" in needed
+            or "debt_to_assets" in needed
+            or "debt_to_equity" in needed
+            or "net_debt_to_assets" in needed
+        ):
+            short_term_debt = (
+                pd.to_numeric(group["short_term_debt"], errors="coerce")
+                if "short_term_debt" in group.columns
+                else pd.Series(np.nan, index=group.index, dtype=float)
+            )
+            long_term_loans = (
+                pd.to_numeric(group["long_term_loans"], errors="coerce")
+                if "long_term_loans" in group.columns
+                else pd.Series(np.nan, index=group.index, dtype=float)
+            )
+            debt = short_term_debt.fillna(0.0) + long_term_loans.fillna(0.0)
+            group["debt"] = debt.where(~(short_term_debt.isna() & long_term_loans.isna()))
+
+        _safe_ratio("net_profit", "sales", "profit_margin")
+        _safe_ratio("operating_profit", "sales", "operating_margin")
+        _safe_ratio(
+            "cash_flow_from_operating_activities",
+            "sales",
+            "cfo_margin",
+        )
+        _safe_ratio(
+            "cash_flow_from_operating_activities",
+            "net_profit",
+            "cfo_to_profit",
+        )
+        _safe_ratio("revenue", "total_assets", "asset_turnover")
+        _safe_ratio("net_profit", "total_assets", "roa")
+        _safe_ratio("total_liabilities", "total_assets", "leverage")
+        _safe_ratio(
+            "cash_flow_from_operating_activities",
+            "total_assets",
+            "cfo_to_assets",
+        )
+        _safe_ratio("debt", "total_assets", "debt_to_assets")
+        _safe_ratio("debt", "total_equity", "debt_to_equity")
+        _safe_ratio("cash_and_equivalents", "total_assets", "cash_to_assets")
+        _safe_ratio("goodwill", "total_assets", "goodwill_to_assets")
+        if "accrual_ratio" in needed:
+            if (
+                "net_profit" in group.columns
+                and "cash_flow_from_operating_activities" in group.columns
+                and "total_assets" in group.columns
+            ):
+                net_profit = pd.to_numeric(group["net_profit"], errors="coerce")
+                cfo = pd.to_numeric(group["cash_flow_from_operating_activities"], errors="coerce")
+                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
+                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
+                accrual = (net_profit - cfo) / valid_assets
+                group["accrual_ratio"] = accrual.replace([np.inf, -np.inf], np.nan)
+        _safe_ratio("accounts_receivable", "revenue", "receivables_to_revenue")
+        _safe_ratio("inventory", "revenue", "inventory_to_revenue")
+        if "working_capital_to_assets" in needed:
+            if (
+                "accounts_receivable" in group.columns
+                and "inventory" in group.columns
+                and "accounts_payable" in group.columns
+                and "total_assets" in group.columns
+            ):
+                receivables = pd.to_numeric(group["accounts_receivable"], errors="coerce")
+                inventory = pd.to_numeric(group["inventory"], errors="coerce")
+                payables = pd.to_numeric(group["accounts_payable"], errors="coerce")
+                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
+                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
+                working_capital = receivables + inventory - payables
+                ratio = working_capital / valid_assets
+                group["working_capital_to_assets"] = ratio.replace([np.inf, -np.inf], np.nan)
+        if "net_debt_to_assets" in needed:
+            if (
+                "debt" in group.columns
+                and "cash_and_equivalents" in group.columns
+                and "total_assets" in group.columns
+            ):
+                debt = pd.to_numeric(group["debt"], errors="coerce")
+                cash_and_equivalents = pd.to_numeric(group["cash_and_equivalents"], errors="coerce")
+                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
+                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
+                net_debt = debt - cash_and_equivalents
+                ratio = net_debt / valid_assets
+                group["net_debt_to_assets"] = ratio.replace([np.inf, -np.inf], np.nan)
+
+        if label_shift_days > 0:
+            shifted_price = group[price_col].shift(-label_shift_days)
+        else:
+            shifted_price = group[price_col]
+        entry_price = shifted_price
+        if label_horizon_mode == "next_rebalance" and label_next_rebalance_map is not None:
+            exit_base = group["trade_date"].map(label_next_rebalance_map)
+            shifted_by_date = pd.Series(shifted_price.values, index=group["trade_date"])
+            exit_price = exit_base.map(shifted_by_date)
+        else:
+            exit_price = shifted_price.shift(-label_horizon_days)
+        group[target] = exit_price / entry_price - 1.0
+
+        return group
+
+    df = df.groupby("symbol", group_keys=False).apply(add_features)
+
+    missing_features = [feat for feat in features if feat not in df.columns]
+    if missing_features:
+        if fundamentals_allow_missing:
+            logger.warning("Dropping missing features: %s", missing_features)
+            features = [feat for feat in features if feat in df.columns]
+        else:
+            sys.exit(f"Missing features after engineering: {missing_features}")
+
+    meta_cols = ["is_tradable"] if "is_tradable" in df.columns else []
+    eval_extra_df = None
+    bucket_cols = []
+    if bucket_ic_enabled and bucket_ic_schemes:
+        bucket_cols = list(dict.fromkeys([scheme["column"] for scheme in bucket_ic_schemes]))
+        missing_bucket_cols = [col for col in bucket_cols if col not in df.columns]
+        if missing_bucket_cols:
+            logger.warning("Bucket IC columns missing in data: %s", missing_bucket_cols)
+        bucket_cols = [col for col in bucket_cols if col in df.columns]
+        if bucket_cols:
+            eval_extra_df = df[["trade_date", "symbol"] + bucket_cols].copy()
+
+    missing_fill_features = feature_missing_features or features
+    missing_fill_features = [
+        feature for feature in missing_fill_features if feature in features and feature in df.columns
+    ]
+    if feature_missing_add_indicators and missing_fill_features:
+        indicator_features = []
+        for feature in missing_fill_features:
+            indicator_name = f"{feature}{feature_missing_suffix}"
+            if indicator_name in df.columns and indicator_name not in features:
+                sys.exit(
+                    "features.missing.indicator_suffix collides with an existing column: "
+                    f"{indicator_name}"
+                )
+            if indicator_name not in df.columns:
+                df[indicator_name] = df[feature].isna().astype(np.int8)
+            indicator_features.append(indicator_name)
+        features = list(dict.fromkeys(features + indicator_features))
+
+    df = _ensure_symbol_alias(df)
+    execution_passthrough_cols = [
+        col for col in execution_pricing_cols if col in df.columns and col != price_col
+    ]
+    price_passthrough_cols = list(
+        dict.fromkeys(
+            execution_passthrough_cols
+            + [col for col in ("close", "tr_close") if col in df.columns and col != price_col]
+        )
+    )
+
+    backtest_pricing_cols = [
+        "trade_date",
+        "symbol",
+        price_col,
+        *execution_passthrough_cols,
+    ]
+    if backtest_tradable_col and backtest_tradable_col in df.columns:
+        backtest_pricing_cols.append(backtest_tradable_col)
+    backtest_pricing_cols = list(dict.fromkeys(backtest_pricing_cols))
+    backtest_pricing_df = (
+        df[backtest_pricing_cols]
+        .drop_duplicates(subset=["trade_date", "symbol"])
+        .copy()
+    )
+
+    passthrough_cols = list(dict.fromkeys(industry_cols))
+    cols = (
+        ["trade_date", "symbol", price_col]
+        + features
+        + price_passthrough_cols
+        + passthrough_cols
+        + meta_cols
+        + [target]
+    )
+    cols = list(dict.fromkeys(cols))
+    df = df[cols].copy()
+
+    if universe_by_date is not None:
+        before_rows = len(df)
+        df = apply_universe_by_date(df, universe_by_date)
+        after_rows = len(df)
+        logger.info("Applied universe-by-date filter: %s -> %s rows", before_rows, after_rows)
+        if df.empty:
+            sys.exit("Universe-by-date filter removed all rows.")
+
+    if feature_missing_method != "none" and missing_fill_features:
+        for feature in missing_fill_features:
+            df[feature] = pd.to_numeric(df[feature], errors="coerce")
+        if feature_missing_method == "zero":
+            df[missing_fill_features] = df[missing_fill_features].fillna(0.0)
+        elif feature_missing_method == "cross_sectional_median":
+            by_date_median = df.groupby("trade_date")[missing_fill_features].transform("median")
+            df[missing_fill_features] = df[missing_fill_features].fillna(by_date_median)
+        remaining_missing = int(df[missing_fill_features].isna().sum().sum())
+        logger.info(
+            "Applied feature missing fill: method=%s, features=%s, add_indicators=%s, remaining_nans=%s.",
+            feature_missing_method,
+            len(missing_fill_features),
+            feature_missing_add_indicators,
+            remaining_missing,
+        )
+
+    required_cols = [price_col] + features
+    df_features = df.dropna(subset=required_cols).reset_index(drop=True)
+
+    if winsorize_pct:
+        def _winsorize(group: pd.DataFrame) -> pd.DataFrame:
+            lower = group[target].quantile(winsorize_pct)
+            upper = group[target].quantile(1 - winsorize_pct)
+            group[target] = group[target].clip(lower, upper)
+            return group
+
+        df_features = df_features.groupby("trade_date", group_keys=False).apply(_winsorize)
+
+    if cs_method != "none":
+        df_features = apply_cross_sectional_transform(
+            df_features, features, cs_method, cs_winsorize_pct
+        )
+
+    if train_target != target:
+        df_features[train_target] = apply_cross_sectional_series_transform(
+            df_features,
+            target,
+            train_target_transform,
+        )
+        logger.info(
+            "Applied training target transform: base=%s, method=%s, train_target=%s",
+            target,
+            train_target_transform,
+            train_target,
+        )
+
+    dataset_schema = DatasetSchema(
+        date_col="trade_date",
+        instrument_col="symbol",
+        price_col=price_col,
+        label_col=target,
+        tradable_col="is_tradable" if "is_tradable" in df_features.columns else None,
+        feature_cols=features,
+        extra_cols=[
+            *price_passthrough_cols,
+            *passthrough_cols,
+            *([train_target] if train_target != target else []),
+        ],
+    )
+    dataset = build_dataset(df_features, dataset_schema)
+    df_features = dataset.frame
+    df_full = df_features.dropna().reset_index(drop=True)
+    if eval_extra_df is not None and not eval_extra_df.empty:
+        eval_extra_df = eval_extra_df.drop_duplicates(subset=["trade_date", "symbol"])
+        extra_eval_cols = [
+            col
+            for col in eval_extra_df.columns
+            if col not in {"trade_date", "symbol"} and col not in df_full.columns
+        ]
+        if extra_eval_cols:
+            df_full = df_full.merge(
+                eval_extra_df[["trade_date", "symbol"] + extra_eval_cols],
+                on=["trade_date", "symbol"],
+                how="left",
+            )
+
+    (
+        df_full_sorted,
+        all_dates_full,
+        full_date_start_rows,
+        full_date_end_rows,
+        full_date_to_pos,
+    ) = _build_trade_date_slices(df_full)
+    if sample_on_rebalance_dates:
+        rebalance_dates_all = get_rebalance_dates(all_dates_full, rebalance_frequency)
+        df_model_all = _slice_trade_dates(
+            df_full_sorted,
+            full_date_start_rows,
+            full_date_end_rows,
+            full_date_to_pos,
+            rebalance_dates_all,
+        )
+    else:
+        df_model_all = df_full_sorted
+
+    date_counts = df_model_all.groupby("trade_date")["symbol"].nunique()
+    valid_dates = date_counts[date_counts >= min_symbols_per_date].index
+    dropped_date_counts = date_counts[date_counts < min_symbols_per_date].sort_index()
+    (
+        df_model_all_sorted,
+        all_dates_model_full,
+        model_date_start_rows,
+        model_date_end_rows,
+        model_date_to_pos,
+    ) = _build_trade_date_slices(df_model_all)
+    if len(valid_dates) != len(date_counts):
+        df_model_all = _slice_trade_dates(
+            df_model_all_sorted,
+            model_date_start_rows,
+            model_date_end_rows,
+            model_date_to_pos,
+            valid_dates.to_numpy(),
+        )
+        (
+            df_model_all_sorted,
+            all_dates_model_full,
+            model_date_start_rows,
+            model_date_end_rows,
+            model_date_to_pos,
+        ) = _build_trade_date_slices(df_model_all)
+    else:
+        df_model_all = df_model_all_sorted
+    if not dropped_date_counts.empty:
+        logger.info(
+            "Dropped %s dates with < %s symbols (min=%s, max=%s).",
+            len(dropped_date_counts),
+            min_symbols_per_date,
+            int(dropped_date_counts.min()),
+            int(dropped_date_counts.max()),
+        )
+
+    return {
+        "features": features,
+        "dataset": dataset,
+        "df_features": df_features,
+        "df_full": df_full,
+        "df_full_sorted": df_full_sorted,
+        "all_dates_full": all_dates_full,
+        "full_date_start_rows": full_date_start_rows,
+        "full_date_end_rows": full_date_end_rows,
+        "full_date_to_pos": full_date_to_pos,
+        "df_model_all": df_model_all,
+        "df_model_all_sorted": df_model_all_sorted,
+        "all_dates_model_full": all_dates_model_full,
+        "model_date_start_rows": model_date_start_rows,
+        "model_date_end_rows": model_date_end_rows,
+        "model_date_to_pos": model_date_to_pos,
+        "valid_dates": valid_dates,
+        "valid_dates_set": set(pd.to_datetime(valid_dates)),
+        "dropped_date_counts": dropped_date_counts,
+        "backtest_pricing_df": backtest_pricing_df,
+        "bucket_cols": bucket_cols,
+        "passthrough_cols": passthrough_cols,
+        "price_passthrough_cols": price_passthrough_cols,
+    }
+
+
+def _prepare_split_context(
+    *,
+    df_model_all_sorted: pd.DataFrame,
+    all_dates_model_full: np.ndarray,
+    model_date_start_rows: np.ndarray,
+    model_date_end_rows: np.ndarray,
+    model_date_to_pos: dict[pd.Timestamp, int],
+    sample_on_rebalance_dates: bool,
+    df_model_all: pd.DataFrame,
+    all_dates_full: np.ndarray,
+    label_horizon_days: int,
+    label_horizon_mode: str,
+    label_horizon_gap: float | None,
+    label_shift_days: int,
+    purge_days_cfg: int | None,
+    embargo_days_cfg: int,
+    test_size: float,
+    final_oos_enabled: bool,
+    final_oos_size_raw: object | None,
+    train_window_mode: str,
+    train_window_size: int | None,
+    train_window_unit: str,
+) -> dict[str, Any]:
+    rebalance_gap_days = None
+    if sample_on_rebalance_dates:
+        sample_dates = sorted(df_model_all["trade_date"].unique())
+        if len(sample_dates) >= 2:
+            rebalance_gap_days = estimate_rebalance_gap(all_dates_full, sample_dates)
+            if np.isfinite(rebalance_gap_days):
+                logger.info(
+                    "Sample-on-rebalance enabled: median gap %.1f trade days.",
+                    rebalance_gap_days,
+                )
+
+    label_horizon_effective = label_horizon_days
+    if label_horizon_mode == "next_rebalance" and label_horizon_gap is not None:
+        if np.isfinite(label_horizon_gap):
+            label_horizon_effective = int(round(label_horizon_gap))
+    if purge_days_cfg is None:
+        purge_days = int(label_horizon_effective + label_shift_days)
+    else:
+        purge_days = int(purge_days_cfg)
+    _warn_if_purge_too_small(
+        purge_days_cfg=purge_days_cfg,
+        purge_days=purge_days,
+        label_horizon_effective=label_horizon_effective,
+        label_shift_days=label_shift_days,
+    )
+    embargo_days = int(embargo_days_cfg)
+
+    if sample_on_rebalance_dates:
+        purge_steps = _days_to_steps(purge_days, rebalance_gap_days)
+        embargo_steps = _days_to_steps(embargo_days, rebalance_gap_days)
+        if rebalance_gap_days is not None and np.isfinite(rebalance_gap_days):
+            logger.info(
+                "Converted embargo/purge from days to rebalance steps: "
+                "embargo=%s->%s, purge=%s->%s (gap≈%.1f days).",
+                embargo_days,
+                embargo_steps,
+                purge_days,
+                purge_steps,
+                rebalance_gap_days,
+            )
+        else:
+            logger.warning(
+                "Sample-on-rebalance enabled but rebalance gap could not be estimated; "
+                "using raw embargo/purge values as steps."
+            )
+    else:
+        purge_steps = purge_days
+        embargo_steps = embargo_days
+
+    effective_gap_steps = max(embargo_steps, purge_steps)
+
+    df_model = df_model_all
+    df_model_oos = pd.DataFrame()
+    final_oos_dates = np.array([], dtype="datetime64[ns]")
+    final_oos_len = 0
+    final_oos_start = None
+    final_oos_end = None
+    if final_oos_enabled:
+        final_oos_len = _resolve_holdout_len(final_oos_size_raw, len(all_dates_model_full))
+        if final_oos_len <= 0:
+            final_oos_enabled = False
+        elif final_oos_len >= len(all_dates_model_full):
+            sys.exit("eval.final_oos.size leaves no in-sample dates.")
+        else:
+            final_oos_start_pos = len(all_dates_model_full) - final_oos_len
+            final_oos_dates = all_dates_model_full[-final_oos_len:]
+            final_oos_start = pd.to_datetime(final_oos_dates[0])
+            final_oos_end = pd.to_datetime(final_oos_dates[-1])
+            df_model_oos = _slice_trade_date_range(
+                df_model_all_sorted,
+                model_date_start_rows,
+                model_date_end_rows,
+                final_oos_start_pos,
+                len(all_dates_model_full) - 1,
+            )
+            df_model = _slice_trade_date_range(
+                df_model_all_sorted,
+                model_date_start_rows,
+                model_date_end_rows,
+                0,
+                final_oos_start_pos - 1,
+            )
+            logger.info(
+                "Final OOS holdout enabled: %s dates (%s -> %s).",
+                final_oos_len,
+                final_oos_start.strftime("%Y-%m-%d"),
+                final_oos_end.strftime("%Y-%m-%d"),
+            )
+
+    logger.info("Splitting train/test by date ...")
+    (
+        df_model_sorted,
+        all_dates,
+        all_date_start_rows,
+        all_date_end_rows,
+        all_date_to_pos,
+    ) = _build_trade_date_slices(df_model)
+    if len(all_dates) < 10:
+        sys.exit("Not enough dates for a meaningful split.")
+
+    split_idx = int(len(all_dates) * (1 - test_size))
+    train_end = split_idx
+    if effective_gap_steps > 0:
+        train_end = max(0, split_idx - effective_gap_steps)
+    train_dates_full = all_dates[:train_end]
+    test_dates = all_dates[split_idx:]
+    train_df, train_dates = _slice_with_train_window(
+        df_model_sorted,
+        all_date_start_rows,
+        all_date_end_rows,
+        all_date_to_pos,
+        train_dates_full,
+        label="main train split",
+        train_window_mode=train_window_mode,
+        train_window_size=train_window_size,
+        train_window_unit=train_window_unit,
+    )
+    test_df = _slice_trade_date_range(
+        df_model_sorted,
+        all_date_start_rows,
+        all_date_end_rows,
+        split_idx,
+        len(all_dates) - 1,
+    )
+
+    if train_df.empty or test_df.empty:
+        sys.exit("Not enough dates for train/test after embargo.")
+
+    logger.info(
+        "Train/test split: train_dates=%s/%s, test_dates=%s, purge_steps=%s, embargo_steps=%s.",
+        len(train_dates),
+        len(train_dates_full),
+        len(test_dates),
+        purge_steps,
+        embargo_steps,
+    )
+
+    return {
+        "df_model": df_model,
+        "df_model_oos": df_model_oos,
+        "final_oos_enabled": final_oos_enabled,
+        "final_oos_dates": final_oos_dates,
+        "final_oos_len": final_oos_len,
+        "final_oos_start": final_oos_start,
+        "final_oos_end": final_oos_end,
+        "label_horizon_effective": label_horizon_effective,
+        "purge_days": purge_days,
+        "embargo_days": embargo_days,
+        "purge_steps": purge_steps,
+        "embargo_steps": embargo_steps,
+        "effective_gap_steps": effective_gap_steps,
+        "rebalance_gap_days": rebalance_gap_days,
+        "df_model_sorted": df_model_sorted,
+        "all_dates": all_dates,
+        "all_date_start_rows": all_date_start_rows,
+        "all_date_end_rows": all_date_end_rows,
+        "all_date_to_pos": all_date_to_pos,
+        "train_df": train_df,
+        "train_dates": train_dates,
+        "train_dates_full": train_dates_full,
+        "test_df": test_df,
+        "test_dates": test_dates,
+    }
+
+
 def run(config_ref: str | Path | None = None) -> None:
     resolved = resolve_pipeline_config(config_ref)
     config = resolved.data
@@ -1397,1015 +2585,179 @@ def run(config_ref: str | Path | None = None) -> None:
     # 2. Data download
     # -----------------------------------------------------------------------------
     benchmark_symbol = str(BACKTEST_BENCHMARK).strip() if BACKTEST_BENCHMARK else None
-    symbols_for_data = symbols[:]
-    if benchmark_symbol and benchmark_symbol not in symbols_for_data:
-        symbols_for_data.append(benchmark_symbol)
-
-    frames = []
-    def fetch_daily_with_retry(symbol: str) -> pd.DataFrame:
-        return data_interface.fetch_daily(symbol, START_DATE, END_DATE)
-
-    for symbol in symbols_for_data:
-        logger.info("Fetching daily data for %s (%s) ...", symbol, MARKET)
-        try:
-            data = fetch_daily_with_retry(symbol)
-        except Exception as exc:
-            logger.warning("Skipping %s after retries (%s).", symbol, exc)
-            data = pd.DataFrame()
-        if not data.empty:
-            frames.append(data)
-
-    if not frames:
-        sys.exit("No data returned - check symbols and date range.")
-
-    df = pd.concat(frames, ignore_index=True)
-    df = ensure_symbol_columns(df, context="Daily panel")
-    df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
-    df.sort_values(["symbol", "trade_date"], inplace=True)
-    missing_execution_cols = [
-        col for col in sorted(EXECUTION_PRICING_COLS) if col not in df.columns
-    ]
-    if missing_execution_cols:
-        sys.exit(
-            "Daily data is missing execution pricing columns required by backtest.execution: "
-            + ", ".join(missing_execution_cols)
-        )
-
-    benchmark_df = None
-    if benchmark_symbol:
-        if benchmark_symbol in symbols:
-            logger.info("Benchmark symbol %s removed from modeling universe.", benchmark_symbol)
-        benchmark_df = df[df["symbol"] == benchmark_symbol].copy()
-        df = df[df["symbol"] != benchmark_symbol].copy()
-    symbols_for_non_price = [
-        symbol for symbol in symbols_for_data if not benchmark_symbol or symbol != benchmark_symbol
-    ]
-
-    basic_df = None
-    if DROP_ST or MIN_LISTED_DAYS > 0:
-        try:
-            if MARKET != "cn" and DROP_ST:
-                logger.info("drop_st is CN-specific; attempting basic data for market '%s'.", MARKET)
-            basic_df = data_interface.load_basic(symbols_for_non_price)
-            if basic_df is not None and not basic_df.empty:
-                basic_df = ensure_symbol_columns(basic_df, context="Basic data")
-        except Exception as exc:
-            logger.warning("Basic data load failed (%s); skipping ST/listed filters.", exc)
-            basic_df = None
-
-    if DROP_ST and basic_df is not None and "name" in basic_df.columns:
-        st_codes = basic_df[
-            basic_df["name"].str.contains("ST", case=False, na=False)
-        ]["symbol"]
-        df = df[~df["symbol"].isin(st_codes)].copy()
-
-    if MIN_LISTED_DAYS > 0 and basic_df is not None and "list_date" in basic_df.columns:
-        list_dates = basic_df.copy()
-        list_dates["list_date"] = pd.to_datetime(list_dates["list_date"], format="%Y%m%d", errors="coerce")
-        list_date_map = list_dates.set_index("symbol")["list_date"].to_dict()
-        df["list_date"] = df["symbol"].map(list_date_map)
-        df = df[df["list_date"].notna()].copy()
-        df = df[df["trade_date"] >= df["list_date"] + pd.Timedelta(days=MIN_LISTED_DAYS)].copy()
-
-    df["is_tradable"] = True
-    if DROP_SUSPENDED:
-        if "amount" in df.columns:
-            tradable_mask = (df["vol"] > 0) & (df["amount"] > 0)
-        else:
-            tradable_mask = df["vol"] > 0
-        tradable_mask = tradable_mask.fillna(False)
-        df["is_tradable"] = tradable_mask
-        if SUSPENDED_POLICY == "filter":
-            df = df[df["is_tradable"]].copy()
-
-    if MIN_TURNOVER > 0 and "amount" in df.columns:
-        df = df[df["amount"] >= MIN_TURNOVER].copy()
-
-    if FUNDAMENTALS_ENABLED:
-        requested_feature_names = set(FEATURES)
-        fundamentals_frames, fund_cache_dir = _load_fundamentals_frames(
-            source=FUNDAMENTALS_SOURCE,
-            file_path=fundamentals_file_path,
-            data_interface=data_interface,
-            symbols=symbols_for_non_price,
-            start_date=START_DATE,
-            end_date=END_DATE,
-            data_cfg=data_cfg,
-            fundamentals_cfg=fundamentals_cfg,
-            market=MARKET,
-            item_label="fundamentals",
-        )
-
-        if fundamentals_frames:
-            fund_df = pd.concat(fundamentals_frames, ignore_index=True)
-            fund_df = _prepare_panel_join_frame(
-                fund_df,
-                fundamentals_cfg.get("column_map"),
-                item_label="Fundamentals",
-            )
-            fund_df = _derive_requested_fundamental_fields(
-                fund_df, requested_feature_names
-            )
-            df, fundamentals_cols = _merge_fundamentals_panel(
-                df,
-                fund_df,
-                ffill=FUNDAMENTALS_FFILL,
-                ffill_limit=FUNDAMENTALS_FFILL_LIMIT,
-                merge_label="Fundamentals",
-            )
-            logger.info(
-                "Merged fundamentals: %s rows, %s columns.",
-                len(fund_df),
-                len(fundamentals_cols),
-            )
-        else:
-            logger.warning("Fundamentals enabled but no data was loaded.")
-
-        if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED:
-            overlay_frames, provider_overlay_cache_dir = _load_fundamentals_frames(
-                source=FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE,
-                file_path=None,
-                data_interface=data_interface,
-                symbols=symbols_for_non_price,
-                start_date=START_DATE,
-                end_date=END_DATE,
-                data_cfg=data_cfg,
-                fundamentals_cfg=provider_overlay_cfg,
-                market=MARKET,
-                item_label="provider valuation overlay",
-                log_retry_failures=False,
-                log_retry_traceback=False,
-            )
-            if overlay_frames:
-                overlay_df = pd.concat(overlay_frames, ignore_index=True)
-                overlay_df = _prepare_panel_join_frame(
-                    overlay_df,
-                    provider_overlay_cfg.get("column_map"),
-                    item_label="Provider overlay",
-                )
-                overlay_value_cols = [
-                    col
-                    for col in overlay_df.columns
-                    if col in {"market_cap", "pe_ttm", "pb", FUNDAMENTALS_MCAP_COL}
-                ]
-                if overlay_value_cols and "valuation_trade_date" not in overlay_df.columns:
-                    overlay_df["valuation_trade_date"] = overlay_df["trade_date"]
-                df, overlay_cols = _merge_fundamentals_panel(
-                    df,
-                    overlay_df,
-                    ffill=False,
-                    ffill_limit=None,
-                    merge_label="Provider overlay",
-                )
-                logger.info(
-                    "Merged provider overlay: %s rows, %s columns.",
-                    len(overlay_df),
-                    len(overlay_cols),
-                )
-            else:
-                logger.warning("Provider overlay enabled but no overlay data was loaded.")
-
-        if "days_since_report" in FEATURES and "report_trade_date" in df.columns:
-            report_trade_date = pd.to_datetime(df["report_trade_date"], errors="coerce")
-            df["days_since_report"] = (df["trade_date"] - report_trade_date).dt.days
-        if "valuation_age_days" in FEATURES and "valuation_trade_date" in df.columns:
-            valuation_trade_date = pd.to_datetime(df["valuation_trade_date"], errors="coerce")
-            df["valuation_age_days"] = (df["trade_date"] - valuation_trade_date).dt.days
-        if FUNDAMENTALS_LOG_MCAP and FUNDAMENTALS_MCAP_COL in df.columns:
-            df[FUNDAMENTALS_LOG_MCAP_COL] = np.where(
-                df[FUNDAMENTALS_MCAP_COL] > 0,
-                np.log(df[FUNDAMENTALS_MCAP_COL]),
-                np.nan,
-            )
-            if (
-                (FUNDAMENTALS_AUTO_ADD or FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD)
-                and FUNDAMENTALS_LOG_MCAP_COL not in FEATURES
-            ):
-                FEATURES = list(dict.fromkeys(FEATURES + [FUNDAMENTALS_LOG_MCAP_COL]))
-
-    if INDUSTRY_ENABLED:
-        industry_frames, _ = _load_fundamentals_frames(
-            source=INDUSTRY_SOURCE,
-            file_path=industry_file_path,
-            data_interface=data_interface,
-            symbols=symbols_for_non_price,
-            start_date=START_DATE,
-            end_date=END_DATE,
-            data_cfg=data_cfg,
-            fundamentals_cfg=industry_cfg,
-            market=MARKET,
-            item_label="industry labels",
-        )
-        if industry_frames:
-            industry_df = pd.concat(industry_frames, ignore_index=True)
-            industry_df = _prepare_panel_join_frame(
-                industry_df,
-                industry_cfg.get("column_map"),
-                item_label="Industry",
-            )
-            industry_df = _select_panel_join_columns(
-                industry_df,
-                keep_columns=INDUSTRY_KEEP_COLUMNS,
-                item_label="Industry",
-            )
-            df, industry_cols = _merge_fundamentals_panel(
-                df,
-                industry_df,
-                ffill=INDUSTRY_FFILL,
-                ffill_limit=INDUSTRY_FFILL_LIMIT,
-                merge_label="Industry",
-            )
-            logger.info(
-                "Merged industry labels: %s rows, %s columns.",
-                len(industry_df),
-                len(industry_cols),
-            )
-        else:
-            logger.warning("Industry join enabled but no industry data was loaded.")
-
-    label_next_rebalance_map = None
-    label_horizon_gap = None
-    if LABEL_HORIZON_MODE == "next_rebalance":
-        label_trade_dates = sorted(df["trade_date"].unique())
-        label_rebalance_dates = get_rebalance_dates(label_trade_dates, LABEL_REBALANCE_FREQUENCY)
-        if len(label_rebalance_dates) < 2:
-            logger.warning(
-                "label.horizon_mode=next_rebalance but insufficient rebalance dates; "
-                "falling back to fixed horizon_days."
-            )
-            LABEL_HORIZON_MODE = "fixed"
-        else:
-            rebalance_array = np.array(label_rebalance_dates)
-            trade_array = np.array(label_trade_dates)
-            idx = np.searchsorted(rebalance_array, trade_array, side="right")
-            next_dates = [
-                rebalance_array[i] if i < len(rebalance_array) else pd.NaT
-                for i in idx
-            ]
-            label_next_rebalance_map = dict(zip(label_trade_dates, next_dates))
-            label_horizon_gap = estimate_rebalance_gap(label_trade_dates, label_rebalance_dates)
-            if np.isfinite(label_horizon_gap):
-                logger.info(
-                    "Label horizon set to next rebalance date (median gap %.1f days).",
-                    label_horizon_gap,
-                )
+    panel_state = _load_research_panel(
+        data_interface=data_interface,
+        symbols=symbols,
+        market=MARKET,
+        start_date=START_DATE,
+        end_date=END_DATE,
+        execution_pricing_cols=EXECUTION_PRICING_COLS,
+        price_col=PRICE_COL,
+        benchmark_symbol=benchmark_symbol,
+        drop_st=DROP_ST,
+        min_listed_days=MIN_LISTED_DAYS,
+        drop_suspended=DROP_SUSPENDED,
+        suspended_policy=SUSPENDED_POLICY,
+        min_turnover=MIN_TURNOVER,
+        fundamentals_enabled=FUNDAMENTALS_ENABLED,
+        fundamentals_source=FUNDAMENTALS_SOURCE,
+        fundamentals_file_path=fundamentals_file_path,
+        data_cfg=data_cfg,
+        fundamentals_cfg=fundamentals_cfg,
+        requested_features=FEATURES,
+        fundamentals_ffill=FUNDAMENTALS_FFILL,
+        fundamentals_ffill_limit=FUNDAMENTALS_FFILL_LIMIT,
+        fundamentals_log_mcap=FUNDAMENTALS_LOG_MCAP,
+        fundamentals_mcap_col=FUNDAMENTALS_MCAP_COL,
+        fundamentals_log_mcap_col=FUNDAMENTALS_LOG_MCAP_COL,
+        fundamentals_auto_add=FUNDAMENTALS_AUTO_ADD,
+        provider_overlay_enabled=FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED,
+        provider_overlay_cfg=provider_overlay_cfg,
+        provider_overlay_auto_add=FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD,
+        provider_overlay_features=FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES,
+        industry_enabled=INDUSTRY_ENABLED,
+        industry_file_path=industry_file_path,
+        industry_cfg=industry_cfg,
+        industry_keep_columns=INDUSTRY_KEEP_COLUMNS,
+        industry_ffill=INDUSTRY_FFILL,
+        industry_ffill_limit=INDUSTRY_FFILL_LIMIT,
+        label_horizon_mode=LABEL_HORIZON_MODE,
+        label_rebalance_frequency=LABEL_REBALANCE_FREQUENCY,
+    )
+    df = panel_state["df"]
+    benchmark_df = panel_state["benchmark_df"]
+    symbols_for_non_price = panel_state["symbols_for_non_price"]
+    fundamentals_cols = panel_state["fundamentals_cols"]
+    industry_cols = panel_state["industry_cols"]
+    fund_cache_dir = panel_state["fund_cache_dir"]
+    provider_overlay_cache_dir = panel_state["provider_overlay_cache_dir"]
+    FEATURES = panel_state["features"]
+    LABEL_HORIZON_MODE = panel_state["label_horizon_mode"]
+    label_next_rebalance_map = panel_state["label_next_rebalance_map"]
+    label_horizon_gap = panel_state["label_horizon_gap"]
 
     # -----------------------------------------------------------------------------
     # 3. Feature engineering (per symbol) + label
     # -----------------------------------------------------------------------------
-    logger.info("Engineering features ...")
-
-    if PRICE_COL not in df.columns:
-        if PRICE_COL == "tr_close":
-            sys.exit(
-                "Price column 'tr_close' not found in data. "
-                "Configure data.rqdata.ex_factors_dir for local RQData assets, "
-                "or provide tr_close directly in the source daily data."
-            )
-        sys.exit(f"Price column '{PRICE_COL}' not found in data.")
-    if not FEATURES:
-        sys.exit("Feature list is empty.")
-
-
-    def add_features(group: pd.DataFrame) -> pd.DataFrame:
-        group = group.sort_values("trade_date").copy()
-        needed = set(FEATURES)
-        price_series = pd.to_numeric(group[PRICE_COL], errors="coerce")
-
-        def _safe_ratio(
-            numerator_col: str,
-            denominator_col: str,
-            out_col: str,
-        ) -> None:
-            if out_col not in needed:
-                return
-            if numerator_col not in group.columns or denominator_col not in group.columns:
-                return
-            numerator = pd.to_numeric(group[numerator_col], errors="coerce")
-            denominator = pd.to_numeric(group[denominator_col], errors="coerce")
-            valid_denominator = denominator.where(denominator.notna() & (denominator != 0))
-            ratio = numerator / valid_denominator
-            group[out_col] = ratio.replace([np.inf, -np.inf], np.nan)
-
-        sma_windows = set(parse_feature_windows(FEATURES, "sma_"))
-        sma_windows.update(parse_feature_windows(FEATURES, "sma_", "_diff"))
-        if not sma_windows:
-            sma_windows = _parse_window_config(feature_params.get("sma_windows"))
-        for win in sorted(sma_windows):
-            group[f"sma_{win}"] = ta.sma(price_series, length=win)
-            if f"sma_{win}_diff" in needed:
-                group[f"sma_{win}_diff"] = group[f"sma_{win}"].pct_change()
-
-        rsi_lengths = set(parse_feature_windows(FEATURES, "rsi_"))
-        if not rsi_lengths:
-            rsi_lengths = _parse_window_config(feature_params.get("rsi"))
-        for length in sorted(rsi_lengths):
-            group[f"rsi_{length}"] = ta.rsi(price_series, length=length)
-
-        if "macd_hist" in needed:
-            macd_cfg = feature_params.get("macd", [12, 26, 9])
-            macd_fast, macd_slow, macd_signal = macd_cfg
-            macd = ta.macd(price_series, fast=macd_fast, slow=macd_slow, signal=macd_signal)
-            col_name = f"MACDh_{macd_fast}_{macd_slow}_{macd_signal}"
-            if macd is not None and col_name in macd.columns:
-                group["macd_hist"] = macd[col_name]
-            else:
-                group["macd_hist"] = np.nan
-
-        volume_windows = set(parse_feature_windows(FEATURES, "volume_sma", "_ratio"))
-        if not volume_windows:
-            volume_windows = _parse_window_config(feature_params.get("volume_sma_windows"))
-        for win in sorted(volume_windows):
-            volume_sma = ta.sma(group["vol"], length=win)
-            if volume_sma is None:
-                volume_sma = group["vol"].rolling(window=win).mean()
-            group[f"volume_sma{win}"] = volume_sma
-            if f"volume_sma{win}_ratio" in needed:
-                group[f"volume_sma{win}_ratio"] = group["vol"] / group[f"volume_sma{win}"]
-
-        ret_windows = set(parse_feature_windows(FEATURES, "ret_"))
-        if not ret_windows:
-            ret_windows = _parse_window_config(feature_params.get("ret_windows"))
-        for win in sorted(ret_windows):
-            group[f"ret_{win}"] = price_series.pct_change(win)
-
-        rv_windows = set(parse_feature_windows(FEATURES, "rv_"))
-        if not rv_windows:
-            rv_windows = _parse_window_config(feature_params.get("rv_windows"))
-        if rv_windows:
-            daily_return = price_series.pct_change()
-            daily_return = daily_return.replace([np.inf, -np.inf], np.nan)
-            for win in sorted(rv_windows):
-                group[f"rv_{win}"] = daily_return.rolling(window=win).std(ddof=0)
-
-        if "log_vol" in needed:
-            group["log_vol"] = np.log1p(group["vol"].clip(lower=0))
-
-        if (
-            "sales" in needed
-            or "profit_margin" in needed
-            or "operating_margin" in needed
-            or "cfo_margin" in needed
-        ):
-            revenue = (
-                pd.to_numeric(group["revenue"], errors="coerce")
-                if "revenue" in group.columns
-                else pd.Series(np.nan, index=group.index, dtype=float)
-            )
-            operating_revenue = (
-                pd.to_numeric(group["operating_revenue"], errors="coerce")
-                if "operating_revenue" in group.columns
-                else pd.Series(np.nan, index=group.index, dtype=float)
-            )
-            group["sales"] = revenue.combine_first(operating_revenue)
-        if (
-            "debt" in needed
-            or "debt_to_assets" in needed
-            or "debt_to_equity" in needed
-            or "net_debt_to_assets" in needed
-        ):
-            short_term_debt = (
-                pd.to_numeric(group["short_term_debt"], errors="coerce")
-                if "short_term_debt" in group.columns
-                else pd.Series(np.nan, index=group.index, dtype=float)
-            )
-            long_term_loans = (
-                pd.to_numeric(group["long_term_loans"], errors="coerce")
-                if "long_term_loans" in group.columns
-                else pd.Series(np.nan, index=group.index, dtype=float)
-            )
-            debt = short_term_debt.fillna(0.0) + long_term_loans.fillna(0.0)
-            group["debt"] = debt.where(~(short_term_debt.isna() & long_term_loans.isna()))
-
-        _safe_ratio("net_profit", "sales", "profit_margin")
-        _safe_ratio("operating_profit", "sales", "operating_margin")
-        _safe_ratio(
-            "cash_flow_from_operating_activities",
-            "sales",
-            "cfo_margin",
-        )
-        _safe_ratio(
-            "cash_flow_from_operating_activities",
-            "net_profit",
-            "cfo_to_profit",
-        )
-        _safe_ratio("revenue", "total_assets", "asset_turnover")
-        _safe_ratio("net_profit", "total_assets", "roa")
-        _safe_ratio("total_liabilities", "total_assets", "leverage")
-        _safe_ratio(
-            "cash_flow_from_operating_activities",
-            "total_assets",
-            "cfo_to_assets",
-        )
-        _safe_ratio("debt", "total_assets", "debt_to_assets")
-        _safe_ratio("debt", "total_equity", "debt_to_equity")
-        _safe_ratio("cash_and_equivalents", "total_assets", "cash_to_assets")
-        _safe_ratio("goodwill", "total_assets", "goodwill_to_assets")
-        if "accrual_ratio" in needed:
-            if (
-                "net_profit" in group.columns
-                and "cash_flow_from_operating_activities" in group.columns
-                and "total_assets" in group.columns
-            ):
-                net_profit = pd.to_numeric(group["net_profit"], errors="coerce")
-                cfo = pd.to_numeric(group["cash_flow_from_operating_activities"], errors="coerce")
-                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
-                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
-                accrual = (net_profit - cfo) / valid_assets
-                group["accrual_ratio"] = accrual.replace([np.inf, -np.inf], np.nan)
-        _safe_ratio("accounts_receivable", "revenue", "receivables_to_revenue")
-        _safe_ratio("inventory", "revenue", "inventory_to_revenue")
-        if "working_capital_to_assets" in needed:
-            if (
-                "accounts_receivable" in group.columns
-                and "inventory" in group.columns
-                and "accounts_payable" in group.columns
-                and "total_assets" in group.columns
-            ):
-                receivables = pd.to_numeric(group["accounts_receivable"], errors="coerce")
-                inventory = pd.to_numeric(group["inventory"], errors="coerce")
-                payables = pd.to_numeric(group["accounts_payable"], errors="coerce")
-                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
-                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
-                working_capital = receivables + inventory - payables
-                ratio = working_capital / valid_assets
-                group["working_capital_to_assets"] = ratio.replace([np.inf, -np.inf], np.nan)
-        if "net_debt_to_assets" in needed:
-            if "debt" in group.columns and "cash_and_equivalents" in group.columns and "total_assets" in group.columns:
-                debt = pd.to_numeric(group["debt"], errors="coerce")
-                cash_and_equivalents = pd.to_numeric(group["cash_and_equivalents"], errors="coerce")
-                total_assets = pd.to_numeric(group["total_assets"], errors="coerce")
-                valid_assets = total_assets.where(total_assets.notna() & (total_assets != 0))
-                net_debt = debt - cash_and_equivalents
-                ratio = net_debt / valid_assets
-                group["net_debt_to_assets"] = ratio.replace([np.inf, -np.inf], np.nan)
-
-        if LABEL_SHIFT_DAYS > 0:
-            shifted_price = group[PRICE_COL].shift(-LABEL_SHIFT_DAYS)
-        else:
-            shifted_price = group[PRICE_COL]
-        entry_price = shifted_price
-        if LABEL_HORIZON_MODE == "next_rebalance" and label_next_rebalance_map is not None:
-            exit_base = group["trade_date"].map(label_next_rebalance_map)
-            shifted_by_date = pd.Series(shifted_price.values, index=group["trade_date"])
-            exit_price = exit_base.map(shifted_by_date)
-        else:
-            exit_price = shifted_price.shift(-LABEL_HORIZON_DAYS)
-        group[TARGET] = exit_price / entry_price - 1.0
-
-        return group
-
-
-    df = df.groupby("symbol", group_keys=False).apply(add_features)
-
-    missing_features = [feat for feat in FEATURES if feat not in df.columns]
-    if missing_features:
-        if FUNDAMENTALS_ALLOW_MISSING:
-            logger.warning("Dropping missing features: %s", missing_features)
-            FEATURES = [feat for feat in FEATURES if feat in df.columns]
-        else:
-            sys.exit(f"Missing features after engineering: {missing_features}")
-
-    # Keep only the necessary columns; drop NaNs in features for live snapshot support
-    meta_cols = ["is_tradable"] if "is_tradable" in df.columns else []
-    eval_extra_df = None
-    bucket_cols = []
-    if BUCKET_IC_ENABLED and BUCKET_IC_SCHEMES:
-        bucket_cols = list(dict.fromkeys([scheme["column"] for scheme in BUCKET_IC_SCHEMES]))
-        missing_bucket_cols = [col for col in bucket_cols if col not in df.columns]
-        if missing_bucket_cols:
-            logger.warning("Bucket IC columns missing in data: %s", missing_bucket_cols)
-        bucket_cols = [col for col in bucket_cols if col in df.columns]
-        if bucket_cols:
-            eval_extra_df = df[["trade_date", "symbol"] + bucket_cols].copy()
-
-    missing_fill_features = FEATURE_MISSING_FEATURES or FEATURES
-    missing_fill_features = [
-        feature for feature in missing_fill_features if feature in FEATURES and feature in df.columns
-    ]
-    if FEATURE_MISSING_ADD_INDICATORS and missing_fill_features:
-        indicator_features = []
-        for feature in missing_fill_features:
-            indicator_name = f"{feature}{FEATURE_MISSING_SUFFIX}"
-            if indicator_name in df.columns and indicator_name not in FEATURES:
-                sys.exit(
-                    "features.missing.indicator_suffix collides with an existing column: "
-                    f"{indicator_name}"
-                )
-            if indicator_name not in df.columns:
-                df[indicator_name] = df[feature].isna().astype(np.int8)
-            indicator_features.append(indicator_name)
-        FEATURES = list(dict.fromkeys(FEATURES + indicator_features))
-
-    df = _ensure_symbol_alias(df)
-    execution_passthrough_cols = [
-        col
-        for col in EXECUTION_PRICING_COLS
-        if col in df.columns and col != PRICE_COL
-    ]
-    price_passthrough_cols = list(
-        dict.fromkeys(
-            execution_passthrough_cols
-            + [col for col in ("close", "tr_close") if col in df.columns and col != PRICE_COL]
-        )
-    )
-
-    backtest_pricing_cols = [
-        "trade_date",
-        "symbol",
-        PRICE_COL,
-        *execution_passthrough_cols,
-    ]
-    if BACKTEST_TRADABLE_COL and BACKTEST_TRADABLE_COL in df.columns:
-        backtest_pricing_cols.append(BACKTEST_TRADABLE_COL)
-    backtest_pricing_cols = list(dict.fromkeys(backtest_pricing_cols))
-    backtest_pricing_df = (
-        df[backtest_pricing_cols]
-        .drop_duplicates(subset=["trade_date", "symbol"])
-        .copy()
-    )
-
-    passthrough_cols = list(dict.fromkeys(industry_cols))
-    cols = (
-        ["trade_date", "symbol", PRICE_COL]
-        + FEATURES
-        + price_passthrough_cols
-        + passthrough_cols
-        + meta_cols
-        + [TARGET]
-    )
-    cols = list(dict.fromkeys(cols))
-    df = df[cols].copy()
-
-    if universe_by_date is not None:
-        before_rows = len(df)
-        df = apply_universe_by_date(df, universe_by_date)
-        after_rows = len(df)
-        logger.info("Applied universe-by-date filter: %s -> %s rows", before_rows, after_rows)
-        if df.empty:
-            sys.exit("Universe-by-date filter removed all rows.")
-
-    if FEATURE_MISSING_METHOD != "none" and missing_fill_features:
-        for feature in missing_fill_features:
-            df[feature] = pd.to_numeric(df[feature], errors="coerce")
-        if FEATURE_MISSING_METHOD == "zero":
-            df[missing_fill_features] = df[missing_fill_features].fillna(0.0)
-        elif FEATURE_MISSING_METHOD == "cross_sectional_median":
-            by_date_median = df.groupby("trade_date")[missing_fill_features].transform("median")
-            df[missing_fill_features] = df[missing_fill_features].fillna(by_date_median)
-        remaining_missing = int(df[missing_fill_features].isna().sum().sum())
-        logger.info(
-            "Applied feature missing fill: method=%s, features=%s, add_indicators=%s, remaining_nans=%s.",
-            FEATURE_MISSING_METHOD,
-            len(missing_fill_features),
-            FEATURE_MISSING_ADD_INDICATORS,
-            remaining_missing,
-        )
-
-    required_cols = [PRICE_COL] + FEATURES
-    df_features = df.dropna(subset=required_cols).reset_index(drop=True)
-
-    if WINSORIZE_PCT:
-        def _winsorize(group: pd.DataFrame) -> pd.DataFrame:
-            lower = group[TARGET].quantile(WINSORIZE_PCT)
-            upper = group[TARGET].quantile(1 - WINSORIZE_PCT)
-            group[TARGET] = group[TARGET].clip(lower, upper)
-            return group
-
-        df_features = df_features.groupby("trade_date", group_keys=False).apply(_winsorize)
-
-    if CS_METHOD != "none":
-        df_features = apply_cross_sectional_transform(
-            df_features, FEATURES, CS_METHOD, CS_WINSORIZE_PCT
-        )
-
-    if TRAIN_TARGET != TARGET:
-        df_features[TRAIN_TARGET] = apply_cross_sectional_series_transform(
-            df_features,
-            TARGET,
-            TRAIN_TARGET_TRANSFORM,
-        )
-        logger.info(
-            "Applied training target transform: base=%s, method=%s, train_target=%s",
-            TARGET,
-            TRAIN_TARGET_TRANSFORM,
-            TRAIN_TARGET,
-        )
-
-    dataset_schema = DatasetSchema(
-        date_col="trade_date",
-        instrument_col="symbol",
+    dataset_state = _prepare_feature_dataset(
+        df=df,
+        features=FEATURES,
+        feature_params=feature_params,
         price_col=PRICE_COL,
-        label_col=TARGET,
-        tradable_col="is_tradable" if "is_tradable" in df_features.columns else None,
-        feature_cols=FEATURES,
-        extra_cols=[
-            *price_passthrough_cols,
-            *passthrough_cols,
-            *([TRAIN_TARGET] if TRAIN_TARGET != TARGET else []),
-        ],
+        target=TARGET,
+        label_shift_days=LABEL_SHIFT_DAYS,
+        label_horizon_days=LABEL_HORIZON_DAYS,
+        label_horizon_mode=LABEL_HORIZON_MODE,
+        label_next_rebalance_map=label_next_rebalance_map,
+        fundamentals_allow_missing=FUNDAMENTALS_ALLOW_MISSING,
+        bucket_ic_enabled=BUCKET_IC_ENABLED,
+        bucket_ic_schemes=BUCKET_IC_SCHEMES,
+        feature_missing_features=FEATURE_MISSING_FEATURES,
+        feature_missing_method=FEATURE_MISSING_METHOD,
+        feature_missing_add_indicators=FEATURE_MISSING_ADD_INDICATORS,
+        feature_missing_suffix=FEATURE_MISSING_SUFFIX,
+        industry_cols=industry_cols,
+        execution_pricing_cols=EXECUTION_PRICING_COLS,
+        backtest_tradable_col=BACKTEST_TRADABLE_COL,
+        universe_by_date=universe_by_date,
+        winsorize_pct=WINSORIZE_PCT,
+        cs_method=CS_METHOD,
+        cs_winsorize_pct=CS_WINSORIZE_PCT,
+        train_target=TRAIN_TARGET,
+        train_target_transform=TRAIN_TARGET_TRANSFORM,
+        sample_on_rebalance_dates=SAMPLE_ON_REBALANCE_DATES,
+        rebalance_frequency=REBALANCE_FREQUENCY,
+        min_symbols_per_date=MIN_SYMBOLS_PER_DATE,
     )
-    dataset = build_dataset(df_features, dataset_schema)
-    df_features = dataset.frame
-    df_full = df_features.dropna().reset_index(drop=True)
-    if eval_extra_df is not None and not eval_extra_df.empty:
-        eval_extra_df = eval_extra_df.drop_duplicates(subset=["trade_date", "symbol"])
-        extra_eval_cols = [
-            col
-            for col in eval_extra_df.columns
-            if col not in {"trade_date", "symbol"} and col not in df_full.columns
-        ]
-        if extra_eval_cols:
-            df_full = df_full.merge(
-                eval_extra_df[["trade_date", "symbol"] + extra_eval_cols],
-                on=["trade_date", "symbol"],
-                how="left",
-            )
+    FEATURES = dataset_state["features"]
+    dataset = dataset_state["dataset"]
+    df_features = dataset_state["df_features"]
+    df_full = dataset_state["df_full"]
+    df_full_sorted = dataset_state["df_full_sorted"]
+    all_dates_full = dataset_state["all_dates_full"]
+    full_date_start_rows = dataset_state["full_date_start_rows"]
+    full_date_end_rows = dataset_state["full_date_end_rows"]
+    full_date_to_pos = dataset_state["full_date_to_pos"]
+    df_model_all = dataset_state["df_model_all"]
+    df_model_all_sorted = dataset_state["df_model_all_sorted"]
+    all_dates_model_full = dataset_state["all_dates_model_full"]
+    model_date_start_rows = dataset_state["model_date_start_rows"]
+    model_date_end_rows = dataset_state["model_date_end_rows"]
+    model_date_to_pos = dataset_state["model_date_to_pos"]
+    valid_dates = dataset_state["valid_dates"]
+    valid_dates_set = dataset_state["valid_dates_set"]
+    dropped_date_counts = dataset_state["dropped_date_counts"]
+    backtest_pricing_df = dataset_state["backtest_pricing_df"]
+    bucket_cols = dataset_state["bucket_cols"]
+    passthrough_cols = dataset_state["passthrough_cols"]
+    price_passthrough_cols = dataset_state["price_passthrough_cols"]
     if BACKTEST_GROUP_COL and BACKTEST_GROUP_COL not in df_full.columns:
         logger.warning(
             "backtest.group_col=%s not found in dataset; industry/group constraint disabled.",
             BACKTEST_GROUP_COL,
         )
         BACKTEST_GROUP_COL = None
-    (
-        df_full_sorted,
-        all_dates_full,
-        full_date_start_rows,
-        full_date_end_rows,
-        full_date_to_pos,
-    ) = _build_trade_date_slices(df_full)
-    rebalance_dates_all = None
-    if SAMPLE_ON_REBALANCE_DATES:
-        rebalance_dates_all = get_rebalance_dates(all_dates_full, REBALANCE_FREQUENCY)
-        df_model_all = _slice_trade_dates(
-            df_full_sorted,
-            full_date_start_rows,
-            full_date_end_rows,
-            full_date_to_pos,
-            rebalance_dates_all,
-        )
-    else:
-        df_model_all = df_full_sorted
 
-    # Drop dates with too few symbols for evaluation (model sample only)
-    date_counts = df_model_all.groupby("trade_date")["symbol"].nunique()
-    valid_dates = date_counts[date_counts >= MIN_SYMBOLS_PER_DATE].index
-    dropped_date_counts = date_counts[date_counts < MIN_SYMBOLS_PER_DATE].sort_index()
-    (
-        df_model_all_sorted,
-        all_dates_model_full,
-        model_date_start_rows,
-        model_date_end_rows,
-        model_date_to_pos,
-    ) = _build_trade_date_slices(df_model_all)
-    if len(valid_dates) != len(date_counts):
-        df_model_all = _slice_trade_dates(
-            df_model_all_sorted,
-            model_date_start_rows,
-            model_date_end_rows,
-            model_date_to_pos,
-            valid_dates.to_numpy(),
-        )
-        (
-            df_model_all_sorted,
-            all_dates_model_full,
-            model_date_start_rows,
-            model_date_end_rows,
-            model_date_to_pos,
-        ) = _build_trade_date_slices(df_model_all)
-    else:
-        df_model_all = df_model_all_sorted
-    if not dropped_date_counts.empty:
-        logger.info(
-            "Dropped %s dates with < %s symbols (min=%s, max=%s).",
-            len(dropped_date_counts),
-            MIN_SYMBOLS_PER_DATE,
-            int(dropped_date_counts.min()),
-            int(dropped_date_counts.max()),
-        )
-    valid_dates_set = set(pd.to_datetime(valid_dates))
-
-    def _resolve_holdout_len(value: object | None, n_dates: int) -> int:
-        if value is None:
-            return 0
-        if n_dates <= 0:
-            return 0
-        try:
-            size = float(value)
-        except (TypeError, ValueError):
-            raise SystemExit("eval.final_oos.size must be a number.")
-        if size <= 0:
-            return 0
-        if size < 1:
-            return max(1, int(np.floor(n_dates * size)))
-        return int(size)
-
-    df_model = df_model_all
-    df_model_oos = pd.DataFrame()
-    final_oos_dates = np.array([], dtype="datetime64[ns]")
-    final_oos_len = 0
-    final_oos_start = None
-    final_oos_end = None
+    # -----------------------------------------------------------------------------
+    # 4. Train-test split (time-series by date)
+    # -----------------------------------------------------------------------------
     if FINAL_OOS_ENABLED and FINAL_OOS_SIZE_RAW is None:
         FINAL_OOS_SIZE_RAW = TEST_SIZE
         logger.info(
             "final_oos.enabled=true but size not set; using eval.test_size=%s.",
             TEST_SIZE,
         )
-    if FINAL_OOS_ENABLED:
-        final_oos_len = _resolve_holdout_len(FINAL_OOS_SIZE_RAW, len(all_dates_model_full))
-        if final_oos_len <= 0:
-            FINAL_OOS_ENABLED = False
-        elif final_oos_len >= len(all_dates_model_full):
-            sys.exit("eval.final_oos.size leaves no in-sample dates.")
-        else:
-            final_oos_start_pos = len(all_dates_model_full) - final_oos_len
-            final_oos_dates = all_dates_model_full[-final_oos_len:]
-            final_oos_start = pd.to_datetime(final_oos_dates[0])
-            final_oos_end = pd.to_datetime(final_oos_dates[-1])
-            df_model_oos = _slice_trade_date_range(
-                df_model_all_sorted,
-                model_date_start_rows,
-                model_date_end_rows,
-                final_oos_start_pos,
-                len(all_dates_model_full) - 1,
-            )
-            df_model = _slice_trade_date_range(
-                df_model_all_sorted,
-                model_date_start_rows,
-                model_date_end_rows,
-                0,
-                final_oos_start_pos - 1,
-            )
-            logger.info(
-                "Final OOS holdout enabled: %s dates (%s -> %s).",
-                final_oos_len,
-                final_oos_start.strftime("%Y-%m-%d"),
-                final_oos_end.strftime("%Y-%m-%d"),
-            )
-
-    def _apply_model_train_window(
-        train_dates_input: np.ndarray | list[pd.Timestamp],
-        *,
-        label: str,
-    ) -> np.ndarray:
-        train_dates_array = np.asarray(pd.to_datetime(train_dates_input), dtype="datetime64[ns]")
-        if train_dates_array.size == 0:
-            return train_dates_array
-        windowed_dates = select_train_window_dates(
-            train_dates_array,
-            mode=TRAIN_WINDOW_MODE,
-            size=TRAIN_WINDOW_SIZE,
-            unit=TRAIN_WINDOW_UNIT,
-        )
-        if (
-            TRAIN_WINDOW_MODE == "rolling"
-            and windowed_dates.size > 0
-            and windowed_dates.size < train_dates_array.size
-        ):
-            logger.info(
-                "Applied model.train_window to %s: using %s/%s dates (%s -> %s).",
-                label,
-                len(windowed_dates),
-                len(train_dates_array),
-                pd.to_datetime(windowed_dates[0]).strftime("%Y-%m-%d"),
-                pd.to_datetime(windowed_dates[-1]).strftime("%Y-%m-%d"),
-            )
-        return windowed_dates
-
-    def _slice_with_train_window(
-        ordered: pd.DataFrame,
-        start_rows: np.ndarray,
-        end_rows: np.ndarray,
-        date_to_pos: dict[pd.Timestamp, int],
-        train_dates_input: np.ndarray | list[pd.Timestamp],
-        *,
-        label: str,
-    ) -> tuple[pd.DataFrame, np.ndarray]:
-        windowed_dates = _apply_model_train_window(train_dates_input, label=label)
-        if windowed_dates.size == 0:
-            return ordered.iloc[0:0].copy(), windowed_dates
-        frame = _slice_trade_dates(
-            ordered,
-            start_rows,
-            end_rows,
-            date_to_pos,
-            windowed_dates,
-        )
-        return frame, windowed_dates
-
-    rebalance_gap_days = None
-    if SAMPLE_ON_REBALANCE_DATES:
-        sample_dates = sorted(df_model["trade_date"].unique())
-        if len(sample_dates) >= 2:
-            rebalance_gap_days = estimate_rebalance_gap(all_dates_full, sample_dates)
-            if np.isfinite(rebalance_gap_days):
-                logger.info(
-                    "Sample-on-rebalance enabled: median gap %.1f trade days.",
-                    rebalance_gap_days,
-                )
-
-    # -----------------------------------------------------------------------------
-    # 4. Train-test split (time-series by date)
-    # -----------------------------------------------------------------------------
-    logger.info("Splitting train/test by date ...")
-    label_horizon_effective = LABEL_HORIZON_DAYS
-    if LABEL_HORIZON_MODE == "next_rebalance" and label_horizon_gap is not None:
-        if np.isfinite(label_horizon_gap):
-            label_horizon_effective = int(round(label_horizon_gap))
-    if PURGE_DAYS_CFG is None:
-        purge_days = int(label_horizon_effective + LABEL_SHIFT_DAYS)
-    else:
-        purge_days = int(PURGE_DAYS_CFG)
-    _warn_if_purge_too_small(
-        purge_days_cfg=PURGE_DAYS_CFG,
-        purge_days=purge_days,
-        label_horizon_effective=label_horizon_effective,
+    split_state = _prepare_split_context(
+        df_model_all_sorted=df_model_all_sorted,
+        all_dates_model_full=all_dates_model_full,
+        model_date_start_rows=model_date_start_rows,
+        model_date_end_rows=model_date_end_rows,
+        model_date_to_pos=model_date_to_pos,
+        sample_on_rebalance_dates=SAMPLE_ON_REBALANCE_DATES,
+        df_model_all=df_model_all,
+        all_dates_full=all_dates_full,
+        label_horizon_days=LABEL_HORIZON_DAYS,
+        label_horizon_mode=LABEL_HORIZON_MODE,
+        label_horizon_gap=label_horizon_gap,
         label_shift_days=LABEL_SHIFT_DAYS,
+        purge_days_cfg=PURGE_DAYS_CFG,
+        embargo_days_cfg=EMBARGO_DAYS_CFG,
+        test_size=TEST_SIZE,
+        final_oos_enabled=FINAL_OOS_ENABLED,
+        final_oos_size_raw=FINAL_OOS_SIZE_RAW,
+        train_window_mode=TRAIN_WINDOW_MODE,
+        train_window_size=TRAIN_WINDOW_SIZE,
+        train_window_unit=TRAIN_WINDOW_UNIT,
     )
-    embargo_days = int(EMBARGO_DAYS_CFG)
-
-    def _days_to_steps(days: int, gap_days: Optional[float]) -> int:
-        if days <= 0:
-            return 0
-        if gap_days is None or not np.isfinite(gap_days) or gap_days <= 0:
-            return int(days)
-        return max(0, int(math.ceil(days / gap_days)))
-
-    if SAMPLE_ON_REBALANCE_DATES:
-        PURGE_STEPS = _days_to_steps(purge_days, rebalance_gap_days)
-        EMBARGO_STEPS = _days_to_steps(embargo_days, rebalance_gap_days)
-        if rebalance_gap_days is not None and np.isfinite(rebalance_gap_days):
-            logger.info(
-                "Converted embargo/purge from days to rebalance steps: "
-                "embargo=%s->%s, purge=%s->%s (gap≈%.1f days).",
-                embargo_days,
-                EMBARGO_STEPS,
-                purge_days,
-                PURGE_STEPS,
-                rebalance_gap_days,
-            )
-        else:
-            logger.warning(
-                "Sample-on-rebalance enabled but rebalance gap could not be estimated; "
-                "using raw embargo/purge values as steps."
-            )
-    else:
-        PURGE_STEPS = purge_days
-        EMBARGO_STEPS = embargo_days
-
-    EFFECTIVE_GAP_STEPS = max(EMBARGO_STEPS, PURGE_STEPS)
-
-    (
-        df_model_sorted,
-        all_dates,
-        all_date_start_rows,
-        all_date_end_rows,
-        all_date_to_pos,
-    ) = _build_trade_date_slices(df_model)
-    if len(all_dates) < 10:
-        sys.exit("Not enough dates for a meaningful split.")
-
-    split_idx = int(len(all_dates) * (1 - TEST_SIZE))
-    train_end = split_idx
-    if EFFECTIVE_GAP_STEPS > 0:
-        train_end = max(0, split_idx - EFFECTIVE_GAP_STEPS)
-    train_dates_full = all_dates[:train_end]
-    test_dates = all_dates[split_idx:]
-    train_df, train_dates = _slice_with_train_window(
-        df_model_sorted,
-        all_date_start_rows,
-        all_date_end_rows,
-        all_date_to_pos,
-        train_dates_full,
-        label="main train split",
-    )
-    test_df = _slice_trade_date_range(
-        df_model_sorted,
-        all_date_start_rows,
-        all_date_end_rows,
-        split_idx,
-        len(all_dates) - 1,
-    )
-
-    if train_df.empty or test_df.empty:
-        sys.exit("Not enough dates for train/test after embargo.")
-
-    logger.info(
-        "Train/test split: train_dates=%s/%s, test_dates=%s, purge_steps=%s, embargo_steps=%s.",
-        len(train_dates),
-        len(train_dates_full),
-        len(test_dates),
-        PURGE_STEPS,
-        EMBARGO_STEPS,
-    )
+    FINAL_OOS_ENABLED = split_state["final_oos_enabled"]
+    df_model = split_state["df_model"]
+    df_model_oos = split_state["df_model_oos"]
+    final_oos_dates = split_state["final_oos_dates"]
+    final_oos_len = split_state["final_oos_len"]
+    final_oos_start = split_state["final_oos_start"]
+    final_oos_end = split_state["final_oos_end"]
+    label_horizon_effective = split_state["label_horizon_effective"]
+    purge_days = split_state["purge_days"]
+    embargo_days = split_state["embargo_days"]
+    PURGE_STEPS = split_state["purge_steps"]
+    EMBARGO_STEPS = split_state["embargo_steps"]
+    EFFECTIVE_GAP_STEPS = split_state["effective_gap_steps"]
+    rebalance_gap_days = split_state["rebalance_gap_days"]
+    df_model_sorted = split_state["df_model_sorted"]
+    all_dates = split_state["all_dates"]
+    all_date_start_rows = split_state["all_date_start_rows"]
+    all_date_end_rows = split_state["all_date_end_rows"]
+    all_date_to_pos = split_state["all_date_to_pos"]
+    train_df = split_state["train_df"]
+    train_dates = split_state["train_dates"]
+    train_dates_full = split_state["train_dates_full"]
+    test_df = split_state["test_df"]
+    test_dates = split_state["test_dates"]
 
     # -----------------------------------------------------------------------------
     # 5. Cross-validation on dates (IC metric)
     # -----------------------------------------------------------------------------
     logger.info("Time-series cross-validation (IC) ...")
-
-
-    def permute_target_within_date(
-        data: pd.DataFrame,
-        target_col: str,
-        rng: np.random.Generator,
-    ) -> pd.DataFrame:
-        def _permute(group: pd.DataFrame) -> pd.DataFrame:
-            group = group.copy()
-            group[target_col] = rng.permutation(group[target_col].values)
-            return group
-
-        return data.groupby("trade_date", group_keys=False, sort=False).apply(_permute)
-
-
-    def permutation_test_ic(
-        train_data: pd.DataFrame,
-        test_data: pd.DataFrame,
-        n_runs: int,
-        seed: Optional[int],
-        signal_direction: float,
-        eval_dates: Optional[list[pd.Timestamp]] = None,
-    ) -> list[float]:
-        scores = []
-        eval_date_values = sorted(set(pd.to_datetime(eval_dates))) if eval_dates else None
-        if eval_date_values:
-            (
-                test_data_sorted,
-                _,
-                test_date_start_rows,
-                test_date_end_rows,
-                test_date_to_pos,
-            ) = _build_trade_date_slices(test_data)
-            eval_test_data = _slice_trade_dates(
-                test_data_sorted,
-                test_date_start_rows,
-                test_date_end_rows,
-                test_date_to_pos,
-                eval_date_values,
-            )
-        else:
-            eval_test_data = test_data
-        for idx in range(n_runs):
-            run_seed = None if seed is None else seed + idx
-            rng = np.random.default_rng(run_seed)
-            perm_train = permute_target_within_date(train_data, TRAIN_TARGET, rng)
-
-            perm_model = build_model(MODEL_TYPE, MODEL_PARAMS)
-            perm_weights = build_sample_weight(
-                perm_train,
-                SAMPLE_WEIGHT_MODE,
-                params=SAMPLE_WEIGHT_PARAMS,
-            )
-            fit_model(
-                perm_model,
-                MODEL_TYPE,
-                perm_train,
-                features=FEATURES,
-                target_col=TRAIN_TARGET,
-                sample_weight=perm_weights,
-            )
-
-            perm_test = eval_test_data.copy()
-            perm_test["pred"] = perm_model.predict(perm_test[FEATURES])
-            if signal_direction != 1.0:
-                perm_test["pred"] = perm_test["pred"] * signal_direction
-
-            ic_values = daily_ic_series(perm_test, TARGET, "pred")
-            scores.append(float(ic_values.mean()) if not ic_values.empty else np.nan)
-        return scores
-
-
-    def sample_rebalance_frame(
-        frame: pd.DataFrame,
-        *,
-        frequency: str,
-        valid_dates: Optional[set[pd.Timestamp]] = None,
-        allowed_dates: Optional[np.ndarray] = None,
-    ) -> tuple[pd.DataFrame, list[pd.Timestamp]]:
-        if frame is None or frame.empty:
-            return pd.DataFrame(columns=frame.columns if frame is not None else []), []
-        (
-            frame_sorted,
-            trade_dates_sorted,
-            frame_date_start_rows,
-            frame_date_end_rows,
-            frame_date_to_pos,
-        ) = _build_trade_date_slices(frame)
-        rebalance_dates = get_rebalance_dates(trade_dates_sorted, frequency)
-        if valid_dates:
-            rebalance_dates = [d for d in rebalance_dates if d in valid_dates]
-        if allowed_dates is not None:
-            allowed_dates_set = set(pd.to_datetime(allowed_dates))
-            rebalance_dates = [d for d in rebalance_dates if d in allowed_dates_set]
-        sampled = _slice_trade_dates(
-            frame_sorted,
-            frame_date_start_rows,
-            frame_date_end_rows,
-            frame_date_to_pos,
-            rebalance_dates,
-        )
-        return sampled, rebalance_dates
 
 
     walk_forward_importance_rows: list[dict[str, Any]] = []
@@ -2415,6 +2767,9 @@ def run(config_ref: str | Path | None = None) -> None:
         train_dates = _apply_model_train_window(
             window_meta["train_dates"],
             label=f"walk_forward window {window_id}",
+            train_window_mode=TRAIN_WINDOW_MODE,
+            train_window_size=TRAIN_WINDOW_SIZE,
+            train_window_unit=TRAIN_WINDOW_UNIT,
         )
         test_dates = window_meta["test_dates"]
         train_df_w = _slice_trade_dates(
@@ -2532,7 +2887,7 @@ def run(config_ref: str | Path | None = None) -> None:
         test_eval["pred"] = model_w.predict(test_eval[FEATURES])
         test_eval["signal_eval"] = test_eval["pred"] * direction
         eval_allowed_dates_w = test_dates if SAMPLE_ON_REBALANCE_DATES else None
-        eval_df_w, rebalance_dates_w = sample_rebalance_frame(
+        eval_df_w, rebalance_dates_w = _sample_rebalance_frame(
             test_eval,
             frequency=REBALANCE_FREQUENCY,
             valid_dates=valid_dates_set,
@@ -2549,13 +2904,20 @@ def run(config_ref: str | Path | None = None) -> None:
 
         perm_stats_w = None
         if WF_PERM_TEST_ENABLED:
-            perm_scores = permutation_test_ic(
+            perm_scores = _permutation_test_ic(
                 train_df_w,
                 test_df_w,
                 WF_PERM_TEST_RUNS,
                 WF_PERM_TEST_SEED,
                 direction,
-                rebalance_dates_w,
+                model_type=MODEL_TYPE,
+                model_params=MODEL_PARAMS,
+                features=FEATURES,
+                fit_target_col=TRAIN_TARGET,
+                target_col=TARGET,
+                sample_weight_mode=SAMPLE_WEIGHT_MODE,
+                sample_weight_params=SAMPLE_WEIGHT_PARAMS,
+                eval_dates=rebalance_dates_w,
             )
             if perm_scores:
                 perm_stats_w = {
@@ -2852,6 +3214,9 @@ def run(config_ref: str | Path | None = None) -> None:
                         live_date_to_pos,
                         live_all_dates,
                         label="live full fit",
+                        train_window_mode=TRAIN_WINDOW_MODE,
+                        train_window_size=TRAIN_WINDOW_SIZE,
+                        train_window_unit=TRAIN_WINDOW_UNIT,
                     )
                     if df_live_train.empty:
                         logger.warning(
@@ -2984,7 +3349,7 @@ def run(config_ref: str | Path | None = None) -> None:
             logger.info("%sSignal direction applied to ranking: %s", label_prefix, SIGNAL_DIRECTION)
 
         eval_allowed_dates = test_dates if SAMPLE_ON_REBALANCE_DATES else None
-        eval_df, rebalance_dates_eval = sample_rebalance_frame(
+        eval_df, rebalance_dates_eval = _sample_rebalance_frame(
             eval_df_full,
             frequency=REBALANCE_FREQUENCY,
             valid_dates=valid_dates_set,
@@ -3049,13 +3414,20 @@ def run(config_ref: str | Path | None = None) -> None:
             if perm_train_df is None or perm_test_df is None:
                 raise SystemExit("Permutation test requested but data was not provided.")
             logger.info("%sPermutation test (shuffle train labels within date) ...", label_prefix)
-            perm_scores = permutation_test_ic(
+            perm_scores = _permutation_test_ic(
                 perm_train_df,
                 perm_test_df,
                 PERM_TEST_RUNS,
                 PERM_TEST_SEED,
                 SIGNAL_DIRECTION,
-                rebalance_dates_eval,
+                model_type=MODEL_TYPE,
+                model_params=MODEL_PARAMS,
+                features=FEATURES,
+                fit_target_col=TRAIN_TARGET,
+                target_col=TARGET,
+                sample_weight_mode=SAMPLE_WEIGHT_MODE,
+                sample_weight_params=SAMPLE_WEIGHT_PARAMS,
+                eval_dates=rebalance_dates_eval,
             )
             if perm_scores:
                 perm_mean = np.nanmean(perm_scores)
@@ -3185,7 +3557,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 bucket_df = pd.concat(bucket_frames, ignore_index=True)
                 result["bucket_ic"] = bucket_df.to_dict(orient="records")
 
-        _, bt_rebalance = sample_rebalance_frame(
+        _, bt_rebalance = _sample_rebalance_frame(
             eval_df_full,
             frequency=BACKTEST_REBALANCE_FREQUENCY,
             valid_dates=valid_dates_set,
@@ -3523,6 +3895,9 @@ def run(config_ref: str | Path | None = None) -> None:
                 all_date_to_pos,
                 all_dates,
                 label="final_oos fit",
+                train_window_mode=TRAIN_WINDOW_MODE,
+                train_window_size=TRAIN_WINDOW_SIZE,
+                train_window_unit=TRAIN_WINDOW_UNIT,
             )
             if df_oos_train.empty:
                 logger.info("Final OOS evaluation skipped: model.train_window left no in-sample data.")
