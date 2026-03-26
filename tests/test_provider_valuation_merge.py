@@ -9,6 +9,99 @@ MERGE_SCRIPT = importlib.reload(
 )
 
 
+class _FakeRQDataClient:
+    def __init__(self, frames_by_symbol: dict[str, pd.DataFrame]):
+        self.frames_by_symbol = frames_by_symbol
+        self.calls: list[tuple] = []
+
+    def get_factor(self, order_book_id, factors, start_date, end_date, **kwargs):
+        self.calls.append((order_book_id, tuple(factors), start_date, end_date, kwargs))
+        return self.frames_by_symbol[order_book_id].copy()
+
+
+def _hk_factor_frame(order_book_id: str, market_caps: list[float]) -> pd.DataFrame:
+    index = pd.MultiIndex.from_product(
+        [[order_book_id], pd.to_datetime(["2025-01-02", "2025-01-03"])],
+        names=["order_book_id", "date"],
+    )
+    return pd.DataFrame(
+        {
+            "hk_total_market_val": market_caps,
+            "pe_ratio_ttm": [8.0, 8.1],
+            "pb_ratio_ttm": [1.1, 1.2],
+        },
+        index=index,
+    )
+
+
+def test_fetch_provider_frame_preserves_ts_code_from_real_fundamentals_fetch(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    client = _FakeRQDataClient(
+        {
+            "00005.XHKG": _hk_factor_frame("00005.XHKG", [1000.0, 1010.0]),
+            "00011.XHKG": _hk_factor_frame("00011.XHKG", [1500.0, 1515.0]),
+        }
+    )
+    cfg = {
+        "data": {
+            "provider": "rqdata",
+            "rqdata": {"market": "hk"},
+        },
+        "fundamentals": {
+            "source": "provider",
+            "endpoint": "get_factor",
+            "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
+            "column_map": {
+                "trade_date": "trade_date",
+                "ts_code": "ts_code",
+                "market_cap": "hk_total_market_val",
+                "pe_ttm": "pe_ratio_ttm",
+                "pb": "pb_ratio_ttm",
+            },
+        },
+    }
+
+    provider_df = MERGE_SCRIPT.fetch_provider_frame(
+        symbols=["00005.HK", "00011.HK"],
+        start_date="20250102",
+        end_date="20250103",
+        cache_dir=cache_dir,
+        cfg=cfg,
+        client=client,
+    ).sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+
+    assert client.calls == [
+        (
+            "00005.XHKG",
+            ("hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"),
+            "20250102",
+            "20250103",
+            {"market": "hk"},
+        ),
+        (
+            "00011.XHKG",
+            ("hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"),
+            "20250102",
+            "20250103",
+            {"market": "hk"},
+        ),
+    ]
+    assert provider_df["trade_date"].tolist() == [
+        "20250102",
+        "20250103",
+        "20250102",
+        "20250103",
+    ]
+    assert provider_df["ts_code"].tolist() == [
+        "00005.HK",
+        "00005.HK",
+        "00011.HK",
+        "00011.HK",
+    ]
+    assert {"market_cap", "pe_ttm", "pb"}.issubset(provider_df.columns)
+
+
 def test_merge_frames_asof_uses_latest_provider_row_per_symbol():
     pit_df = pd.DataFrame(
         {
