@@ -824,6 +824,7 @@ def test_pipeline_walk_forward_feature_stability_outputs(tmp_path, monkeypatch):
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     walk_forward = summary["walk_forward"]
     assert walk_forward["feature_top_k"] == 1
+    assert walk_forward["actual_windows"] == len(walk_forward["results"])
     assert walk_forward["feature_importance_windows"] >= 1
     assert walk_forward["feature_importance_file"]
     assert walk_forward["feature_stability_file"]
@@ -938,6 +939,7 @@ def test_pipeline_walk_forward_backtest_benchmark_summary(tmp_path, monkeypatch)
     run_dir = run_dirs[0]
 
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["walk_forward"]["actual_windows"] == len(summary["walk_forward"]["results"])
     walk_forward_results = summary["walk_forward"]["results"]
     assert walk_forward_results
     assert any(result.get("backtest") for result in walk_forward_results)

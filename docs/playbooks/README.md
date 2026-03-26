@@ -19,8 +19,9 @@
 1. 先看 [hk-selected.md](./hk-selected.md)，先选频率和数据路线。
 2. 如果你选的是 PIT 财务路线，再看 [hk-data-assets.md](./hk-data-assets.md) 准备资产。
 3. 如果你想先确认“哪些 HK RQData 接口已经接了、哪些本地已经有资产、哪些今天还能下”，再看 [hk-rqdata-status.md](./hk-rqdata-status.md)。
-4. 如果你已经准备做正式对比，再看 `docs/concepts/benchmark-protocol.md` 确认 benchmark 阶梯。
-5. 如果你要派生本地配置，或判断某个实验值不值得沉淀成仓库模板，再看 [research-template-design.md](./research-template-design.md)。
+4. 如果你已经拿到了 HK 分钟线，想继续看 `5m` 落盘、quota 和滑点校准，再看 [hk-intraday-assets.md](./hk-intraday-assets.md)。
+5. 如果你已经准备做正式对比，再看 `docs/concepts/benchmark-protocol.md` 确认 benchmark 阶梯。
+6. 如果你要派生本地配置，或判断某个实验值不值得沉淀成仓库模板，再看 [research-template-design.md](./research-template-design.md)。
 
 补充：
 
@@ -33,6 +34,7 @@
 | `hk-selected.md` | 先跑哪条 HK selected 研究路线 | 想先选 `M/Q/Y`、选量价还是 PIT 财务、选四模型 PK 入口 |
 | `hk-data-assets.md` | PIT 股票池、日线、财务资产怎么准备 | 需要 `pipeline_fundamentals.parquet`、要做数据归档、要补全资产 |
 | `hk-rqdata-status.md` | 哪些 HK RQData API 已接入、已有资产、当前还能不能下 | 想补资产前先确认现状，或排查某条接口到底有没有打通 |
+| `hk-intraday-assets.md` | HK `5m` 分钟线当前落了哪些块、quota 还够不够、已经产出哪些滑点报告 | 准备继续补分钟线，或想把现有 `5m` 数据直接拿来校准执行假设 |
 | `research-template-design.md` | 什么时候派生配置，什么时候新建模板 | 想把实验沉淀成模板，或担心 `configs/` 越长越乱 |
 
 ## 常见起点
@@ -44,7 +46,8 @@
 1. [hk-selected.md](./hk-selected.md)
 2. 如果走 PIT 财务路线，再看 [hk-data-assets.md](./hk-data-assets.md)
 3. 如果要继续补 RQData 资产，先看 [hk-rqdata-status.md](./hk-rqdata-status.md)
-4. 资产准备完成后，先跑 PIT 覆盖率体检，再决定基线和模型比较顺序
+4. 如果已经落了 HK `5m`，再看 [hk-intraday-assets.md](./hk-intraday-assets.md)
+5. 资产准备完成后，先跑 PIT 覆盖率体检，再决定基线和模型比较顺序
 
 ### 我已经知道要跑哪条路线，但不知道该不该新建模板
 
@@ -68,6 +71,7 @@
 * `hk-selected.md` 负责路线选择和比较顺序。
 * `hk-data-assets.md` 负责资产准备和本地归档。
 * `hk-rqdata-status.md` 负责记录 HK RQData API 的接入、资产和活体 probe 状态。
+* `hk-intraday-assets.md` 负责记录 HK `5m` 分钟线、quota 和滑点校准产物。
 * `research-template-design.md` 负责模板维护规则。
 
 参数权威说明仍然在：

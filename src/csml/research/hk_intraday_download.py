@@ -72,10 +72,24 @@ def normalize_hk_symbols(symbols: list[str]) -> list[str]:
 
 
 def flatten_intraday_payload(
-    payload: pd.DataFrame,
+    payload: pd.DataFrame | None,
     *,
     order_book_to_ts_code: dict[str, str],
 ) -> pd.DataFrame:
+    if payload is None:
+        return pd.DataFrame(
+            columns=[
+                "rq_order_book_id",
+                "trade_datetime",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "amount",
+                "ts_code",
+            ]
+        )
     if payload.empty:
         return pd.DataFrame(
             columns=[

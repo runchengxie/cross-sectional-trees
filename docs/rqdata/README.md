@@ -10,14 +10,15 @@
 
 这里实际有两类页面：
 
-* 流程 / 状态页：`hk-data-assets.md`、`hk-rqdata-status.md`
+* 流程 / 状态页：`hk-data-assets.md`、`hk-rqdata-status.md`、`hk-intraday-assets.md`
 * reference snapshot：`hk-stock-data-reference.md`
 
 ## 建议阅读顺序
 
 1. 先看 [`docs/playbooks/hk-data-assets.md`](../playbooks/hk-data-assets.md)，确认哪些资产值得优先离线保存、应该按什么顺序补。
 2. 再看 [`docs/playbooks/hk-rqdata-status.md`](../playbooks/hk-rqdata-status.md)，确认当前工作区里哪些 snapshot / alias 已经可复用，哪些还只是 probe。
-3. 需要离线查 vendor API 语义时，再看 [`hk-stock-data-reference.md`](./hk-stock-data-reference.md)。
+3. 如果你在补 HK 分钟线、看 `5m` quota 成本，或要复用现有滑点校准结果，再看 [`docs/playbooks/hk-intraday-assets.md`](../playbooks/hk-intraday-assets.md)。
+4. 需要离线查 vendor API 语义时，再看 [`hk-stock-data-reference.md`](./hk-stock-data-reference.md)。
 
 ## 分工边界
 
@@ -25,6 +26,8 @@
   负责“该保留什么、按什么顺序准备、不同资产层之间是什么关系”。
 * `hk-rqdata-status.md`
   负责“当前这个仓库磁盘上到底有什么、哪些目录能当主线入口、哪些别误用”。
+* `hk-intraday-assets.md`
+  负责“当前 `5m` 分钟线到底落了哪些块、provider 边界在哪里、quota 够不够继续下、已经产出了哪些滑点校准文件”。
 * `hk-stock-data-reference.md`
   负责保留米筐港股 API 文档快照，便于离线检索字段和接口语义。
 

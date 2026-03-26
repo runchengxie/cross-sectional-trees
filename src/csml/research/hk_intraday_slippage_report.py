@@ -19,6 +19,42 @@ def resolve_repo_path(path_text: str | Path) -> Path:
     return resolve_repo_relative_path(path_text, repo_root=REPO_ROOT)
 
 
+def _default_parts_dir(input_path: Path) -> Path:
+    return input_path.parent / f"{input_path.stem}.parts"
+
+
+def resolve_input_parquet_paths(input_specs: list[str]) -> list[Path]:
+    resolved: list[Path] = []
+    for spec in input_specs:
+        input_path = resolve_repo_path(spec)
+        if not input_path.exists():
+            raise SystemExit(f"Input intraday path not found: {input_path}")
+
+        # Prefer batch checkpoints when they exist so we do not need to load one giant parquet.
+        if input_path.is_file():
+            parts_dir = _default_parts_dir(input_path)
+            if parts_dir.exists():
+                part_files = sorted(parts_dir.glob("batch_*.parquet"))
+                if part_files:
+                    resolved.extend(part_files)
+                    continue
+            resolved.append(input_path)
+            continue
+
+        if input_path.is_dir():
+            part_files = sorted(input_path.glob("batch_*.parquet"))
+            if not part_files:
+                part_files = sorted(input_path.glob("*.parquet"))
+            if not part_files:
+                raise SystemExit(f"No parquet files found under: {input_path}")
+            resolved.extend(part_files)
+            continue
+
+        raise SystemExit(f"Unsupported input path: {input_path}")
+
+    return resolved
+
+
 def _bps(move: pd.Series) -> pd.Series:
     return move.astype(float) * 10_000.0
 
@@ -38,6 +74,14 @@ def compute_daily_slippage_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     work = work.dropna(subset=["trade_datetime", "symbol"]).copy()
     work["trade_date"] = work["trade_datetime"].dt.normalize()
     work = work.sort_values(["symbol", "trade_datetime"]).reset_index(drop=True)
+    price_proxy_cols = [column for column in ("open", "high", "low", "close") if column in work.columns]
+    if not price_proxy_cols:
+        raise SystemExit("Intraday frame must contain at least one price column.")
+    price_proxy_frame = work[price_proxy_cols].apply(pd.to_numeric, errors="coerce")
+    work["volume"] = pd.to_numeric(work["volume"], errors="coerce")
+    work["amount"] = pd.to_numeric(work["amount"], errors="coerce")
+    work["bar_price_proxy"] = price_proxy_frame.mean(axis=1)
+    work["bar_notional_proxy"] = work["bar_price_proxy"] * work["volume"].fillna(0.0)
 
     grouped = work.groupby(["symbol", "trade_date"], sort=True)
     summary = grouped.agg(
@@ -45,15 +89,17 @@ def compute_daily_slippage_metrics(frame: pd.DataFrame) -> pd.DataFrame:
         close_price=("close", "last"),
         session_volume=("volume", "sum"),
         session_amount=("amount", "sum"),
+        session_notional_proxy=("bar_notional_proxy", "sum"),
         first_bar_at=("trade_datetime", "first"),
         last_bar_at=("trade_datetime", "last"),
         bar_count=("trade_datetime", "size"),
     ).reset_index()
     summary["session_vwap"] = np.where(
         summary["session_volume"].astype(float) > 0,
-        summary["session_amount"].astype(float) / summary["session_volume"].astype(float),
+        summary["session_notional_proxy"].astype(float) / summary["session_volume"].astype(float),
         np.nan,
     )
+    summary = summary.drop(columns=["session_notional_proxy"])
     summary["buy_open_to_vwap_bps"] = _bps(summary["session_vwap"] / summary["open_price"] - 1.0)
     summary["buy_open_to_close_bps"] = _bps(summary["close_price"] / summary["open_price"] - 1.0)
     summary["abs_open_to_vwap_bps"] = summary["buy_open_to_vwap_bps"].abs()
@@ -121,6 +167,7 @@ def build_liquidity_bucket_summary(
 
 def summarize_slippage_metrics(daily_metrics: pd.DataFrame) -> dict[str, object]:
     return {
+        "vwap_method": "bar_price_volume_proxy",
         "rows": int(len(daily_metrics)),
         "symbols": int(daily_metrics["symbol"].nunique()) if not daily_metrics.empty else 0,
         "trade_dates": int(daily_metrics["trade_date"].nunique()) if not daily_metrics.empty else 0,
@@ -133,11 +180,34 @@ def summarize_slippage_metrics(daily_metrics: pd.DataFrame) -> dict[str, object]
     }
 
 
+def build_daily_metrics_from_inputs(input_specs: list[str]) -> pd.DataFrame:
+    parquet_paths = resolve_input_parquet_paths(input_specs)
+    parts: list[pd.DataFrame] = []
+    for idx, parquet_path in enumerate(parquet_paths, start=1):
+        frame = pd.read_parquet(parquet_path)
+        daily = compute_daily_slippage_metrics(frame)
+        parts.append(daily)
+        print(
+            f"[{idx}/{len(parquet_paths)}] processed {parquet_path} -> {len(daily)} symbol-days"
+        )
+    if not parts:
+        return pd.DataFrame()
+    return pd.concat(parts, ignore_index=True).sort_values(["symbol", "trade_date"]).reset_index(drop=True)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a daily slippage calibration report from HK intraday parquet data."
     )
-    parser.add_argument("--input", required=True, help="Input intraday parquet path.")
+    parser.add_argument(
+        "--input",
+        action="append",
+        required=True,
+        help=(
+            "Input intraday parquet path or checkpoint directory. Repeatable. "
+            "If <file_stem>.parts exists, batch parquet files are used automatically."
+        ),
+    )
     parser.add_argument(
         "--output-prefix",
         required=True,
@@ -151,12 +221,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    input_path = resolve_repo_path(args.input)
-    if not input_path.exists():
-        raise SystemExit(f"Input intraday file not found: {input_path}")
-
-    frame = pd.read_parquet(input_path)
-    daily_metrics = compute_daily_slippage_metrics(frame)
+    daily_metrics = build_daily_metrics_from_inputs(args.input)
     summary = summarize_slippage_metrics(daily_metrics)
     liquidity = build_liquidity_bucket_summary(
         daily_metrics,

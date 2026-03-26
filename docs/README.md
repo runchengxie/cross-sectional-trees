@@ -20,6 +20,7 @@
 | 我想理解成本、滑点、`tr_close` 和现金分红假设 | `docs/concepts/execution-costs.md` |
 | 我想查输出目录、文件和字段 | `docs/outputs.md` |
 | 我想查 provider 差异、凭证和日期 token | `docs/providers.md` |
+| 我想看 HK `5m` 分钟线现状、quota 和滑点校准文件 | `docs/playbooks/hk-intraday-assets.md` |
 | 我想理解为什么当前只保留四个模型，以及别的算法何时值得引入 | `docs/concepts/model-landscape.md` |
 | 我想查 HK / RQData 专题资料 | `docs/rqdata/README.md` |
 | 我想看研究笔记和当前结论沉淀状态 | `docs/research/README.md` |
@@ -29,7 +30,7 @@
 1. 我想先跑起来：`docs/get-started.md`
 2. 我想先建立系统心智模型：`docs/pipeline-overview.md` → `docs/capabilities.md` → `docs/config.md` → `docs/outputs.md`
 3. 我想做正式研究：`docs/playbooks/README.md` → `docs/concepts/benchmark-protocol.md` → `docs/cookbook.md`
-4. 我想查某个细节：`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md`、`docs/rqdata/README.md`、`docs/concepts/`
+4. 我想查某个细节：`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md`、`docs/rqdata/README.md`、`docs/playbooks/hk-intraday-assets.md`、`docs/concepts/`
 
 ## 页面分工
 

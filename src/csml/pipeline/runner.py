@@ -2000,6 +2000,7 @@ def run(config_ref: str | Path | None = None) -> None:
             "walk_forward": {
                 "enabled": WF_ENABLED,
                 "n_windows": WF_N_WINDOWS,
+                "actual_windows": len(walk_forward_results),
                 "test_size": WF_TEST_SIZE,
                 "step_size": WF_STEP_SIZE,
                 "anchor_end": WF_ANCHOR_END,
