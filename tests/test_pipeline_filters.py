@@ -278,6 +278,114 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
 
 
 @pytest.mark.slow
+def test_pipeline_backtest_pricing_includes_execution_columns(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=15, freq="B")
+    symbols = ["AAA", "BBB"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    for frame in frames.values():
+        frame["open"] = frame["close"] - 1.0
+
+    captured: dict[str, pd.DataFrame | None] = {}
+
+    def fake_backtest_topk(data, *args, pricing_data=None, **kwargs):
+        captured["data"] = data.copy()
+        captured["pricing_data"] = pricing_data.copy() if pricing_data is not None else None
+        return None
+
+    monkeypatch.setattr(pipeline, "backtest_topk", fake_backtest_topk)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "us",
+        "data": {
+            "provider": "eodhd",
+            "start_date": "20200101",
+            "end_date": "20200131",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 1,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "provider",
+            "required": False,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["vol"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.5,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "execution_pricing_cols",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {
+            "enabled": True,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "transaction_cost_bps": 0,
+            "exit_mode": "rebalance",
+            "exit_price_policy": "strict",
+            "execution": {
+                "entry_policy": {"price_col": "open"},
+                "slippage_model": {
+                    "name": "participation",
+                    "amount_col": "amount",
+                    "base_bps": 0,
+                    "impact_bps": 10,
+                    "portfolio_value": 1000,
+                },
+                "constraints": {"min_amount": 50, "amount_col": "amount"},
+            },
+        },
+    }
+
+    _run_pipeline(tmp_path, monkeypatch, config, frames)
+
+    pricing_df = captured["pricing_data"]
+    assert pricing_df is not None
+    assert "open" in pricing_df.columns
+    assert "close" in pricing_df.columns
+    assert "amount" in pricing_df.columns
+
+
+@pytest.mark.slow
 def test_pipeline_price_features_follow_price_col(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=20, freq="B")
     symbols = ["AAA", "BBB", "CCC"]

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .data_tools.symbols import ensure_symbol_columns
+from .execution import ExecutionModel, SelectionConstraints
 
 
 def normalize_weighting_mode(weighting: str | None) -> str:
@@ -119,6 +120,8 @@ def select_holdings(
     ascending: bool,
     price_table: pd.DataFrame,
     tradable_table: Optional[pd.DataFrame],
+    amount_table: Optional[pd.DataFrame],
+    constraints: Optional[SelectionConstraints],
     prev_holdings: Optional[set[str]],
     buffer_exit: int,
     buffer_entry: int,
@@ -129,6 +132,7 @@ def select_holdings(
         return [], pd.Series(dtype=float)
     if entry_date not in price_table.index:
         return [], pd.Series(dtype=float)
+    constraints = constraints or SelectionConstraints()
 
     ranked = day.sort_values(pred_col, ascending=ascending)
     ranked_codes = ranked["symbol"].tolist()
@@ -149,6 +153,11 @@ def select_holdings(
         group_map = day.set_index("symbol")[group_col].to_dict()
 
     entry_prices = price_table.loc[entry_date]
+    amount_values = None
+    if constraints.min_amount is not None:
+        if amount_table is None or entry_date not in amount_table.index:
+            return [], pd.Series(dtype=float)
+        amount_values = amount_table.loc[entry_date]
     tradable_flags = None
     if tradable_table is not None:
         if entry_date not in tradable_table.index:
@@ -163,6 +172,12 @@ def select_holdings(
         price = entry_prices.get(symbol, np.nan)
         if not np.isfinite(price):
             continue
+        if constraints.min_price is not None and float(price) < float(constraints.min_price):
+            continue
+        if constraints.min_amount is not None:
+            amount = amount_values.get(symbol, np.nan) if amount_values is not None else np.nan
+            if not np.isfinite(amount) or float(amount) < float(constraints.min_amount):
+                continue
         if tradable_flags is not None and not bool(tradable_flags.get(symbol, False)):
             continue
         if group_map is not None:
@@ -194,10 +209,15 @@ def build_positions_by_rebalance(
     tradable_col: Optional[str] = None,
     group_col: Optional[str] = None,
     max_names_per_group: Optional[int] = None,
+    execution: Optional[ExecutionModel] = None,
 ) -> pd.DataFrame:
     if data is not None and not data.empty:
         data = ensure_symbol_columns(data, context="Portfolio data")
     weighting_mode = normalize_weighting_mode(weighting)
+    entry_price_col = execution.entry_policy.price_col if execution is not None else price_col
+    selection_constraints = (
+        execution.selection_constraints if execution is not None else SelectionConstraints()
+    )
     if data.empty or not rebalance_dates or top_k <= 0:
         return pd.DataFrame(
             columns=[
@@ -212,6 +232,8 @@ def build_positions_by_rebalance(
                 "side",
             ]
         )
+    if entry_price_col not in data.columns:
+        raise ValueError(f"Portfolio entry price column not found: {entry_price_col}")
 
     trade_dates = sorted(data["trade_date"].unique())
     if len(trade_dates) < 2:
@@ -229,13 +251,19 @@ def build_positions_by_rebalance(
             ]
         )
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
-    price_table = data.pivot(index="trade_date", columns="symbol", values=price_col)
+    price_table = data.pivot(index="trade_date", columns="symbol", values=entry_price_col)
     day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
 
     tradable_table = None
     if tradable_col and tradable_col in data.columns:
         tradable_table = data.pivot(index="trade_date", columns="symbol", values=tradable_col)
         tradable_table = tradable_table.fillna(False).astype(bool)
+    amount_table = None
+    amount_col = selection_constraints.amount_col
+    if selection_constraints.min_amount is not None:
+        if amount_col not in data.columns:
+            raise ValueError(f"Portfolio liquidity column not found: {amount_col}")
+        amount_table = data.pivot(index="trade_date", columns="symbol", values=amount_col)
 
     results: list[dict[str, object]] = []
     prev_holdings: Optional[set[str]] = None
@@ -265,6 +293,8 @@ def build_positions_by_rebalance(
                 ascending=False,
                 price_table=price_table,
                 tradable_table=tradable_table,
+                amount_table=amount_table,
+                constraints=selection_constraints,
                 prev_holdings=prev_holdings,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
@@ -315,6 +345,8 @@ def build_positions_by_rebalance(
             ascending=False,
             price_table=price_table,
             tradable_table=tradable_table,
+            amount_table=amount_table,
+            constraints=selection_constraints,
             prev_holdings=prev_holdings,
             buffer_exit=buffer_exit,
             buffer_entry=buffer_entry,
@@ -329,6 +361,8 @@ def build_positions_by_rebalance(
             ascending=True,
             price_table=price_table,
             tradable_table=tradable_table,
+            amount_table=amount_table,
+            constraints=selection_constraints,
             prev_holdings=prev_short_holdings,
             buffer_exit=buffer_exit,
             buffer_entry=buffer_entry,

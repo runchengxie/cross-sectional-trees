@@ -16,6 +16,7 @@ from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR
 from ..backtest import backtest_topk
 from ..config_utils import resolve_pipeline_config
 from ..data_tools.symbols import ensure_symbol_columns
+from ..execution import build_execution_model
 from ..metrics import daily_ic_series, estimate_turnover, quantile_returns, summarize_ic
 from ..rebalance import get_rebalance_dates
 
@@ -395,6 +396,7 @@ def main(argv: list[str] | None = None) -> None:
         base_run_cfg.get("backtest", {}) if isinstance(base_run_cfg.get("backtest"), dict) else {}
     )
     label_cfg = base_run_cfg.get("label", {}) if isinstance(base_run_cfg.get("label"), dict) else {}
+    execution_cfg = backtest_cfg.get("execution") if isinstance(backtest_cfg, dict) else None
 
     n_quantiles = int(eval_cfg.get("n_quantiles", 5))
 
@@ -497,6 +499,13 @@ def main(argv: list[str] | None = None) -> None:
                 row["eval_turnover_mean"] = float(turnover.mean()) if not turnover.empty else None
 
             if backtest_enabled:
+                execution_model = build_execution_model(
+                    execution_cfg,
+                    default_cost_bps=float(cost_bps),
+                    default_exit_price_policy=backtest_exit_price_policy,
+                    default_exit_fallback_policy=backtest_exit_fallback_policy,
+                    default_price_col=price_col,
+                )
                 bt_result = backtest_topk(
                     scored_data,
                     pred_col=bt_signal_col,
@@ -518,6 +527,8 @@ def main(argv: list[str] | None = None) -> None:
                     max_names_per_group=backtest_max_names_per_group,
                     exit_price_policy=backtest_exit_price_policy,
                     exit_fallback_policy=backtest_exit_fallback_policy,
+                    execution=execution_model,
+                    pricing_data=scored_data,
                 )
                 if bt_result is None:
                     row["status"] = "no_backtest"

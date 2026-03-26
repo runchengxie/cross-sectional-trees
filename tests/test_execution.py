@@ -4,9 +4,12 @@ from csml.execution import (
     BpsCostModel,
     ExitPolicy,
     NoCostModel,
+    ParticipationSlippageModel,
+    SideBpsCostModel,
     build_cost_model,
     build_execution_model,
     build_exit_policy,
+    required_pricing_columns,
 )
 
 
@@ -60,6 +63,7 @@ def test_build_execution_model_supports_cost_and_exit_alias():
     assert model.cost_model.round_trip is False
     assert model.exit_policy.price_policy == "delay"
     assert model.exit_policy.fallback_policy == "none"
+    assert model.exit_policy.price_col == "close"
 
 
 def test_build_execution_model_uses_defaults_when_empty():
@@ -73,3 +77,37 @@ def test_build_execution_model_uses_defaults_when_empty():
     assert model.cost_model.bps == 20.0
     assert model.exit_policy.price_policy == "ffill"
     assert model.exit_policy.fallback_policy == "ffill"
+    assert model.entry_policy.price_col == "close"
+
+
+def test_build_execution_model_supports_slippage_entry_and_constraints():
+    model = build_execution_model(
+        {
+            "cost": {
+                "name": "side_bps",
+                "buy_bps": 6,
+                "sell_bps": 8,
+                "short_borrow_bps_per_day": 1,
+            },
+            "slippage": {
+                "name": "participation",
+                "base_bps": 2,
+                "impact_bps": 10,
+                "amount_col": "amount",
+                "portfolio_value": 500000,
+            },
+            "entry": {"price_col": "open"},
+            "exit": {"price": "delay", "fallback": "none", "price_col": "close"},
+            "constraints": {"min_price": 5, "min_amount": 100000, "amount_col": "amount"},
+        },
+        default_cost_bps=20.0,
+        default_exit_price_policy="strict",
+        default_exit_fallback_policy="ffill",
+    )
+    assert isinstance(model.cost_model, SideBpsCostModel)
+    assert isinstance(model.slippage_model, ParticipationSlippageModel)
+    assert model.entry_policy.price_col == "open"
+    assert model.exit_policy.price_col == "close"
+    assert model.selection_constraints.min_price == pytest.approx(5.0)
+    assert model.selection_constraints.min_amount == pytest.approx(100000.0)
+    assert required_pricing_columns(model) == {"open", "close", "amount"}

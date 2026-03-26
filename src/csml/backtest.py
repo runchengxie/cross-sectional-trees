@@ -12,7 +12,15 @@ from .portfolio import (
     normalize_weighting_mode,
     select_holdings,
 )
-from .execution import BpsCostModel, ExecutionModel, ExitPolicy
+from .execution import (
+    BpsCostModel,
+    EntryPolicy,
+    ExecutionModel,
+    ExitPolicy,
+    NoSlippageModel,
+    ParticipationSlippageModel,
+    SelectionConstraints,
+)
 
 
 def _drawdown_timing(nav: pd.Series) -> dict[str, float]:
@@ -217,6 +225,55 @@ def summarize_period_returns(
     }
 
 
+def _compute_trade_summary(
+    prev_weights: Optional[pd.Series],
+    prev_prices: Optional[pd.Series],
+    prev_date: Optional[pd.Timestamp],
+    target_weights: pd.Series,
+    entry_date: pd.Timestamp,
+    *,
+    price_table: pd.DataFrame,
+) -> tuple[float, float, float, pd.Series]:
+    if target_weights is None or target_weights.empty:
+        return 0.0, 0.0, 0.0, pd.Series(dtype=float)
+
+    target_clean = normalize_position_weights(target_weights)
+    if target_clean.empty:
+        return 0.0, 0.0, 0.0, pd.Series(dtype=float)
+
+    if prev_weights is None or prev_weights.empty:
+        trade_weights = target_clean.copy()
+        traded = float(trade_weights.abs().sum())
+        return traded, traded, 0.0, trade_weights
+
+    prev_clean = normalize_position_weights(prev_weights)
+    drift_weights = prev_clean
+    if prev_prices is not None and prev_date is not None:
+        prev_prices = prev_prices.reindex(prev_clean.index)
+        prev_prices = prev_prices[prev_prices.notna()]
+        if not prev_prices.empty and entry_date in price_table.index:
+            prev_clean = prev_clean.reindex(prev_prices.index).dropna()
+            current_prices = price_table.loc[entry_date, prev_prices.index]
+            valid_prev = current_prices.notna()
+            prev_prices = prev_prices[valid_prev]
+            current_prices = current_prices[valid_prev]
+            prev_clean = prev_clean.reindex(prev_prices.index).dropna()
+            if not prev_prices.empty and not prev_clean.empty:
+                drift = prev_clean * (current_prices / prev_prices)
+                drift_sum = float(drift.sum())
+                if drift_sum > 0:
+                    drift_weights = normalize_position_weights(drift)
+
+    all_ids = drift_weights.index.union(target_clean.index)
+    drift_aligned = drift_weights.reindex(all_ids).fillna(0.0)
+    target_aligned = target_clean.reindex(all_ids).fillna(0.0)
+    trade_weights = target_aligned - drift_aligned
+    entry_turnover = float(trade_weights.clip(lower=0.0).sum())
+    exit_turnover = float((-trade_weights.clip(upper=0.0)).sum())
+    turnover = 0.5 * float(np.abs(trade_weights).sum())
+    return turnover, entry_turnover, exit_turnover, trade_weights
+
+
 def backtest_topk(
     data: pd.DataFrame,
     pred_col: str,
@@ -250,21 +307,47 @@ def backtest_topk(
             raise ValueError("exit_price_policy must be one of: strict, ffill, delay.")
         if exit_fallback_policy not in {"ffill", "none"}:
             raise ValueError("exit_fallback_policy must be one of: ffill, none.")
-        exit_policy = ExitPolicy(exit_price_policy, exit_fallback_policy)
+        exit_policy = ExitPolicy(exit_price_policy, exit_fallback_policy, price_col)
         cost_model = BpsCostModel(cost_bps)
+        slippage_model = NoSlippageModel()
+        entry_policy = EntryPolicy(price_col)
+        selection_constraints = SelectionConstraints()
     else:
         exit_policy = execution.exit_policy
         cost_model = execution.cost_model
+        slippage_model = execution.slippage_model
+        entry_policy = execution.entry_policy
+        selection_constraints = execution.selection_constraints
     weighting_mode = normalize_weighting_mode(weighting)
     pricing_source = pricing_data if pricing_data is not None else data
     if pricing_source.empty:
         return None
+    entry_price_col = entry_policy.price_col
+    exit_price_col = exit_policy.price_col
+    required_pricing_cols = {entry_price_col, exit_price_col}
+    if selection_constraints.min_amount is not None:
+        required_pricing_cols.add(selection_constraints.amount_col)
+    if isinstance(slippage_model, ParticipationSlippageModel):
+        required_pricing_cols.add(slippage_model.amount_col)
+    missing_pricing_cols = [
+        col for col in sorted(required_pricing_cols) if col not in pricing_source.columns
+    ]
+    if missing_pricing_cols:
+        raise ValueError(
+            "Backtest pricing data is missing required columns: "
+            + ", ".join(missing_pricing_cols)
+        )
     pricing_source = pricing_source.drop_duplicates(subset=["trade_date", "symbol"]).copy()
     trade_dates = sorted(pricing_source["trade_date"].unique())
     if len(trade_dates) < 2:
         return None
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
-    price_table = pricing_source.pivot(index="trade_date", columns="symbol", values=price_col)
+    entry_price_table = pricing_source.pivot(
+        index="trade_date", columns="symbol", values=entry_price_col
+    )
+    exit_price_table = pricing_source.pivot(
+        index="trade_date", columns="symbol", values=exit_price_col
+    )
     day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
     tradable_table = None
     if tradable_col and tradable_col in pricing_source.columns:
@@ -272,11 +355,21 @@ def backtest_topk(
             index="trade_date", columns="symbol", values=tradable_col
         )
         tradable_table = tradable_table.fillna(False).astype(bool)
+    amount_tables: dict[str, pd.DataFrame] = {}
+    for amount_col in sorted(required_pricing_cols):
+        if amount_col in {entry_price_col, exit_price_col}:
+            continue
+        if amount_col in pricing_source.columns:
+            amount_tables[amount_col] = pricing_source.pivot(
+                index="trade_date", columns="symbol", values=amount_col
+            )
 
     net_returns = []
     gross_returns = []
     turnovers = []
     costs = []
+    fee_costs = []
+    slippage_costs = []
     period_info = []
     prev_holdings = None
     prev_weights = None
@@ -288,46 +381,6 @@ def backtest_topk(
     prev_short_entry_prices = None
     prev_exit_idx = None
 
-    def _compute_turnover(
-        prev_weights: Optional[pd.Series],
-        prev_prices: Optional[pd.Series],
-        prev_date: Optional[pd.Timestamp],
-        target_weights: pd.Series,
-        entry_date: pd.Timestamp,
-    ) -> float:
-        if target_weights is None or target_weights.empty:
-            return 0.0
-        if prev_weights is None or prev_weights.empty:
-            return float(target_weights.abs().sum())
-        drift_turnover = np.nan
-        if prev_prices is not None and prev_date is not None:
-            prev_weights_clean = normalize_position_weights(prev_weights)
-            prev_prices = prev_prices.reindex(prev_weights_clean.index)
-            prev_prices = prev_prices[prev_prices.notna()]
-            if not prev_prices.empty and entry_date in price_table.index:
-                prev_weights_clean = prev_weights_clean.reindex(prev_prices.index).dropna()
-                current_prices = price_table.loc[entry_date, prev_prices.index]
-                valid_prev = current_prices.notna()
-                prev_prices = prev_prices[valid_prev]
-                current_prices = current_prices[valid_prev]
-                prev_weights_clean = prev_weights_clean.reindex(prev_prices.index).dropna()
-                if not prev_prices.empty and not prev_weights_clean.empty:
-                    drift = prev_weights_clean * (current_prices / prev_prices)
-                    drift_sum = float(drift.sum())
-                    if drift_sum > 0:
-                        drift_weights = normalize_position_weights(drift)
-                        all_ids = drift_weights.index.union(target_weights.index)
-                        drift_aligned = drift_weights.reindex(all_ids).fillna(0.0)
-                        target_aligned = target_weights.reindex(all_ids).fillna(0.0)
-                        drift_turnover = 0.5 * float(np.abs(target_aligned - drift_aligned).sum())
-        if np.isfinite(drift_turnover):
-            return drift_turnover
-        prev_clean = normalize_position_weights(prev_weights)
-        all_ids = prev_clean.index.union(target_weights.index)
-        prev_aligned = prev_clean.reindex(all_ids).fillna(0.0)
-        target_aligned = target_weights.reindex(all_ids).fillna(0.0)
-        return 0.5 * float(np.abs(target_aligned - prev_aligned).sum())
-
     def _resolve_exit_prices(
         holdings: list[str],
         planned_exit_idx: int,
@@ -335,7 +388,7 @@ def backtest_topk(
         return exit_policy.resolve_exit_prices(
             holdings,
             planned_exit_idx,
-            price_table=price_table,
+            price_table=exit_price_table,
             tradable_table=tradable_table,
             trade_dates=trade_dates,
             date_to_idx=date_to_idx,
@@ -387,8 +440,10 @@ def backtest_topk(
                 k,
                 pred_col,
                 ascending=False,
-                price_table=price_table,
+                price_table=entry_price_table,
                 tradable_table=tradable_table,
+                amount_table=amount_tables.get(selection_constraints.amount_col),
+                constraints=selection_constraints,
                 prev_holdings=prev_holdings,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
@@ -419,9 +474,35 @@ def backtest_topk(
             exit_prices = exit_prices.reindex(holdings)
             period_returns = (exit_prices / entry_prices) - 1.0
             gross = float((period_returns * target_weights.reindex(period_returns.index)).sum())
-            turnover = _compute_turnover(prev_weights, prev_entry_prices, prev_entry_date, target_weights, entry_date)
-            cost = cost_model.cost(turnover, is_initial=prev_weights is None, side="long")
-            net = gross - cost
+            turnover, entry_turnover, exit_turnover, trade_weights = _compute_trade_summary(
+                prev_weights,
+                prev_entry_prices,
+                prev_entry_date,
+                target_weights,
+                entry_date,
+                price_table=entry_price_table,
+            )
+            fee_cost = cost_model.cost(
+                turnover,
+                is_initial=prev_weights is None,
+                side="long",
+                entry_turnover=entry_turnover,
+                exit_turnover=exit_turnover,
+                holding_days=int(period_exit_idx - entry_idx),
+                gross_exposure=float(target_weights.abs().sum()),
+            )
+            slippage_cost = slippage_model.cost(
+                trade_weights,
+                pricing_row=(
+                    amount_tables[slippage_model.amount_col].loc[entry_date]
+                    if isinstance(slippage_model, ParticipationSlippageModel)
+                    else None
+                ),
+                is_initial=prev_weights is None,
+                side="long",
+            )
+            total_cost = fee_cost + slippage_cost
+            net = gross - total_cost
 
             prev_holdings = set(holdings)
             prev_weights = target_weights
@@ -439,8 +520,10 @@ def backtest_topk(
                 k,
                 pred_col,
                 ascending=False,
-                price_table=price_table,
+                price_table=entry_price_table,
                 tradable_table=tradable_table,
+                amount_table=amount_tables.get(selection_constraints.amount_col),
+                constraints=selection_constraints,
                 prev_holdings=prev_holdings,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
@@ -453,8 +536,10 @@ def backtest_topk(
                 short_k_final,
                 pred_col,
                 ascending=True,
-                price_table=price_table,
+                price_table=entry_price_table,
                 tradable_table=tradable_table,
+                amount_table=amount_tables.get(selection_constraints.amount_col),
+                constraints=selection_constraints,
                 prev_holdings=prev_short_holdings,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
@@ -503,24 +588,61 @@ def backtest_topk(
             short_gross = -float((short_returns * short_weights.reindex(short_returns.index)).sum())
             gross = long_gross + short_gross
 
-            turnover_long = _compute_turnover(
-                prev_weights, prev_entry_prices, prev_entry_date, long_weights, entry_date
+            turnover_long, long_entry_turnover, long_exit_turnover, long_trade_weights = _compute_trade_summary(
+                prev_weights,
+                prev_entry_prices,
+                prev_entry_date,
+                long_weights,
+                entry_date,
+                price_table=entry_price_table,
             )
-            turnover_short = _compute_turnover(
+            turnover_short, short_entry_turnover, short_exit_turnover, short_trade_weights = _compute_trade_summary(
                 prev_short_weights,
                 prev_short_entry_prices,
                 prev_short_entry_date,
                 short_weights,
                 entry_date,
+                price_table=entry_price_table,
             )
-            cost_long = cost_model.cost(turnover_long, is_initial=prev_weights is None, side="long")
-            cost_short = cost_model.cost(
+            fee_cost_long = cost_model.cost(
+                turnover_long,
+                is_initial=prev_weights is None,
+                side="long",
+                entry_turnover=long_entry_turnover,
+                exit_turnover=long_exit_turnover,
+                holding_days=int(period_exit_idx_long - entry_idx),
+                gross_exposure=float(long_weights.abs().sum()),
+            )
+            fee_cost_short = cost_model.cost(
                 turnover_short,
                 is_initial=prev_short_weights is None,
                 side="short",
+                entry_turnover=short_entry_turnover,
+                exit_turnover=short_exit_turnover,
+                holding_days=int(period_exit_idx_short - entry_idx),
+                gross_exposure=float(short_weights.abs().sum()),
             )
-            cost = cost_long + cost_short
-            net = gross - cost
+            pricing_row = (
+                amount_tables[slippage_model.amount_col].loc[entry_date]
+                if isinstance(slippage_model, ParticipationSlippageModel)
+                else None
+            )
+            slippage_cost_long = slippage_model.cost(
+                long_trade_weights,
+                pricing_row=pricing_row,
+                is_initial=prev_weights is None,
+                side="long",
+            )
+            slippage_cost_short = slippage_model.cost(
+                short_trade_weights,
+                pricing_row=pricing_row,
+                is_initial=prev_short_weights is None,
+                side="short",
+            )
+            fee_cost = fee_cost_long + fee_cost_short
+            slippage_cost = slippage_cost_long + slippage_cost_short
+            total_cost = fee_cost + slippage_cost
+            net = gross - total_cost
             turnover = turnover_long + turnover_short
 
             prev_holdings = set(long_holdings)
@@ -535,7 +657,9 @@ def backtest_topk(
         gross_returns.append(gross)
         net_returns.append(net)
         turnovers.append(turnover)
-        costs.append(cost)
+        costs.append(total_cost)
+        fee_costs.append(fee_cost)
+        slippage_costs.append(slippage_cost)
         period_info.append(
             {
                 "rebalance_date": reb_date,
@@ -561,10 +685,14 @@ def backtest_topk(
     stats = summarize_period_returns(net_series, period_info, trading_days_per_year)
     avg_turnover = turnover_series.dropna().mean() if turnover_series.notna().any() else np.nan
     avg_cost = float(np.mean(costs)) if costs else np.nan
+    avg_fee_cost = float(np.mean(fee_costs)) if fee_costs else np.nan
+    avg_slippage_cost = float(np.mean(slippage_costs)) if slippage_costs else np.nan
     stats.update(
         {
             "avg_turnover": avg_turnover,
             "avg_cost_drag": avg_cost,
+            "avg_fee_drag": avg_fee_cost,
+            "avg_slippage_drag": avg_slippage_cost,
             "mode": "long_only" if long_only else "long_short",
             "weighting": weighting_mode,
             "long_k": int(top_k),

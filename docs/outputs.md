@@ -274,6 +274,45 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. 这些键固定存在，但部分值会是 `null`/空对象（例如未启用 `final_oos`、未启用 `live`）。
 1. 消费脚本建议优先读 `summary.json` 里保存的文件路径，不要硬编码文件名。
 
+`summary.json -> backtest -> execution` 会记录回测侧实际生效的 execution 建模摘要，例如：
+
+```json
+{
+  "entry_policy": {"price_col": "open"},
+  "exit_policy": {
+    "price_policy": "delay",
+    "fallback_policy": "ffill",
+    "price_col": "close"
+  },
+  "cost_model": {
+    "name": "side_bps",
+    "long_entry_bps": 10.0,
+    "long_exit_bps": 10.0,
+    "short_entry_bps": 15.0,
+    "short_exit_bps": 10.0,
+    "short_borrow_bps_per_day": 0.5
+  },
+  "slippage_model": {
+    "name": "participation",
+    "amount_col": "amount",
+    "base_bps": 2.0,
+    "impact_bps": 20.0,
+    "portfolio_value": 1000000.0,
+    "power": 0.5
+  },
+  "constraints": {
+    "min_price": 5.0,
+    "min_amount": 1000000.0,
+    "amount_col": "amount"
+  }
+}
+```
+
+说明：
+
+1. 这里记录的是“实际生效值”，优先级高于你对默认行为的记忆。
+1. `backtest.stats.avg_cost_drag` 现在表示总 execution drag；若需要拆分，查看同层 `avg_fee_drag` 与 `avg_slippage_drag`。
+
 `summary.json -> fundamentals` 当前会额外记录一层 `provider_overlay` 摘要：
 
 ```json
@@ -468,6 +507,7 @@ best-effort（可能为空、缺失或未产出文件）：
 1. Parquet 以 `(trade_date, symbol)` 为 MultiIndex。
 1. 列顺序为：`price_col` + `features` + `extra_cols` + `label` + `is_tradable`（若存在）。
 1. 当你把 `data.price_col` 切到 `tr_close` 时，另一条价格列（通常是原始 `close`）会保留在 `extra_cols`，方便做口径对照。
+1. 若 `backtest.execution` 需要额外价格/流动性列（例如 `open`、`amount`），这些列也会保留在 `extra_cols`，供 `eval_scored.parquet` 复用。
 1. 若启用了本地 `industry.file` join，行业列会进入 `extra_cols` 并保留在 `dataset.parquet`。
 1. 对应 schema 会写入 `summary.json -> dataset.schema`。
 

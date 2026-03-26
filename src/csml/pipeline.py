@@ -49,7 +49,12 @@ from .data_tools.symbols import (
     normalize_symbol_standard_name,
 )
 from .dataset import DatasetSchema, build_dataset
-from .execution import build_execution_model, describe_execution_model, BpsCostModel
+from .execution import (
+    BpsCostModel,
+    build_execution_model,
+    describe_execution_model,
+    required_pricing_columns,
+)
 from .metrics import (
     daily_ic_series,
     summarize_ic,
@@ -374,23 +379,85 @@ def _warn_if_delay_exit_lag(
     )
 
 
+def _rqdata_fields_for_standard_columns(columns: set[str]) -> list[str]:
+    raw_map = {
+        "close": "close",
+        "open": "open",
+        "high": "high",
+        "low": "low",
+        "vol": "volume",
+        "amount": "total_turnover",
+        "tr_close": "close",
+    }
+    fields: list[str] = []
+    for column in sorted(columns):
+        raw = raw_map.get(str(column).strip())
+        if raw and raw not in fields:
+            fields.append(raw)
+    return fields
+
+
+def _ensure_execution_daily_fields(
+    *,
+    data_cfg: Mapping[str, Any],
+    provider: str,
+    required_columns: set[str],
+) -> None:
+    if provider != "rqdata" or not isinstance(data_cfg, dict):
+        return
+    required_fields = _rqdata_fields_for_standard_columns(required_columns)
+    if not required_fields:
+        return
+
+    rq_cfg = data_cfg.get("rqdata")
+    if rq_cfg is None:
+        rq_cfg = {}
+        data_cfg["rqdata"] = rq_cfg
+    if not isinstance(rq_cfg, dict):
+        return
+
+    current_fields_raw = rq_cfg.get("fields")
+    if current_fields_raw in {"all", "*"}:
+        return
+    if current_fields_raw is None:
+        current_fields = ["close", "volume", "total_turnover"]
+    elif isinstance(current_fields_raw, (list, tuple)):
+        current_fields = [str(field).strip() for field in current_fields_raw if str(field).strip()]
+    else:
+        current_fields = [str(current_fields_raw).strip()]
+
+    updated_fields = list(dict.fromkeys(current_fields + required_fields))
+    if updated_fields != current_fields:
+        rq_cfg["fields"] = updated_fields
+        logger.info(
+            "Expanded data.rqdata.fields for execution pricing columns: %s",
+            updated_fields,
+        )
+
+
 def build_benchmark_series(
     benchmark_df: Optional[pd.DataFrame],
-    price_col: str,
+    entry_price_col: str,
+    exit_price_col: str,
     period_info: list[dict],
 ) -> tuple[pd.Series, list[dict]]:
     if benchmark_df is None or benchmark_df.empty:
         return pd.Series(dtype=float, name="benchmark_return"), []
-    bench_prices = benchmark_df.set_index("trade_date")[price_col]
+    if entry_price_col not in benchmark_df.columns or exit_price_col not in benchmark_df.columns:
+        return pd.Series(dtype=float, name="benchmark_return"), []
+    bench_entry_prices = benchmark_df.set_index("trade_date")[entry_price_col]
+    bench_exit_prices = benchmark_df.set_index("trade_date")[exit_price_col]
     bench_returns = []
     bench_index = []
     bench_periods: list[dict] = []
     for info in period_info:
         entry_date = info["entry_date"]
         exit_date = info["exit_date"]
-        if entry_date not in bench_prices.index or exit_date not in bench_prices.index:
+        if entry_date not in bench_entry_prices.index or exit_date not in bench_exit_prices.index:
             continue
-        bench_returns.append(bench_prices.loc[exit_date] / bench_prices.loc[entry_date] - 1.0)
+        bench_returns.append(
+            bench_exit_prices.loc[exit_date] / bench_entry_prices.loc[entry_date] - 1.0
+        )
         bench_index.append(exit_date)
         bench_periods.append(info)
     if not bench_returns:
@@ -1644,9 +1711,16 @@ def run(config_ref: str | Path | None = None) -> None:
         default_cost_bps=BACKTEST_COST_BPS,
         default_exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
         default_exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
+        default_price_col=PRICE_COL,
     )
     BACKTEST_EXIT_PRICE_POLICY = execution_model.exit_policy.price_policy
     BACKTEST_EXIT_FALLBACK_POLICY = execution_model.exit_policy.fallback_policy
+    EXECUTION_PRICING_COLS = required_pricing_columns(execution_model)
+    _ensure_execution_daily_fields(
+        data_cfg=data_cfg,
+        provider=provider,
+        required_columns=EXECUTION_PRICING_COLS | {PRICE_COL},
+    )
     BACKTEST_COST_BPS_EFFECTIVE = BACKTEST_COST_BPS
     BACKTEST_COST_BPS_REPORT = None
     if isinstance(execution_model.cost_model, BpsCostModel):
@@ -1812,6 +1886,14 @@ def run(config_ref: str | Path | None = None) -> None:
     df = ensure_symbol_columns(df, context="Daily panel")
     df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
     df.sort_values(["symbol", "trade_date"], inplace=True)
+    missing_execution_cols = [
+        col for col in sorted(EXECUTION_PRICING_COLS) if col not in df.columns
+    ]
+    if missing_execution_cols:
+        sys.exit(
+            "Daily data is missing execution pricing columns required by backtest.execution: "
+            + ", ".join(missing_execution_cols)
+        )
 
     benchmark_df = None
     if benchmark_symbol:
@@ -2280,12 +2362,26 @@ def run(config_ref: str | Path | None = None) -> None:
         FEATURES = list(dict.fromkeys(FEATURES + indicator_features))
 
     df = _ensure_symbol_alias(df)
-    price_passthrough_cols = [
-        col for col in ("close", "tr_close")
+    execution_passthrough_cols = [
+        col
+        for col in EXECUTION_PRICING_COLS
         if col in df.columns and col != PRICE_COL
     ]
+    price_passthrough_cols = list(
+        dict.fromkeys(
+            execution_passthrough_cols
+            + [col for col in ("close", "tr_close") if col in df.columns and col != PRICE_COL]
+        )
+    )
 
-    backtest_pricing_cols = ["trade_date", "symbol", "ts_code", "stock_ticker", PRICE_COL]
+    backtest_pricing_cols = [
+        "trade_date",
+        "symbol",
+        "ts_code",
+        "stock_ticker",
+        PRICE_COL,
+        *execution_passthrough_cols,
+    ]
     if BACKTEST_TRADABLE_COL and BACKTEST_TRADABLE_COL in df.columns:
         backtest_pricing_cols.append(BACKTEST_TRADABLE_COL)
     backtest_pricing_cols = list(dict.fromkeys(backtest_pricing_cols))
@@ -3277,6 +3373,7 @@ def run(config_ref: str | Path | None = None) -> None:
                         tradable_col=BACKTEST_TRADABLE_COL if BACKTEST_TRADABLE_COL in df_live.columns else None,
                         group_col=BACKTEST_GROUP_COL if BACKTEST_GROUP_COL in df_live.columns else None,
                         max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
+                        execution=execution_model,
                     )
 
                     if positions_by_rebalance_live is None or positions_by_rebalance_live.empty:
@@ -3585,6 +3682,7 @@ def run(config_ref: str | Path | None = None) -> None:
                 if BACKTEST_GROUP_COL in eval_df_full.columns
                 else None,
                 max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
+                execution=execution_model,
             )
         if allow_live_fallback and LIVE_ENABLED and not BACKTEST_ENABLED:
             positions_by_rebalance = positions_by_rebalance_live
@@ -3665,7 +3763,10 @@ def run(config_ref: str | Path | None = None) -> None:
 
                 if benchmark_df is not None and not benchmark_df.empty:
                     bench_series, bench_periods = build_benchmark_series(
-                        benchmark_df, PRICE_COL, period_info
+                        benchmark_df,
+                        execution_model.entry_policy.price_col,
+                        execution_model.exit_policy.price_col,
+                        period_info,
                     )
                     if not bench_series.empty:
                         result["bt_benchmark_series"] = bench_series

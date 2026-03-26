@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from csml.backtest import backtest_topk
+from csml.execution import build_execution_model
 
 
 def test_backtest_initial_cost_applied():
@@ -513,3 +514,166 @@ def test_backtest_exit_delay_with_ffill_fallback_uses_previous_tradable_price():
     _, net_series, _, _, _ = result
     assert net_series.index[0] == pd.Timestamp("2020-01-02")
     assert np.isclose(net_series.iloc[0], 0.0)
+
+
+def test_backtest_execution_can_use_open_entry_price():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
+            ),
+            "ts_code": ["A", "B", "A", "B"],
+            "pred": [2.0, 1.0, 2.0, 1.0],
+            "open": [100.0, 100.0, 111.0, 100.0],
+            "close": [110.0, 100.0, 120.0, 100.0],
+        }
+    )
+    execution = build_execution_model(
+        {"entry": {"price_col": "open"}},
+        default_cost_bps=0.0,
+        default_exit_price_policy="strict",
+        default_exit_fallback_policy="ffill",
+    )
+    rebalance_dates = [pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")]
+    result = backtest_topk(
+        df,
+        pred_col="pred",
+        price_col="close",
+        rebalance_dates=rebalance_dates,
+        top_k=1,
+        shift_days=0,
+        cost_bps=0,
+        trading_days_per_year=252,
+        exit_mode="rebalance",
+        execution=execution,
+        pricing_data=df,
+    )
+    assert result is not None
+    _, net_series, _, _, _ = result
+    assert np.isclose(net_series.iloc[0], 0.20)
+
+
+def test_backtest_execution_min_amount_filters_illiquid_entries():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
+            ),
+            "ts_code": ["A", "B", "A", "B"],
+            "pred": [2.0, 1.0, 2.0, 1.0],
+            "close": [100.0, 100.0, 110.0, 90.0],
+            "amount": [10.0, 1000.0, 10.0, 1000.0],
+        }
+    )
+    execution = build_execution_model(
+        {"constraints": {"min_amount": 100.0, "amount_col": "amount"}},
+        default_cost_bps=0.0,
+        default_exit_price_policy="strict",
+        default_exit_fallback_policy="ffill",
+    )
+    rebalance_dates = [pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")]
+    result = backtest_topk(
+        df,
+        pred_col="pred",
+        price_col="close",
+        rebalance_dates=rebalance_dates,
+        top_k=1,
+        shift_days=0,
+        cost_bps=0,
+        trading_days_per_year=252,
+        exit_mode="rebalance",
+        execution=execution,
+        pricing_data=df,
+    )
+    assert result is not None
+    _, net_series, _, _, _ = result
+    assert np.isclose(net_series.iloc[0], -0.10)
+
+
+def test_backtest_side_cost_and_bps_slippage_are_applied():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
+            ),
+            "ts_code": ["A", "B", "A", "B"],
+            "pred": [2.0, 1.0, 2.0, 1.0],
+            "close": [100.0, 100.0, 100.0, 100.0],
+        }
+    )
+    execution = build_execution_model(
+        {
+            "cost": {"name": "side_bps", "buy_bps": 10, "sell_bps": 0},
+            "slippage": {"name": "bps", "bps": 5},
+        },
+        default_cost_bps=0.0,
+        default_exit_price_policy="strict",
+        default_exit_fallback_policy="ffill",
+    )
+    rebalance_dates = [pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")]
+    result = backtest_topk(
+        df,
+        pred_col="pred",
+        price_col="close",
+        rebalance_dates=rebalance_dates,
+        top_k=1,
+        shift_days=0,
+        cost_bps=0,
+        trading_days_per_year=252,
+        exit_mode="rebalance",
+        execution=execution,
+        pricing_data=df,
+    )
+    assert result is not None
+    stats, net_series, _, _, _ = result
+    assert np.isclose(net_series.iloc[0], -0.0015)
+    assert np.isclose(stats["avg_fee_drag"], 0.0010)
+    assert np.isclose(stats["avg_slippage_drag"], 0.0005)
+
+
+def test_backtest_participation_slippage_uses_amount_column():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
+            ),
+            "ts_code": ["A", "B", "A", "B"],
+            "pred": [2.0, 1.0, 2.0, 1.0],
+            "close": [100.0, 100.0, 100.0, 100.0],
+            "amount": [10000.0, 10000.0, 10000.0, 10000.0],
+        }
+    )
+    execution = build_execution_model(
+        {
+            "cost": "none",
+            "slippage": {
+                "name": "participation",
+                "base_bps": 0.0,
+                "impact_bps": 100.0,
+                "portfolio_value": 1000.0,
+                "amount_col": "amount",
+                "power": 1.0,
+            },
+        },
+        default_cost_bps=0.0,
+        default_exit_price_policy="strict",
+        default_exit_fallback_policy="ffill",
+    )
+    rebalance_dates = [pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")]
+    result = backtest_topk(
+        df,
+        pred_col="pred",
+        price_col="close",
+        rebalance_dates=rebalance_dates,
+        top_k=1,
+        shift_days=0,
+        cost_bps=0,
+        trading_days_per_year=252,
+        exit_mode="rebalance",
+        execution=execution,
+        pricing_data=df,
+    )
+    assert result is not None
+    stats, net_series, _, _, _ = result
+    assert np.isclose(net_series.iloc[0], -0.0010)
+    assert np.isclose(stats["avg_slippage_drag"], 0.0010)

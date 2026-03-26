@@ -142,6 +142,31 @@ backtest:
   rebalance_frequency: "M"   # M / Q / Y
   top_k: 20
   weighting: equal           # equal / signal
+  execution:
+    entry_policy:
+      price_col: open
+    exit_policy:
+      price: delay           # strict / ffill / delay
+      fallback: ffill        # ffill / none
+      price_col: close
+    cost_model:
+      name: side_bps         # bps / side_bps / none
+      buy_bps: 10
+      sell_bps: 10
+      short_entry_bps: 15
+      short_exit_bps: 10
+      short_borrow_bps_per_day: 0.5
+    slippage_model:
+      name: participation    # none / bps / participation
+      amount_col: amount
+      base_bps: 2
+      impact_bps: 20
+      portfolio_value: 1000000
+      power: 0.5
+    constraints:
+      min_price: 5
+      min_amount: 1000000
+      amount_col: amount
 ```
 
 ### `live.alloc_hk`
@@ -273,12 +298,36 @@ logging:
 | `rebalance_frequency` | 再平衡频率 | `M` / `Q` / `Y` |
 | `group_col` | 组合层分组列（例如行业列） | `first_industry_name` |
 | `max_names_per_group` | 单组最多持仓数 | `2`, `3`, `5` |
+| `execution` | 执行 realism 扩展：入场价、退出价列、费用模型、滑点、流动性约束 | 见下文 |
 
 说明：
 
 * 若同时启用 `universe.by_date_file`，选股样本仍按 PIT universe 过滤。
 * 回测的 entry/exit 定价与 `tradable` 检查会使用未经过 `universe_by_date` 过滤的日线价格面板，避免已持仓股票在持有期内因 universe 变化而“消失”。
 * `backtest.group_col + max_names_per_group` 是组合构造阶段的最小版暴露约束，不会改变模型打分，也不等于完整行业中性化。
+* `backtest.execution` 会在 `transaction_cost_bps`、`exit_price_policy` 和 `data.price_col` 之上做更细的 execution 建模；不配时仍沿用原有默认行为。
+* `execution.entry_policy.price_col` / `execution.exit_policy.price_col` 只影响回测与持仓构造，不会改变标签、基准或价格类特征的 `data.price_col` 口径。
+
+### `backtest.execution`
+
+常见子键：
+
+| 键 | 说明 | 常见值 |
+|---|------|--------|
+| `entry_policy.price_col` | 入场成交价列 | `open` / `close` / `tr_close` |
+| `exit_policy.price` | 退出缺价处理 | `strict` / `ffill` / `delay` |
+| `exit_policy.price_col` | 退出成交价列 | `close` / `open` / `tr_close` |
+| `cost_model.name` | 费用模型 | `bps` / `side_bps` / `none` |
+| `slippage_model.name` | 滑点模型 | `none` / `bps` / `participation` |
+| `constraints.min_price` | 最低允许买入价格 | 任意非负数 |
+| `constraints.min_amount` | 最低允许买入成交额 | 任意非负数 |
+
+补充：
+
+* `cost_model.name=bps` 时，仍可继续只用 `backtest.transaction_cost_bps`。
+* `cost_model.name=side_bps` 适合分开配置 long/short、开仓/平仓 bps；`short_borrow_bps_per_day` 用于短端持有期借券成本近似。
+* `slippage_model.name=bps` 表示固定单边滑点；`participation` 会按 `trade_weight * portfolio_value / amount_col` 估计冲击成本。
+* `constraints.min_amount` 和 `slippage_model.amount_col` 读取的是仓库标准化后的列名；常见 provider 原始字段如 `total_turnover` 会先映射成 `amount`。
 
 ### `logging`
 
