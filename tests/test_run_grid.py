@@ -5,7 +5,7 @@ import pandas as pd
 import yaml
 
 from csml import pipeline as pipeline_mod
-from csml.project_tools import run_grid
+from csml.commands import run_grid
 
 
 def _build_scored_data() -> pd.DataFrame:

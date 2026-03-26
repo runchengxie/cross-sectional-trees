@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from csml.project_tools import snapshot
+from csml.liveops import snapshot
 
 
 def test_snapshot_runs_pipeline_then_holdings(monkeypatch):

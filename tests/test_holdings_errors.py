@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from csml.project_tools import holdings
+from csml.liveops import holdings
 
 
 def _write_positions(run_dir, df, name="positions_by_rebalance.csv"):

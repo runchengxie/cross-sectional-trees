@@ -1,7 +1,7 @@
 import pandas as pd
 
 from csml import pipeline
-from csml.project_tools.symbols import ensure_symbol_columns
+from csml.data_tools.symbols import ensure_symbol_columns
 
 
 def test_ensure_symbol_columns_accepts_stock_ticker_only():

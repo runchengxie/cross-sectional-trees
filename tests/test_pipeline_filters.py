@@ -8,7 +8,7 @@ import yaml
 
 from csml import pipeline
 from csml.data_interface import DataInterface
-from csml.project_tools import rqdata_assets
+from csml.data_tools import rqdata_assets
 
 
 def _build_frames(

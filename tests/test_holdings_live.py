@@ -3,7 +3,7 @@ import unicodedata
 
 import pandas as pd
 
-from csml.project_tools import holdings
+from csml.liveops import holdings
 
 
 def _write_positions(

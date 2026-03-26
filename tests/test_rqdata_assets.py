@@ -6,7 +6,7 @@ import pandas as pd
 import yaml
 
 from csml import data_providers
-from csml.project_tools import rqdata_assets
+from csml.data_tools import rqdata_assets
 
 
 class _FakeRQPitClient:

@@ -10,13 +10,13 @@ from csml.data_tools import backup_data as backup_data_tool
 from csml.data_tools import build_hk_connect_universe as hk_connect_tool
 from csml.data_tools import build_hk_daily_asset_universe as hk_daily_assets_tool
 from csml.data_tools import rqdata_assets as rqdata_assets_tool
+from csml.commands import linear_sweep as sweep_tool
+from csml.commands import run_grid as grid_tool
+from csml.liveops import alloc as alloc_tool
 from csml.liveops import alloc_hk as alloc_hk_tool
+from csml.liveops import holdings as holdings_tool
 from csml.liveops import snapshot as snapshot_tool
-from csml.project_tools import alloc as alloc_tool
-from csml.project_tools import holdings as holdings_tool
-from csml.project_tools import run_grid as grid_tool
-from csml.project_tools import linear_sweep as sweep_tool
-from csml.research_tools import summarize_runs as summarize_tool
+from csml.research import summarize_runs as summarize_tool
 
 
 def test_cli_parses_run_command():
