@@ -729,6 +729,9 @@ def _standardize_fundamentals_frame(
         context="Fundamentals data",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
+    if "ts_code" not in df.columns:
+        df = df.copy()
+        df["ts_code"] = df["symbol"]
     missing = [col for col in FUNDAMENTAL_REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         raise ValueError(f"Fundamentals data missing required columns: {missing}")
@@ -1351,11 +1354,15 @@ def fetch_fundamentals(
         cached = pd.read_parquet(cache_file)
         if cached is None or cached.empty:
             return cached
-        return ensure_symbol_columns(
+        cached = ensure_symbol_columns(
             cached,
             context="Cached fundamentals data",
             priority=PROVIDER_SYMBOL_PRIORITY,
         )
+        if "ts_code" not in cached.columns:
+            cached = cached.copy()
+            cached["ts_code"] = cached["symbol"]
+        return cached
 
     if provider == "rqdata":
         if market != "hk":
