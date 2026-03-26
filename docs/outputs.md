@@ -398,8 +398,9 @@ artifacts/standardized/<market>/<dataset>/<name>/
 稳定 contract（版本演进时尽量保持不变）：
 
 1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/fundamentals/industry/walk_forward`）。
-1. 研究主链路内部 canonical 标的列是 `symbol`；run artifacts / CLI 输出会继续双写 `symbol`、`ts_code`、`stock_ticker`。
-1. 持仓主键列语义：`trade_date`、`entry_date`、`symbol`、`ts_code`、`stock_ticker`、`weight`、`signal`、`rank`、`side`。
+1. 研究主链路内部 canonical 标的列是 `symbol`；新生成的 run artifacts / CLI 输出默认只写 `symbol`。
+1. 旧输入文件里的 `ts_code`、`stock_ticker`、`order_book_id` 仍会在读取时自动映射到 `symbol`。
+1. 持仓主键列语义：`trade_date`、`entry_date`、`symbol`、`weight`、`signal`、`rank`、`side`。
 1. `weight` 的解释取决于 `backtest.weighting`：`equal` 时等权，`signal` 时为信号 softmax 后的目标权重。
 1. 若配置了 `backtest.group_col + max_names_per_group`，持仓文件会体现该分组上限约束；这属于组合层约束，不会改变 `eval` 里的 IC / quantile 指标。
 1. `summary.json` 内记录的文件路径优先级高于固定文件名推断。
@@ -453,8 +454,6 @@ best-effort（可能为空、缺失或未产出文件）：
 | `next_entry_date` | 下一次入场日（最后一期为空） |
 | `holding_window` | `entry_date -> next_entry_date`（最后一期为 `entry_date`） |
 | `symbol` | 标的代码（内部 canonical 列名） |
-| `ts_code` | 标的代码旧别名（兼容列，值与 `symbol` 一致） |
-| `stock_ticker` | 标的代码外部通用别名（兼容列，值与 `symbol` 一致） |
 | `weight` | 目标权重；`backtest.weighting=equal` 时等权，`signal` 时为信号 softmax 权重 |
 | `signal` | 该标的预测信号值 |
 | `rank` | 当期截面排序名次 |
@@ -471,7 +470,7 @@ best-effort（可能为空、缺失或未产出文件）：
 兼容说明：
 
 1. 项目研究主链路内部已经改为以 `symbol` 作为主字段。
-1. 对外消费仍可继续使用 `ts_code` 或 `stock_ticker`；它们的值与 `symbol` 一致。
+1. 旧持仓文件如果仍是 `ts_code` / `stock_ticker` / `order_book_id`，CLI 读取时会自动兼容并规范到 `symbol`。
 
 ### `positions_by_rebalance_oos.csv` / `positions_current_oos.csv`
 
@@ -485,8 +484,6 @@ best-effort（可能为空、缺失或未产出文件）：
 | --- | --- |
 | `entry_date` / `entry_date_prev` | 当前与上一期入场日 |
 | `symbol` / `side` | 标的与方向 |
-| `ts_code` | 标的代码旧别名（兼容列，等价于 `symbol`） |
-| `stock_ticker` | 标的代码外部别名（等价于 `symbol`） |
 | `weight` / `weight_prev` | 当前与上一期权重（缺失补 0） |
 | `signal` / `signal_prev` | 当前与上一期信号 |
 | `rank` / `rank_prev` | 当前与上一期 rank |
@@ -602,7 +599,7 @@ artifacts/sweeps/<tag>/
 
 默认不写 run 目录内文件，除非显式传 `--out`。它消费的输入契约仍然是持仓文件 / holdings JSON 的稳定字段：
 
-* `symbol`、`ts_code`、`stock_ticker`
+* `symbol`
 * `weight`、`signal`、`rank`、`side`
 
 单场景 `--format=xlsx` 时，`--out` 必填，且当前会写一个 3 sheet 工作簿：
@@ -652,7 +649,7 @@ artifacts/sweeps/<tag>/
 
 `allocations` 行级常用字段：
 
-* `symbol`、`ts_code`、`stock_ticker`
+* `symbol`
 * `name`、`side`、`rank`、`signal`、`weight`
 * `order_book_id`
 * `price`、`price_source`、`pricing_date`
@@ -665,7 +662,7 @@ artifacts/sweeps/<tag>/
 
 `sell_signals` 行级常用字段：
 
-* `symbol`、`ts_code`、`stock_ticker`
+* `symbol`
 * `name`、`side`、`rank`、`signal`、`weight`
 * `close_pre`
 * `sell_trigger`、`extreme_trigger`

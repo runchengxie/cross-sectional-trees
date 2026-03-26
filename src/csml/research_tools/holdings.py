@@ -306,7 +306,7 @@ def _render_text(
     display = df.copy()
     if "side" not in display.columns:
         display["side"] = "long"
-    cols = ["stock_ticker", "weight", "signal", "rank", "side"]
+    cols = ["symbol", "weight", "signal", "rank", "side"]
     for col in cols:
         if col not in display.columns:
             display[col] = np.nan
@@ -315,7 +315,7 @@ def _render_text(
     for _, row in display.iterrows():
         rows.append(
             [
-                str(row["stock_ticker"]),
+                str(row["symbol"]),
                 _format_float(row["weight"], 4),
                 _format_float(row["signal"], 6),
                 str(int(row["rank"])) if pd.notna(row["rank"]) else "",
@@ -323,7 +323,7 @@ def _render_text(
             ]
         )
     lines.append("")
-    lines.append(_format_table(rows, ["stock_ticker", "weight", "signal", "rank", "side"]))
+    lines.append(_format_table(rows, ["symbol", "weight", "signal", "rank", "side"]))
     return "\n".join(lines)
 
 
@@ -474,6 +474,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("No holdings found for the latest entry date.")
 
     selection = ensure_symbol_columns(selection, context=positions_path.name)
+    selection = selection.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
     if "side" not in selection.columns:
         selection["side"] = "long"
     if "rank" not in selection.columns:

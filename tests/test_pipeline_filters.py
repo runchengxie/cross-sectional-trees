@@ -152,8 +152,8 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
     assert summary["fundamentals"]["enabled"] is False
 
     dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
-    assert "BBB" not in dataset["ts_code"].unique()
-    ccc_rows = dataset[dataset["ts_code"] == "CCC"]
+    assert "BBB" not in dataset["symbol"].unique()
+    ccc_rows = dataset[dataset["symbol"] == "CCC"]
     assert not ccc_rows.empty
     zero_vol_rows = ccc_rows[ccc_rows["vol"] == 0.0]
     assert not zero_vol_rows.empty
@@ -267,10 +267,10 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
 
     dropped_date = pd.Timestamp("2020-01-17")
     selection_symbols = selection_df.loc[
-        selection_df["trade_date"] == dropped_date, "ts_code"
+        selection_df["trade_date"] == dropped_date, "symbol"
     ].tolist()
     pricing_symbols = pricing_df.loc[
-        pricing_df["trade_date"] == dropped_date, "ts_code"
+        pricing_df["trade_date"] == dropped_date, "symbol"
     ].tolist()
 
     assert "AAA" not in selection_symbols
@@ -899,11 +899,11 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
 
     dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
     dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
-    before_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-19")]
-    on_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-20")]
-    after_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-21")]
-    before_00011 = dataset[(dataset["ts_code"] == "00011.HK") & (dataset["trade_date"] == "2025-03-21")]
-    on_00011 = dataset[(dataset["ts_code"] == "00011.HK") & (dataset["trade_date"] == "2025-03-24")]
+    before_00005 = dataset[(dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-03-19")]
+    on_00005 = dataset[(dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-03-20")]
+    after_00005 = dataset[(dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-03-21")]
+    before_00011 = dataset[(dataset["symbol"] == "00011.HK") & (dataset["trade_date"] == "2025-03-21")]
+    on_00011 = dataset[(dataset["symbol"] == "00011.HK") & (dataset["trade_date"] == "2025-03-24")]
 
     assert before_00005["revenue"].isna().all()
     assert on_00005["revenue"].eq(100.0).all()
@@ -1019,9 +1019,9 @@ def test_pipeline_hk_file_fundamentals_derived_slow_features(tmp_path, monkeypat
     dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
     dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
 
-    before_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-19")]
-    on_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-20")]
-    after_00005 = dataset[(dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-21")]
+    before_00005 = dataset[(dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-03-19")]
+    on_00005 = dataset[(dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-03-20")]
+    after_00005 = dataset[(dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-03-21")]
 
     derived_cols = [
         "profit_margin",
@@ -1150,10 +1150,10 @@ def test_pipeline_hk_file_fundamentals_missing_fill_with_indicators(tmp_path, mo
     dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
 
     filled_row = dataset[
-        (dataset["ts_code"] == "00016.HK") & (dataset["trade_date"] == "2025-03-20")
+        (dataset["symbol"] == "00016.HK") & (dataset["trade_date"] == "2025-03-20")
     ]
     observed_row = dataset[
-        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-03-20")
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-03-20")
     ]
 
     assert filled_row["profit_margin"].iloc[0] == pytest.approx(0.10)
@@ -1260,10 +1260,10 @@ def test_pipeline_hk_file_fundamentals_supports_sales_delta_and_report_age(tmp_p
     dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
 
     report_row = dataset[
-        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
     ]
     after_report_row = dataset[
-        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-11")
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-11")
     ]
 
     assert report_row["sales"].iloc[0] == pytest.approx(130.0)
@@ -1376,10 +1376,10 @@ def test_pipeline_hk_file_fundamentals_recomputes_valuation_age_days(
     dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
 
     report_row = dataset[
-        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
     ]
     after_report_row = dataset[
-        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-11")
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-11")
     ]
 
     assert report_row["valuation_age_days"].iloc[0] == pytest.approx(1.0)
@@ -1534,10 +1534,10 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
 
     report_row = dataset[
-        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
     ]
     after_report_row = dataset[
-        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-11")
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-11")
     ]
 
     assert report_row["net_profit"].iloc[0] == pytest.approx(13.0)
@@ -1685,7 +1685,7 @@ def test_pipeline_hk_file_fundamentals_supports_growth_and_structure_ratios(
     dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
 
     report_row = dataset[
-        (dataset["ts_code"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-10")
     ]
 
     assert report_row["growth_sales"].iloc[0] == pytest.approx(30.0 / 115.0)
@@ -2123,7 +2123,7 @@ def test_pipeline_feature_formulas(tmp_path, monkeypatch):
 
     run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames)
     dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
-    aaa = dataset[dataset["ts_code"] == "AAA"].sort_values("trade_date").reset_index(drop=True)
+    aaa = dataset[dataset["symbol"] == "AAA"].sort_values("trade_date").reset_index(drop=True)
 
     close = pd.Series(close_map["AAA"], index=dates)
     vol = pd.Series(vol_map["AAA"], index=dates)

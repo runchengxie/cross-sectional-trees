@@ -531,6 +531,17 @@ def _eodhd_code_to_internal_symbol(market: str, code: str) -> str:
     return text
 
 
+def _ensure_basic_symbol_aliases(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty or "symbol" not in df.columns:
+        return df
+    out = df.copy()
+    if "ts_code" not in out.columns:
+        out["ts_code"] = out["symbol"]
+    if "stock_ticker" not in out.columns:
+        out["stock_ticker"] = out["symbol"]
+    return out
+
+
 def _load_basic_eodhd(
     market: str,
     symbols: Optional[Iterable[str]],
@@ -572,10 +583,12 @@ def _load_basic_eodhd(
         df_basic["name"] = df[name_col]
     if symbols:
         df_basic = df_basic[df_basic["symbol"].isin(list(symbols))].copy()
-    return ensure_symbol_columns(
-        df_basic,
-        context="EODHD basic data",
-        priority=PROVIDER_SYMBOL_PRIORITY,
+    return _ensure_basic_symbol_aliases(
+        ensure_symbol_columns(
+            df_basic,
+            context="EODHD basic data",
+            priority=PROVIDER_SYMBOL_PRIORITY,
+        )
     )
 
 
@@ -624,10 +637,12 @@ def _load_basic_rqdata(
         df_basic = pd.DataFrame(rows)
         if "list_date" in df_basic.columns:
             df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
-        return ensure_symbol_columns(
-            df_basic,
-            context="RQData basic data",
-            priority=PROVIDER_SYMBOL_PRIORITY,
+        return _ensure_basic_symbol_aliases(
+            ensure_symbol_columns(
+                df_basic,
+                context="RQData basic data",
+                priority=PROVIDER_SYMBOL_PRIORITY,
+            )
         )
 
     df_basic = client.all_instruments("CS", market=rq_market)
@@ -645,6 +660,7 @@ def _load_basic_rqdata(
         context="RQData all instruments",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
+    df_basic = _ensure_basic_symbol_aliases(df_basic)
     df_basic = df_basic[["symbol", "name", "list_date", "ts_code", "stock_ticker"]].copy()
     if "list_date" in df_basic.columns:
         df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
@@ -727,6 +743,9 @@ def _standardize_daily_frame(
 ) -> pd.DataFrame:
     df = _apply_column_map(df, _merge_column_map(market, data_cfg))
     df = _infer_missing_columns(df)
+    if "ts_code" not in df.columns and "symbol" in df.columns and "order_book_id" in df.columns:
+        df = df.copy()
+        df["ts_code"] = df["symbol"]
     if "symbol" not in df.columns:
         df = df.copy()
         df["symbol"] = symbol
@@ -979,11 +998,13 @@ def _load_basic_from_local_asset(
     if work is None or work.empty:
         return pd.DataFrame()
     work = work.copy()
+    if "name" not in work.columns:
+        for candidate in ("symbol", "eng_symbol", "abbrev_symbol", "order_book_id", "ts_code"):
+            if candidate in work.columns:
+                work["name"] = work[candidate]
+                break
     if "order_book_id" in work.columns and "symbol" not in work.columns and "ts_code" not in work.columns:
         work["symbol"] = work["order_book_id"]
-    code_name_col = "symbol" if "symbol" in work.columns and "ts_code" not in work.columns else None
-    if code_name_col and "name" not in work.columns:
-        work["name"] = work[code_name_col]
     if "listed_date" in work.columns and "list_date" not in work.columns:
         work["list_date"] = work["listed_date"]
     work = ensure_symbol_columns(
@@ -991,6 +1012,7 @@ def _load_basic_from_local_asset(
         context="Local RQData instruments file",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
+    work = _ensure_basic_symbol_aliases(work)
     required = ["symbol", "name", "list_date"]
     missing = [column for column in required if column not in work.columns]
     if missing:

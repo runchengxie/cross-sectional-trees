@@ -178,8 +178,6 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
         "next_entry_date",
         "holding_window",
         "symbol",
-        "ts_code",
-        "stock_ticker",
         "weight",
         "signal",
         "rank",

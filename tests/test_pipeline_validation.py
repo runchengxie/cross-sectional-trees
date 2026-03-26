@@ -138,6 +138,27 @@ def test_pipeline_live_requires_artifacts(tmp_path, no_client):
         pipeline.run(str(config_path))
 
 
+def test_execution_daily_fields_expands_rqdata_list_fields():
+    data_cfg = {
+        "rqdata": {
+            "fields": ["close", "volume", "total_turnover"],
+        }
+    }
+
+    pipeline._ensure_execution_daily_fields(
+        data_cfg=data_cfg,
+        provider="rqdata",
+        required_columns={"open", "close", "amount"},
+    )
+
+    assert data_cfg["rqdata"]["fields"] == [
+        "close",
+        "volume",
+        "total_turnover",
+        "open",
+    ]
+
+
 def test_pipeline_scored_artifact_requires_artifacts(tmp_path, no_client):
     config = copy.deepcopy(_base_config(tmp_path))
     config["eval"]["save_artifacts"] = False

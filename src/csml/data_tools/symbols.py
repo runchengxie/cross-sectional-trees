@@ -50,7 +50,4 @@ def ensure_symbol_columns(
     merged = resolve_symbol_series(normalized, context=context, priority=priority)
 
     normalized[SYMBOL_COL] = merged
-    normalized["ts_code"] = merged
-    normalized["stock_ticker"] = merged
-    normalized[SYMBOL_COL] = merged
     return normalized

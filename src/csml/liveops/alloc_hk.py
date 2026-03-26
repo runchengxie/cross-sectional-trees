@@ -81,7 +81,7 @@ ALLOCATION_METHOD_CN_MAP: dict[str, str] = {
 }
 
 ALLOCATION_EXPORT_ORDER: list[str] = [
-    "stock_ticker",
+    "symbol",
     "name",
     "side",
     "rank",
@@ -112,7 +112,7 @@ ALLOCATION_EXPORT_ORDER: list[str] = [
 ]
 
 ALLOCATION_EXPORT_RENAME: dict[str, str] = {
-    "stock_ticker": "股票代码",
+    "symbol": "股票代码",
     "name": "名称",
     "side": "方向",
     "rank": "信号排名",
@@ -191,7 +191,7 @@ SUMMARY_EXPORT_RENAME: dict[str, str] = {
 }
 
 SELL_SIGNALS_EXPORT_ORDER: list[str] = [
-    "stock_ticker",
+    "symbol",
     "name",
     "side",
     "rank",
@@ -209,7 +209,7 @@ SELL_SIGNALS_EXPORT_ORDER: list[str] = [
 ]
 
 SELL_SIGNALS_EXPORT_RENAME: dict[str, str] = {
-    "stock_ticker": "股票代码",
+    "symbol": "股票代码",
     "name": "名称",
     "side": "方向",
     "rank": "信号排名",
@@ -1413,8 +1413,6 @@ def build_allocation_table(
         rows.append(
             {
                 "symbol": symbol,
-                "ts_code": symbol,
-                "stock_ticker": symbol,
                 "name": item.name or (str(instrument_symbol).strip() if instrument_symbol else None),
                 "side": item.side,
                 "rank": item.rank,
@@ -1553,8 +1551,6 @@ def build_sell_signals(
         rows.append(
             {
                 "symbol": symbol,
-                "ts_code": symbol,
-                "stock_ticker": symbol,
                 "name": item.name or (str(instrument_symbol).strip() if instrument_symbol else None),
                 "side": item.side,
                 "rank": item.rank,
@@ -1773,7 +1769,7 @@ def _render_text(payload: dict[str, Any], allocation_df: pd.DataFrame) -> str:
     lines.append("")
 
     table_headers = [
-        "stock_ticker",
+        "symbol",
         "lots",
         "价格",
         "估值分层",
@@ -1786,7 +1782,7 @@ def _render_text(payload: dict[str, Any], allocation_df: pd.DataFrame) -> str:
     for _, row in allocation_df.iterrows():
         table_rows.append(
             [
-                str(row["stock_ticker"]),
+                str(row["symbol"]),
                 str(int(row["lots"])),
                 f"{float(row['price']):.4f}" if pd.notna(row["price"]) else "nan",
                 VALUATION_CN_MAP.get(str(row["valuation"]), str(row["valuation"])),

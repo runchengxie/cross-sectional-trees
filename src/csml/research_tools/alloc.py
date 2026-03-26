@@ -379,6 +379,7 @@ def _prepare_selection(
     top_n: int,
 ) -> pd.DataFrame:
     prepared = ensure_symbol_columns(selection, context="Holdings payload")
+    prepared = prepared.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
     if "side" not in prepared.columns:
         prepared["side"] = "long"
     if "rank" not in prepared.columns:
@@ -424,8 +425,6 @@ def _allocate_equal_weight(
         rows.append(
             {
                 "symbol": symbol,
-                "ts_code": symbol,
-                "stock_ticker": symbol,
                 "order_book_id": order_book_id,
                 "side": str(row.get("side", "long")),
                 "rank": int(rank_value) if pd.notna(rank_value) else None,
@@ -467,7 +466,7 @@ def _render_text(payload: dict, alloc_df: pd.DataFrame) -> str:
     lines.append("")
 
     table_headers = [
-        "stock_ticker",
+        "symbol",
         "lots",
         "价格",
         "每手股数",
@@ -480,7 +479,7 @@ def _render_text(payload: dict, alloc_df: pd.DataFrame) -> str:
     for _, row in alloc_df.iterrows():
         table_rows.append(
             [
-                str(row["stock_ticker"]),
+                str(row["symbol"]),
                 str(int(row["lots"])),
                 f"{float(row['price']):.4f}",
                 str(int(row["round_lot"])),

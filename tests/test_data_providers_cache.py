@@ -255,6 +255,60 @@ def test_fetch_daily_reads_from_local_asset_dir_without_remote_fetch(tmp_path, m
     assert result["close"].tolist() == [11.0, 12.0]
 
 
+def test_fetch_daily_local_asset_prefers_ts_code_over_order_book_id(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    asset_dir = tmp_path / "daily_assets"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    symbol = "00001.HK"
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20200102", "20200103"],
+            "ts_code": [symbol, symbol],
+            "order_book_id": ["00001.XHKG", "00001.XHKG"],
+            "open": [10.0, 10.5],
+            "close": [10.2, 10.7],
+            "volume": [100.0, 120.0],
+            "total_turnover": [1000.0, 1284.0],
+        }
+    ).to_parquet(data_dir / f"{symbol}.parquet")
+
+    def fake_fetch(*args, **kwargs):
+        raise AssertionError("remote provider should not be called when local asset is configured")
+
+    monkeypatch.setattr(data_providers, "_fetch_daily_rqdata", fake_fetch)
+
+    result = data_providers.fetch_daily(
+        "hk",
+        symbol,
+        "20200102",
+        "20200103",
+        cache_dir,
+        client=None,
+        data_cfg={
+            "provider": "rqdata",
+            "cache_mode": "symbol",
+            "cache_refresh_days": 0,
+            "cache_refresh_on_hit": False,
+            "column_map": {
+                "trade_date": "trade_date",
+                "ts_code": "ts_code",
+                "close": "close",
+                "vol": "volume",
+                "amount": "total_turnover",
+            },
+            "rqdata": {
+                "daily_asset_dir": str(asset_dir),
+            },
+        },
+    )
+
+    assert result["symbol"].tolist() == [symbol, symbol]
+    assert result["ts_code"].tolist() == [symbol, symbol]
+
+
 def test_fetch_daily_derives_tr_close_from_local_ex_factors(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -312,6 +366,38 @@ def test_fetch_daily_derives_tr_close_from_local_ex_factors(tmp_path, monkeypatc
     )
 
     assert result["tr_close"].round(4).tolist() == [10.0, 10.0, 10.0, 11.25]
+
+
+def test_load_basic_from_local_asset_accepts_name_fallback_columns(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    instruments_file = tmp_path / "hk_instruments.parquet"
+
+    pd.DataFrame(
+        {
+            "ts_code": ["00001.HK", "00002.HK"],
+            "symbol": ["长和", "中电控股"],
+            "listed_date": ["1972-11-01", "1980-01-02"],
+            "eng_symbol": ["CKH HOLDINGS", "CLP HOLDINGS"],
+        }
+    ).to_parquet(instruments_file)
+
+    result = data_providers.load_basic(
+        "hk",
+        cache_dir,
+        client=None,
+        data_cfg={
+            "provider": "rqdata",
+            "rqdata": {
+                "instruments_file": str(instruments_file),
+            },
+        },
+        symbols=["00001.HK"],
+    )
+
+    assert result["symbol"].tolist() == ["00001.HK"]
+    assert result["name"].tolist() == ["长和"]
+    assert result["list_date"].tolist() == ["19721101"]
 
 
 def test_fetch_daily_backfills_tr_close_for_existing_cache(tmp_path):

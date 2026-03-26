@@ -75,7 +75,7 @@
 
 内部统一格式：`00001.HK`（5 位补零 + `.HK`）。
 
-研究主链路内部 canonical 列名是 `symbol`；`ts_code` 和 `stock_ticker` 会继续双写到 run artifacts / CLI 输出，作为兼容别名。
+研究主链路内部 canonical 列名是 `symbol`；旧输入文件里的 `ts_code` / `stock_ticker` / `order_book_id` 仍然兼容，但新的 run artifacts / CLI 输出默认只写 `symbol`。
 
 RQData：内部 `00001.HK` 会转换为 `00001.XHKG` 调接口；非 HK 市场直接使用原值。
 

@@ -10,7 +10,7 @@ def _write_positions(
     path,
     entry_date="2020-01-02",
     rebalance_date="2020-01-01",
-    symbol_col="ts_code",
+    symbol_col="symbol",
 ):
     df = pd.DataFrame(
         {
@@ -117,14 +117,15 @@ def test_holdings_accepts_stock_ticker_column(tmp_path, capsys):
 
     payload = json.loads(capsys.readouterr().out)
     row = payload["holdings"][0]
-    assert row["stock_ticker"] == "0001.HK"
-    assert row["ts_code"] == "0001.HK"
+    assert row["symbol"] == "0001.HK"
+    assert "stock_ticker" not in row
+    assert "ts_code" not in row
 
 
 def test_holdings_format_table_keeps_alignment_with_cjk_headers():
     table = holdings._format_table(
         [["0001.HK", "1.0000", "0.100000"]],
-        ["stock_ticker", "权重", "信号"],
+        ["symbol", "权重", "信号"],
     )
     lines = table.splitlines()
     assert len(lines) == 3

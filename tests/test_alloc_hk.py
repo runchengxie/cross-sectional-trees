@@ -336,7 +336,7 @@ def test_prepare_allocation_export_df_localizes_headers_and_values() -> None:
     allocation = pd.DataFrame(
         [
             {
-                "stock_ticker": "0001.HK",
+                "symbol": "0001.HK",
                 "name": "长和",
                 "side": "long",
                 "rank": 1,
@@ -415,7 +415,7 @@ def test_prepare_sell_signals_export_df_localizes_headers_and_values() -> None:
     sell_signals = pd.DataFrame(
         [
             {
-                "stock_ticker": "0001.HK",
+                "symbol": "0001.HK",
                 "name": "长和",
                 "side": "short",
                 "rank": 2,
@@ -446,9 +446,9 @@ def test_write_xlsx_report_requires_openpyxl(tmp_path, monkeypatch) -> None:
     with pytest.raises(SystemExit, match="missing openpyxl"):
         alloc_hk.write_xlsx_report(
             tmp_path / "alloc_hk.xlsx",
-            pd.DataFrame([{"stock_ticker": "0001.HK"}]),
+            pd.DataFrame([{"symbol": "0001.HK"}]),
             pd.DataFrame([{"as_of": pd.Timestamp("2026-03-20").date()}]),
-            pd.DataFrame([{"stock_ticker": "0001.HK"}]),
+            pd.DataFrame([{"symbol": "0001.HK"}]),
         )
 
 
@@ -461,9 +461,9 @@ def test_write_scenario_grid_report_requires_openpyxl(tmp_path, monkeypatch) -> 
             [
                 alloc_hk.ScenarioReport(
                     scenario_id="C10w_N1",
-                    allocation_df=pd.DataFrame([{"stock_ticker": "0001.HK"}]),
+                    allocation_df=pd.DataFrame([{"symbol": "0001.HK"}]),
                     summary_df=pd.DataFrame([{"as_of": pd.Timestamp("2026-03-20").date()}]),
-                    sell_signals_df=pd.DataFrame([{"stock_ticker": "0001.HK"}]),
+                    sell_signals_df=pd.DataFrame([{"symbol": "0001.HK"}]),
                 )
             ],
         )

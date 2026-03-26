@@ -417,7 +417,7 @@ def _ensure_execution_daily_fields(
         return
 
     current_fields_raw = rq_cfg.get("fields")
-    if current_fields_raw in {"all", "*"}:
+    if isinstance(current_fields_raw, str) and current_fields_raw in {"all", "*"}:
         return
     if current_fields_raw is None:
         current_fields = ["close", "volume", "total_turnover"]
@@ -856,7 +856,8 @@ def _ensure_symbol_alias(frame: pd.DataFrame) -> pd.DataFrame:
         return frame
     if not any(col in frame.columns for col in ("symbol", "ts_code", "stock_ticker", "order_book_id")):
         return frame
-    return ensure_symbol_columns(frame, context="Pipeline output")
+    out = ensure_symbol_columns(frame, context="Pipeline output")
+    return out.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
 
 
 def save_json(payload: dict, path: Path) -> None:
@@ -1066,9 +1067,8 @@ def load_universe_by_date(path: Path, market: str) -> pd.DataFrame:
     df["symbol"] = df["symbol"].astype(str).str.strip()
     df["symbol"] = df["symbol"].apply(lambda s: normalize_universe_symbol(s, market))
     df = df[df["symbol"] != ""].copy()
-    df = _ensure_symbol_alias(df)
     df = df.drop_duplicates(subset=["trade_date", "symbol"])
-    return df[["trade_date", "symbol", "ts_code", "stock_ticker"]].copy()
+    return df[["trade_date", "symbol"]].copy()
 
 
 def apply_universe_by_date(data: pd.DataFrame, universe: pd.DataFrame) -> pd.DataFrame:
@@ -2377,8 +2377,6 @@ def run(config_ref: str | Path | None = None) -> None:
     backtest_pricing_cols = [
         "trade_date",
         "symbol",
-        "ts_code",
-        "stock_ticker",
         PRICE_COL,
         *execution_passthrough_cols,
     ]
@@ -2393,7 +2391,7 @@ def run(config_ref: str | Path | None = None) -> None:
 
     passthrough_cols = list(dict.fromkeys(industry_cols))
     cols = (
-        ["trade_date", "symbol", "ts_code", "stock_ticker", PRICE_COL]
+        ["trade_date", "symbol", PRICE_COL]
         + FEATURES
         + price_passthrough_cols
         + passthrough_cols
@@ -2466,8 +2464,6 @@ def run(config_ref: str | Path | None = None) -> None:
         tradable_col="is_tradable" if "is_tradable" in df_features.columns else None,
         feature_cols=FEATURES,
         extra_cols=[
-            "ts_code",
-            "stock_ticker",
             *price_passthrough_cols,
             *passthrough_cols,
             *([TRAIN_TARGET] if TRAIN_TARGET != TARGET else []),
@@ -3809,8 +3805,6 @@ def run(config_ref: str | Path | None = None) -> None:
         scored_cols = [
             "trade_date",
             "symbol",
-            "ts_code",
-            "stock_ticker",
             PRICE_COL,
             TARGET,
             "pred",

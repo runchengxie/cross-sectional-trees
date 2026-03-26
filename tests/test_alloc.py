@@ -61,7 +61,7 @@ def _install_fake_rqdatac(monkeypatch, price_map: dict[str, list[float]], lot_ma
     monkeypatch.setitem(sys.modules, "rqdatac", fake_module)
 
 
-def _write_positions(path, symbols: list[str], symbol_col: str = "ts_code") -> None:
+def _write_positions(path, symbols: list[str], symbol_col: str = "symbol") -> None:
     df = pd.DataFrame(
         {
             "entry_date": ["2020-01-02"] * len(symbols),
@@ -134,8 +134,7 @@ def test_alloc_from_latest_live_holdings(tmp_path, monkeypatch, capsys):
     assert len(rows) == 2
 
     row_a = rows[0]
-    assert row_a["ts_code"] == "0001.HK"
-    assert row_a["stock_ticker"] == "0001.HK"
+    assert row_a["symbol"] == "0001.HK"
     assert row_a["order_book_id"] == "00001.XHKG"
     assert row_a["round_lot"] == 100
     assert row_a["lots"] == 100
@@ -143,8 +142,7 @@ def test_alloc_from_latest_live_holdings(tmp_path, monkeypatch, capsys):
     assert row_a["est_value"] == 500000.0
 
     row_b = rows[1]
-    assert row_b["ts_code"] == "0002.HK"
-    assert row_b["stock_ticker"] == "0002.HK"
+    assert row_b["symbol"] == "0002.HK"
     assert row_b["order_book_id"] == "00002.XHKG"
     assert row_b["round_lot"] == 200
     assert row_b["lots"] == 125
@@ -189,8 +187,7 @@ def test_alloc_positions_file_mode(tmp_path, monkeypatch, capsys):
     assert payload["cash_left"] == 0.0
     assert payload["total_gap_to_target"] == 0.0
     row = payload["allocations"][0]
-    assert row["ts_code"] == "0001.HK"
-    assert row["stock_ticker"] == "0001.HK"
+    assert row["symbol"] == "0001.HK"
     assert row["lots"] == 200
     assert row["shares"] == 20000
 
@@ -228,11 +225,10 @@ def test_alloc_positions_file_accepts_stock_ticker(tmp_path, monkeypatch, capsys
 
     payload = json.loads(capsys.readouterr().out)
     row = payload["allocations"][0]
-    assert row["ts_code"] == "0001.HK"
-    assert row["stock_ticker"] == "0001.HK"
+    assert row["symbol"] == "0001.HK"
 
 
-def test_alloc_text_output_uses_chinese_labels_and_lots_after_stock_ticker(tmp_path, monkeypatch, capsys):
+def test_alloc_text_output_uses_symbol_header_and_lots(tmp_path, monkeypatch, capsys):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     positions_path = run_dir / "positions_by_rebalance_live.csv"
@@ -272,14 +268,14 @@ def test_alloc_text_output_uses_chinese_labels_and_lots_after_stock_ticker(tmp_p
     assert "目标缺口合计: 0.00" in output
 
     lines = output.splitlines()
-    header_line = next(line for line in lines if "stock_ticker" in line and "lots" in line)
-    assert header_line.split()[:2] == ["stock_ticker", "lots"]
+    header_line = next(line for line in lines if "symbol" in line and "lots" in line)
+    assert header_line.split()[:2] == ["symbol", "lots"]
 
 
 def test_alloc_format_table_keeps_alignment_with_cjk_headers():
     table = alloc._format_table(
         [["00941.HK", "2", "80.4000"]],
-        ["stock_ticker", "手数", "价格"],
+        ["symbol", "手数", "价格"],
     )
     lines = table.splitlines()
     assert len(lines) == 3
