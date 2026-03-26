@@ -14,18 +14,18 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import rqdata_assets_args as _args
-from ..artifacts import (
+from . import args as _args
+from ...artifacts import (
     RQDATA_ASSETS_DIR as DEFAULT_RQDATA_ASSETS_DIR,
 )
-from ..config_utils import resolve_pipeline_config
-from ..data_providers import (
+from ...config_utils import resolve_pipeline_config
+from ...data_providers import (
     DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS,
     _fetch_daily_rqdata,
     _to_rqdata_symbol,
 )
-from ..rebalance import get_rebalance_dates
-from .backup_data import _git_metadata
+from ...rebalance import get_rebalance_dates
+from ..backup_data import _git_metadata
 
 DEFAULT_OUT_ROOT = DEFAULT_RQDATA_ASSETS_DIR.as_posix()
 DEFAULT_BATCH_SIZE = 20
@@ -5228,258 +5228,41 @@ def mirror_hk_industry_changes(args, rqdatac) -> int:
     return result_code
 
 
-def _rqdata_assets_build_module():
-    from . import rqdata_assets_build as _build
-
-    return _build
-
-
-def _resolve_pit_asset_dir(path_text: str | Path) -> tuple[Path, dict | None]:
-    return _rqdata_assets_build_module()._resolve_pit_asset_dir(path_text)
-
-
-def _resolve_industry_changes_asset_dir(path_text: str | Path) -> tuple[Path, dict | None]:
-    return _rqdata_assets_build_module()._resolve_industry_changes_asset_dir(path_text)
-
-
-def _default_hk_industry_labels_path(asset_dir: Path, frequency: str) -> Path:
-    return _rqdata_assets_build_module()._default_hk_industry_labels_path(asset_dir, frequency)
-
-
-def _resolve_hk_industry_labels_out_path(args, asset_dir: Path) -> Path:
-    return _rqdata_assets_build_module()._resolve_hk_industry_labels_out_path(args, asset_dir)
-
-
-def _industry_labels_manifest_path(out_path: Path) -> Path:
-    return _rqdata_assets_build_module()._industry_labels_manifest_path(out_path)
-
-
-def _resolve_hk_label_frequency(args) -> str:
-    return _rqdata_assets_build_module()._resolve_hk_label_frequency(args)
-
-
-def _resolve_optional_absolute_date(value: object, *, label: str) -> str | None:
-    return _rqdata_assets_build_module()._resolve_optional_absolute_date(value, label=label)
-
-
-def _load_trade_date_grid_from_daily_asset_dir(
-    daily_asset_dir: Path,
-    *,
-    start_date: str | None,
-    end_date: str | None,
-) -> pd.DataFrame:
-    return _rqdata_assets_build_module()._load_trade_date_grid_from_daily_asset_dir(
-        daily_asset_dir,
-        start_date=start_date,
-        end_date=end_date,
-    )
-
-
-def _sample_trade_date_grid(grid: pd.DataFrame, *, frequency: str) -> tuple[pd.DataFrame, dict[str, object]]:
-    return _rqdata_assets_build_module()._sample_trade_date_grid(grid, frequency=frequency)
-
-
-def _resolve_hk_industry_label_grid(args) -> tuple[pd.DataFrame, dict[str, object]]:
-    return _rqdata_assets_build_module()._resolve_hk_industry_label_grid(args)
-
-
-def _load_industry_changes_frame(data_files: Sequence[Path]) -> tuple[pd.DataFrame, int]:
-    return _rqdata_assets_build_module()._load_industry_changes_frame(data_files)
-
-
-def _derive_hk_industry_labels(
-    *,
-    grid: pd.DataFrame,
-    intervals: pd.DataFrame,
-) -> tuple[pd.DataFrame, int]:
-    return _rqdata_assets_build_module()._derive_hk_industry_labels(
-        grid=grid,
-        intervals=intervals,
-    )
-
-
-def _resolve_build_fields(
-    *,
-    args,
-    manifest: Mapping[str, object] | None,
-    available_columns: Sequence[str],
-) -> tuple[list[str], dict]:
-    return _rqdata_assets_build_module()._resolve_build_fields(
-        args=args,
-        manifest=manifest,
-        available_columns=available_columns,
-    )
-
-
-def _default_pipeline_fundamentals_path(asset_dir: Path) -> Path:
-    return _rqdata_assets_build_module()._default_pipeline_fundamentals_path(asset_dir)
-
-
-def _resolve_pipeline_fundamentals_out_path(args, asset_dir: Path) -> Path:
-    return _rqdata_assets_build_module()._resolve_pipeline_fundamentals_out_path(args, asset_dir)
-
-
-def _load_universe_by_date_frame(path_text: str | Path) -> pd.DataFrame:
-    return _rqdata_assets_build_module()._load_universe_by_date_frame(path_text)
-
-
-def _rqdata_assets_coverage_module():
-    from . import rqdata_assets_coverage as _coverage
-
-    return _coverage
-
-
-def _is_supported_pit_coverage_feature(feature: str, available_columns: set[str]) -> bool:
-    return _rqdata_assets_coverage_module()._is_supported_pit_coverage_feature(
-        feature, available_columns
-    )
-
-
-def _compute_pit_coverage_series(
-    frame: pd.DataFrame,
-    feature: str,
-    *,
-    cache: dict[str, pd.Series],
-) -> pd.Series:
-    return _rqdata_assets_coverage_module()._compute_pit_coverage_series(
-        frame,
-        feature,
-        cache=cache,
-    )
-
-
-def _resolve_pit_coverage_features(
-    *,
-    args,
-    config_data: Mapping[str, object] | None,
-    manifest: Mapping[str, object] | None,
-    available_columns: Sequence[str],
-) -> tuple[list[str], dict[str, object]]:
-    return _rqdata_assets_coverage_module()._resolve_pit_coverage_features(
-        args=args,
-        config_data=config_data,
-        manifest=manifest,
-        available_columns=available_columns,
-    )
-
-
-def _resolve_trainable_pit_features(
-    *,
-    args,
-    config_data: Mapping[str, object] | None,
-    available_columns: Sequence[str],
-    fallback_features: Sequence[str],
-    fallback_metadata: Mapping[str, object],
-) -> tuple[list[str], dict[str, object]]:
-    return _rqdata_assets_coverage_module()._resolve_trainable_pit_features(
-        args=args,
-        config_data=config_data,
-        available_columns=available_columns,
-        fallback_features=fallback_features,
-        fallback_metadata=fallback_metadata,
-    )
-
-
-def _resolve_trainable_pit_settings(
-    config_data: Mapping[str, object] | None,
-    *,
-    selected_features: Sequence[str],
-) -> dict[str, object]:
-    return _rqdata_assets_coverage_module()._resolve_trainable_pit_settings(
-        config_data,
-        selected_features=selected_features,
-    )
-
-
-def _build_trainable_period_grid(
-    *,
-    frame: pd.DataFrame,
-    rebalance_frequency: str,
-    sample_on_rebalance_dates: bool,
-    universe_by_date: pd.DataFrame | None,
-) -> tuple[pd.DataFrame, str]:
-    return _rqdata_assets_coverage_module()._build_trainable_period_grid(
-        frame=frame,
-        rebalance_frequency=rebalance_frequency,
-        sample_on_rebalance_dates=sample_on_rebalance_dates,
-        universe_by_date=universe_by_date,
-    )
-
-
-def _estimate_trainable_pit_coverage(
-    *,
-    frame: pd.DataFrame,
-    feature_frame: pd.DataFrame,
-    selected_features: Sequence[str],
-    config_data: Mapping[str, object] | None,
-    min_symbols: int,
-    feature_source: str,
-) -> tuple[dict[str, object], list[dict[str, object]]]:
-    return _rqdata_assets_coverage_module()._estimate_trainable_pit_coverage(
-        frame=frame,
-        feature_frame=feature_frame,
-        selected_features=selected_features,
-        config_data=config_data,
-        min_symbols=min_symbols,
-        feature_source=feature_source,
-    )
-
-
-def _assess_trainable_fill_dependence(
-    *,
-    trainable_estimate: Mapping[str, object],
-    non_pit_features_ignored: Sequence[str],
-) -> dict[str, object]:
-    return _rqdata_assets_coverage_module()._assess_trainable_fill_dependence(
-        trainable_estimate=trainable_estimate,
-        non_pit_features_ignored=non_pit_features_ignored,
-    )
-
-
-def _render_hk_pit_coverage_text(
-    payload: Mapping[str, object],
-    *,
-    top: int,
-    quarter_limit: int,
-) -> str:
-    return _rqdata_assets_coverage_module()._render_hk_pit_coverage_text(
-        payload,
-        top=top,
-        quarter_limit=quarter_limit,
-    )
-
-
-def inspect_hk_pit_coverage(args) -> int:
-    return _rqdata_assets_coverage_module().inspect_hk_pit_coverage(args)
-
-
-def _pipeline_fundamentals_manifest_path(out_path: Path) -> Path:
-    return _rqdata_assets_build_module()._pipeline_fundamentals_manifest_path(out_path)
-
-
-def _write_symbol_list(path: Path, symbols: Sequence[str]) -> None:
-    return _rqdata_assets_build_module()._write_symbol_list(path, symbols)
-
-
-def _build_filtered_universe_by_date(
-    *,
-    source_path: Path,
-    out_path: Path,
-    symbols: Sequence[str],
-) -> dict[str, object]:
-    return _rqdata_assets_build_module()._build_filtered_universe_by_date(
-        source_path=source_path,
-        out_path=out_path,
-        symbols=symbols,
-    )
-
-
-def build_hk_pit_fundamentals_file(args) -> int:
-    return _rqdata_assets_build_module().build_hk_pit_fundamentals_file(args)
-
-
-def build_hk_industry_labels_file(args) -> int:
-    return _rqdata_assets_build_module().build_hk_industry_labels_file(args)
+from .build import (
+    _build_filtered_universe_by_date,
+    _default_hk_industry_labels_path,
+    _default_pipeline_fundamentals_path,
+    _derive_hk_industry_labels,
+    _industry_labels_manifest_path,
+    _load_industry_changes_frame,
+    _load_trade_date_grid_from_daily_asset_dir,
+    _load_universe_by_date_frame,
+    _pipeline_fundamentals_manifest_path,
+    _resolve_build_fields,
+    _resolve_hk_industry_label_grid,
+    _resolve_hk_industry_labels_out_path,
+    _resolve_hk_label_frequency,
+    _resolve_industry_changes_asset_dir,
+    _resolve_optional_absolute_date,
+    _resolve_pipeline_fundamentals_out_path,
+    _resolve_pit_asset_dir,
+    _sample_trade_date_grid,
+    _write_symbol_list,
+    build_hk_industry_labels_file,
+    build_hk_pit_fundamentals_file,
+)
+from .coverage import (
+    _assess_trainable_fill_dependence,
+    _build_trainable_period_grid,
+    _compute_pit_coverage_series,
+    _estimate_trainable_pit_coverage,
+    _is_supported_pit_coverage_feature,
+    _render_hk_pit_coverage_text,
+    _resolve_pit_coverage_features,
+    _resolve_trainable_pit_features,
+    _resolve_trainable_pit_settings,
+    inspect_hk_pit_coverage,
+)
 
 
 def add_list_hk_financial_fields_args(parser: argparse.ArgumentParser) -> None:

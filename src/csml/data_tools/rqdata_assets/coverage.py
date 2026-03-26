@@ -6,9 +6,9 @@ from collections.abc import Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from ..config_utils import resolve_pipeline_config
-from ..rebalance import get_rebalance_dates
-from . import rqdata_assets as _base
+from ...config_utils import resolve_pipeline_config
+from ...rebalance import get_rebalance_dates
+from csml.data_tools import rqdata_assets as _base
 
 DEFAULT_PIPELINE_FUNDAMENTALS_NAME = _base.DEFAULT_PIPELINE_FUNDAMENTALS_NAME
 DERIVED_PIT_FEATURES = _base.DERIVED_PIT_FEATURES

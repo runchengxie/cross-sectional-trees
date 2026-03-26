@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import rqdata_assets as _base
+from csml.data_tools import rqdata_assets as _base
 
 DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX = _base.DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX
 DEFAULT_PIPELINE_FUNDAMENTALS_NAME = _base.DEFAULT_PIPELINE_FUNDAMENTALS_NAME

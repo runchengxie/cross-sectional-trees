@@ -8,8 +8,8 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
-from .data_providers import normalize_market
-from .data_tools.symbols import (
+from ..data_providers import normalize_market
+from ..data_tools.symbols import (
     PROVIDER_SYMBOL_PRIORITY,
     ensure_symbol_columns,
     normalize_symbol_standard_name,
