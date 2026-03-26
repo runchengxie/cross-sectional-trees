@@ -900,7 +900,7 @@ def build_parser() -> argparse.ArgumentParser:
     summarize = subparsers.add_parser(
         "summarize", help="Aggregate saved runs into a summary CSV"
     )
-    from .research_tools import summarize_runs
+    from .research import summarize_runs
 
     summarize_runs.add_summarize_args(summarize)
     summarize.set_defaults(func=_handle_summarize)

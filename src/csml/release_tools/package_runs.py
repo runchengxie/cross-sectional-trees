@@ -15,7 +15,7 @@ from typing import Any
 import yaml
 
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
-from csml.research_tools import summarize_runs
+from csml.research import summarize_runs
 
 
 REPO_ROOT = find_repo_root(__file__)

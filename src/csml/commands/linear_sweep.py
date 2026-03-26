@@ -603,7 +603,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     summary_status = "skipped"
     summary_error = ""
     if not dry_run and not skip_summarize:
-        from ..research_tools import summarize_runs
+        from ..research import summarize_runs
 
         summarize_argv = [
             "--runs-dir",

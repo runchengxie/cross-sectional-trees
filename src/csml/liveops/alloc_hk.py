@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 
 from ..data_tools.symbols import ensure_symbol_columns
-from ..research_tools import alloc as base_alloc
-from ..research_tools import holdings
+from . import alloc as base_alloc
+from . import holdings
 
 LOGGER = logging.getLogger(__name__)
 
