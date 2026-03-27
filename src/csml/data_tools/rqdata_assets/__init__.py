@@ -59,6 +59,12 @@ DEFAULT_HK_EXCHANGE_RATE_FIELDS = (
     "middle_referrence_rate",
 )
 DEFAULT_HK_SOUTHBOUND_TRADING_TYPES = ("sh", "sz")
+DATE_TEXT_OUTPUT_COLUMNS = {
+    "trade_date",
+    "date",
+    "ex_date",
+    "declaration_announcement_date",
+}
 DEFAULT_HK_INDUSTRY_SOURCE = "citics_2019"
 DEFAULT_HK_INSTRUMENT_INDUSTRY_LEVEL = 0
 DEFAULT_HK_INDUSTRY_CHANGE_LEVEL = 1
@@ -314,6 +320,33 @@ def _normalize_frame_columns(frame: pd.DataFrame) -> pd.DataFrame:
         combined.name = column_name
         merged.append(combined)
     return pd.concat(merged, axis=1) if merged else pd.DataFrame(index=frame.index)
+
+
+def _drop_conflicting_index_levels(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty and len(frame.columns) == 0:
+        return frame.copy()
+
+    column_names = {str(column) for column in frame.columns}
+    work = frame.copy()
+
+    if isinstance(work.index, pd.MultiIndex):
+        drop_levels = [
+            idx
+            for idx, name in enumerate(work.index.names)
+            if isinstance(name, str) and name and name in column_names
+        ]
+        if drop_levels:
+            keep_levels = [idx for idx in range(work.index.nlevels) if idx not in drop_levels]
+            if keep_levels:
+                work.index = work.index.droplevel(drop_levels)
+            else:
+                work.index = pd.RangeIndex(len(work))
+        return work
+
+    index_name = work.index.name
+    if isinstance(index_name, str) and index_name and index_name in column_names:
+        work.index = pd.RangeIndex(len(work))
+    return work
 
 
 def _coerce_bool(value) -> bool:
@@ -674,7 +707,14 @@ def _reset_frame_index(frame: pd.DataFrame | pd.Series | None) -> pd.DataFrame:
     if frame.empty and len(frame.columns) == 0:
         return frame.copy()
     normalized = _normalize_frame_columns(frame)
-    if "order_book_id" in normalized.columns:
+    normalized = _drop_conflicting_index_levels(normalized)
+    if isinstance(normalized.index, pd.MultiIndex):
+        has_named_levels = any(name is not None for name in normalized.index.names)
+    else:
+        has_named_levels = normalized.index.name is not None
+    if "order_book_id" in normalized.columns and not has_named_levels:
+        return normalized
+    if not has_named_levels:
         return normalized
     reset = _normalize_frame_columns(normalized.reset_index())
     if "order_book_id" not in reset.columns and "index" in reset.columns:
@@ -1417,7 +1457,7 @@ def _prepare_asset_frame(frame: pd.DataFrame | pd.Series | None, *, symbol_map: 
     if frame.empty and len(frame.columns) == 0:
         return frame.copy()
 
-    normalized = _normalize_frame_columns(frame.reset_index())
+    normalized = _reset_frame_index(frame)
     if normalized.empty and "order_book_id" not in normalized.columns:
         return normalized
     if "order_book_id" not in normalized.columns:
@@ -1818,10 +1858,19 @@ def _prepare_dated_asset_frame(
         return normalized
     if date_column not in normalized.columns:
         raise ValueError(f"RQData payload is missing {date_column}.")
+    parsed_dates = pd.to_datetime(normalized[date_column], errors="coerce")
+    valid_dates = parsed_dates.notna()
+    work = normalized.loc[valid_dates].copy()
+    if work.empty:
+        return work
+    if date_column in DATE_TEXT_OUTPUT_COLUMNS:
+        work[date_column] = parsed_dates.loc[valid_dates].dt.strftime("%Y%m%d")
+    else:
+        work[date_column] = parsed_dates.loc[valid_dates]
 
-    preferred = [column for column in ["ts_code", "order_book_id", date_column] if column in normalized.columns]
-    remaining = [column for column in normalized.columns if column not in preferred]
-    work = normalized.loc[:, preferred + remaining].copy()
+    preferred = [column for column in ["ts_code", "order_book_id", date_column] if column in work.columns]
+    remaining = [column for column in work.columns if column not in preferred]
+    work = work.loc[:, preferred + remaining].copy()
     ordered_sort_cols = [
         column for column in ["ts_code", date_column, *sort_columns] if column in work.columns
     ]

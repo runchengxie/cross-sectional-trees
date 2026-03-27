@@ -332,6 +332,35 @@ class _FakeRQValuationClient:
         return pd.concat(frames).sort_index()
 
 
+class _FakeRQValuationTradeDateColumnClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_factor(self, order_book_ids, factors, start_date=None, end_date=None, **kwargs):
+        request_ids = [str(item) for item in (order_book_ids if isinstance(order_book_ids, list) else [order_book_ids])]
+        self.calls.append(
+            {
+                "order_book_ids": request_ids,
+                "factors": list(factors) if isinstance(factors, (list, tuple)) else [str(factors)],
+                "start_date": start_date,
+                "end_date": end_date,
+                "kwargs": dict(kwargs),
+            }
+        )
+        return pd.DataFrame(
+            {
+                "trade_date": [pd.Timestamp("2026-03-27")],
+                "hk_total_market_val": [1000.0],
+                "pe_ratio_ttm": [8.0],
+                "pb_ratio_ttm": [1.1],
+            },
+            index=pd.MultiIndex.from_tuples(
+                [("00005.XHKG", pd.Timestamp("2026-03-27"))],
+                names=["order_book_id", "date"],
+            ),
+        )
+
+
 class _FakeRQExchangeRateClient:
     def __init__(self):
         self.calls: list[dict] = []
@@ -1012,6 +1041,51 @@ def test_mirror_hk_valuation_writes_manifest_and_assets(tmp_path, monkeypatch):
     assert manifest["totals"]["symbols_requested"] == 2
     assert manifest["totals"]["symbols_written"] == 2
     assert manifest["missing_symbols"] == []
+
+
+def test_mirror_hk_valuation_handles_payload_with_existing_trade_date_column(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _FakeRQValuationTradeDateColumnClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20260327",
+        end_date="20260327",
+        field=[],
+        fields_file=[],
+        symbol=["00005.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=20,
+        out_root="artifacts/assets/rqdata",
+        name="valuation_trade_date_column_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_valuation(args, client) == 0
+
+    output_dir = (
+        repo_root
+        / "artifacts"
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "valuation"
+        / "valuation_trade_date_column_demo"
+    )
+    data = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert data["trade_date"].tolist() == ["20260327"]
+    assert data["order_book_id"].tolist() == ["00005.XHKG"]
+    assert data["hk_total_market_val"].tolist() == [1000.0]
 
 
 def test_mirror_hk_ex_factors_writes_manifest_and_assets(tmp_path, monkeypatch):
