@@ -31,13 +31,13 @@
 | --- | --- | --- |
 | HK 月频研究 | `configs/presets/hk.yml` | 默认使用 `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest`、`artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`、`artifacts/assets/universe/hk_connect_full_research_by_date.csv` |
 | HK 季频 PIT 研究 | `configs/presets/hk_quarterly_pit_hybrid.yml` | 默认使用 `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 和 `artifacts/assets/universe/hk_selected_pit_research_by_date.csv` |
-| 全市场离线 alias | `artifacts/assets/rqdata/hk/.../hk_all_*_latest` | 当前工作区里 `daily`、`instruments`、`ex_factors`、`dividends`、`shares`、`industry_changes` 这些 alias 都已指向 `2026-03-18` 一批 snapshot |
+| 全市场离线 alias | `artifacts/assets/rqdata/hk/.../hk_all_*_latest` | 当前工作区里 `daily`、`instruments`、`ex_factors`、`dividends`、`shares`、`industry_changes` 这些 alias 已切到当前可用的 canonical snapshot；其中价格与 reference 层已前移到 `2026-03-26` |
 | 行业标签 alias 所在目录 | `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/` | 当前目录下已经有 `industry_labels_d/m/q.parquet`，研究直接 join 时优先用这些派生文件 |
 
 需要单独注意的一点：
 
 * `src/csml/release_tools/package_assets.py` 里的 preset 是静态快照名，不是 alias 解析器。
-* 当前 `hk_full` preset 里的 `daily_snapshot` 仍是 `hk_all_2000_20260312_daily_final_latest`，而当前研究 alias `hk_all_daily_latest` 已经指向 `hk_all_2000_20260318_daily_final_latest`。
+* 当前 `hk_full` / `hk_connect` preset 里的 `daily_snapshot` 已更新到 `hk_all_2000_20260326_daily_final_latest`，但它依然是静态名字，不会自动跟着 alias 再往前走。
 * `southbound` 和 `financial_details` 现在也能打成独立 part；`exchange_rate` 默认走的是一个已完成的短窗 probe snapshot，不是假装“2000-至今”的长窗都已经成功。
 * 如果你要打包“当前 alias 指向的版本”，请显式传 `--daily-snapshot`、`--instruments-file`、`--pit-snapshot`、`--exchange-rate-snapshot`、`--southbound-snapshot`、`--financial-details-snapshot` 等参数，不要默认 preset 会自动前进。
 
@@ -315,8 +315,8 @@ csml rqdata mirror-hk-shares \
 csml rqdata mirror-hk-valuation \
   --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt \
   --start-date 20000101 \
-  --end-date 20260324 \
-  --name hk_all_2000_20260324_valuation_full_market_latest \
+  --end-date 20260326 \
+  --name hk_all_2000_20260326_valuation_full_market_latest \
   --resume
 ```
 
@@ -646,8 +646,8 @@ csml backup-data \
 ```bash
 uv run python -m csml.release_tools.package_assets \
   --preset hk_full \
-  --daily-snapshot hk_all_2000_20260318_daily_final_latest \
-  --dest /home/richard/code/csml_asset_parts/hk_full_20260323 \
+  --daily-snapshot hk_all_2000_20260326_daily_final_latest \
+  --dest /home/richard/code/csml_asset_parts/hk_full_20260327 \
   --mode copy \
   --overwrite
 ```
@@ -664,9 +664,9 @@ uv run python -m csml.release_tools.package_assets \
 
 ```bash
 uv run python -m csml.release_tools.release_assets \
-  --tag hk_assets_20260323 \
+  --tag hk_assets_20260327 \
   --preset hk_full \
-  --daily-snapshot hk_all_2000_20260318_daily_final_latest \
+  --daily-snapshot hk_all_2000_20260326_daily_final_latest \
   --mode copy \
   --overwrite \
   --skip-upload

@@ -26,14 +26,14 @@
   `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet` -> `hk_all_instruments_20260318.parquet`
   `artifacts/assets/rqdata/hk/instruments/hk_connect_full_latest.parquet` -> `hk_connect_full_20260318.parquet`
 * `daily`
-  `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest` -> `hk_all_2000_20260318_daily_final_latest`
-  另有尾部 patch：`artifacts/assets/rqdata/hk/daily/hk_all_20260319_20260326_daily_patch_20260326/`
+  `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest` -> `hk_all_2000_20260326_daily_final_latest`
+  `2026-03-19` 到 `2026-03-26` 的尾部 patch 已本地并回 canonical snapshot；patch 目录仍保留
 * `pit_financials`
   `artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/`
   `artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/`
   `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/`
 * `ex_factors / dividends / shares`
-  全市场 alias 已切到 `2026-03-18` 的 `*_full_market_latest` snapshot
+  全市场 alias 已切到 `2026-03-26` 的 `*_full_market_latest` snapshot
   另有尾部 patch：
   `artifacts/assets/rqdata/hk/ex_factors/hk_all_20260319_20260326_ex_factors_patch_20260326/`
   `artifacts/assets/rqdata/hk/dividends/hk_all_20260319_20260326_dividends_patch_20260326/`
@@ -60,8 +60,8 @@
 当前有用，但不要写成默认主线入口的：
 
 * `valuation`
-  `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260324_valuation_full_market_latest/`
-  当前全市场 `get_factor` 日频估值镜像已经落盘；另有 `2026-03-25` 到 `2026-03-26` 的尾部 patch：
+  `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260326_valuation_full_market_latest/`
+  当前全市场 `get_factor` 日频估值镜像已经落盘；`2026-03-25` 到 `2026-03-26` 的尾部 patch 已本地并回 canonical snapshot，另保留 patch 目录：
   `artifacts/assets/rqdata/hk/valuation/hk_all_20260325_20260326_valuation_patch_20260326/`
   适合长期归档 `market_cap / pe_ttm / pb` provider 口径，但仍不是默认 pipeline 入口
 * `instrument_industry`
@@ -91,14 +91,14 @@
 | dataset | 当前覆盖 | 字段口径 | 时间范围 / as-of | 当前本地状态 | 是否主线 |
 | --- | --- | --- | --- | --- | --- |
 | `instruments` | 全市场 snapshot `3212` symbols；另有 `hk_connect` snapshot | 固定 instrument schema | `as-of 2026-03-18` | 稳定 | 是 |
-| `daily` | 按全市场 instrument 集请求 `3212` symbols，最终 `3203` symbols 有值 | 固定 `6` 个日线字段 | `2000-01-04` 到 `2026-03-18` | 稳定 | 是 |
+| `daily` | 按全市场 instrument 集请求 `3212` symbols，最终 `3203` symbols 有值 | 固定 `6` 个日线字段 | `2000-01-04` 到 `2026-03-26` | 稳定 | 是 |
 | `pit_financials` | 全市场 full snapshot；另有 `hk_connect` / `hk_selected` 平面文件 | `743` 个字段 | `2000q1` 到 `2025q4`，`date=20260310` | 稳定 | 是 |
 | `financial_details` | 请求 `3203` symbols 的全市场窄字段 probe | `3` 个字段 | `2000q1` 到 `2025q4`，`date=20260319` | raw probe + analysis | 否 |
 | `exchange_rate` | `11` 个 HKD 货币对 | 短窗已验证默认 `8` 字段；另有 minimal `2` 字段 | 成功 probe 到 `2025-02-16`；`2000-2026` 长窗 `latest` 全失败 | 仅短窗 probe | 否 |
-| `ex_factors` | 全市场 `3203` symbol 基线，另有 `2026-03-19` 到 `2026-03-26` patch | API payload 固定 schema | 基线到 `2026-03-18`；patch 到 `2026-03-26` | 稳定 | 是 |
-| `dividends` | 全市场 `3203` symbol 基线，另有 `2026-03-19` 到 `2026-03-26` patch | API payload 固定 schema | 基线到 `2026-03-18`；patch 到 `2026-03-26` | 稳定 | 是 |
-| `shares` | 全市场 `3203` symbol 基线，另有 `2026-03-19` 到 `2026-03-26` patch | 默认 `7` 个字段 | 基线到 `2026-03-18`；patch 到 `2026-03-26` | 稳定 | 是 |
-| `valuation` | 按全市场日线 symbol 集请求 `3212` symbols，最终 `3204` symbols 有值；另有 `2026-03-25` 到 `2026-03-26` patch | 默认 `3` 个字段：`hk_total_market_val / pe_ratio_ttm / pb_ratio_ttm` | query `2000-01-01` 到 `2026-03-24`；provider 实际最早日调整到 `2000-01-03`；patch 到 `2026-03-26` | 稳定补充层 | 否 |
+| `ex_factors` | 全市场 `3203` symbol 集请求，最终 `2668` symbols 有值；尾部 patch 已并回 canonical snapshot | API payload 固定 schema | `2000-01-01` 到 `2026-03-26` | 稳定 | 是 |
+| `dividends` | 全市场 `3203` symbol 集请求，最终 `2271` symbols 有值；尾部 patch 已并回 canonical snapshot | API payload 固定 schema | `2000-01-01` 到 `2026-03-26` | 稳定 | 是 |
+| `shares` | 按全市场 instrument 集请求 `3212` symbols，最终 `3203` symbols 有值；尾部 patch 已并回 canonical snapshot | 默认 `7` 个字段 | `2000-01-01` 到 `2026-03-26` | 稳定 | 是 |
+| `valuation` | 按全市场日线 symbol 集请求 `3212` symbols，最终 `3204` symbols 有值；尾部 patch 已并回 canonical snapshot | 默认 `3` 个字段：`hk_total_market_val / pe_ratio_ttm / pb_ratio_ttm` | query `2000-01-01` 到 `2026-03-26`；provider 实际最早日调整到 `2000-01-03` | 稳定补充层 | 否 |
 | `industry_changes` | 全市场 `3203` symbol 基线 | level-1 映射 `11` 字段 + `industry_labels_d/m/q` | `2000-01-01` 到 `2026-03-18` | 稳定 | 是 |
 | `instrument_industry` | `m/q latest` 只基于 `1547` symbol 旧口径；`3203` symbol 全市场月频尝试为空 | `6` 个字段 | `2000-01-01` 到 `2026-03-18` | 旧口径快照 + incomplete 尝试 | 否 |
 | `southbound` | 只覆盖 `hk_connect`；`by_date` 联合集 `967` symbols | `2` 个字段 | canonical snapshot 现为 `2014-11-17` 到 `2026-03-24`；`2026-03-25` 又重新合并了一次 base raw + tail patch | 稳定补充层 | 否 |
@@ -113,7 +113,7 @@
   `industry_changes` 是切换日真相层；
   `industry_labels_d/m/q` 是研究直接 join 的标签层；
   `instrument_industry` 是 provider 快照补充层。
-* `2026-03-25` 已按当前 `hk_all_daily_latest` 重新构建 `industry_labels_d/m/q`；三份文件现在都对齐到 `2026-03-18` 这版 daily grid。
+* `2026-03-27` 已按当前 `hk_all_daily_latest` 重新构建 `industry_labels_d/m/q`；三份文件现在都对齐到 `2026-03-26` 这版 daily grid。
 * `hk_connect_full_by_date.csv`、`hk_connect_full_research_by_date.csv`、`hk_selected_pit_research_by_date.csv` 都是按 rebalance date 落盘的成员明细，不是“每个交易日一整张全量成员表”。
 
 ## 当前有效入口
@@ -135,9 +135,9 @@
 ### 当前建议直接引用的 alias / snapshot
 
 * `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest`
-  当前 alias，指向 `hk_all_2000_20260318_daily_final_latest`
+  当前 alias，指向 `hk_all_2000_20260326_daily_final_latest`
 * `artifacts/assets/rqdata/hk/daily/hk_all_20260319_20260326_daily_patch_20260326/`
-  当前全市场日线尾部 patch；`2725` symbols、`16,345` 行，当前最大 `trade_date=2026-03-26`
+  当前全市场日线尾部 patch；`2725` symbols、`16,345` 行，已本地并回 canonical snapshot；patch 目录保留作审计
 * `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`
   当前 alias，指向 `hk_all_instruments_20260318.parquet`
 * `artifacts/assets/rqdata/hk/instruments/hk_connect_full_latest.parquet`
@@ -149,29 +149,31 @@
 * `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet`
   当前季度 PIT preset 默认入口
 * `artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest`
-  当前 alias，指向 `hk_all_2000_20260318_ex_factors_full_market_latest`
+  当前 alias，指向 `hk_all_2000_20260326_ex_factors_full_market_latest`
 * `artifacts/assets/rqdata/hk/ex_factors/hk_all_20260319_20260326_ex_factors_patch_20260326/`
-  当前全市场 ex-factor 尾部 patch；`10` symbols、`11` 行
+  当前全市场 ex-factor 尾部 patch；`10` symbols、`11` 行，已本地并回 canonical snapshot
 * `artifacts/assets/rqdata/hk/dividends/hk_all_dividends_latest`
-  当前 alias，指向 `hk_all_2000_20260318_dividends_full_market_latest`
+  当前 alias，指向 `hk_all_2000_20260326_dividends_full_market_latest`
 * `artifacts/assets/rqdata/hk/dividends/hk_all_20260319_20260326_dividends_patch_20260326/`
-  当前全市场 dividends 尾部 patch；`181` symbols、`186` 行
+  当前全市场 dividends 尾部 patch；`181` symbols、`186` 行，已本地并回 canonical snapshot
 * `artifacts/assets/rqdata/hk/shares/hk_all_shares_latest`
-  当前 alias，指向 `hk_all_2000_20260318_shares_full_market_latest`
+  当前 alias，指向 `hk_all_2000_20260326_shares_full_market_latest`
 * `artifacts/assets/rqdata/hk/shares/hk_all_20260319_20260326_shares_patch_20260326_v2/`
-  当前全市场 shares 尾部 patch；`2724` symbols、`62,787` 行
-* `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260324_valuation_full_market_latest`
-  当前全市场 valuation raw mirror；`3204` symbols、`10,978,716` 行、约 `196 MB`
+  当前全市场 shares 尾部 patch；`2724` symbols、`62,787` 行，已本地并回 canonical snapshot
+* `artifacts/assets/rqdata/hk/valuation/hk_all_valuation_latest`
+  当前 valuation alias，指向 `hk_all_2000_20260326_valuation_full_market_latest`
+* `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260326_valuation_full_market_latest`
+  当前全市场 valuation raw mirror；`3204` symbols、`10,984,164` 行
 * `artifacts/assets/rqdata/hk/valuation/hk_all_20260325_20260326_valuation_patch_20260326/`
-  当前全市场 valuation 尾部 patch；`2725` symbols、`5,448` 行
+  当前全市场 valuation 尾部 patch；`2725` symbols、`5,448` 行，已本地并回 canonical snapshot
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest`
   当前 alias，指向 `hk_all_2000_20260318_industry_changes_full_market_latest`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet`
-  当前研究最适合直接 join 的月频行业标签；`2026-03-25` 已重建，当前最大 `trade_date=2026-03-18`
+  当前研究最适合直接 join 的月频行业标签；`2026-03-27` 已重建，当前最大 `trade_date=2026-03-26`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_d.parquet`
-  日频标签；`2026-03-25` 已重建，当前最大 `trade_date=2026-03-18`
+  日频标签；`2026-03-27` 已重建，当前最大 `trade_date=2026-03-26`
 * `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_q.parquet`
-  季频标签；`2026-03-25` 已重建，当前最大 `trade_date=2026-03-18`
+  季频标签；`2026-03-27` 已重建，当前最大 `trade_date=2026-03-26`
 * `artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest`
   当前 `hk_connect` 范围的 southbound canonical snapshot；`2026-03-25` 的 manifest 已明确记录 base raw snapshot 与 `2026-03-19` 到 `2026-03-24` tail patch 的本地合并结果
   `2026-03-25` 到 `2026-03-26` 这段当天尝试过再次 patch，但当前命令返回 `No trading dates resolved for southbound mirroring.`，所以本地稳定入口仍停在 `2026-03-24`
@@ -193,9 +195,9 @@
   `137` 个 rebalance date
   历史并集 `222` symbols
 * `artifacts/assets/universe/hk_all_full_by_date.csv`
-  `2000-02-29` 到 `2026-03-18`
+  `2000-02-29` 到 `2026-03-26`
   `314` 个 rebalance date
-  历史并集 `3190` symbols
+  历史并集 `3195` symbols
 
 ### 当前保留但不是默认入口的有效目录
 
@@ -213,8 +215,8 @@
   更新到 `date=20260324` 的 `hk_connect` starter 增量；目录下已经有 `pipeline_fundamentals.parquet`
 * `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_portable_bundle_20260324/`
   `financial_details` 的试验性便携打包目录；说明这条线还在推进，但不改变“仍非主线 fundamentals”的判断
-* `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260324_valuation_full_market_latest/`
-  当前全市场日频估值镜像；适合长期归档 provider 口径，但研究主线仍优先 runtime `provider_overlay`
+* `artifacts/assets/rqdata/hk/valuation/hk_all_valuation_latest`
+  当前全市场日频估值镜像 alias；适合长期归档 provider 口径，但研究主线仍优先 runtime `provider_overlay`
 * `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260319_research_by_date.csv`
   对应上面全市场 starter 增量派生出的 research universe
 * `artifacts/assets/universe/hk_all_probe_2025q4_2026q1_starter_20260324_research_by_date.csv`
@@ -290,7 +292,7 @@
 补充：
 
 * 当前全市场日线 snapshot 的 query 范围是 `3212` symbols，最终 `3203` symbols 有值。
-* 日期范围是 `2000-01-04` 到 `2026-03-18`。
+* 日期范围是 `2000-01-04` 到 `2026-03-26`。
 * `hk_connect` 的独立日线 snapshot 也还在本地，但已经不是默认入口。
 * `hk_connect_full_by_date.csv` 已在 `2026-03-18` 生成到最近完整 rebalance date `2026-03-17`。
 * `hk_connect_full_research_by_date.csv` 当前覆盖 `904` 个带本地 PIT flat fundamentals 的 symbol。
@@ -384,11 +386,11 @@
   `artifacts/assets/rqdata/hk/dividends/hk_all_dividends_latest`
   `artifacts/assets/rqdata/hk/shares/hk_all_shares_latest`
 * `valuation`
-  `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260324_valuation_full_market_latest`
+  `artifacts/assets/rqdata/hk/valuation/hk_all_valuation_latest`
   这是 provider 口径的 `market_cap / pe_ttm / pb` 离线冻存，不是默认 pipeline 入口
 * `industry`
   `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet`
-  当前已对齐到 `hk_all_daily_latest` 的最近日期 `2026-03-18`
+  当前已对齐到 `hk_all_daily_latest` 的最近日期 `2026-03-26`
 * `full-market universe`
   `artifacts/assets/universe/hk_all_full_by_date.csv`
 

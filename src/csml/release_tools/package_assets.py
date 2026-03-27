@@ -28,12 +28,12 @@ PART_CHOICES = (
 
 PRESETS = {
     "hk_full": {
-        "daily_snapshot": "hk_all_2000_20260312_daily_final_latest",
+        "daily_snapshot": "hk_all_2000_20260326_daily_final_latest",
         "instruments_file": "hk_all_instruments_20260318.parquet",
         "pit_snapshot": "hk_all_2000_2025_full_market_latest",
-        "ex_factors_snapshot": "hk_all_2000_20260318_ex_factors_full_market_latest",
-        "dividends_snapshot": "hk_all_2000_20260318_dividends_full_market_latest",
-        "shares_snapshot": "hk_all_2000_20260318_shares_full_market_latest",
+        "ex_factors_snapshot": "hk_all_2000_20260326_ex_factors_full_market_latest",
+        "dividends_snapshot": "hk_all_2000_20260326_dividends_full_market_latest",
+        "shares_snapshot": "hk_all_2000_20260326_shares_full_market_latest",
         "exchange_rate_snapshot": "hk_exchange_rate_probe_20250210_20250216",
         "southbound_snapshot": "hk_connect_southbound_latest",
         "financial_details_snapshot": "hk_financial_details_hk_all3203_superset_2000_2025_20260319",
@@ -43,7 +43,7 @@ PRESETS = {
         "universe_meta": "hk_all_full_by_date.meta.yml",
     },
     "hk_connect": {
-        "daily_snapshot": "hk_all_2000_20260312_daily_final_latest",
+        "daily_snapshot": "hk_all_2000_20260326_daily_final_latest",
         "instruments_file": "hk_connect_full_20260318.parquet",
         "pit_snapshot": "hk_connect_full_2000_2025_full_latest",
         "ex_factors_snapshot": None,
