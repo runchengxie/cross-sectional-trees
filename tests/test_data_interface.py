@@ -8,7 +8,7 @@ from csml.data_interface import DataInterface
 def test_data_interface_rejects_non_hk_market(tmp_path):
     with pytest.raises(SystemExit, match="supports only market='hk'"):
         DataInterface(
-            market="cn",
+            market="legacy-market",
             data_cfg={"provider": "rqdata", "retry": {"max_attempts": 1}},
             cache_dir=tmp_path / "cache",
         )
@@ -18,7 +18,7 @@ def test_data_interface_rejects_non_rqdata_provider(tmp_path):
     with pytest.raises(SystemExit, match="supports only provider='rqdata'"):
         DataInterface(
             market="hk",
-            data_cfg={"provider": "tushare", "retry": {"max_attempts": 1}},
+            data_cfg={"provider": "legacy-provider", "retry": {"max_attempts": 1}},
             cache_dir=tmp_path / "cache",
         )
 

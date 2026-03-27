@@ -344,7 +344,10 @@ def _load_research_panel(
     if drop_st or min_listed_days > 0:
         try:
             if market != "cn" and drop_st:
-                logger.info("drop_st is CN-specific; attempting basic data for market '%s'.", market)
+                logger.info(
+                    "drop_st uses a legacy ST-name heuristic; attempting basic data for market '%s'.",
+                    market,
+                )
             basic_df = data_interface.load_basic(symbols_for_non_price)
             if basic_df is not None and not basic_df.empty:
                 basic_df = ensure_symbol_columns(basic_df, context="Basic data")

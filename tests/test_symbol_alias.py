@@ -25,15 +25,15 @@ def test_load_universe_by_date_accepts_stock_ticker_column(tmp_path):
     pd.DataFrame(
         {
             "trade_date": ["20200102", "20200102", "20200103"],
-            "stock_ticker": ["AAA", "AAA", "BBB"],
+            "stock_ticker": ["5", "5", "11"],
             "selected": [1, 1, 0],
         }
     ).to_csv(path, index=False)
 
-    out = pipeline.load_universe_by_date(path, market="us")
+    out = pipeline.load_universe_by_date(path, market="hk")
     assert list(out.columns) == ["trade_date", "symbol"]
     assert len(out) == 1
-    assert out.iloc[0]["symbol"] == "AAA"
+    assert out.iloc[0]["symbol"] == "00005.HK"
 
 
 def test_load_universe_by_date_parses_integer_yyyymmdd_dates(tmp_path):
