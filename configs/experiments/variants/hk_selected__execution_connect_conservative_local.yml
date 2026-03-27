@@ -1,0 +1,19 @@
+## Monthly HK selected baseline with local assets and a stricter execution
+## profile aligned with the current HK connect research pool calibration.
+extends:
+  - configs/experiments/variants/hk_selected__execution_stress_local.yml
+
+data:
+  cache_tag: hk_selected_exec_connect_conservative_local_v1
+
+eval:
+  run_name: hk_sel_xgb_reg_exec_connect_conservative_local
+
+backtest:
+  execution:
+    slippage_model:
+      base_bps: 4
+      impact_bps: 50
+      max_participation: 0.05
+    constraints:
+      min_amount: 20000000

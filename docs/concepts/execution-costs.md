@@ -33,6 +33,12 @@
 
 所以目前的状态是容量 / 冲击 stress model。
 
+仓库当前已经提供三条可直接复用的月频 HK execution 配置：
+
+* [hk_selected__execution_stress_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_stress_local.yml)：本地资产 + `adv20_amount` + 较宽松的 stress baseline。
+* [hk_selected__execution_balanced_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_balanced_local.yml)：按当前 `5m` 校准结果收口后的 balanced 档。
+* [hk_selected__execution_connect_conservative_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)：更贴近港股通研究池的保守档。
+
 ## 为什么现在建议用 `adv20_amount`
 
 如果 `entry_policy.price_col=open`，而 `slippage_model.amount_col=amount` 或 `constraints.amount_col=amount`，那就会拿同一天的日成交额去约束开盘成交。
@@ -111,8 +117,9 @@
 1. 固定 `ex_factors / dividends / shares` 这组轻量原料层。
 2. 用真实成交回报校准 `buy_bps / sell_bps / base_bps / impact_bps`。
 3. 回测层优先用 `adv20_amount` 或 `medadv20_amount`，避免 `open + same-day amount`。
-4. 如果误差主要来自执行假设，再补精选池或全市场的 `5m` 数据做经验滑点校准。
-5. 只有在策略明显进入容量或盘中执行问题时，才考虑更细的 `1m`、tick 或盘口数据。
+4. 若只是先把研究线做对，优先从上面三条 execution variants 里挑一条，而不是继续用 flat `transaction_cost_bps`。
+5. 如果误差主要来自执行假设，再补精选池或全市场的 `5m` 数据做经验滑点校准。
+6. 只有在策略明显进入容量或盘中执行问题时，才考虑更细的 `1m`、tick 或盘口数据。
 
 ## 最后一句
 

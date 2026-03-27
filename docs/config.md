@@ -156,7 +156,7 @@ backtest:
       short_borrow_bps_per_day: 0.5
     slippage_model:
       name: participation    # none / bps / participation
-      amount_col: amount
+      amount_col: adv20_amount
       base_bps: 2
       impact_bps: 20
       portfolio_value: 1000000
@@ -164,7 +164,7 @@ backtest:
     constraints:
       min_price: 5
       min_amount: 1000000
-      amount_col: amount
+      amount_col: adv20_amount
 ```
 
 ### `live.alloc_hk`
@@ -344,6 +344,10 @@ logging:
 * `slippage_model.name=bps` 表示固定单边滑点；`participation` 会按 `trade_weight * portfolio_value / amount_col` 估计冲击成本。
 * `constraints.min_amount` 和 `slippage_model.amount_col` 读取的是仓库标准化后的列名；常见 provider 原始字段如 `total_turnover` 会先映射成 `amount`。
 * 若想避免 `open` 入场直接读取同日总成交额带来的轻微 look-ahead，可把 `amount_col` 设成派生流动性代理列，例如 `adv20_amount` 或 `medadv20_amount`；它们分别表示按 symbol 计算、排除当日后的过去 `20` 个交易日平均/中位成交额。
+* 当前仓库里已经给出三条可直接复用的月频 HK execution variants：
+  [hk_selected__execution_stress_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_stress_local.yml)、
+  [hk_selected__execution_balanced_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_balanced_local.yml)、
+  [hk_selected__execution_connect_conservative_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)。
 
 ### `logging`
 

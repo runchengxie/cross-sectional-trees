@@ -1,11 +1,11 @@
-## Monthly HK selected baseline with local RQData assets and conservative
+## Monthly HK selected baseline with local RQData assets and lagged-ADV
 ## execution stress assumptions. Keep the signal recipe unchanged; only make
-## the data path offline-friendly and the execution layer more conservative.
+## the data path offline-friendly and avoid same-day amount look-ahead.
 extends:
   - configs/experiments/baseline/hk_selected.yml
 
 data:
-  cache_tag: hk_selected_exec_stress_local_v2
+  cache_tag: hk_selected_exec_stress_adv20_local_v3
   rqdata:
     daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
     instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
@@ -20,7 +20,7 @@ fundamentals:
   log_market_cap_col: log_mcap
 
 eval:
-  run_name: hk_sel_xgb_reg_exec_stress_local
+  run_name: hk_sel_xgb_reg_exec_stress_adv20_local
 
 backtest:
   execution:
@@ -36,7 +36,7 @@ backtest:
       sell_bps: 25
     slippage_model:
       name: participation
-      amount_col: amount
+      amount_col: adv20_amount
       base_bps: 2
       impact_bps: 20
       portfolio_value: 1000000
@@ -45,4 +45,4 @@ backtest:
     constraints:
       min_price: 5
       min_amount: 1000000
-      amount_col: amount
+      amount_col: adv20_amount

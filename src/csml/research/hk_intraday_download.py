@@ -14,6 +14,7 @@ from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_re
 REPO_ROOT = find_repo_root(__file__)
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "cache" / "intraday"
 DEFAULT_FIELDS = ("open", "high", "low", "close", "volume", "total_turnover")
+ADJUST_TYPE_CHOICES = ("none", "pre", "post", "pre_volume", "post_volume")
 
 
 def resolve_repo_path(path_text: str | Path) -> Path:
@@ -188,6 +189,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--end-date", required=True, help="End date, e.g. 20260326.")
     parser.add_argument("--frequency", default="5m", help="Intraday frequency. Default: 5m.")
     parser.add_argument(
+        "--adjust-type",
+        default="pre",
+        choices=ADJUST_TYPE_CHOICES,
+        help="RQData adjust_type for intraday bars. Default: pre.",
+    )
+    parser.add_argument(
         "--fields",
         nargs="+",
         default=list(DEFAULT_FIELDS),
@@ -277,6 +284,7 @@ def main() -> None:
                 args.end_date,
                 frequency=args.frequency,
                 fields=list(args.fields),
+                adjust_type=args.adjust_type,
                 market="hk",
                 expect_df=True,
             )
@@ -309,6 +317,7 @@ def main() -> None:
         "start_date": str(args.start_date),
         "end_date": str(args.end_date),
         "frequency": str(args.frequency),
+        "adjust_type": str(args.adjust_type),
         "fields": list(args.fields),
         "rows": int(total_rows),
         "columns": merged_columns,

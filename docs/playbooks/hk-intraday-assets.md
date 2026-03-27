@@ -79,6 +79,7 @@
 * 下载时每个 batch 先落到 `*.parts/batch_XXXX.parquet`
 * `--resume` 会跳过已经存在的 batch part
 * 最后再把 part 文件流式合并成单个 parquet
+* 现在也支持 `--adjust-type none|pre|post|pre_volume|post_volume`；后续如果要补更严肃的盘中执行样本，优先考虑单独下载 `--adjust-type none`
 
 当前已经保留的 checkpoint 目录：
 
@@ -163,9 +164,10 @@
   `buy_open_to_vwap_bps` 中位数约 `1.75 bps`，`p75` 约 `146.91 bps`
 * 两条线在 `50M` 档都落到 `buy_open_to_vwap_bps` 中位数约 `4` 到 `5 bps`，但 `p90` 仍在 `339` 到 `370 bps`
 
-所以当前更适合落成三档 execution 候选，而不是假装自己已经做完 broker TCA：
+所以当前更适合落成三档 execution 候选，而不是假装自己已经做完 broker TCA。仓库里现在已经落成了两条 calibrated 入口，加上一条 lagged-ADV stress baseline：
 
 * `balanced`
+  对应 [hk_selected__execution_balanced_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_balanced_local.yml)
 
 ```yaml
 backtest:
@@ -185,6 +187,7 @@ backtest:
 ```
 
 * `connect_conservative`
+  对应 [hk_selected__execution_connect_conservative_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)
 
 ```yaml
 backtest:
@@ -203,7 +206,8 @@ backtest:
       amount_col: adv20_amount
 ```
 
-* `stress`
+* `stress baseline`
+  对应 [hk_selected__execution_stress_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_stress_local.yml)
 
 ```yaml
 backtest:
@@ -211,14 +215,14 @@ backtest:
     slippage_model:
       name: participation
       amount_col: adv20_amount
-      base_bps: 8
-      impact_bps: 80
+      base_bps: 2
+      impact_bps: 20
       portfolio_value: 1000000
       power: 0.5
-      max_participation: 0.03
+      max_participation: 0.1
     constraints:
       min_price: 5
-      min_amount: 50000000
+      min_amount: 1000000
       amount_col: adv20_amount
 ```
 
@@ -226,6 +230,7 @@ backtest:
 
 * 这里的 `base_bps` 对齐的是研究池过滤后的 `open -> VWAP proxy` 中位数量级。
 * `impact_bps` 不是直接拟合 `p75/p90`，而是把这批分钟线结果当成“压力带”来定一个更保守的 participation 曲线。
+* `stress baseline` 保留得更宽松一些，适合先替代 flat `25bps`；如果你要直接上校准后的研究线，优先从 `balanced` 或 `connect_conservative` 开始。
 * 在当前 `portfolio_value=1m`、`top_k=20` 的设定下，单笔 trade participation 通常很低，真正决定结果的大多还是 `base_bps` 和 `min_amount`；如果你要做容量分析，先改 `portfolio_value`，再谈 `impact_bps`。
 
 ## quota 现实
