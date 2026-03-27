@@ -654,11 +654,26 @@ uv run python -m csml.release_tools.package_assets \
 
 这条链路的特点：
 
-* 会把资产拆成 `daily / instruments / pit / reference / exchange_rate / southbound / financial_details / industry / universe` 这些 part
+* 默认会把资产拆成 `daily / instruments / pit / reference / exchange_rate / southbound / financial_details / industry / universe` 这些 part
+* `announcement` 也支持单独打包，但默认不进包；只有显式传 `--part announcement --announcement-snapshot <snapshot-or-path>` 才会生成
 * 每个 part 都有自己的 `manifest.yml`
 * part 内部会生成 `latest` 软链接，方便下游配置直接引用
 * 只想打核心层时，可以显式传 `--part daily --part instruments --part pit --part universe`
+* 当前 preset 不会默认绑定 `announcement_snapshot`，因为仓库里现成的公告镜像还是 `hk_selected` 小范围补充层，不应自动混进 `hk_full` / `hk_connect` 主链分发
 * 如果你不想带增强层，可以补 `--no-exchange-rate`、`--no-southbound`、`--no-financial-details`
+
+单独打 `announcement` 的例子：
+
+```bash
+uv run python -m csml.release_tools.package_assets \
+  --name hk_connect_refresh \
+  --as-of 20260326 \
+  --part announcement \
+  --announcement-snapshot artifacts/assets/rqdata/hk/announcement/hk_selected_2000_20260324_announcement_latest \
+  --dest artifacts/releases/assets/hk_connect_refresh_20260326_announcement_stage \
+  --mode copy \
+  --overwrite
+```
 
 如果你要直接打成 GitHub Release 资产，再用：
 
@@ -678,6 +693,7 @@ uv run python -m csml.release_tools.release_assets \
 * 它们不会自动跟随 `hk_all_daily_latest` 这类 alias
 * 如果你要分发当前工作区真正正在使用的 snapshot，最好把关键快照名写死在命令里
 * `exchange_rate` 尤其要显式确认，因为当前稳定可用的是短窗 probe，不是长窗 `latest`
+* `announcement` 也建议显式传 `--announcement-snapshot`，不要假设 preset 会自动带上它
 
 ### 3. 历史 run 和数据资产是两条不同流程
 

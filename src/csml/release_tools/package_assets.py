@@ -14,7 +14,7 @@ from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_re
 
 REPO_ROOT = find_repo_root(__file__)
 ASSETS_ROOT = REPO_ROOT / "artifacts" / "assets"
-PART_CHOICES = (
+AVAILABLE_PART_CHOICES = (
     "daily",
     "instruments",
     "pit",
@@ -22,8 +22,12 @@ PART_CHOICES = (
     "exchange_rate",
     "southbound",
     "financial_details",
+    "announcement",
     "industry",
     "universe",
+)
+DEFAULT_PART_CHOICES = tuple(
+    part_name for part_name in AVAILABLE_PART_CHOICES if part_name != "announcement"
 )
 
 PRESETS = {
@@ -37,6 +41,7 @@ PRESETS = {
         "exchange_rate_snapshot": "hk_exchange_rate_probe_20250210_20250216",
         "southbound_snapshot": "hk_connect_southbound_latest",
         "financial_details_snapshot": "hk_financial_details_hk_all3203_superset_2000_2025_20260319",
+        "announcement_snapshot": None,
         "industry_changes_snapshot": "hk_all_2000_20260318_industry_changes_full_market_latest",
         "universe_by_date": "hk_all_full_by_date.csv",
         "universe_symbols": "hk_all_full_symbols.txt",
@@ -52,6 +57,7 @@ PRESETS = {
         "exchange_rate_snapshot": "hk_exchange_rate_probe_20250210_20250216",
         "southbound_snapshot": "hk_connect_southbound_latest",
         "financial_details_snapshot": "hk_financial_details_probe_connect_union967_2000_2025_20260319",
+        "announcement_snapshot": None,
         "industry_changes_snapshot": None,
         "universe_by_date": "hk_connect_full_by_date.csv",
         "universe_symbols": "hk_connect_full_symbols.txt",
@@ -168,6 +174,11 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         if args.no_financial_details
         else (args.financial_details_snapshot or preset.get("financial_details_snapshot"))
     )
+    announcement_snapshot = (
+        None
+        if args.no_announcement
+        else (args.announcement_snapshot or preset.get("announcement_snapshot"))
+    )
     industry_changes_snapshot = (
         None
         if args.no_industry
@@ -226,6 +237,14 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         if financial_details_snapshot
         else None
     )
+    announcement_dir = (
+        resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "announcement",
+            announcement_snapshot,
+        )
+        if announcement_snapshot
+        else None
+    )
     industry_changes_dir = (
         resolve_snapshot_path(
             ASSETS_ROOT / "rqdata" / "hk" / "industry_changes",
@@ -255,6 +274,8 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         ensure_exists(southbound_dir, "Southbound snapshot directory")
     if financial_details_dir:
         ensure_exists(financial_details_dir, "Financial-details snapshot directory")
+    if announcement_dir:
+        ensure_exists(announcement_dir, "Announcement snapshot directory")
     if industry_changes_dir:
         ensure_exists(industry_changes_dir, "Industry changes snapshot directory")
     ensure_exists(universe_by_date_path, "Universe by-date file")
@@ -272,6 +293,7 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         "exchange_rate_dir": exchange_rate_dir,
         "southbound_dir": southbound_dir,
         "financial_details_dir": financial_details_dir,
+        "announcement_dir": announcement_dir,
         "industry_changes_dir": industry_changes_dir,
         "universe_by_date_path": universe_by_date_path,
         "universe_symbols_path": universe_symbols_path,
@@ -289,6 +311,7 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
     exchange_rate_dir = resolved["exchange_rate_dir"]
     southbound_dir = resolved["southbound_dir"]
     financial_details_dir = resolved["financial_details_dir"]
+    announcement_dir = resolved["announcement_dir"]
     industry_changes_dir = resolved["industry_changes_dir"]
     universe_by_date_path = resolved["universe_by_date_path"]
     universe_symbols_path = resolved["universe_symbols_path"]
@@ -507,6 +530,25 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
             "summary": {"snapshot": financial_details_dir.name},
         }
 
+    if announcement_dir:
+        parts["announcement"] = {
+            "description": "Announcement raw snapshot directory.",
+            "entries": [
+                _part_entry(
+                    "announcement",
+                    announcement_dir,
+                    f"rqdata/hk/announcement/{announcement_dir.name}",
+                )
+            ],
+            "latest_links": [
+                _latest_link(
+                    "rqdata/hk/announcement/latest",
+                    f"rqdata/hk/announcement/{announcement_dir.name}",
+                )
+            ],
+            "summary": {"snapshot": announcement_dir.name},
+        }
+
     if industry_changes_dir:
         parts["industry"] = {
             "description": "Industry changes snapshot directory.",
@@ -530,7 +572,7 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
 
 
 def _selected_parts(requested_parts: list[str], available_parts: dict[str, dict]) -> list[str]:
-    selected = list(dict.fromkeys(requested_parts or PART_CHOICES))
+    selected = list(dict.fromkeys(requested_parts or DEFAULT_PART_CHOICES))
     missing = [part for part in selected if part not in available_parts]
     if missing:
         raise SystemExit(f"Requested parts are not available under the current preset/settings: {missing}")
@@ -625,7 +667,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=["copy", "symlink"], default="copy")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite destination.")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--part", action="append", choices=PART_CHOICES, default=[], help="Only stage selected part(s). Repeatable.")
+    parser.add_argument(
+        "--part",
+        action="append",
+        choices=AVAILABLE_PART_CHOICES,
+        default=[],
+        help="Only stage selected part(s). Repeatable.",
+    )
     parser.add_argument("--no-pit", action="store_true", help="Skip PIT assets.")
     parser.add_argument("--no-reference", action="store_true", help="Skip reference assets (ex_factors/dividends/shares).")
     parser.add_argument("--as-of", dest="as_of", default=None)
@@ -638,6 +686,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exchange-rate-snapshot", default=None)
     parser.add_argument("--southbound-snapshot", default=None)
     parser.add_argument("--financial-details-snapshot", default=None)
+    parser.add_argument("--announcement-snapshot", default=None)
     parser.add_argument("--industry-changes-snapshot", default=None)
     parser.add_argument("--universe-by-date", default=None)
     parser.add_argument("--universe-symbols", default=None)
@@ -649,6 +698,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip financial_details assets.",
     )
+    parser.add_argument("--no-announcement", action="store_true", help="Skip announcement assets.")
     parser.add_argument("--no-industry", action="store_true", help="Skip industry_changes assets.")
     args = parser.parse_args(argv)
 

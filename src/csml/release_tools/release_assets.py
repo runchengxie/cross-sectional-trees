@@ -220,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             "exchange_rate",
             "southbound",
             "financial_details",
+            "announcement",
             "industry",
             "universe",
         ),

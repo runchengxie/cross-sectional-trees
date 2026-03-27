@@ -32,7 +32,7 @@
 
 仓库另外还提供两组模块级分发工具：
 
-* `python -m csml.release_tools.package_assets` / `python -m csml.release_tools.release_assets`：把 HK 数据资产按 part 打包并上传到 GitHub Releases
+* `python -m csml.release_tools.package_assets` / `python -m csml.release_tools.release_assets`：把 HK 数据资产按 part 打包并上传到 GitHub Releases；默认覆盖主线 9 个 part，也支持显式附加 `announcement` 这类补充层
 * `python -m csml.release_tools.package_runs` / `python -m csml.release_tools.release_runs`：把历史 run 结果按 run 拆包并上传到 GitHub Releases，支持 `light / milestone / full` 三档 profile
 
 它们不是 `csml` CLI 子命令，主要用于私有备份、跨机器搬运和 Release 分发。
