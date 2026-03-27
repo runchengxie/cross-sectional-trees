@@ -64,6 +64,8 @@ csml run --config default
 scripts/dev/run_tests.sh all
 ```
 
+`scripts/dev/run_tests.sh all` 只覆盖 `pytest` 主测试集，不等于完整复现 CI。
+
 常见用法：
 
 ```bash
@@ -72,6 +74,9 @@ uv run pytest tests/test_metrics.py
 
 # 日常快回归
 scripts/dev/run_tests.sh fast
+
+# `fast` 的别名
+scripts/dev/run_tests.sh unit
 
 # 较重的离线回归
 scripts/dev/run_tests.sh slow
@@ -88,8 +93,8 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 
 说明：
 
-* `scripts/dev/run_tests.sh integration` 跑的是 `@pytest.mark.integration` 的跨模块流程。
-* `tests/test_provider_integration.py` 也带 `integration` 标记，但未设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时会自动 skip，所以默认 CI 的 `integration` job 仍以离线集成为主。
+* `scripts/dev/run_tests.sh integration` 跑的是 `@pytest.mark.integration` 的跨模块流程，默认仍以离线跨模块集成为主。
+* `tests/test_provider_integration.py` 也带 `integration` 标记，但未设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时会自动 skip，所以“integration” 不等于真实 provider 在线联调。
 * 文档引用和公开入口契约现在也有测试兜底，主要看 `tests/test_docs_contracts.py` 和 `tests/test_run_tests_script.py`。
 
 ## 测试分层约定
@@ -128,6 +133,30 @@ CI 默认拆成七段：
 1. `stats-extra-smoke`：安装 `--extra stats`，验证 `scipy` 和 `summarize_ic` 的最小调用
 
 这样可以把默认离线回归、较重离线回归、端到端流程，以及 optional extra 的安装/导入烟雾检查分开看。排查失败时，先在本地复现对应那一段。
+
+如果你要本地尽量贴近 CI，除了 `all` / `fast` / `slow` / `integration`，还需要单独跑这四段 optional extra smoke：
+
+```bash
+# rqdata-extra-smoke
+uv sync --locked --extra dev --extra rqdata
+uv run python -c "import rqdatac; print(rqdatac.__name__)"
+uv run csml rqdata --help > /dev/null
+
+# duckdb-extra-smoke
+uv sync --locked --extra dev --extra duckdb
+uv run python -c "import duckdb; print(duckdb.__version__)"
+uv run csml data query --help > /dev/null
+
+# liveops-hk-extra-smoke
+uv sync --locked --extra dev --extra liveops-hk
+uv run python -c "import openpyxl; print(openpyxl.__version__)"
+uv run csml alloc-hk --help > /dev/null
+
+# stats-extra-smoke
+uv sync --locked --extra dev --extra stats
+uv run python -c "import scipy; print(scipy.__version__)"
+uv run python -c "import pandas as pd; from csml.metrics import summarize_ic; series = pd.Series([0.1, -0.1, 0.2]); stats = summarize_ic(series); assert 'p_value' in stats and stats['p_value'] == stats['p_value']"
+```
 
 最近几轮和 HK + RQData 相关的高频回归，建议至少覆盖这组：
 

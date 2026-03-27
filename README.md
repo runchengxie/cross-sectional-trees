@@ -1,6 +1,6 @@
 # cross-sectional-machine-learning
 
-使用 RQData 日线数据做港股截面因子研究、评估和持仓快照。当前仓库边界是 `HK-only + RQData-only + 保留本地资产直读`。
+使用 RQData 日线数据做港股截面因子研究、评估和持仓快照。当前正式支持的数据输入与研究主链边界是 `market=hk + data.provider=rqdata + 可选本地 HK 资产直读`。
 
 ## 这项目是干嘛的
 

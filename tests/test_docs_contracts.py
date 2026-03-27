@@ -28,6 +28,26 @@ EXPECTED_CAPABILITY_TOKENS = [
     "`csml rqdata ...`",
     "`csml universe ...`",
 ]
+EXPECTED_TEST_WORKFLOW_JOBS = {
+    "fast",
+    "slow",
+    "integration",
+    "rqdata-extra-smoke",
+    "duckdb-extra-smoke",
+    "liveops-hk-extra-smoke",
+    "stats-extra-smoke",
+}
+EXPECTED_TEST_WORKFLOW_SCRIPT_MODES = {"fast", "slow", "integration"}
+EXPECTED_DEV_TEST_TOKENS = [
+    "scripts/dev/run_tests.sh all",
+    "scripts/dev/run_tests.sh fast",
+    "scripts/dev/run_tests.sh unit",
+    "scripts/dev/run_tests.sh slow",
+    "scripts/dev/run_tests.sh integration",
+    "scripts/dev/run_tests.sh coverage",
+    "CSML_RUN_PROVIDER_INTEGRATION=1",
+    "不等于完整复现 CI",
+]
 EXPECTED_RQDATA_OUTPUT_DATASETS = {
     "daily",
     "pit_financials",
@@ -131,6 +151,15 @@ def _extract_outputs_dataset_bullets(text: str) -> set[str]:
     return set(datasets)
 
 
+def _extract_workflow_job_names(text: str) -> set[str]:
+    jobs_text = text.split("\njobs:\n", 1)[1]
+    return set(re.findall(r"^  ([a-zA-Z0-9_-]+):$", jobs_text, flags=re.MULTILINE))
+
+
+def _extract_run_tests_modes(text: str) -> set[str]:
+    return set(re.findall(r"\./scripts/dev/run_tests\.sh ([a-zA-Z0-9_-]+)", text))
+
+
 def test_markdown_relative_links_exist():
     repo_root = _repo_root()
     missing: dict[str, list[str]] = {}
@@ -195,3 +224,22 @@ def test_outputs_doc_lists_public_rqdata_output_datasets():
     outputs_text = (_repo_root() / "docs" / "outputs.md").read_text(encoding="utf-8")
     documented = _extract_outputs_dataset_bullets(outputs_text)
     assert documented == EXPECTED_RQDATA_OUTPUT_DATASETS
+
+
+def test_tests_workflow_uses_expected_jobs_and_run_tests_modes():
+    workflow_text = (_repo_root() / ".github" / "workflows" / "tests.yml").read_text(
+        encoding="utf-8"
+    )
+    assert _extract_workflow_job_names(workflow_text) == EXPECTED_TEST_WORKFLOW_JOBS
+    assert _extract_run_tests_modes(workflow_text) == EXPECTED_TEST_WORKFLOW_SCRIPT_MODES
+
+
+def test_dev_doc_covers_test_entrypoints_and_ci_contract():
+    dev_text = (_repo_root() / "docs" / "dev.md").read_text(encoding="utf-8")
+    missing_tokens = sorted(token for token in EXPECTED_DEV_TEST_TOKENS if token not in dev_text)
+    missing_jobs = sorted(
+        job_name for job_name in EXPECTED_TEST_WORKFLOW_JOBS if f"`{job_name}`" not in dev_text
+    )
+
+    assert missing_tokens == []
+    assert missing_jobs == []
