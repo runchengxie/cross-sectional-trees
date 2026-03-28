@@ -788,6 +788,11 @@ def resolve_runtime_settings(
     execution_cfg = (
         backtest_cfg.get("execution") if isinstance(backtest_cfg, Mapping) else None
     )
+    backtest_execution_source = (
+        "explicit_execution_config"
+        if isinstance(execution_cfg, Mapping) and bool(execution_cfg)
+        else "default_flat_cost"
+    )
     execution_model = build_execution_model(
         execution_cfg,
         default_cost_bps=backtest_cost_bps,
@@ -889,6 +894,7 @@ def resolve_runtime_settings(
         "EXECUTION_PRICING_COLS": execution_pricing_cols,
         "BACKTEST_COST_BPS_EFFECTIVE": backtest_cost_bps_effective,
         "BACKTEST_COST_BPS_REPORT": backtest_cost_bps_report,
+        "BACKTEST_EXECUTION_SOURCE": backtest_execution_source,
         "BACKTEST_TRADABLE_COL": backtest_tradable_col,
         "LIVE_ENABLED": live_enabled,
         "LIVE_AS_OF": live_as_of,

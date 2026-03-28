@@ -148,6 +148,7 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
 
     run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["data"]["price_col"] == "close"
     assert summary["data"]["min_symbols_per_date"] == 2
     assert summary["fundamentals"]["enabled"] is False
 
@@ -376,7 +377,10 @@ def test_pipeline_backtest_pricing_includes_execution_columns(tmp_path, monkeypa
         },
     }
 
-    _run_pipeline(tmp_path, monkeypatch, config, frames)
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames)
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["backtest"]["execution_source"] == "explicit_execution_config"
+    assert summary["backtest"]["execution"]["entry_policy"]["price_col"] == "open"
 
     pricing_df = captured["pricing_data"]
     assert pricing_df is not None
@@ -575,12 +579,17 @@ def test_pipeline_price_features_follow_price_col(tmp_path, monkeypatch):
 
     run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames)
     dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     aaa = dataset[dataset["symbol"] == "AAA"].sort_values("trade_date").reset_index(drop=True)
     probe_date = pd.Timestamp("2020-01-07")
     observed = float(aaa.loc[aaa["trade_date"] == probe_date, "sma_3"].iloc[0])
     assert observed == pytest.approx((3.0 + 4.0 + 5.0) / 3.0)
     assert float(aaa.loc[aaa["trade_date"] == probe_date, "close"].iloc[0]) == 100.0
     assert float(aaa.loc[aaa["trade_date"] == probe_date, "tr_close"].iloc[0]) == 5.0
+    assert summary["data"]["price_col"] == "tr_close"
+    assert summary["data"]["price_col_diagnostics"]["tr_close_source_counts"] == {
+        "input_frame": 3
+    }
 
 
 @pytest.mark.slow

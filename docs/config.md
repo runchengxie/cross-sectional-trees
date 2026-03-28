@@ -94,6 +94,7 @@ data:
 * 如果你希望 `data.price_col: tr_close`，并让价格类特征、标签、回测一起走总回报口径，推荐同时提供 `data.rqdata.ex_factors_dir`。
 * `tr_close` 会在读取 daily 数据后自动派生；原始 `close` 仍会保留在数据集中，方便对照和执行参考。
 * 若走 RQData 在线接口且显式设置 `data.rqdata.adjust_type: pre/post`，也可以把 provider 返回的调整后价格别名为 `tr_close`。
+* 若 `price_col=tr_close` 且本地 `ex_factors_dir` 已配置，但某些 symbol 缺少对应 ex-factor 行，run 日志会给出显式告警；`summary.json -> data -> price_col_diagnostics` 也会记录是 `local_ex_factors`、`provider_adjusted_price`、`input_frame`、`input_frame_missing_ex_factors` 还是 `close_fallback_missing_ex_factors`。
 
 ### 股票池
 
@@ -344,10 +345,12 @@ logging:
 * `slippage_model.name=bps` 表示固定单边滑点；`participation` 会按 `trade_weight * portfolio_value / amount_col` 估计冲击成本。
 * `constraints.min_amount` 和 `slippage_model.amount_col` 读取的是仓库标准化后的列名；常见 provider 原始字段如 `total_turnover` 会先映射成 `amount`。
 * 若想避免 `open` 入场直接读取同日总成交额带来的轻微 look-ahead，可把 `amount_col` 设成派生流动性代理列，例如 `adv20_amount` 或 `medadv20_amount`；它们分别表示按 symbol 计算、排除当日后的过去 `20` 个交易日平均/中位成交额。
-* 当前仓库里已经给出三条可直接复用的月频 HK execution variants：
+* `summary.json -> backtest -> execution_source` 会记录这次 run 是沿用 `default_flat_cost`，还是显式启用了 `backtest.execution` 的 `explicit_execution_config`。
+* 当前仓库里已经给出四条可直接复用的月频 HK execution variants：
   [hk_selected__execution_stress_local.yml](../configs/experiments/variants/hk_selected__execution_stress_local.yml)、
   [hk_selected__execution_balanced_local.yml](../configs/experiments/variants/hk_selected__execution_balanced_local.yml)、
-  [hk_selected__execution_connect_conservative_local.yml](../configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)。
+  [hk_selected__execution_connect_conservative_local.yml](../configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)、
+  [hk_selected__tr_close_execution_balanced_local.yml](../configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml)。
 
 ### `logging`
 

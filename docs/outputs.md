@@ -277,6 +277,19 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. 消费脚本建议优先读 `summary.json` 里保存的文件路径，不要硬编码文件名。
 1. `summary.json -> walk_forward.n_windows` 表示请求窗口数；`summary.json -> walk_forward.actual_windows` 表示按当前 `test_size / step_size / anchor_end` 真实放得下的窗口数，可能更小。
 
+`summary.json -> data` 现在会额外记录：
+
+* `price_col`：这次 run 训练标签、价格特征、回测和 benchmark 采用的主价格列。
+* `price_col_diagnostics`：当前主要用于 `tr_close` 口径审计，会记录 `tr_close_source_counts`，以及缺失/回退 symbol 的数量和样本。
+
+如果 `price_col=tr_close`，`price_col_diagnostics.tr_close_source_counts` 常见值包括：
+
+* `local_ex_factors`
+* `provider_adjusted_price`
+* `input_frame`
+* `input_frame_missing_ex_factors`
+* `close_fallback_missing_ex_factors`
+
 `summary.json -> backtest -> execution` 会记录回测侧实际生效的 execution 建模摘要，例如：
 
 ```json
@@ -314,6 +327,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 说明：
 
 1. 这里记录的是“实际生效值”，优先级高于你对默认行为的记忆。
+1. `summary.json -> backtest -> execution_source` 会标记这次 run 是沿用 `default_flat_cost`，还是显式启用了 `backtest.execution` 的 `explicit_execution_config`。
 1. `backtest.stats.avg_cost_drag` 现在表示总 execution drag；若需要拆分，查看同层 `avg_fee_drag` 与 `avg_slippage_drag`。
 
 `summary.json -> fundamentals` 当前会额外记录一层 `provider_overlay` 摘要：

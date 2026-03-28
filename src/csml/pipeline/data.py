@@ -91,6 +91,63 @@ def _derive_execution_liquidity_proxy_columns(
     return out
 
 
+def _default_tr_close_meta_for_frame(
+    symbol: str,
+    frame: pd.DataFrame,
+) -> dict[str, Any]:
+    source = "input_frame" if "tr_close" in frame.columns else "unavailable"
+    return {
+        "symbol": symbol,
+        "source": source,
+        "configured_local_ex_factors": False,
+        "local_ex_factors_available": None,
+        "adjust_type": None,
+    }
+
+
+def _sample_symbols(symbols: list[str], *, limit: int = 10) -> list[str]:
+    return sorted(symbols)[:limit]
+
+
+def _build_price_col_diagnostics(
+    *,
+    price_col: str,
+    symbol_metas: list[dict[str, Any]],
+) -> dict[str, Any]:
+    source_counts: dict[str, int] = {}
+    unavailable_symbols: list[str] = []
+    ex_factor_gap_symbols: list[str] = []
+    close_fallback_symbols: list[str] = []
+
+    for meta in symbol_metas:
+        source = str(meta.get("source") or "unavailable")
+        symbol = str(meta.get("symbol") or "").strip()
+        source_counts[source] = source_counts.get(source, 0) + 1
+        if not symbol:
+            continue
+        if source == "unavailable":
+            unavailable_symbols.append(symbol)
+        if source in {
+            "input_frame_missing_ex_factors",
+            "close_fallback_missing_ex_factors",
+        }:
+            ex_factor_gap_symbols.append(symbol)
+        if source == "close_fallback_missing_ex_factors":
+            close_fallback_symbols.append(symbol)
+
+    return {
+        "price_col": price_col,
+        "tr_close_source_counts": source_counts,
+        "tr_close_symbol_count": int(sum(source_counts.values())),
+        "tr_close_missing_symbol_count": len(unavailable_symbols),
+        "tr_close_missing_symbols_sample": _sample_symbols(unavailable_symbols),
+        "tr_close_ex_factor_gap_symbol_count": len(ex_factor_gap_symbols),
+        "tr_close_ex_factor_gap_symbols_sample": _sample_symbols(ex_factor_gap_symbols),
+        "tr_close_close_fallback_symbol_count": len(close_fallback_symbols),
+        "tr_close_close_fallback_symbols_sample": _sample_symbols(close_fallback_symbols),
+    }
+
+
 def _resolve_fundamentals_cache_dir(
     data_cfg: Mapping[str, Any],
     fundamentals_cfg: Mapping[str, Any],
@@ -303,6 +360,7 @@ def _load_research_panel(
         symbols_for_data.append(benchmark_symbol)
 
     frames = []
+    tr_close_symbol_metas: list[dict[str, Any]] = []
     for symbol in symbols_for_data:
         logger.info("Fetching daily data for %s (%s) ...", symbol, market)
         try:
@@ -311,6 +369,13 @@ def _load_research_panel(
             logger.warning("Skipping %s after retries (%s).", symbol, exc)
             data = pd.DataFrame()
         if not data.empty:
+            meta = data.attrs.get("tr_close_meta")
+            if isinstance(meta, Mapping):
+                tr_close_symbol_metas.append(dict(meta))
+            else:
+                tr_close_symbol_metas.append(
+                    _default_tr_close_meta_for_frame(symbol, data)
+                )
             frames.append(data)
 
     if not frames:
@@ -339,6 +404,41 @@ def _load_research_panel(
     symbols_for_non_price = [
         symbol for symbol in symbols_for_data if not benchmark_symbol or symbol != benchmark_symbol
     ]
+    modeling_symbol_set = set(symbols_for_non_price)
+    price_col_diagnostics = _build_price_col_diagnostics(
+        price_col=price_col,
+        symbol_metas=[
+            meta
+            for meta in tr_close_symbol_metas
+            if str(meta.get("symbol") or "").strip() in modeling_symbol_set
+        ],
+    )
+    tr_close_source_counts = price_col_diagnostics["tr_close_source_counts"]
+    if tr_close_source_counts and (
+        price_col == "tr_close" or any(source != "unavailable" for source in tr_close_source_counts)
+    ):
+        logger.info(
+            "Price column diagnostics for %s: tr_close sources=%s",
+            price_col,
+            tr_close_source_counts,
+        )
+    if price_col == "tr_close":
+        ex_factor_gap_symbols = price_col_diagnostics["tr_close_ex_factor_gap_symbols_sample"]
+        ex_factor_gap_count = int(price_col_diagnostics["tr_close_ex_factor_gap_symbol_count"])
+        if ex_factor_gap_count > 0:
+            logger.warning(
+                "price_col=tr_close could not use local ex_factors for %s symbols; "
+                "sample=%s. summary.json -> data -> price_col_diagnostics records the source mix.",
+                ex_factor_gap_count,
+                ex_factor_gap_symbols,
+            )
+        missing_symbol_count = int(price_col_diagnostics["tr_close_missing_symbol_count"])
+        if missing_symbol_count > 0:
+            logger.warning(
+                "price_col=tr_close but tr_close was unavailable for %s symbols; sample=%s.",
+                missing_symbol_count,
+                price_col_diagnostics["tr_close_missing_symbols_sample"],
+            )
 
     basic_df = None
     if drop_st or min_listed_days > 0:
@@ -579,6 +679,7 @@ def _load_research_panel(
         "label_horizon_mode": label_horizon_mode_effective,
         "label_next_rebalance_map": label_next_rebalance_map,
         "label_horizon_gap": label_horizon_gap,
+        "price_col_diagnostics": price_col_diagnostics,
     }
 
 

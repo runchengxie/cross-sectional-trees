@@ -9,22 +9,24 @@ LOCAL_CONFIG_REF_PATTERN = re.compile(r"configs/local/[A-Za-z0-9_./-]+\.yml")
 
 
 def _tracked_config_paths(repo_root: Path) -> set[str]:
+    working_tree_configs = {
+        path.relative_to(repo_root).as_posix()
+        for path in (repo_root / "configs").rglob("*.yml")
+    }
     if not (repo_root / ".git").exists():
-        return {
-            path.relative_to(repo_root).as_posix()
-            for path in (repo_root / "configs").rglob("*.yml")
-        }
+        return working_tree_configs
 
     result = subprocess.run(
         ["git", "-C", str(repo_root), "ls-files", "-z", "--", "configs"],
         check=True,
         capture_output=True,
     )
-    return {
+    tracked_configs = {
         path
         for path in result.stdout.decode("utf-8").split("\0")
         if path.endswith(".yml")
     }
+    return tracked_configs | working_tree_configs
 
 
 def test_catalog_entries_point_to_existing_configs():

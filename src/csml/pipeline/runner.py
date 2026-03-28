@@ -318,6 +318,7 @@ def run(config_ref: str | Path | None = None) -> None:
     EXECUTION_PRICING_COLS = runtime_settings["EXECUTION_PRICING_COLS"]
     BACKTEST_COST_BPS_EFFECTIVE = runtime_settings["BACKTEST_COST_BPS_EFFECTIVE"]
     BACKTEST_COST_BPS_REPORT = runtime_settings["BACKTEST_COST_BPS_REPORT"]
+    BACKTEST_EXECUTION_SOURCE = runtime_settings["BACKTEST_EXECUTION_SOURCE"]
     BACKTEST_TRADABLE_COL = runtime_settings["BACKTEST_TRADABLE_COL"]
     LIVE_ENABLED = runtime_settings["LIVE_ENABLED"]
     LIVE_AS_OF = runtime_settings["LIVE_AS_OF"]
@@ -480,6 +481,7 @@ def run(config_ref: str | Path | None = None) -> None:
     LABEL_HORIZON_MODE = panel_state["label_horizon_mode"]
     label_next_rebalance_map = panel_state["label_next_rebalance_map"]
     label_horizon_gap = panel_state["label_horizon_gap"]
+    price_col_diagnostics = panel_state["price_col_diagnostics"]
 
     # -----------------------------------------------------------------------------
     # 3. Feature engineering (per symbol) + label

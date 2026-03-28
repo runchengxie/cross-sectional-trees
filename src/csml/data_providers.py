@@ -341,7 +341,9 @@ def _is_small_leading_calendar_gap(
 def _drop_legacy_symbol_aliases(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
-    return df.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    out = df.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    out.attrs = dict(getattr(df, "attrs", {}))
+    return out
 
 
 def _load_basic_rqdata(
@@ -668,21 +670,47 @@ def _rqdata_adjust_type(data_cfg: Mapping | None) -> str | None:
     return value or None
 
 
-def _build_tr_close_series(
+def _input_tr_close_series(
+    frame: pd.DataFrame,
+    *,
+    trade_dates: pd.Series,
+) -> pd.Series | None:
+    if "tr_close" not in frame.columns:
+        return None
+    tr_close = pd.to_numeric(frame["tr_close"], errors="coerce")
+    tr_close = tr_close.where(trade_dates.notna())
+    tr_close.name = "tr_close"
+    return tr_close
+
+
+def _build_tr_close_payload(
     frame: pd.DataFrame,
     *,
     symbol: str,
     data_cfg: Mapping | None,
-) -> pd.Series | None:
+) -> tuple[pd.Series | None, dict[str, object] | None]:
     if frame is None or frame.empty or "close" not in frame.columns or "trade_date" not in frame.columns:
-        return None
+        return None, None
     close = pd.to_numeric(frame["close"], errors="coerce")
     trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")
+    input_tr_close = _input_tr_close_series(frame, trade_dates=trade_dates)
 
     ex_factors = _load_local_ex_factors_frame(symbol, data_cfg)
     if ex_factors is not None:
         if ex_factors.empty:
-            return close.rename("tr_close")
+            if input_tr_close is not None:
+                return input_tr_close, {
+                    "source": "input_frame_missing_ex_factors",
+                    "configured_local_ex_factors": True,
+                    "local_ex_factors_available": False,
+                    "adjust_type": _rqdata_adjust_type(data_cfg),
+                }
+            return close.rename("tr_close"), {
+                "source": "close_fallback_missing_ex_factors",
+                "configured_local_ex_factors": True,
+                "local_ex_factors_available": False,
+                "adjust_type": _rqdata_adjust_type(data_cfg),
+            }
         ex_dates = ex_factors["ex_date"].to_numpy(dtype="datetime64[ns]")
         trade_values = trade_dates.to_numpy(dtype="datetime64[ns]")
         ex_cum_values = ex_factors["ex_cum_factor"].to_numpy(dtype=float)
@@ -693,12 +721,34 @@ def _build_tr_close_series(
         tr_close = close * pd.Series(period_cum, index=frame.index, dtype=float)
         tr_close = tr_close.where(trade_dates.notna())
         tr_close.name = "tr_close"
-        return tr_close
+        return tr_close, {
+            "source": "local_ex_factors",
+            "configured_local_ex_factors": True,
+            "local_ex_factors_available": True,
+            "adjust_type": _rqdata_adjust_type(data_cfg),
+        }
 
     adjust_type = _rqdata_adjust_type(data_cfg)
     if adjust_type in {"pre", "post", "pre_volume", "post_volume"}:
-        return close.rename("tr_close")
-    return None
+        return close.rename("tr_close"), {
+            "source": "provider_adjusted_price",
+            "configured_local_ex_factors": False,
+            "local_ex_factors_available": None,
+            "adjust_type": adjust_type,
+        }
+    if input_tr_close is not None:
+        return input_tr_close, {
+            "source": "input_frame",
+            "configured_local_ex_factors": False,
+            "local_ex_factors_available": None,
+            "adjust_type": adjust_type,
+        }
+    return None, {
+        "source": "unavailable",
+        "configured_local_ex_factors": False,
+        "local_ex_factors_available": None,
+        "adjust_type": adjust_type,
+    }
 
 
 def _augment_daily_frame(
@@ -713,12 +763,14 @@ def _augment_daily_frame(
     out = df.copy()
     changed = False
 
-    tr_close = _build_tr_close_series(out, symbol=symbol, data_cfg=data_cfg)
+    tr_close, tr_close_meta = _build_tr_close_payload(out, symbol=symbol, data_cfg=data_cfg)
     if tr_close is not None:
         existing = out["tr_close"].copy() if "tr_close" in out.columns else None
         if existing is None or not existing.equals(tr_close):
             out["tr_close"] = tr_close
             changed = True
+    if tr_close_meta is not None:
+        out.attrs["tr_close_meta"] = {"symbol": symbol, **tr_close_meta}
 
     return out, changed
 

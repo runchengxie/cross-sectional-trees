@@ -137,6 +137,8 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
     assert summary["run"]["name"] == "e2e"
     assert summary["run"]["log_file"] == str(run_dir / "run.log")
     assert summary["dataset"]["file"]
+    assert summary["data"]["price_col"] == "close"
+    assert summary["backtest"]["execution_source"] == "default_flat_cost"
     assert set(summary.keys()) == {
         "run",
         "data",

@@ -33,11 +33,12 @@
 
 所以目前的状态是容量 / 冲击 stress model。
 
-仓库当前已经提供三条可直接复用的月频 HK execution 配置：
+仓库当前已经提供四条可直接复用的月频 HK execution 配置：
 
 * [hk_selected__execution_stress_local.yml](../../configs/experiments/variants/hk_selected__execution_stress_local.yml)：本地资产 + `adv20_amount` + 较宽松的 stress baseline。
 * [hk_selected__execution_balanced_local.yml](../../configs/experiments/variants/hk_selected__execution_balanced_local.yml)：按当前 `5m` 校准结果收口后的 balanced 档。
 * [hk_selected__execution_connect_conservative_local.yml](../../configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)：更贴近港股通研究池的保守档。
+* [hk_selected__tr_close_execution_balanced_local.yml](../../configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml)：把 total-return 价格代理和 balanced execution 一次接好，适合作为当前本地研究的直接入口。
 
 ## 为什么现在建议用 `adv20_amount`
 
@@ -56,12 +57,22 @@
 
 `tr_close` 在仓库里表示总回报价格代理。
 
-当前实现依赖两条路之一：
+当前实现依赖下面几条路之一：
 
 * 本地 `ex_factors_dir`
 * 在线 provider 的 `adjust_type=pre/post`
+* 或 daily 源数据里已经自带 `tr_close`
 
 简化说，代码会把 `close` 结合复权因子变成 `tr_close`，让价格类特征、标签和回测一起走 total-return 口径。
+
+现在仓库还会把 `tr_close` 的来源沉到 `summary.json -> data -> price_col_diagnostics`。  
+如果你配置了本地 `ex_factors_dir`，但某些 symbol 没有对应 ex-factor 行，run 日志会显式提示；summary 里也能看到到底是：
+
+* `local_ex_factors`
+* `provider_adjusted_price`
+* `input_frame`
+* `input_frame_missing_ex_factors`
+* `close_fallback_missing_ex_factors`
 
 这意味着：
 
@@ -108,6 +119,7 @@
 这能让现有缓存继续用于经验校准，但要明确：
 
 * 它是可复用的研究 proxy，不是 tick 级真实 VWAP
+* 它当前用于离线校准 execution 参数，不是直接进入日线 backtest 的逐 bar 撮合输入
 * 如果后面要做更严肃的盘中执行研究，优先考虑重新下载 `adjust_type=none` 的分钟线，或直接引入更细成交数据
 
 ## 推荐的下一步
@@ -117,7 +129,8 @@
 1. 固定 `ex_factors / dividends / shares` 这组轻量原料层。
 2. 用真实成交回报校准 `buy_bps / sell_bps / base_bps / impact_bps`。
 3. 回测层优先用 `adv20_amount` 或 `medadv20_amount`，避免 `open + same-day amount`。
-4. 若只是先把研究线做对，优先从上面三条 execution variants 里挑一条，而不是继续用 flat `transaction_cost_bps`。
+4. 若只是先把研究线做对，优先从上面这些 execution variants 里挑一条，而不是继续用 flat `transaction_cost_bps`。
+   如果你同时想把价格口径切到 total return，可直接从 `hk_selected__tr_close_execution_balanced_local.yml` 开始。
 5. 如果误差主要来自执行假设，再补精选池或全市场的 `5m` 数据做经验滑点校准。
 6. 只有在策略明显进入容量或盘中执行问题时，才考虑更细的 `1m`、tick 或盘口数据。
 

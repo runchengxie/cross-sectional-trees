@@ -363,6 +363,7 @@ def test_fetch_daily_derives_tr_close_from_local_ex_factors(tmp_path, monkeypatc
     )
 
     assert result["tr_close"].round(4).tolist() == [10.0, 10.0, 10.0, 11.25]
+    assert result.attrs["tr_close_meta"]["source"] == "local_ex_factors"
 
 
 def test_load_basic_from_local_asset_accepts_name_fallback_columns(tmp_path):
@@ -441,9 +442,59 @@ def test_fetch_daily_backfills_tr_close_for_existing_cache(tmp_path):
     )
 
     assert result["tr_close"].round(4).tolist() == [10.0, 10.0, 10.0]
+    assert result.attrs["tr_close_meta"]["source"] == "local_ex_factors"
     cached = pd.read_parquet(cache_file)
     assert "tr_close" in cached.columns
     assert cached["tr_close"].round(4).tolist() == [10.0, 10.0, 10.0]
+
+
+def test_fetch_daily_preserves_input_tr_close_when_ex_factors_missing(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    asset_dir = tmp_path / "daily_assets"
+    ex_dir = tmp_path / "ex_factors"
+    (asset_dir / "data").mkdir(parents=True, exist_ok=True)
+    (ex_dir / "data").mkdir(parents=True, exist_ok=True)
+    symbol = "AAA"
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20200101", "20200102", "20200103"],
+            "symbol": [symbol, symbol, symbol],
+            "close": [10.0, 10.0, 8.0],
+            "tr_close": [10.0, 10.0, 10.0],
+            "volume": [100.0, 100.0, 100.0],
+            "total_turnover": [1000.0, 1000.0, 800.0],
+        }
+    ).to_parquet(asset_dir / "data" / f"{symbol}.parquet")
+
+    result = data_providers.fetch_daily(
+        "hk",
+        symbol,
+        "20200101",
+        "20200103",
+        cache_dir,
+        client=None,
+        data_cfg={
+            "provider": "rqdata",
+            "cache_mode": "symbol",
+            "cache_refresh_days": 0,
+            "cache_refresh_on_hit": False,
+            "column_map": {
+                "trade_date": "trade_date",
+                "close": "close",
+                "vol": "volume",
+                "amount": "total_turnover",
+            },
+            "rqdata": {
+                "daily_asset_dir": str(asset_dir),
+                "ex_factors_dir": str(ex_dir),
+            },
+        },
+    )
+
+    assert result["tr_close"].round(4).tolist() == [10.0, 10.0, 10.0]
+    assert result.attrs["tr_close_meta"]["source"] == "input_frame_missing_ex_factors"
 
 
 class _FakeRQInstrument:
