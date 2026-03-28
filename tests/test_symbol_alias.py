@@ -1,7 +1,8 @@
 import pandas as pd
 
-from csml import pipeline
 from csml.data_tools.symbols import ensure_symbol_columns
+from csml.pipeline import load_universe_by_date
+from csml.pipeline.support import _annotate_positions_window, _build_rebalance_diff
 
 
 def test_ensure_symbol_columns_accepts_stock_ticker_only():
@@ -30,7 +31,7 @@ def test_load_universe_by_date_accepts_stock_ticker_column(tmp_path):
         }
     ).to_csv(path, index=False)
 
-    out = pipeline.load_universe_by_date(path, market="hk")
+    out = load_universe_by_date(path, market="hk")
     assert list(out.columns) == ["trade_date", "symbol"]
     assert len(out) == 1
     assert out.iloc[0]["symbol"] == "00005.HK"
@@ -46,7 +47,7 @@ def test_load_universe_by_date_parses_integer_yyyymmdd_dates(tmp_path):
         }
     ).to_csv(path, index=False)
 
-    out = pipeline.load_universe_by_date(path, market="hk")
+    out = load_universe_by_date(path, market="hk")
     assert out["trade_date"].tolist() == [
         pd.Timestamp("2020-01-02"),
         pd.Timestamp("2020-01-31"),
@@ -66,7 +67,7 @@ def test_annotate_positions_window_normalizes_to_symbol_only():
             "side": ["long", "long"],
         }
     )
-    out = pipeline._annotate_positions_window(frame)
+    out = _annotate_positions_window(frame)
     assert "symbol" in out.columns
     assert "ts_code" not in out.columns
     assert "stock_ticker" not in out.columns
@@ -84,7 +85,7 @@ def test_build_rebalance_diff_uses_symbol_only():
             "rank": [1, 2, 1],
         }
     )
-    diff = pipeline._build_rebalance_diff(frame)
+    diff = _build_rebalance_diff(frame)
     assert not diff.empty
     assert "symbol" in diff.columns
     assert "ts_code" not in diff.columns

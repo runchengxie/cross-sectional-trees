@@ -168,7 +168,10 @@ scripts/dev/run_tests.sh all \
   tests/test_fundamentals_providers.py \
   tests/test_rqdata_assets.py \
   tests/test_universe_tools.py \
-  tests/test_cli.py \
+  tests/test_cli_core.py \
+  tests/test_cli_rqdata.py \
+  tests/test_cli_research.py \
+  tests/test_cli_liveops.py \
   tests/test_linear_sweep.py \
   tests/test_data_providers_cache.py \
   -q
@@ -183,7 +186,7 @@ scripts/dev/run_tests.sh all \
 1. `tests/test_fundamentals_providers.py`：HK + RQData provider 基本面抓取、标准化和缓存键行为。
 1. `tests/test_rqdata_assets.py`：`mirror-hk-pit-financials` 和 `build-hk-pit-fundamentals` 这条 PIT 资产预处理链路。
 1. `tests/test_universe_tools.py`：港股通 universe 构建脚本的日期 token、输出路径和流动性筛选边界。
-1. `tests/test_cli.py`：PIT 资产命令和 `sweep-linear` 命令参数解析。
+1. `tests/test_cli_rqdata.py`、`tests/test_cli_research.py`：PIT 资产命令和 `sweep-linear` 命令参数解析。
 1. `tests/test_linear_sweep.py`：季度 PIT 线性 sweep 配置是否能被正确读取，生成的 jobs 和 base config 是否匹配。
 1. `tests/test_data_providers_cache.py`：RQData 日线缓存、上市日裁剪和空区间处理，避免低频研究被脏缓存干扰。
 1. `tests/test_summarize_runs.py`：`summary.json` 下游汇总字段是否完整，尤其是 `backtest.active` 的 benchmark 指标能否进入 `runs_summary.csv`。

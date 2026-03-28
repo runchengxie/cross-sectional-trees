@@ -8,7 +8,6 @@ Usage:
 import argparse
 import logging
 import sys
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -25,28 +24,21 @@ from ..artifacts import (
     resolve_repo_path,
 )
 from ..data_interface import DataInterface
-from ..data_providers import (
-    fundamentals_provider_supported,
-    resolve_provider,
-)
-from ..execution import (
-    BpsCostModel,
-    build_execution_model,
-    required_pricing_columns,
-)
+from ..data_providers import fundamentals_provider_supported
 from ..metrics import (
     bucket_ic_summary,
     daily_ic_series,
     summarize_ic,
 )
 from ..split import build_sample_weight, time_series_cv_ic
-from ..modeling import build_model, fit_model, resolve_model_spec, feature_importance_frame
+from ..modeling import build_model, fit_model, feature_importance_frame
 from ..backtest import backtest_topk
 from .config import (
     load_run_config,
     normalize_eval_settings,
     normalize_universe_filters,
     prepare_run_artifacts,
+    resolve_runtime_settings,
     resolve_date_range_and_label_settings,
     resolve_universe_inputs,
 )
@@ -58,7 +50,6 @@ from .support import (
     _select_panel_join_columns,
     _summarize_walk_forward_feature_stability,
     apply_universe_by_date,
-    normalize_symbol_list,
     parse_feature_windows,
 )
 from .dates import (
@@ -218,286 +209,120 @@ def run(config_ref: str | Path | None = None) -> None:
     DROP_ST = universe_filters["DROP_ST"]
     DROP_SUSPENDED = universe_filters["DROP_SUSPENDED"]
     SUSPENDED_POLICY = universe_filters["SUSPENDED_POLICY"]
+    industry_cfg = config.get("industry") or {}
 
-    fundamentals_cfg = fundamentals_cfg if isinstance(fundamentals_cfg, dict) else {}
-    FUNDAMENTALS_ENABLED = bool(fundamentals_cfg.get("enabled", False))
-    FUNDAMENTALS_SOURCE = str(fundamentals_cfg.get("source", "provider")).strip().lower()
-    if FUNDAMENTALS_SOURCE not in {"provider", "file"}:
-        sys.exit("fundamentals.source must be one of: provider, file.")
-    FUNDAMENTALS_FILE = fundamentals_cfg.get("file")
-    FUNDAMENTALS_FEATURES = normalize_symbol_list(fundamentals_cfg.get("features"))
-    FUNDAMENTALS_AUTO_ADD = bool(fundamentals_cfg.get("auto_add_features", True))
-    FUNDAMENTALS_ALLOW_MISSING = bool(fundamentals_cfg.get("allow_missing_features", False))
-    FUNDAMENTALS_FFILL = bool(fundamentals_cfg.get("ffill", True))
-    FUNDAMENTALS_FFILL_LIMIT = fundamentals_cfg.get("ffill_limit")
-    if FUNDAMENTALS_FFILL_LIMIT is not None:
-        FUNDAMENTALS_FFILL_LIMIT = int(FUNDAMENTALS_FFILL_LIMIT)
-    FUNDAMENTALS_LOG_MCAP = bool(fundamentals_cfg.get("log_market_cap", False))
-    FUNDAMENTALS_MCAP_COL = str(fundamentals_cfg.get("market_cap_col", "market_cap")).strip()
-    FUNDAMENTALS_LOG_MCAP_COL = str(fundamentals_cfg.get("log_market_cap_col", "log_mcap")).strip()
-    FUNDAMENTALS_REQUIRED = bool(fundamentals_cfg.get("required", False))
-    FUNDAMENTALS_PROVIDER = (
-        resolve_provider({"provider": fundamentals_cfg.get("provider")})
-        if fundamentals_cfg.get("provider")
-        else provider
-    )
-    provider_overlay_cfg = fundamentals_cfg.get("provider_overlay")
-    if provider_overlay_cfg is None:
-        provider_overlay_cfg = {}
-    if not isinstance(provider_overlay_cfg, Mapping):
-        sys.exit("fundamentals.provider_overlay must be a mapping when provided.")
-    FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = bool(provider_overlay_cfg.get("enabled", False))
-    FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE = str(
-        provider_overlay_cfg.get("source", "provider")
-    ).strip().lower()
-    if FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE not in {"provider"}:
-        sys.exit("fundamentals.provider_overlay.source must be 'provider'.")
-    FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES = normalize_symbol_list(
-        provider_overlay_cfg.get("features")
-    )
-    FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD = bool(
-        provider_overlay_cfg.get("auto_add_features", True)
-    )
-    FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED = bool(
-        provider_overlay_cfg.get("required", False)
-    )
-    FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER = (
-        resolve_provider({"provider": provider_overlay_cfg.get("provider")})
-        if provider_overlay_cfg.get("provider")
-        else provider
-    )
-    industry_cfg = config.get("industry")
-    if industry_cfg is None:
-        industry_cfg = {}
-    if not isinstance(industry_cfg, Mapping):
-        sys.exit("industry must be a mapping when provided.")
-    INDUSTRY_ENABLED = bool(industry_cfg.get("enabled", False))
-    INDUSTRY_SOURCE = str(industry_cfg.get("source", "file")).strip().lower()
-    if INDUSTRY_SOURCE not in {"file"}:
-        sys.exit("industry.source must be 'file'.")
-    INDUSTRY_FILE = industry_cfg.get("file")
-    INDUSTRY_KEEP_COLUMNS = normalize_symbol_list(industry_cfg.get("keep_columns"))
-    INDUSTRY_FFILL = bool(industry_cfg.get("ffill", False))
-    INDUSTRY_FFILL_LIMIT = industry_cfg.get("ffill_limit")
-    if INDUSTRY_FFILL_LIMIT is not None:
-        INDUSTRY_FFILL_LIMIT = int(INDUSTRY_FFILL_LIMIT)
-    INDUSTRY_REQUIRED = bool(industry_cfg.get("required", False))
-
-    feature_list = features_cfg.get("list") or []
-    FEATURES = normalize_symbol_list(feature_list) if feature_list else [
-        "sma_20",
-        "sma_60",
-        "sma_120",
-        "sma_5_diff",
-        "sma_10_diff",
-        "sma_20_diff",
-        "sma_60_diff",
-        "sma_120_diff",
-        "rsi_7",
-        "rsi_14",
-        "rsi_21",
-        "macd_hist",
-        "ret_5",
-        "ret_20",
-        "ret_60",
-        "rv_20",
-        "rv_60",
-        "volume_sma5_ratio",
-        "volume_sma20_ratio",
-        "volume_sma60_ratio",
-        "log_vol",
-        "vol",
-    ]
-    if FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
-        FEATURES = list(dict.fromkeys(FEATURES + FUNDAMENTALS_FEATURES))
-    if (
-        FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED
-        and FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD
-        and FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES
-    ):
-        FEATURES = list(
-            dict.fromkeys(FEATURES + FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES)
-        )
-    WF_FEATURE_TOP_K = min(WF_FEATURE_TOP_K, max(1, len(FEATURES)))
-    feature_params = features_cfg.get("params", {})
-    cs_cfg = features_cfg.get("cross_sectional") or {}
-    CS_METHOD = str(cs_cfg.get("method", "none")).strip().lower() if isinstance(cs_cfg, dict) else "none"
-    CS_WINSORIZE_PCT = cs_cfg.get("winsorize_pct") if isinstance(cs_cfg, dict) else None
-    if CS_WINSORIZE_PCT is not None:
-        CS_WINSORIZE_PCT = float(CS_WINSORIZE_PCT)
-        if not 0 < CS_WINSORIZE_PCT < 0.5:
-            sys.exit("features.cross_sectional.winsorize_pct must be between 0 and 0.5.")
-    if CS_METHOD not in {"none", "zscore", "rank"}:
-        sys.exit("features.cross_sectional.method must be one of: none, zscore, rank.")
-    missing_cfg = features_cfg.get("missing")
-    if missing_cfg is None:
-        missing_cfg = {}
-    if not isinstance(missing_cfg, dict):
-        sys.exit("features.missing must be a mapping when provided.")
-    FEATURE_MISSING_METHOD = str(missing_cfg.get("method", "none")).strip().lower()
-    if FEATURE_MISSING_METHOD not in {"none", "zero", "cross_sectional_median"}:
-        sys.exit(
-            "features.missing.method must be one of: none, zero, cross_sectional_median."
-        )
-    FEATURE_MISSING_FEATURES = normalize_symbol_list(missing_cfg.get("features"))
-    FEATURE_MISSING_ADD_INDICATORS = bool(missing_cfg.get("add_indicators", False))
-    FEATURE_MISSING_SUFFIX = str(missing_cfg.get("indicator_suffix", "_missing")).strip()
-    if FEATURE_MISSING_ADD_INDICATORS and not FEATURE_MISSING_SUFFIX:
-        sys.exit("features.missing.indicator_suffix cannot be empty.")
-
-    try:
-        MODEL_TYPE, MODEL_PARAMS = resolve_model_spec(model_cfg)
-    except ValueError as exc:
-        sys.exit(str(exc))
-    MODEL_CFG = {"type": MODEL_TYPE, "params": MODEL_PARAMS}
-    SAMPLE_WEIGHT_MODE = str(model_cfg.get("sample_weight_mode", "none")).strip().lower()
-    SAMPLE_WEIGHT_PARAMS_RAW = model_cfg.get("sample_weight_params")
-    if SAMPLE_WEIGHT_PARAMS_RAW is None:
-        SAMPLE_WEIGHT_PARAMS = {}
-    elif isinstance(SAMPLE_WEIGHT_PARAMS_RAW, Mapping):
-        SAMPLE_WEIGHT_PARAMS = dict(SAMPLE_WEIGHT_PARAMS_RAW)
-    else:
-        sys.exit("model.sample_weight_params must be a mapping when provided.")
-    if SAMPLE_WEIGHT_MODE in {"", "none", "null"}:
-        SAMPLE_WEIGHT_MODE = "none"
-    if SAMPLE_WEIGHT_MODE in {"date"}:
-        SAMPLE_WEIGHT_MODE = "date_equal"
-    if SAMPLE_WEIGHT_MODE in {"time_decay", "exp_decay", "exp"}:
-        SAMPLE_WEIGHT_MODE = "exp_decay"
-    if SAMPLE_WEIGHT_MODE not in {"none", "date_equal", "exp_decay"}:
-        sys.exit("model.sample_weight_mode must be one of: none, date_equal, exp_decay.")
-    if SAMPLE_WEIGHT_MODE == "exp_decay":
-        halflife_raw = SAMPLE_WEIGHT_PARAMS.get("halflife", SAMPLE_WEIGHT_PARAMS.get("half_life"))
-        decay_rate_raw = SAMPLE_WEIGHT_PARAMS.get("decay_rate", SAMPLE_WEIGHT_PARAMS.get("rate"))
-        if halflife_raw is None and decay_rate_raw is None:
-            sys.exit(
-                "model.sample_weight_mode=exp_decay requires "
-                "model.sample_weight_params.halflife or decay_rate."
-            )
-        if halflife_raw is not None:
-            try:
-                halflife = float(halflife_raw)
-            except (TypeError, ValueError):
-                sys.exit("model.sample_weight_params.halflife must be a number.")
-            if not np.isfinite(halflife) or halflife <= 0:
-                sys.exit("model.sample_weight_params.halflife must be > 0.")
-        if decay_rate_raw is not None:
-            try:
-                decay_rate = float(decay_rate_raw)
-            except (TypeError, ValueError):
-                sys.exit("model.sample_weight_params.decay_rate must be a number.")
-            if not np.isfinite(decay_rate) or decay_rate <= 0 or decay_rate > 1:
-                sys.exit("model.sample_weight_params.decay_rate must be in (0, 1].")
-        min_weight_raw = SAMPLE_WEIGHT_PARAMS.get("min_weight")
-        if min_weight_raw is not None:
-            try:
-                min_weight = float(min_weight_raw)
-            except (TypeError, ValueError):
-                sys.exit("model.sample_weight_params.min_weight must be a number.")
-            if not np.isfinite(min_weight) or min_weight < 0:
-                sys.exit("model.sample_weight_params.min_weight must be >= 0.")
-
-    train_window_cfg = model_cfg.get("train_window")
-    if train_window_cfg is None:
-        train_window_cfg = {}
-    if not isinstance(train_window_cfg, Mapping):
-        sys.exit("model.train_window must be a mapping when provided.")
-    TRAIN_WINDOW_MODE = str(train_window_cfg.get("mode", "full")).strip().lower()
-    if TRAIN_WINDOW_MODE in {"", "all", "expanding"}:
-        TRAIN_WINDOW_MODE = "full"
-    if TRAIN_WINDOW_MODE not in {"full", "rolling"}:
-        sys.exit("model.train_window.mode must be one of: full, rolling.")
-    TRAIN_WINDOW_SIZE = train_window_cfg.get("size")
-    if TRAIN_WINDOW_SIZE is not None:
-        try:
-            TRAIN_WINDOW_SIZE = int(TRAIN_WINDOW_SIZE)
-        except (TypeError, ValueError):
-            sys.exit("model.train_window.size must be a positive integer.")
-        if TRAIN_WINDOW_SIZE <= 0:
-            sys.exit("model.train_window.size must be a positive integer.")
-    TRAIN_WINDOW_UNIT = str(train_window_cfg.get("unit", "dates")).strip().lower()
-    if TRAIN_WINDOW_UNIT not in {"dates", "years"}:
-        sys.exit("model.train_window.unit must be one of: dates, years.")
-    if TRAIN_WINDOW_MODE == "rolling" and TRAIN_WINDOW_SIZE is None:
-        sys.exit("model.train_window.size is required when model.train_window.mode=rolling.")
-
-    BACKTEST_ENABLED = bool(backtest_cfg.get("enabled", True))
-    BACKTEST_TOP_K = int(backtest_cfg.get("top_k", TOP_K))
-    BACKTEST_REBALANCE_FREQUENCY = backtest_cfg.get("rebalance_frequency", REBALANCE_FREQUENCY)
-    BACKTEST_COST_BPS = float(backtest_cfg.get("transaction_cost_bps", TRANSACTION_COST_BPS))
-    BACKTEST_TRADING_DAYS_PER_YEAR = int(backtest_cfg.get("trading_days_per_year", 252))
-    BACKTEST_BENCHMARK = backtest_cfg.get("benchmark_symbol")
-    BACKTEST_LONG_ONLY = bool(backtest_cfg.get("long_only", True))
-    BACKTEST_BUFFER_EXIT = int(backtest_cfg.get("buffer_exit", 0))
-    BACKTEST_BUFFER_ENTRY = int(backtest_cfg.get("buffer_entry", 0))
-    BACKTEST_WEIGHTING = str(backtest_cfg.get("weighting", "equal")).strip().lower()
-    if BACKTEST_WEIGHTING not in {"equal", "signal"}:
-        sys.exit("backtest.weighting must be one of: equal, signal.")
-    BACKTEST_GROUP_COL = backtest_cfg.get("group_col")
-    if BACKTEST_GROUP_COL is not None:
-        BACKTEST_GROUP_COL = str(BACKTEST_GROUP_COL).strip() or None
-    BACKTEST_MAX_NAMES_PER_GROUP = backtest_cfg.get("max_names_per_group")
-    if BACKTEST_MAX_NAMES_PER_GROUP is not None:
-        try:
-            BACKTEST_MAX_NAMES_PER_GROUP = int(BACKTEST_MAX_NAMES_PER_GROUP)
-        except (TypeError, ValueError):
-            sys.exit("backtest.max_names_per_group must be a positive integer.")
-        if BACKTEST_MAX_NAMES_PER_GROUP <= 0:
-            sys.exit("backtest.max_names_per_group must be a positive integer.")
-    BACKTEST_SIGNAL_DIRECTION_RAW = backtest_cfg.get("signal_direction")
-    if BACKTEST_SIGNAL_DIRECTION_RAW is not None:
-        BACKTEST_SIGNAL_DIRECTION_RAW = float(BACKTEST_SIGNAL_DIRECTION_RAW)
-        if BACKTEST_SIGNAL_DIRECTION_RAW == 0:
-            sys.exit("backtest.signal_direction cannot be 0.")
-    BACKTEST_SHORT_K = backtest_cfg.get("short_k")
-    if BACKTEST_SHORT_K is not None:
-        BACKTEST_SHORT_K = int(BACKTEST_SHORT_K)
-    BACKTEST_EXIT_MODE = str(backtest_cfg.get("exit_mode", "rebalance")).strip().lower()
-    if BACKTEST_EXIT_MODE not in {"rebalance", "label_horizon"}:
-        sys.exit("backtest.exit_mode must be one of: rebalance, label_horizon.")
-    BACKTEST_EXIT_HORIZON_DAYS = backtest_cfg.get("exit_horizon_days")
-    BACKTEST_EXIT_PRICE_POLICY = str(backtest_cfg.get("exit_price_policy", "strict")).strip().lower()
-    if BACKTEST_EXIT_PRICE_POLICY not in {"strict", "ffill", "delay"}:
-        sys.exit("backtest.exit_price_policy must be one of: strict, ffill, delay.")
-    BACKTEST_EXIT_FALLBACK_POLICY = str(
-        backtest_cfg.get("exit_fallback_policy", "ffill")
-    ).strip().lower()
-    if BACKTEST_EXIT_FALLBACK_POLICY not in {"ffill", "none"}:
-        sys.exit("backtest.exit_fallback_policy must be one of: ffill, none.")
-    execution_cfg = backtest_cfg.get("execution") if isinstance(backtest_cfg, dict) else None
-    execution_model = build_execution_model(
-        execution_cfg,
-        default_cost_bps=BACKTEST_COST_BPS,
-        default_exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
-        default_exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
-        default_price_col=PRICE_COL,
-    )
-    BACKTEST_EXIT_PRICE_POLICY = execution_model.exit_policy.price_policy
-    BACKTEST_EXIT_FALLBACK_POLICY = execution_model.exit_policy.fallback_policy
-    EXECUTION_PRICING_COLS = required_pricing_columns(execution_model)
-    _ensure_execution_daily_fields(
+    runtime_settings = resolve_runtime_settings(
         data_cfg=data_cfg,
+        features_cfg=features_cfg,
+        fundamentals_cfg=fundamentals_cfg,
+        industry_cfg=industry_cfg,
+        model_cfg=model_cfg,
+        backtest_cfg=backtest_cfg,
+        live_cfg=live_cfg,
         provider=provider,
-        required_columns=EXECUTION_PRICING_COLS | {PRICE_COL},
+        market=MARKET,
+        price_col=PRICE_COL,
+        label_horizon_days=LABEL_HORIZON_DAYS,
+        label_shift_days=LABEL_SHIFT_DAYS,
+        label_horizon_mode=LABEL_HORIZON_MODE,
+        label_rebalance_frequency=LABEL_REBALANCE_FREQUENCY,
+        train_target=TRAIN_TARGET,
+        eval_top_k=TOP_K,
+        eval_rebalance_frequency=REBALANCE_FREQUENCY,
+        eval_transaction_cost_bps=TRANSACTION_COST_BPS,
+        eval_buffer_exit=EVAL_BUFFER_EXIT,
+        eval_buffer_entry=EVAL_BUFFER_ENTRY,
+        wf_feature_top_k=WF_FEATURE_TOP_K,
     )
-    BACKTEST_COST_BPS_EFFECTIVE = BACKTEST_COST_BPS
-    BACKTEST_COST_BPS_REPORT = None
-    if isinstance(execution_model.cost_model, BpsCostModel):
-        BACKTEST_COST_BPS_EFFECTIVE = float(execution_model.cost_model.bps)
-        BACKTEST_COST_BPS_REPORT = BACKTEST_COST_BPS_EFFECTIVE
-    BACKTEST_TRADABLE_COL = backtest_cfg.get("tradable_col", "is_tradable")
-    if BACKTEST_TRADABLE_COL is not None:
-        BACKTEST_TRADABLE_COL = str(BACKTEST_TRADABLE_COL).strip() or None
-    if BACKTEST_EXIT_MODE == "label_horizon":
-        if BACKTEST_EXIT_HORIZON_DAYS is None:
-            BACKTEST_EXIT_HORIZON_DAYS = LABEL_HORIZON_DAYS
-        BACKTEST_EXIT_HORIZON_DAYS = int(BACKTEST_EXIT_HORIZON_DAYS)
-
-    LIVE_ENABLED = bool(live_cfg.get("enabled", False))
-    LIVE_AS_OF = live_cfg.get("as_of", "t-1")
-    LIVE_TRAIN_MODE = str(live_cfg.get("train_mode", "full")).strip().lower()
-    if LIVE_TRAIN_MODE not in {"full", "train"}:
-        sys.exit("live.train_mode must be one of: full, train.")
+    fundamentals_cfg = runtime_settings["fundamentals_cfg"]
+    provider_overlay_cfg = runtime_settings["provider_overlay_cfg"]
+    FUNDAMENTALS_ENABLED = runtime_settings["FUNDAMENTALS_ENABLED"]
+    FUNDAMENTALS_SOURCE = runtime_settings["FUNDAMENTALS_SOURCE"]
+    FUNDAMENTALS_FILE = runtime_settings["FUNDAMENTALS_FILE"]
+    FUNDAMENTALS_FEATURES = runtime_settings["FUNDAMENTALS_FEATURES"]
+    FUNDAMENTALS_AUTO_ADD = runtime_settings["FUNDAMENTALS_AUTO_ADD"]
+    FUNDAMENTALS_ALLOW_MISSING = runtime_settings["FUNDAMENTALS_ALLOW_MISSING"]
+    FUNDAMENTALS_FFILL = runtime_settings["FUNDAMENTALS_FFILL"]
+    FUNDAMENTALS_FFILL_LIMIT = runtime_settings["FUNDAMENTALS_FFILL_LIMIT"]
+    FUNDAMENTALS_LOG_MCAP = runtime_settings["FUNDAMENTALS_LOG_MCAP"]
+    FUNDAMENTALS_MCAP_COL = runtime_settings["FUNDAMENTALS_MCAP_COL"]
+    FUNDAMENTALS_LOG_MCAP_COL = runtime_settings["FUNDAMENTALS_LOG_MCAP_COL"]
+    FUNDAMENTALS_REQUIRED = runtime_settings["FUNDAMENTALS_REQUIRED"]
+    FUNDAMENTALS_PROVIDER = runtime_settings["FUNDAMENTALS_PROVIDER"]
+    FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = runtime_settings[
+        "FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED"
+    ]
+    FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE = runtime_settings[
+        "FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE"
+    ]
+    FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES = runtime_settings[
+        "FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES"
+    ]
+    FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD = runtime_settings[
+        "FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD"
+    ]
+    FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED = runtime_settings[
+        "FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED"
+    ]
+    FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER = runtime_settings[
+        "FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER"
+    ]
+    INDUSTRY_ENABLED = runtime_settings["INDUSTRY_ENABLED"]
+    INDUSTRY_SOURCE = runtime_settings["INDUSTRY_SOURCE"]
+    INDUSTRY_FILE = runtime_settings["INDUSTRY_FILE"]
+    INDUSTRY_KEEP_COLUMNS = runtime_settings["INDUSTRY_KEEP_COLUMNS"]
+    INDUSTRY_FFILL = runtime_settings["INDUSTRY_FFILL"]
+    INDUSTRY_FFILL_LIMIT = runtime_settings["INDUSTRY_FFILL_LIMIT"]
+    INDUSTRY_REQUIRED = runtime_settings["INDUSTRY_REQUIRED"]
+    FEATURES = runtime_settings["FEATURES"]
+    feature_params = runtime_settings["feature_params"]
+    CS_METHOD = runtime_settings["CS_METHOD"]
+    CS_WINSORIZE_PCT = runtime_settings["CS_WINSORIZE_PCT"]
+    FEATURE_MISSING_METHOD = runtime_settings["FEATURE_MISSING_METHOD"]
+    FEATURE_MISSING_FEATURES = runtime_settings["FEATURE_MISSING_FEATURES"]
+    FEATURE_MISSING_ADD_INDICATORS = runtime_settings[
+        "FEATURE_MISSING_ADD_INDICATORS"
+    ]
+    FEATURE_MISSING_SUFFIX = runtime_settings["FEATURE_MISSING_SUFFIX"]
+    MODEL_TYPE = runtime_settings["MODEL_TYPE"]
+    MODEL_PARAMS = runtime_settings["MODEL_PARAMS"]
+    MODEL_CFG = runtime_settings["MODEL_CFG"]
+    SAMPLE_WEIGHT_MODE = runtime_settings["SAMPLE_WEIGHT_MODE"]
+    SAMPLE_WEIGHT_PARAMS = runtime_settings["SAMPLE_WEIGHT_PARAMS"]
+    TRAIN_WINDOW_MODE = runtime_settings["TRAIN_WINDOW_MODE"]
+    TRAIN_WINDOW_SIZE = runtime_settings["TRAIN_WINDOW_SIZE"]
+    TRAIN_WINDOW_UNIT = runtime_settings["TRAIN_WINDOW_UNIT"]
+    BACKTEST_ENABLED = runtime_settings["BACKTEST_ENABLED"]
+    BACKTEST_TOP_K = runtime_settings["BACKTEST_TOP_K"]
+    BACKTEST_REBALANCE_FREQUENCY = runtime_settings["BACKTEST_REBALANCE_FREQUENCY"]
+    BACKTEST_COST_BPS = runtime_settings["BACKTEST_COST_BPS"]
+    BACKTEST_TRADING_DAYS_PER_YEAR = runtime_settings[
+        "BACKTEST_TRADING_DAYS_PER_YEAR"
+    ]
+    BACKTEST_BENCHMARK = runtime_settings["BACKTEST_BENCHMARK"]
+    BACKTEST_LONG_ONLY = runtime_settings["BACKTEST_LONG_ONLY"]
+    BACKTEST_BUFFER_EXIT = runtime_settings["BACKTEST_BUFFER_EXIT"]
+    BACKTEST_BUFFER_ENTRY = runtime_settings["BACKTEST_BUFFER_ENTRY"]
+    BACKTEST_WEIGHTING = runtime_settings["BACKTEST_WEIGHTING"]
+    BACKTEST_GROUP_COL = runtime_settings["BACKTEST_GROUP_COL"]
+    BACKTEST_MAX_NAMES_PER_GROUP = runtime_settings["BACKTEST_MAX_NAMES_PER_GROUP"]
+    BACKTEST_SIGNAL_DIRECTION_RAW = runtime_settings["BACKTEST_SIGNAL_DIRECTION_RAW"]
+    BACKTEST_SHORT_K = runtime_settings["BACKTEST_SHORT_K"]
+    BACKTEST_EXIT_MODE = runtime_settings["BACKTEST_EXIT_MODE"]
+    BACKTEST_EXIT_HORIZON_DAYS = runtime_settings["BACKTEST_EXIT_HORIZON_DAYS"]
+    BACKTEST_EXIT_PRICE_POLICY = runtime_settings["BACKTEST_EXIT_PRICE_POLICY"]
+    BACKTEST_EXIT_FALLBACK_POLICY = runtime_settings[
+        "BACKTEST_EXIT_FALLBACK_POLICY"
+    ]
+    execution_model = runtime_settings["execution_model"]
+    EXECUTION_PRICING_COLS = runtime_settings["EXECUTION_PRICING_COLS"]
+    BACKTEST_COST_BPS_EFFECTIVE = runtime_settings["BACKTEST_COST_BPS_EFFECTIVE"]
+    BACKTEST_COST_BPS_REPORT = runtime_settings["BACKTEST_COST_BPS_REPORT"]
+    BACKTEST_TRADABLE_COL = runtime_settings["BACKTEST_TRADABLE_COL"]
+    LIVE_ENABLED = runtime_settings["LIVE_ENABLED"]
+    LIVE_AS_OF = runtime_settings["LIVE_AS_OF"]
+    LIVE_TRAIN_MODE = runtime_settings["LIVE_TRAIN_MODE"]
+    WF_FEATURE_TOP_K = runtime_settings["WF_FEATURE_TOP_K"]
     if LIVE_ENABLED and not SAVE_ARTIFACTS:
         raise SystemExit(
             "live.enabled=true requires eval.save_artifacts=true to persist holdings."

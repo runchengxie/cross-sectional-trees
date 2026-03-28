@@ -7,6 +7,7 @@ import yaml
 from csml import pipeline
 from csml.config_utils import resolve_pipeline_config
 from csml.data_interface import DataInterface
+from csml.pipeline.stats import _ensure_execution_daily_fields
 
 
 def _base_config(tmp_path):
@@ -145,7 +146,7 @@ def test_execution_daily_fields_expands_rqdata_list_fields():
         }
     }
 
-    pipeline._ensure_execution_daily_fields(
+    _ensure_execution_daily_fields(
         data_cfg=data_cfg,
         provider="rqdata",
         required_columns={"open", "close", "amount"},
