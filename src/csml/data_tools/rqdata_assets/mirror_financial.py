@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from .fetch_runtime import _ensure_rqdatac_hk_plugin
-from .mirror_workflow import _mirror_dataset
 from .package_api import _package_attr
+from .fetch_runtime import _ensure_rqdatac_hk_plugin as _ensure_rqdatac_hk_plugin_runtime
+from .mirror_workflow import _mirror_dataset
 from .request_groups import _default_hk_instruments_out_path, _resolve_instrument_symbol_filter
 from .shared import (
     _git_metadata,
@@ -17,6 +17,14 @@ from .shared import (
     _timestamp_now,
     _write_manifest,
 )
+
+
+def _ensure_rqdatac_hk_plugin() -> None:
+    ensure_plugin = _package_attr(
+        "_ensure_rqdatac_hk_plugin",
+        default=_ensure_rqdatac_hk_plugin_runtime,
+    )
+    ensure_plugin()
 
 
 def _load_hk_financial_fields() -> list[str]:

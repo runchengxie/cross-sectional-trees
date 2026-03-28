@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from .fetch_runtime import (
-    _ensure_rqdatac_hk_plugin,
+    _ensure_rqdatac_hk_plugin as _ensure_rqdatac_hk_plugin_runtime,
     _fetch_hk_dividends_direct,
     _fetch_hk_ex_factors_direct,
     _fetch_hk_shares_direct,
@@ -43,6 +43,14 @@ DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr(
     "DEFAULT_MIRROR_MAX_BACKOFF_SECONDS"
 )
 DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
+
+
+def _ensure_rqdatac_hk_plugin() -> None:
+    ensure_plugin = _package_attr(
+        "_ensure_rqdatac_hk_plugin",
+        default=_ensure_rqdatac_hk_plugin_runtime,
+    )
+    ensure_plugin()
 
 
 def mirror_hk_valuation(args, rqdatac) -> int:
