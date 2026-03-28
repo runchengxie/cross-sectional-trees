@@ -239,13 +239,16 @@ def test_merge_asset_patch_daily_updates_alias_and_preserves_base_schema(tmp_pat
 
     merged = pd.read_parquet(out_dir / "data" / "00005.HK.parquet")
     assert merged["trade_date"].tolist() == ["20260318", "20260319"]
+    assert merged["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert merged["open"].tolist() == [11.0, 12.0]
-    assert "symbol" not in merged.columns
+    assert "ts_code" not in merged.columns
 
     patch_only = pd.read_parquet(out_dir / "data" / "00006.HK.parquet")
     assert patch_only["trade_date"].tolist() == ["20260319"]
+    assert patch_only["symbol"].tolist() == ["00006.HK"]
 
     manifest = yaml.safe_load((out_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["columns"] == ["trade_date", "symbol", "order_book_id", "open", "close"]
     assert manifest["query"]["end_date"] == "20260319"
     assert manifest["totals"]["symbols_written"] == 2
 
@@ -266,9 +269,18 @@ def test_merge_asset_patch_dated_prefers_patch_row_for_overlap(tmp_path: Path) -
     assert result["dataset"] == "valuation"
 
     merged = pd.read_parquet(out_dir / "data" / "00005.HK.parquet")
+    assert merged["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert merged["trade_date"].tolist() == ["20260324", "20260326"]
     assert merged["hk_total_market_val"].tolist() == [101.0, 103.0]
+    assert "ts_code" not in merged.columns
 
     manifest = yaml.safe_load((out_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["columns"] == [
+        "symbol",
+        "order_book_id",
+        "trade_date",
+        "hk_total_market_val",
+        "pe_ratio_ttm",
+    ]
     assert manifest["query"]["end_date"] == "20260326"
     assert manifest["totals"]["rows"] == 2

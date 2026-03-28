@@ -164,7 +164,7 @@ def _dedupe_dated_frame(
             dedupe_keys = [column for column in dedupe_keys if column != "unique_id"]
     if dedupe_keys:
         frame = frame.drop_duplicates(subset=dedupe_keys, keep="last")
-    ordered_sort_cols = [column for column in ["ts_code", date_column, *sort_columns] if column in frame.columns]
+    ordered_sort_cols = [column for column in ["symbol", date_column, *sort_columns] if column in frame.columns]
     if ordered_sort_cols:
         frame = frame.sort_values(ordered_sort_cols).reset_index(drop=True)
     return frame
@@ -391,7 +391,7 @@ def merge_asset_patch(
             entries_by_symbol[symbol] = entry
             _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
             audit_by_symbol[symbol] = _base._daily_audit_record(
-                ts_code=symbol,
+                symbol=symbol,
                 order_book_id=entry.order_book_id,
                 status=status,
                 attempts=0,
@@ -406,7 +406,7 @@ def merge_asset_patch(
             entries_by_symbol[symbol] = entry
             _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
             audit_by_symbol[symbol] = _base._dated_audit_record(
-                ts_code=symbol,
+                symbol=symbol,
                 order_book_id=entry.order_book_id,
                 status=status,
                 attempts=0,
@@ -450,7 +450,7 @@ def merge_asset_patch(
         finished_at = _base._timestamp_now()
         if kind == "daily":
             audit_by_symbol[symbol] = _base._daily_audit_record(
-                ts_code=symbol,
+                symbol=symbol,
                 order_book_id=order_book_id,
                 status="missing_remote",
                 attempts=0,
@@ -462,7 +462,7 @@ def merge_asset_patch(
             )
         else:
             audit_by_symbol[symbol] = _base._dated_audit_record(
-                ts_code=symbol,
+                symbol=symbol,
                 order_book_id=order_book_id,
                 status="missing_remote",
                 attempts=0,

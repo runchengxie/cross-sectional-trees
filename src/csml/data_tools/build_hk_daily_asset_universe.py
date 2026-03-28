@@ -16,6 +16,7 @@ from .build_hk_connect_universe import (
     get_rebalance_dates,
     validate_yyyymmdd,
 )
+from .symbols import ensure_symbol_columns
 
 DEFAULT_DAILY_ASSET_GLOBS = (
     "hk_all_*_daily_final_latest",
@@ -98,21 +99,32 @@ def discover_daily_asset_dir(path_text: str | Path | None = None) -> Path:
 
 
 def _load_symbol_turnover_frame(path: Path) -> tuple[str, pd.Series] | None:
-    frame = pd.read_parquet(path, columns=["trade_date", "ts_code", "total_turnover"])
+    try:
+        frame = pd.read_parquet(path, columns=["trade_date", "symbol", "total_turnover"])
+    except Exception:
+        try:
+            frame = pd.read_parquet(path, columns=["trade_date", "ts_code", "total_turnover"])
+        except Exception:
+            frame = pd.read_parquet(path)
     if frame is None or frame.empty:
         return None
+    if "trade_date" not in frame.columns:
+        return None
+    if "symbol" not in frame.columns and "ts_code" not in frame.columns:
+        frame["symbol"] = path.stem
+    frame = ensure_symbol_columns(frame, context=f"Daily asset file {path.name}")
     trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")
     valid = trade_dates.notna()
     if not valid.any():
         return None
     work = frame.loc[valid].copy()
     work["trade_date"] = trade_dates.loc[valid].dt.normalize()
-    work["ts_code"] = work["ts_code"].astype(str).str.strip()
+    work["symbol"] = work["symbol"].astype(str).str.strip()
     work["total_turnover"] = pd.to_numeric(work["total_turnover"], errors="coerce")
     work = work.dropna(subset=["total_turnover"])
     if work.empty:
         return None
-    symbol = str(work["ts_code"].iloc[0] or path.stem).strip() or path.stem
+    symbol = str(work["symbol"].iloc[0] or path.stem).strip() or path.stem
     series = (
         work.sort_values("trade_date")
         .drop_duplicates(subset=["trade_date"], keep="last")

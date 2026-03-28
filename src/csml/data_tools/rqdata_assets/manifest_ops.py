@@ -4,6 +4,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from .asset_io import _canonicalize_output_columns
 from .models import (
     DailyMirrorAuditRecord,
     DailyMirrorEntry,
@@ -212,7 +213,7 @@ def _build_manifest(
             "fields_file": list(field_metadata.get("fields_file") or []),
         },
         "symbol_source": dict(symbol_metadata),
-        "columns": list(columns),
+        "columns": _canonicalize_output_columns(columns, preferred=("symbol", "order_book_id")),
         "audit_file": str(audit_file),
         "status_counts": dict(status_counts),
         "field_coverage": list(field_coverage),
@@ -304,7 +305,7 @@ def _build_daily_manifest(
             "base_fields": list(field_metadata.get("base_fields") or []),
         },
         "symbol_source": dict(symbol_metadata),
-        "columns": list(columns),
+        "columns": _canonicalize_output_columns(columns, preferred=("trade_date", "symbol", "order_book_id")),
         "audit_file": str(audit_file),
         "status_counts": dict(status_counts),
         "field_coverage": list(field_coverage),
@@ -390,7 +391,7 @@ def _build_dated_manifest(
             "base_fields": list(field_metadata.get("base_fields") or []),
         },
         "symbol_source": dict(symbol_metadata),
-        "columns": list(columns),
+        "columns": _canonicalize_output_columns(columns, preferred=("symbol", "order_book_id", date_column)),
         "audit_file": str(audit_file),
         "status_counts": dict(status_counts),
         "field_coverage": list(field_coverage),

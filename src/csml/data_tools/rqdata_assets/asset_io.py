@@ -22,6 +22,8 @@ from .shared import (
     _normalize_hk_symbol,
 )
 
+LEGACY_STORAGE_SYMBOL_COLUMNS = ("ts_code", "stock_ticker")
+
 
 def _chunked(values: Sequence[str], size: int) -> Iterable[list[str]]:
     if size <= 0:
@@ -120,6 +122,38 @@ def _field_columns_for_audit(fields: Sequence[str]) -> list[str]:
     return [str(field) for field in fields if str(field).strip()]
 
 
+def _canonicalize_output_columns(columns: Sequence[str], *, preferred: Sequence[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for column in columns:
+        name = str(column).strip()
+        if not name:
+            continue
+        if name in LEGACY_STORAGE_SYMBOL_COLUMNS:
+            name = "symbol"
+        if name in seen:
+            continue
+        seen.add(name)
+        normalized.append(name)
+    preferred_columns = [column for column in preferred if column in seen]
+    remaining = [column for column in normalized if column not in preferred_columns]
+    return preferred_columns + remaining
+
+
+def _canonicalize_symbol_frame_for_storage(
+    symbol_frame: pd.DataFrame,
+    *,
+    context: str,
+    preferred: Sequence[str],
+) -> pd.DataFrame:
+    normalized = ensure_symbol_columns(symbol_frame, context=context)
+    normalized = normalized.drop(columns=list(LEGACY_STORAGE_SYMBOL_COLUMNS), errors="ignore")
+    columns = _canonicalize_output_columns(normalized.columns.tolist(), preferred=preferred)
+    if not columns:
+        return normalized.copy()
+    return normalized.loc[:, columns].copy()
+
+
 def _entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -> MirrorEntry:
     symbol = str(symbol_frame["symbol"].iloc[0])
     order_book_id = (
@@ -143,10 +177,15 @@ def _entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -> Mirr
 
 
 def _write_symbol_frame(data_dir: Path, symbol_frame: pd.DataFrame) -> MirrorEntry:
-    symbol = str(symbol_frame["symbol"].iloc[0])
+    storage_frame = _canonicalize_symbol_frame_for_storage(
+        symbol_frame,
+        context="Mirror asset output",
+        preferred=("symbol", "order_book_id"),
+    )
+    symbol = str(storage_frame["symbol"].iloc[0])
     out_path = data_dir / f"{symbol}.parquet"
-    symbol_frame.to_parquet(out_path, index=False)
-    return _entry_from_symbol_frame(out_path, symbol_frame)
+    storage_frame.to_parquet(out_path, index=False)
+    return _entry_from_symbol_frame(out_path, storage_frame)
 
 
 def _load_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
@@ -335,10 +374,15 @@ def _daily_entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -
 
 
 def _write_daily_symbol_frame(data_dir: Path, symbol_frame: pd.DataFrame) -> DailyMirrorEntry:
-    symbol = str(symbol_frame["symbol"].iloc[0])
+    storage_frame = _canonicalize_symbol_frame_for_storage(
+        symbol_frame,
+        context="Daily mirror asset output",
+        preferred=("trade_date", "symbol", "order_book_id"),
+    )
+    symbol = str(storage_frame["symbol"].iloc[0])
     out_path = data_dir / f"{symbol}.parquet"
-    symbol_frame.to_parquet(out_path, index=False)
-    return _daily_entry_from_symbol_frame(out_path, symbol_frame)
+    storage_frame.to_parquet(out_path, index=False)
+    return _daily_entry_from_symbol_frame(out_path, storage_frame)
 
 
 def _load_daily_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
@@ -488,10 +532,15 @@ def _write_dated_symbol_frame(
     *,
     date_column: str,
 ) -> DatedMirrorEntry:
-    symbol = str(symbol_frame["symbol"].iloc[0])
+    storage_frame = _canonicalize_symbol_frame_for_storage(
+        symbol_frame,
+        context=f"Dated mirror asset output ({date_column})",
+        preferred=("symbol", "order_book_id", date_column),
+    )
+    symbol = str(storage_frame["symbol"].iloc[0])
     out_path = data_dir / f"{symbol}.parquet"
-    symbol_frame.to_parquet(out_path, index=False)
-    return _dated_entry_from_symbol_frame(out_path, symbol_frame, date_column=date_column)
+    storage_frame.to_parquet(out_path, index=False)
+    return _dated_entry_from_symbol_frame(out_path, storage_frame, date_column=date_column)
 
 
 def _load_dated_symbol_frame(path: Path, *, date_column: str, fields: Sequence[str]) -> pd.DataFrame:

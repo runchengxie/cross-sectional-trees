@@ -84,14 +84,14 @@ def test_build_hk_daily_asset_universe_outputs_symbol_only(tmp_path):
     pd.DataFrame(
         {
             "trade_date": ["20200101", "20200102", "20200103", "20200104", "20200105"],
-            "ts_code": ["AAA.HK"] * 5,
+            "symbol": ["AAA.HK"] * 5,
             "total_turnover": [10.0, 20.0, 30.0, 40.0, 50.0],
         }
     ).to_parquet(data_dir / "AAA.HK.parquet")
     pd.DataFrame(
         {
             "trade_date": ["20200101", "20200102", "20200103", "20200104", "20200105"],
-            "ts_code": ["BBB.HK"] * 5,
+            "symbol": ["BBB.HK"] * 5,
             "total_turnover": [50.0, 40.0, 30.0, 20.0, 10.0],
         }
     ).to_parquet(data_dir / "BBB.HK.parquet")
