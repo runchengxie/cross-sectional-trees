@@ -142,7 +142,7 @@ def test_alloc_hk_positions_file_custom_weights(tmp_path, monkeypatch, capsys):
     assert payload["cash_left"] == 1000.0
 
     row_a = payload["allocations"][0]
-    assert row_a["symbol"] == "0001.HK"
+    assert row_a["symbol"] == "00001.HK"
     assert row_a["target_value"] == 75000.0
     assert row_a["price"] == 10.0
     assert row_a["round_lot"] == 100.0
@@ -151,13 +151,13 @@ def test_alloc_hk_positions_file_custom_weights(tmp_path, monkeypatch, capsys):
     assert row_a["price_source"] == "1d_close"
 
     row_b = payload["allocations"][1]
-    assert row_b["symbol"] == "0002.HK"
+    assert row_b["symbol"] == "00002.HK"
     assert row_b["target_value"] == 25000.0
     assert row_b["lots"] == 12
     assert row_b["gap_to_target"] == 1000.0
 
     sell_rows = payload["sell_signals"]
-    assert sell_rows[0]["symbol"] == "0001.HK"
+    assert sell_rows[0]["symbol"] == "00001.HK"
     assert sell_rows[0]["last_sell_signal_date"] == "2020-01-03"
 
 
