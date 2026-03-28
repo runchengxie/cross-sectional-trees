@@ -1,11 +1,12 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from csml import cli
 from csml import pipeline as pipeline_module
-from csml.config_utils import resolve_pipeline_config
+from csml.cli import common as cli_common
+from csml.cli import rqdata as cli_rqdata
+from csml.config_utils import resolve_pipeline_config, resolve_repo_preset_path
 from csml.data_tools import backup_data as backup_data_tool
 from csml.data_tools import build_hk_connect_universe as hk_connect_tool
 from csml.data_tools import build_hk_daily_asset_universe as hk_daily_assets_tool
@@ -365,7 +366,7 @@ def test_cli_parses_rqdata_asset_commands():
 
 def test_append_passthrough_strips_leading_separator():
     argv: list[str] = []
-    cli._append_passthrough(argv, ["--", "--start-date", "20250101"])
+    cli_common.append_passthrough(argv, ["--", "--start-date", "20250101"])
     assert argv == ["--start-date", "20250101"]
     parser = cli.build_parser()
 
@@ -755,20 +756,32 @@ def test_cli_parses_init_config_universe_and_rqdata_info():
     assert hk_daily_assets.args == ["--", "--start-date", "20000104", "--end-date", "20251231"]
     assert callable(hk_daily_assets.func)
 
-def test_cli_handle_holdings_passes_through_args(monkeypatch):
+def test_cli_main_holdings_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(holdings_tool, "main", lambda argv: calls.append(argv))
 
-    args = SimpleNamespace(
-        config="hk",
-        run_dir="artifacts/runs/demo",
-        top_k=10,
-        as_of="20260131",
-        source="live",
-        format="json",
-        out="artifacts/exports/holdings.json",
+    assert (
+        cli.main(
+            [
+                "holdings",
+                "--config",
+                "hk",
+                "--run-dir",
+                "artifacts/runs/demo",
+                "--top-k",
+                "10",
+                "--as-of",
+                "20260131",
+                "--source",
+                "live",
+                "--format",
+                "json",
+                "--out",
+                "artifacts/exports/holdings.json",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_holdings(args) == 0
     assert calls == [
         [
             "--config",
@@ -789,29 +802,50 @@ def test_cli_handle_holdings_passes_through_args(monkeypatch):
     ]
 
 
-def test_cli_handle_alloc_passes_through_args(monkeypatch):
+def test_cli_main_alloc_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(alloc_tool, "main", lambda argv: calls.append(argv))
 
-    args = SimpleNamespace(
-        config="hk",
-        run_dir="artifacts/runs/demo",
-        positions_file="artifacts/runs/demo/positions.csv",
-        top_k=5,
-        as_of="20260131",
-        source="live",
-        side="long",
-        top_n=20,
-        cash=1_000_000.0,
-        buffer_bps=50.0,
-        price_field="close",
-        price_lookback_days=30,
-        username="user",
-        password="pass",
-        format="json",
-        out="artifacts/exports/alloc.json",
+    assert (
+        cli.main(
+            [
+                "alloc",
+                "--config",
+                "hk",
+                "--run-dir",
+                "artifacts/runs/demo",
+                "--positions-file",
+                "artifacts/runs/demo/positions.csv",
+                "--top-k",
+                "5",
+                "--as-of",
+                "20260131",
+                "--source",
+                "live",
+                "--side",
+                "long",
+                "--top-n",
+                "20",
+                "--cash",
+                "1000000.0",
+                "--buffer-bps",
+                "50.0",
+                "--price-field",
+                "close",
+                "--price-lookback-days",
+                "30",
+                "--username",
+                "user",
+                "--password",
+                "pass",
+                "--format",
+                "json",
+                "--out",
+                "artifacts/exports/alloc.json",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_alloc(args) == 0
     assert calls == [
         [
             "--config",
@@ -850,43 +884,73 @@ def test_cli_handle_alloc_passes_through_args(monkeypatch):
     ]
 
 
-def test_cli_handle_alloc_hk_passes_through_args(monkeypatch):
+def test_cli_main_alloc_hk_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(alloc_hk_tool, "main", lambda argv: calls.append(argv))
 
-    args = SimpleNamespace(
-        config="hk",
-        run_dir="artifacts/runs/demo",
-        positions_file="artifacts/runs/demo/positions.csv",
-        top_k=5,
-        as_of="20260131",
-        source="live",
-        side="long",
-        top_n=20,
-        cash=1_000_000.0,
-        method="custom",
-        require_stock_connect=True,
-        history_years=3,
-        roll_window=252,
-        sell_quantile=0.95,
-        extreme_quantile=0.99,
-        secondary_fill_enabled=True,
-        avoid_high_valuation=True,
-        avoid_high_valuation_strict=True,
-        allow_over_alloc=True,
-        max_steps=123,
-        max_over_alloc_ratio=0.002,
-        max_over_alloc_amount=1500.0,
-        max_over_alloc_lots_per_ticker=1,
-        cash_buffer_ratio=0.003,
-        cash_buffer_amount=2000.0,
-        estimated_fee_per_order=30.0,
-        username="user",
-        password="pass",
-        format="json",
-        out="artifacts/exports/alloc_hk.json",
+    assert (
+        cli.main(
+            [
+                "alloc-hk",
+                "--config",
+                "hk",
+                "--run-dir",
+                "artifacts/runs/demo",
+                "--positions-file",
+                "artifacts/runs/demo/positions.csv",
+                "--top-k",
+                "5",
+                "--as-of",
+                "20260131",
+                "--source",
+                "live",
+                "--side",
+                "long",
+                "--top-n",
+                "20",
+                "--cash",
+                "1000000.0",
+                "--method",
+                "custom",
+                "--require-stock-connect",
+                "--history-years",
+                "3",
+                "--roll-window",
+                "252",
+                "--sell-quantile",
+                "0.95",
+                "--extreme-quantile",
+                "0.99",
+                "--secondary-fill",
+                "--avoid-high-valuation",
+                "--avoid-high-valuation-strict",
+                "--allow-over-alloc",
+                "--max-steps",
+                "123",
+                "--max-over-alloc-ratio",
+                "0.002",
+                "--max-over-alloc-amount",
+                "1500.0",
+                "--max-over-alloc-lots-per-ticker",
+                "1",
+                "--cash-buffer-ratio",
+                "0.003",
+                "--cash-buffer-amount",
+                "2000.0",
+                "--estimated-fee-per-order",
+                "30.0",
+                "--username",
+                "user",
+                "--password",
+                "pass",
+                "--format",
+                "json",
+                "--out",
+                "artifacts/exports/alloc_hk.json",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_alloc_hk(args) == 0
     assert calls == [
         [
             "--config",
@@ -948,22 +1012,36 @@ def test_cli_handle_alloc_hk_passes_through_args(monkeypatch):
     ]
 
 
-def test_cli_handle_grid_passes_through_args(monkeypatch):
+def test_cli_main_grid_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(grid_tool, "main", lambda argv: calls.append(argv))
 
-    args = SimpleNamespace(
-        config="hk",
-        top_k=["5,10", "20"],
-        cost_bps=["15,25"],
-        buffer_exit=["6,8"],
-        buffer_entry=["3"],
-        output="artifacts/runs/grid.csv",
-        run_name_prefix="hk_grid",
-        log_level="DEBUG",
-        args=["--extra", "1"],
+    assert (
+        cli.main(
+            [
+                "grid",
+                "--config",
+                "hk",
+                "--top-k",
+                "5,10",
+                "--top-k",
+                "20",
+                "--cost-bps",
+                "15,25",
+                "--buffer-exit",
+                "6,8",
+                "--buffer-entry",
+                "3",
+                "--output",
+                "artifacts/runs/grid.csv",
+                "--run-name-prefix",
+                "hk_grid",
+                "--log-level",
+                "DEBUG",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_grid(args) == 0
     assert calls == [
         [
             "--config",
@@ -984,64 +1062,96 @@ def test_cli_handle_grid_passes_through_args(monkeypatch):
             "hk_grid",
             "--log-level",
             "DEBUG",
-            "--extra",
-            "1",
         ]
     ]
 
 
-def test_cli_handle_summarize_passes_namespace_to_runner(monkeypatch):
-    calls: list[SimpleNamespace] = []
+def test_cli_main_summarize_passes_namespace_to_runner(monkeypatch):
+    calls: list[object] = []
     monkeypatch.setattr(summarize_tool, "run", lambda args: calls.append(args))
 
-    args = SimpleNamespace(
-        runs_dir=["artifacts/runs"],
-        output="artifacts/runs/runs_summary.csv",
-        run_name_prefix=["hk_sel_q_benchmark_"],
-        since="2026-01-01",
-        latest_n=5,
-        short_sample_periods=24,
-        high_turnover_threshold=0.7,
-        score_drawdown_weight=0.5,
-        score_cost_weight=10.0,
-        exclude_flag_short_sample=False,
-        exclude_flag_high_turnover=False,
-        exclude_flag_negative_long_short=False,
-        exclude_flag_relative_end_date=False,
-        exclude_flag_constant_prediction=True,
-        exclude_flag_zero_feature_importance=True,
-        sort_by="score",
-        log_level="INFO",
+    assert (
+        cli.main(
+            [
+                "summarize",
+                "--runs-dir",
+                "artifacts/runs",
+                "--output",
+                "artifacts/runs/runs_summary.csv",
+                "--run-name-prefix",
+                "hk_sel_q_benchmark_",
+                "--since",
+                "2026-01-01",
+                "--latest-n",
+                "5",
+                "--short-sample-periods",
+                "24",
+                "--high-turnover-threshold",
+                "0.7",
+                "--score-drawdown-weight",
+                "0.5",
+                "--score-cost-weight",
+                "10.0",
+                "--exclude-flag-constant-prediction",
+                "--exclude-flag-zero-feature-importance",
+                "--sort-by",
+                "score",
+                "--log-level",
+                "INFO",
+            ]
+        )
+        == 0
     )
+    assert len(calls) == 1
+    args = calls[0]
+    assert args.runs_dir == ["artifacts/runs"]
+    assert args.output == "artifacts/runs/runs_summary.csv"
+    assert args.run_name_prefix == ["hk_sel_q_benchmark_"]
+    assert args.exclude_flag_constant_prediction is True
+    assert args.exclude_flag_zero_feature_importance is True
 
-    assert cli._handle_summarize(args) == 0
-    assert calls == [args]
 
-
-def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
+def test_cli_main_sweep_linear_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(sweep_tool, "main", lambda argv: calls.append(argv))
 
-    args = SimpleNamespace(
-        sweep_config="configs/experiments/sweeps/hk_selected__linear_a.yml",
-        config="configs/experiments/baseline/hk_selected.yml",
-        run_name_prefix="hk_sel_",
-        sweeps_dir="artifacts/sweeps",
-        tag="exp_1",
-        runs_dir="artifacts/runs",
-        ridge_alpha=["0.01,0.1", "1"],
-        elasticnet_alpha=["0.01,0.1"],
-        elasticnet_l1_ratio=["0.1,0.5"],
-        skip_ridge=False,
-        skip_elasticnet=True,
-        dry_run=True,
-        continue_on_error=True,
-        skip_summarize=False,
-        summary_output="artifacts/sweeps/exp_1/runs_summary.csv",
-        log_level="DEBUG",
-        args=None,
+    assert (
+        cli.main(
+            [
+                "sweep-linear",
+                "--sweep-config",
+                "configs/experiments/sweeps/hk_selected__linear_a.yml",
+                "--config",
+                "configs/experiments/baseline/hk_selected.yml",
+                "--run-name-prefix",
+                "hk_sel_",
+                "--sweeps-dir",
+                "artifacts/sweeps",
+                "--tag",
+                "exp_1",
+                "--runs-dir",
+                "artifacts/runs",
+                "--ridge-alpha",
+                "0.01,0.1",
+                "--ridge-alpha",
+                "1",
+                "--elasticnet-alpha",
+                "0.01,0.1",
+                "--elasticnet-l1-ratio",
+                "0.1,0.5",
+                "--no-skip-ridge",
+                "--skip-elasticnet",
+                "--dry-run",
+                "--continue-on-error",
+                "--no-skip-summarize",
+                "--summary-output",
+                "artifacts/sweeps/exp_1/runs_summary.csv",
+                "--log-level",
+                "DEBUG",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_sweep_linear(args) == 0
     assert calls == [
         [
             "--sweep-config",
@@ -1077,71 +1187,115 @@ def test_cli_handle_sweep_linear_passes_through_args(monkeypatch):
     ]
 
 
-def test_cli_handle_run_calls_pipeline(monkeypatch):
+def test_cli_main_run_calls_pipeline(monkeypatch):
     calls: list[str | None] = []
     monkeypatch.setattr(pipeline_module, "run", lambda config: calls.append(config))
 
-    assert cli._handle_run(SimpleNamespace(config="hk")) == 0
+    assert cli.main(["run", "--config", "hk"]) == 0
     assert calls == ["hk"]
 
 
-def test_cli_handle_rqdata_info_prints_client_info(monkeypatch, capsys):
+def test_cli_main_rqdata_info_prints_client_info(monkeypatch, capsys):
     class _FakeClient:
         def info(self):
             return {"user": "demo"}
 
-    monkeypatch.setattr(cli, "_init_rqdatac", lambda args: _FakeClient())
+    monkeypatch.setattr(cli_rqdata, "init_rqdatac", lambda args: _FakeClient())
 
-    assert cli._handle_rqdata_info(SimpleNamespace()) == 0
+    assert cli.main(["rqdata", "info"]) == 0
     assert capsys.readouterr().out.strip() == "{'user': 'demo'}"
 
 
-def test_cli_handle_rqdata_export_hk_instruments_passes_args_and_client(monkeypatch):
-    calls: list[tuple[SimpleNamespace, object]] = []
+def test_cli_main_rqdata_export_hk_instruments_passes_args_and_client(monkeypatch):
+    calls: list[tuple[object, object]] = []
     fake_client = object()
 
-    monkeypatch.setattr(cli, "_init_rqdatac", lambda args: fake_client)
+    monkeypatch.setattr(cli_rqdata, "init_rqdatac", lambda args: fake_client)
     monkeypatch.setattr(
         rqdata_assets_tool,
         "export_hk_instruments",
         lambda args, rqdatac: calls.append((args, rqdatac)) or 0,
     )
 
-    args = SimpleNamespace(limit=10, config="configs/presets/hk.yml")
-    assert cli._handle_rqdata_export_hk_instruments(args) == 0
-    assert calls == [(args, fake_client)]
+    assert (
+        cli.main(
+            [
+                "rqdata",
+                "export-hk-instruments",
+                "--limit",
+                "10",
+                "--config",
+                "configs/presets/hk.yml",
+            ]
+        )
+        == 0
+    )
+    assert len(calls) == 1
+    args, rqdatac = calls[0]
+    assert args.limit == 10
+    assert args.config == "configs/presets/hk.yml"
+    assert rqdatac is fake_client
 
 
-def test_cli_handle_rqdata_mirror_hk_exchange_rate_passes_args_and_client(monkeypatch):
-    calls: list[tuple[SimpleNamespace, object]] = []
+def test_cli_main_rqdata_mirror_hk_exchange_rate_passes_args_and_client(monkeypatch):
+    calls: list[tuple[object, object]] = []
     fake_client = object()
 
-    monkeypatch.setattr(cli, "_init_rqdatac", lambda args: fake_client)
+    monkeypatch.setattr(cli_rqdata, "init_rqdatac", lambda args: fake_client)
     monkeypatch.setattr(
         rqdata_assets_tool,
         "mirror_hk_exchange_rate",
         lambda args, rqdatac: calls.append((args, rqdatac)) or 0,
     )
 
-    args = SimpleNamespace(start_date="20000101", end_date="20260319", config="configs/presets/hk.yml")
-    assert cli._handle_rqdata_mirror_hk_exchange_rate(args) == 0
-    assert calls == [(args, fake_client)]
+    assert (
+        cli.main(
+            [
+                "rqdata",
+                "mirror-hk-exchange-rate",
+                "--start-date",
+                "20000101",
+                "--end-date",
+                "20260319",
+                "--config",
+                "configs/presets/hk.yml",
+            ]
+        )
+        == 0
+    )
+    assert len(calls) == 1
+    args, rqdatac = calls[0]
+    assert args.start_date == "20000101"
+    assert args.end_date == "20260319"
+    assert args.config == "configs/presets/hk.yml"
+    assert rqdatac is fake_client
 
 
-def test_cli_handle_snapshot_passes_through_args(monkeypatch):
+def test_cli_main_snapshot_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(snapshot_tool, "main", lambda argv: calls.append(argv))
 
-    args = SimpleNamespace(
-        config="hk",
-        run_dir="artifacts/runs/demo",
-        as_of="20260131",
-        skip_run=True,
-        top_k=15,
-        format="csv",
-        out="artifacts/live/snapshot.csv",
+    assert (
+        cli.main(
+            [
+                "snapshot",
+                "--config",
+                "hk",
+                "--run-dir",
+                "artifacts/runs/demo",
+                "--as-of",
+                "20260131",
+                "--skip-run",
+                "--top-k",
+                "15",
+                "--format",
+                "csv",
+                "--out",
+                "artifacts/live/snapshot.csv",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_snapshot(args) == 0
     assert calls == [
         [
             "--config",
@@ -1161,20 +1315,28 @@ def test_cli_handle_snapshot_passes_through_args(monkeypatch):
     ]
 
 
-def test_cli_handle_backup_data_passes_through_args(monkeypatch):
+def test_cli_main_backup_data_passes_through_args(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(backup_data_tool, "main", lambda argv: calls.append(argv))
 
-    args = SimpleNamespace(
-        out_root="artifacts/snapshots",
-        name="hk_frozen",
-        config=["configs/presets/hk.yml"],
-        include_path=["artifacts/assets/universe"],
-        no_cache=True,
-        no_universe=False,
-        skip_missing=True,
+    assert (
+        cli.main(
+            [
+                "backup-data",
+                "--out-root",
+                "artifacts/snapshots",
+                "--name",
+                "hk_frozen",
+                "--config",
+                "configs/presets/hk.yml",
+                "--include-path",
+                "artifacts/assets/universe",
+                "--no-cache",
+                "--skip-missing",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_backup_data(args) == 0
     assert calls == [
         [
             "--out-root",
@@ -1190,24 +1352,46 @@ def test_cli_handle_backup_data_passes_through_args(monkeypatch):
         ]
     ]
 
-def test_cli_handle_universe_wrappers_pass_through_args(monkeypatch):
+def test_cli_main_universe_wrappers_pass_through_args(monkeypatch):
     hk_connect_calls: list[list[str]] = []
     hk_daily_calls: list[list[str]] = []
 
     monkeypatch.setattr(hk_connect_tool, "main", lambda argv: hk_connect_calls.append(argv))
     monkeypatch.setattr(hk_daily_assets_tool, "main", lambda argv: hk_daily_calls.append(argv))
 
-    hk_connect_args = SimpleNamespace(
-        config="configs/presets/universe/hk_connect.yml",
-        args=["--", "--mode", "daily", "--start-date", "20250101"],
+    assert (
+        cli.main(
+            [
+                "universe",
+                "hk-connect",
+                "--config",
+                "configs/presets/universe/hk_connect.yml",
+                "--",
+                "--mode",
+                "daily",
+                "--start-date",
+                "20250101",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_universe_hk_connect(hk_connect_args) == 0
 
-    hk_daily_args = SimpleNamespace(
-        config="configs/presets/universe/hk_all_assets.yml",
-        args=["--", "--start-date", "20000104", "--end-date", "20251231"],
+    assert (
+        cli.main(
+            [
+                "universe",
+                "hk-daily-assets",
+                "--config",
+                "configs/presets/universe/hk_all_assets.yml",
+                "--",
+                "--start-date",
+                "20000104",
+                "--end-date",
+                "20251231",
+            ]
+        )
+        == 0
     )
-    assert cli._handle_universe_hk_daily_assets(hk_daily_args) == 0
 
     assert hk_connect_calls == [
         [
@@ -1231,30 +1415,27 @@ def test_cli_handle_universe_wrappers_pass_through_args(monkeypatch):
     ]
 
 
-def test_cli_handle_init_config_writes_default_configs_dir(tmp_path, monkeypatch, capsys):
+def test_cli_main_init_config_writes_default_configs_dir(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 
-    args = SimpleNamespace(market="hk", out=None, force=False)
-    assert cli._handle_init_config(args) == 0
+    assert cli.main(["init-config", "--market", "hk"]) == 0
 
     out_path = tmp_path / "configs" / "hk.yml"
     assert out_path.exists()
 
-    project_root = Path(cli.__file__).resolve().parents[2]
-    source_path = project_root / "configs" / "presets" / "hk.yml"
+    source_path = resolve_repo_preset_path("hk.yml")
     assert out_path.read_text(encoding="utf-8") == source_path.read_text(encoding="utf-8")
     assert capsys.readouterr().out.strip() == f"Wrote {out_path}"
 
 
-def test_cli_handle_init_config_directory_output_and_overwrite_guard(tmp_path):
+def test_cli_main_init_config_directory_output_and_overwrite_guard(tmp_path):
     out_dir = tmp_path / "exports"
-    args = SimpleNamespace(market="hk", out=str(out_dir), force=False)
 
-    assert cli._handle_init_config(args) == 0
+    assert cli.main(["init-config", "--market", "hk", "--out", str(out_dir)]) == 0
     out_path = out_dir / "hk.yml"
     assert out_path.exists()
 
     with pytest.raises(SystemExit, match="Refusing to overwrite existing file"):
-        cli._handle_init_config(args)
+        cli.main(["init-config", "--market", "hk", "--out", str(out_dir)])
 
-    assert cli._handle_init_config(SimpleNamespace(market="hk", out=str(out_dir), force=True)) == 0
+    assert cli.main(["init-config", "--market", "hk", "--out", str(out_dir), "--force"]) == 0

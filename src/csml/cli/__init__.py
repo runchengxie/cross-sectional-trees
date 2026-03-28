@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+import argparse
+
+from .core import register_core_commands
+from .data import register_data_command
+from .liveops import register_liveops_commands
+from .research import register_research_commands
+from .rqdata import register_rqdata_command
+from .universe import register_universe_command
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="csml",
+        description="Cross-sectional Machine Learning CLI",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    register_core_commands(subparsers)
+    register_rqdata_command(subparsers)
+    register_data_command(subparsers)
+    register_universe_command(subparsers)
+    register_research_commands(subparsers)
+    register_liveops_commands(subparsers)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    func = getattr(args, "func", None)
+    if func is None:
+        parser.print_help()
+        return 1
+    return int(func(args) or 0)
+
+
+__all__ = ["build_parser", "main"]
