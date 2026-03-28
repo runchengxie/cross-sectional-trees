@@ -12,6 +12,8 @@
 |------|---------|---------|
 | 第一次跑通 | `default` | 无 |
 | 港股月频 starter（PIT universe + provider fundamentals） | `hk` | 默认读港股通 research universe，不要求本地 PIT fundamentals 文件 |
+| HK selected 月频本地研究推荐入口 | `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml` | 需要本地 HK assets；把 `tr_close`、balanced execution 和本地 RQData 资产链路一次接好 |
+| HK selected 月频历史 benchmark 锚点 | `configs/experiments/baseline/hk_selected.yml` | 保留 `close` + flat `25bps` 的旧口径，便于历史结果对照 |
 | 港股季频 PIT 正式研究 | `configs/presets/hk_quarterly_pit_hybrid.yml` | 需要本地 `pipeline_fundamentals.parquet` |
 | 季度 benchmark protocol | `configs/experiments/baseline/hk_selected__quarterly_*.yml` + `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_*.yml` | 需要本地 `pipeline_fundamentals.parquet` |
 | 更宽的季度实验路线 | `configs/experiments/variants/hk_selected__pit_quarterly_*` | 适合继续派生专题路线 |

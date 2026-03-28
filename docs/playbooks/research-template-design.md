@@ -123,6 +123,9 @@
 * `configs/experiments/variants/hk_selected__xgb_regressor.yml`
 * `configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`
 
+如果你的目标不是四模型 PK，而是直接进入当前更贴近现实的本地研究口径，优先从 `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml` 开始。  
+这些显式模型模板仍然主要服务历史 benchmark 对照和同一路线下的模型比较。
+
 季度路线现在已经有一套官方 benchmark protocol，所以更适合：
 
 * 保留稳定的 feature benchmark 和 hybrid challenger 入口

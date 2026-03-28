@@ -7,11 +7,11 @@
 相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`、`docs/cli.md`、`docs/config.md`
 
 页面性质：`current-state`  
-最后核对时间：`2026-03-24`  
+最后核对时间：`2026-03-28`  
 权威来源：当前 `configs/` 模板、相关研究笔记和 benchmark protocol  
 冲突优先级：如果与具体 run 的 `config.used.yml` 冲突，以 run 产物为准；如果与当前 benchmark protocol 冲突，以协议页为准
 
-本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-23` 的仓库内研究结论整理。  
+本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-28` 的仓库内研究结论整理。  
 历史 run 里仍然保留了旧口径；复现旧结果时，请先看 `config.used.yml`。
 
 任务摘要：先选频率，再选数据路线；`fundamentals.source=file` 的 PIT 路线先做覆盖率体检；季度正式 benchmark 按 `price-only -> pit-core -> pit-core-hybrid` 递进；模型比较只在同一个研究单元里进行。
@@ -22,7 +22,7 @@
 
 | 你的目标 | 建议起点 | 原因 |
 | --- | --- | --- |
-| 第一次跑 HK selected，先熟悉命令和主流程 | 月度 `M` + provider 基本面 | 内置模型模板最完整，反馈最快 |
+| 第一次跑 HK selected，先熟悉命令和主流程 | 本地 HK assets 已就绪时，用月度 `M` + `tr_close` + balanced execution 本地 variant；否则先用 `configs/experiments/baseline/hk_selected.yml` | 当前推荐入口更贴近本地研究口径；旧 baseline 继续保留为低依赖对照和历史锚点 |
 | 做正式的财报驱动研究 | 季度 `Q` + PIT 财务 | 这是当前官方 benchmark protocol 的主线 |
 | 想做低频调仓，但暂时没有本地 PIT 文件 | 季度 `Q` + provider 基本面对照 | 可以先验证低频估值和慢量价，再决定是否进 PIT |
 | 想探索年度 `Y` | 先把季度路线跑稳，再从季度配置派生 | 代码支持，模板和经验都更依赖季度主线 |
@@ -70,7 +70,7 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 
 | 频率 | 纯量价 | 量价 + provider 基本面 | 量价 + PIT 财务 |
 | --- | --- | --- | --- |
-| 月度 `M` | 需要本地派生。可从 `configs/experiments/baseline/hk_selected.yml` 或 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 关闭 `fundamentals` 开始。 | 官方月度入口最完整：`configs/experiments/baseline/hk_selected.yml`，以及 `configs/experiments/variants/hk_selected__xgb_regressor.yml`、`configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`、`configs/experiments/variants/hk_selected__ridge_a1.yml`、`configs/experiments/variants/hk_selected__elasticnet_a0.1_l0.5.yml`。 | 需要本地派生；当前没有单独维护的月度 PIT benchmark 模板。 |
+| 月度 `M` | 需要本地派生。可从 `configs/experiments/baseline/hk_selected.yml` 或 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 关闭 `fundamentals` 开始。 | 当前本地研究推荐入口是 `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml`。`configs/experiments/baseline/hk_selected.yml` 和四个显式模型模板继续保留，分别服务历史 benchmark 对照和模型 PK。 | 需要本地派生；当前没有单独维护的月度 PIT benchmark 模板。 |
 | 季度 `Q` | 官方 benchmark 起点：`configs/experiments/baseline/hk_selected__quarterly_price_only.yml`。 | 需要本地派生；当前没有单独维护的季度 provider benchmark 模板。 | 官方 benchmark 主线：`configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`，以及同一 hybrid 单元上的 challenger 模板。 |
 | 年度 `Y` | 代码支持，当前没有内置模板。建议从月度或季度配置派生。 | 代码支持，当前没有内置模板。建议从季度 provider 路线派生。 | 代码支持，当前没有内置模板。建议从季度 PIT 路线派生。 |
 
@@ -83,10 +83,10 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 
 月度路线适合日常基线、模型横向比较和更快的研究反馈。
 
-| 数据路线 | 起点配置 | 是否需要本地 PIT 文件 | 更适合回答的问题 |
+| 数据路线 | 起点配置 | 本地资产要求 | 更适合回答的问题 |
 | --- | --- | --- | --- |
 | 纯量价 | 从 `configs/experiments/baseline/hk_selected.yml` 或 `configs/experiments/variants/hk_selected__xgb_regressor.yml` 派生，设 `fundamentals.enabled=false` | 否 | 技术面和量价特征本身有没有稳定信号 |
-| 量价 + provider 基本面 | `configs/experiments/baseline/hk_selected.yml` 及其显式模型模板 | 否 | 日常基线、四模型 PK、估值与技术面的混合效果 |
+| 量价 + provider 基本面 | 本地 HK assets 已就绪时，优先用 `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml`；需要低依赖或历史对照时，再用 `configs/experiments/baseline/hk_selected.yml` 及其显式模型模板 | 推荐入口需要本地 HK daily / instruments / ex_factors，以及本地 asof fundamentals 文件；baseline 对照不需要 | 日常本地研究、四模型 PK、估值与技术面的混合效果 |
 | 量价 + PIT 财务 | 需要本地派生 | 是 | 保留月度调仓，同时把真实财报字段并入模型后会发生什么 |
 
 月度路线当前最适合做两件事：
@@ -100,7 +100,22 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 * 样本点更多
 * 结果回看和参数调整更高频
 
-如果你现在的目标只是“先把四种模型都跑一遍看看差距”，月度 `M` + provider 基本面仍然是最顺手的入口。
+当前把月度入口分成两个角色更清楚：
+
+* `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml`：当前本地研究推荐入口，适合直接进入更合理的价格和执行近似口径。
+* `configs/experiments/baseline/hk_selected.yml`：历史 benchmark 锚点，也是低依赖的回退入口。
+
+如果你现在的目标只是“先把四种模型都跑一遍看看差距”，月度 `M` + provider 基本面仍然是最顺手的入口；但那更接近模型 PK 入口，不再是默认研究口径入口。
+
+最直接的起跑方式是：
+
+```bash
+# 当前推荐的 HK selected 月频本地研究入口
+csml run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
+
+# 历史 benchmark 锚点 / 低依赖对照
+csml run --config configs/experiments/baseline/hk_selected.yml
+```
 
 ## 5. 季度 `Q` 路线
 
@@ -139,7 +154,7 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 
 ### 5.2 季度 PIT 的当前模板状态
 
-截至 `2026-03-23`，这里有 3 条需要明确写清楚：
+截至 `2026-03-28`，这里有 3 条需要明确写清楚：
 
 * 当前官方季度 preset `configs/presets/hk_quarterly_pit_hybrid.yml` 已经默认 `features.missing.add_indicators: false`。
 * 当前三条官方季度 benchmark 配置都建立在这个 preset 之上。
@@ -303,7 +318,7 @@ csml rqdata inspect-hk-pit-coverage \
 * 日频估值直接走 `provider_overlay`；不要把它写回稀疏 PIT 文件后再解释结果
 * 专题结论和抗漂移基线看 `docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`
 
-截至 `2026-03-23`，这条线的状态是：
+截至 `2026-03-28`，这条线的状态是：
 
 * 旧 overlay 基线已经在 `final_oos` 暴露出 regime shift
 * 当前仓库里有单独维护的抗漂移验证配置

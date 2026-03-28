@@ -33,6 +33,8 @@ csml run --config hk
 * `provider` 基本面
 * 月频 starter 路线
 
+它适合环境验证和 starter 路线，不等于当前 HK selected 月频本地研究的推荐入口。
+
 如果你准备做季频 `PIT fundamentals` 路线，先看 `docs/playbooks/hk-data-assets.md` 准备本地 `pipeline_fundamentals.parquet`，再跑：
 
 ```bash
@@ -86,6 +88,15 @@ HK selected 的路线选择、PIT 资产准备和模板沉淀规则在 `docs/pla
 * 路线选择：`docs/playbooks/hk-selected.md`
 * 资产准备：`docs/playbooks/hk-data-assets.md`
 * 模板维护：`docs/playbooks/research-template-design.md`
+
+如果你本地 HK assets 已经就绪，当前更推荐的月频研究入口是：
+
+```bash
+csml run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
+```
+
+这条线把 `tr_close`、balanced execution 和本地资产链路一次接好。  
+`configs/experiments/baseline/hk_selected.yml` 仍然保留为历史 benchmark 锚点和低依赖对照，不建议直接拿它充当当前默认研究入口。
 
 ### 3.4 线性模型搜索
 
