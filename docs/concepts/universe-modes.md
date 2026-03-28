@@ -61,7 +61,7 @@ universe:
 `by_date_file` 应该是 CSV，格式如下：
 
 ```csv
-trade_date,ts_code,stock_ticker
+trade_date,symbol,stock_ticker
 2024-01-02,00700.HK,00700
 2024-01-02,09988.HK,09988
 2024-01-03,00700.HK,00700

@@ -1,4 +1,6 @@
-from csml.research.hk_intraday_download import build_parser
+import pandas as pd
+
+from csml.research.hk_intraday_download import _read_symbol_file, build_parser
 
 
 def test_hk_intraday_download_parser_defaults_to_pre_adjusted_bars():
@@ -35,3 +37,16 @@ def test_hk_intraday_download_parser_accepts_none_adjustment():
         ]
     )
     assert args.adjust_type == "none"
+
+
+def test_read_symbol_file_normalizes_legacy_hk_symbol_columns(tmp_path):
+    path = tmp_path / "symbols.csv"
+    pd.DataFrame(
+        {
+            "order_book_id": ["700.XHKG", "00005.XHKG", "00005.HK"],
+        }
+    ).to_csv(path, index=False)
+
+    out = _read_symbol_file(path)
+
+    assert out == ["00700.HK", "00005.HK"]

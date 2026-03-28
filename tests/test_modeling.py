@@ -70,7 +70,7 @@ def test_fit_model_supports_ranker_groups():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "f1": [0.1, 0.9, 0.2, 0.8],
             "target": [0.0, 1.0, 0.0, 1.0],
         }
@@ -98,7 +98,7 @@ def test_fit_model_supports_ranker_row_weights():
                     "2020-01-03",
                 ]
             ),
-            "ts_code": ["A", "B", "A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B", "A", "B"],
             "f1": [0.1, 0.9, 0.2, 0.8, 0.3, 0.7],
             "target": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
         }

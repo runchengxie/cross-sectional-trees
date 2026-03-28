@@ -10,7 +10,7 @@ def test_backtest_initial_cost_applied():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "pred": [2.0, 1.0, 2.0, 1.0],
             "close": [100.0, 100.0, 110.0, 90.0],
         }
@@ -48,7 +48,7 @@ def test_backtest_turnover_accounts_for_weight_drift():
                     "2020-01-03",
                 ]
             ),
-            "ts_code": ["A", "B"] * 3,
+            "symbol": ["A", "B"] * 3,
             "pred": [2.0, 1.0] * 3,
             "close": [100.0, 100.0, 200.0, 100.0, 200.0, 100.0],
         }
@@ -90,7 +90,7 @@ def test_backtest_label_horizon_overlap_raises():
                     "2020-01-04",
                 ]
             ),
-            "ts_code": ["A", "B"] * 4,
+            "symbol": ["A", "B"] * 4,
             "pred": [2.0, 1.0] * 4,
             "close": [100.0, 100.0, 101.0, 99.0, 102.0, 98.0, 103.0, 97.0],
         }
@@ -121,7 +121,7 @@ def test_backtest_long_short_basic():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "pred": [2.0, 1.0, 2.0, 1.0],
             "close": [100.0, 100.0, 110.0, 90.0],
         }
@@ -153,7 +153,7 @@ def test_backtest_signal_weighting_uses_signal_magnitude():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "pred": [3.0, 1.0, 3.0, 1.0],
             "close": [100.0, 100.0, 120.0, 100.0],
         }
@@ -200,7 +200,7 @@ def test_backtest_group_cap_limits_names_per_group():
                     "2020-01-02",
                 ]
             ),
-            "ts_code": ["A1", "A2", "B1", "B2", "C1", "C2"] * 2,
+            "symbol": ["A1", "A2", "B1", "B2", "C1", "C2"] * 2,
             "pred": [6.0, 5.0, 4.0, 3.0, 2.0, 1.0] * 2,
             "close": [
                 100.0,
@@ -246,7 +246,7 @@ def test_backtest_exit_delay_uses_next_available_price():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-03", "2020-01-03"]
             ),
-            "ts_code": ["A", "B", "B", "A", "B"],
+            "symbol": ["A", "B", "B", "A", "B"],
             "pred": [2.0, 1.0, 1.0, 2.0, 1.0],
             "close": [100.0, 100.0, 100.0, 90.0, 100.0],
         }
@@ -279,7 +279,7 @@ def test_backtest_can_exit_with_raw_pricing_data_after_selection_filter():
     filtered_df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01", "2020-01-01", "2020-01-02"]),
-            "ts_code": ["A", "B", "B"],
+            "symbol": ["A", "B", "B"],
             "pred": [2.0, 1.0, 1.0],
             "close": [100.0, 100.0, 100.0],
         }
@@ -289,7 +289,7 @@ def test_backtest_can_exit_with_raw_pricing_data_after_selection_filter():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "close": [100.0, 100.0, 110.0, 100.0],
         }
     )
@@ -345,7 +345,7 @@ def test_backtest_buffer_reduces_turnover():
                     "2020-01-03",
                 ]
             ),
-            "ts_code": ["A", "B"] * 3,
+            "symbol": ["A", "B"] * 3,
             "pred": [2.0, 1.0, 1.0, 2.0, 1.0, 2.0],
             "close": [100.0] * 6,
         }
@@ -377,7 +377,7 @@ def test_backtest_exit_strict_skips_missing_price():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01", "2020-01-02"]),
-            "ts_code": ["A", "A"],
+            "symbol": ["A", "A"],
             "pred": [1.0, 1.0],
             "close": [100.0, np.nan],
         }
@@ -402,7 +402,7 @@ def test_backtest_exit_ffill_uses_last_price():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01", "2020-01-02"]),
-            "ts_code": ["A", "A"],
+            "symbol": ["A", "A"],
             "pred": [1.0, 1.0],
             "close": [100.0, np.nan],
         }
@@ -432,7 +432,7 @@ def test_backtest_tradable_filters_entry_selection():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "pred": [2.0, 1.0, 2.0, 1.0],
             "close": [100.0, 100.0, 110.0, 90.0],
             "is_tradable": [False, True, False, True],
@@ -461,7 +461,7 @@ def test_backtest_exit_delay_with_none_fallback_skips_unresolved_exit():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]),
-            "ts_code": ["A", "A", "A"],
+            "symbol": ["A", "A", "A"],
             "pred": [1.0, 1.0, 1.0],
             "close": [100.0, np.nan, np.nan],
             "is_tradable": [True, False, False],
@@ -489,7 +489,7 @@ def test_backtest_exit_delay_with_ffill_fallback_uses_previous_tradable_price():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"]),
-            "ts_code": ["A", "A", "A"],
+            "symbol": ["A", "A", "A"],
             "pred": [1.0, 1.0, 1.0],
             "close": [100.0, 99.0, 98.0],
             "is_tradable": [True, False, False],
@@ -522,7 +522,7 @@ def test_backtest_execution_can_use_open_entry_price():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "pred": [2.0, 1.0, 2.0, 1.0],
             "open": [100.0, 100.0, 111.0, 100.0],
             "close": [110.0, 100.0, 120.0, 100.0],
@@ -559,7 +559,7 @@ def test_backtest_execution_min_amount_filters_illiquid_entries():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "pred": [2.0, 1.0, 2.0, 1.0],
             "close": [100.0, 100.0, 110.0, 90.0],
             "amount": [10.0, 1000.0, 10.0, 1000.0],
@@ -596,7 +596,7 @@ def test_backtest_side_cost_and_bps_slippage_are_applied():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "pred": [2.0, 1.0, 2.0, 1.0],
             "close": [100.0, 100.0, 100.0, 100.0],
         }
@@ -637,7 +637,7 @@ def test_backtest_participation_slippage_uses_amount_column():
             "trade_date": pd.to_datetime(
                 ["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]
             ),
-            "ts_code": ["A", "B", "A", "B"],
+            "symbol": ["A", "B", "A", "B"],
             "pred": [2.0, 1.0, 2.0, 1.0],
             "close": [100.0, 100.0, 100.0, 100.0],
             "amount": [10000.0, 10000.0, 10000.0, 10000.0],

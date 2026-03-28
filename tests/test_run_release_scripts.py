@@ -79,7 +79,7 @@ def _prepare_demo_assets(repo_root: Path) -> dict[str, Path]:
     universe_dir = repo_root / "artifacts" / "assets" / "universe"
     universe_dir.mkdir(parents=True, exist_ok=True)
     universe_file = universe_dir / "by_date_demo.csv"
-    universe_file.write_text("trade_date,ts_code\n20260131,00005.HK\n", encoding="utf-8")
+    universe_file.write_text("trade_date,symbol\n20260131,00005.HK\n", encoding="utf-8")
 
     return {
         "daily_dir": daily_dir,

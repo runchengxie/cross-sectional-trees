@@ -22,7 +22,7 @@ def _build_daily_frames(symbols: list[str], dates: pd.DatetimeIndex) -> dict[str
         frames[symbol] = pd.DataFrame(
             {
                 "trade_date": [d.strftime("%Y%m%d") for d in dates],
-                "ts_code": symbol,
+                "symbol": symbol,
                 "close": close,
                 "vol": vol,
                 "amount": amount,

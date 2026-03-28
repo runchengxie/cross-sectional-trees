@@ -80,6 +80,7 @@
 * `--resume` 会跳过已经存在的 batch part
 * 最后再把 part 文件流式合并成单个 parquet
 * 现在也支持 `--adjust-type none|pre|post|pre_volume|post_volume`；后续如果要补更严肃的盘中执行样本，优先考虑单独下载 `--adjust-type none`
+* `--symbols-file` 仍兼容 `symbol` / `ts_code` / `stock_ticker` / `order_book_id` 列，但最终落盘 parquet 会统一把 `symbol` 规范成 canonical 的五位 `.HK` 代码；`rq_order_book_id` 只作为 provider 元数据列保留
 
 当前已经保留的 checkpoint 目录：
 

@@ -10,7 +10,7 @@ def _daily_frame(symbol: str, start: str, end: str, *, close_offset: float = 0.0
         rows.append(
             {
                 "trade_date": trade_date.strftime("%Y%m%d"),
-                "ts_code": symbol,
+                "symbol": symbol,
                 "close": close_offset + float(idx + 1),
                 "vol": 1000.0 + idx,
                 "amount": 10000.0 + idx,
@@ -214,7 +214,7 @@ def test_fetch_daily_reads_from_local_asset_dir_without_remote_fetch(tmp_path, m
     pd.DataFrame(
         {
             "trade_date": ["20200101", "20200102", "20200103"],
-            "ts_code": [symbol, symbol, symbol],
+            "symbol": [symbol, symbol, symbol],
             "close": [10.0, 11.0, 12.0],
             "volume": [100.0, 110.0, 120.0],
             "total_turnover": [1000.0, 1100.0, 1200.0],
@@ -240,7 +240,6 @@ def test_fetch_daily_reads_from_local_asset_dir_without_remote_fetch(tmp_path, m
             "cache_refresh_on_hit": False,
             "column_map": {
                 "trade_date": "trade_date",
-                "symbol": "ts_code",
                 "close": "close",
                 "vol": "volume",
                 "amount": "total_turnover",
@@ -294,7 +293,6 @@ def test_fetch_daily_local_asset_prefers_ts_code_over_order_book_id(tmp_path, mo
             "cache_refresh_on_hit": False,
             "column_map": {
                 "trade_date": "trade_date",
-                "symbol": "ts_code",
                 "close": "close",
                 "vol": "volume",
                 "amount": "total_turnover",
@@ -321,7 +319,7 @@ def test_fetch_daily_derives_tr_close_from_local_ex_factors(tmp_path, monkeypatc
     pd.DataFrame(
         {
             "trade_date": ["20200101", "20200102", "20200103", "20200106"],
-            "ts_code": [symbol, symbol, symbol, symbol],
+            "symbol": [symbol, symbol, symbol, symbol],
             "close": [10.0, 10.0, 8.0, 9.0],
             "volume": [100.0, 100.0, 100.0, 100.0],
             "total_turnover": [1000.0, 1000.0, 800.0, 900.0],
@@ -353,7 +351,6 @@ def test_fetch_daily_derives_tr_close_from_local_ex_factors(tmp_path, monkeypatc
             "cache_refresh_on_hit": False,
             "column_map": {
                 "trade_date": "trade_date",
-                "symbol": "ts_code",
                 "close": "close",
                 "vol": "volume",
                 "amount": "total_turnover",

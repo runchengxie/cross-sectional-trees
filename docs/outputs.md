@@ -188,6 +188,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 * 原始 replay、审计和复现继续看 `artifacts/assets/`。
 * 横截面覆盖分析、聚合、筛选和 SQL 查询优先读 `artifacts/standardized/`。
+* `csml data materialize` 的常用 preset 已默认把 `symbol` 当输入标准列；历史 `ts_code` / `stock_ticker` / `order_book_id` 文件仍会自动归一到 `symbol`。
 
 ## PIT fundamentals 平面文件
 
@@ -474,6 +475,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 1. 项目研究主链路内部已经改为以 `symbol` 作为主字段。
 1. 旧持仓文件如果仍是 `ts_code` / `stock_ticker` / `order_book_id`，CLI 读取时会自动兼容并规范到 `symbol`。
+1. `csml holdings` / `csml alloc` 的导出 payload 也只保留 canonical `symbol`，不会把这些 legacy alias 列原样透传回输出。
 
 ### `positions_by_rebalance_oos.csv` / `positions_current_oos.csv`
 

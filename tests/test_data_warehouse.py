@@ -34,7 +34,7 @@ def test_refresh_catalog_scans_manifest_backed_artifacts(tmp_path):
                 "end_date": "20260320",
                 "frequency": "1d",
             },
-            "columns": ["trade_date", "ts_code", "close"],
+            "columns": ["trade_date", "symbol", "close"],
             "totals": {"rows": 4, "files": 2, "symbols": 2, "bytes": 1234},
         },
     )
@@ -117,14 +117,14 @@ def test_materialize_standardized_from_asset_dir_writes_partitioned_output(tmp_p
     pd.DataFrame(
         {
             "trade_date": ["20260105", "20260131", "20260131"],
-            "ts_code": ["00005.HK", "00005.HK", "00005.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00005.HK"],
             "close": [10.0, 11.0, 12.0],
         }
     ).to_parquet(data_dir / "00005.HK.parquet", index=False)
     pd.DataFrame(
         {
             "trade_date": ["20260110", "20260131"],
-            "ts_code": ["00700.HK", "00700.HK"],
+            "symbol": ["00700.HK", "00700.HK"],
             "close": [20.0, 21.0],
         }
     ).to_parquet(data_dir / "00700.HK.parquet", index=False)
@@ -163,6 +163,54 @@ def test_materialize_standardized_from_asset_dir_writes_partitioned_output(tmp_p
     assert combined["symbol"].tolist() == ["00005.HK", "00700.HK"]
     assert combined["trade_date_key"].tolist() == ["20260131", "20260131"]
     assert combined["close"].tolist() == [12.0, 21.0]
+
+
+def test_materialize_standardized_auto_maps_legacy_ts_code_input(tmp_path):
+    asset_dir = tmp_path / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_legacy"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    _write_yaml(
+        asset_dir / "manifest.yml",
+        {
+            "name": "hk_all_daily_legacy",
+            "dataset": "daily",
+            "market": "hk",
+            "status": "completed",
+        },
+    )
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260105", "20260131"],
+            "ts_code": ["00005.HK", "00005.HK"],
+            "close": [10.0, 12.0],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    out_root = tmp_path / "artifacts" / "standardized"
+    args = SimpleNamespace(
+        name="hk_daily_panel_legacy",
+        market="hk",
+        preset="rqdata-daily",
+        dataset_name="daily_panel",
+        asset_dir=str(asset_dir),
+        file=None,
+        date_col=None,
+        symbol_col=None,
+        frequency="M",
+        out_root=str(out_root),
+        force=False,
+    )
+
+    assert data_warehouse.materialize_standardized(args) == 0
+
+    output_dir = out_root / "hk" / "daily_panel" / "hk_daily_panel_legacy"
+    parquet_files = sorted((output_dir / "data").glob("trade_year=*/part-*.parquet"))
+    assert len(parquet_files) == 1
+    combined = pd.concat([pd.read_parquet(path) for path in parquet_files], ignore_index=True)
+    assert combined["symbol"].tolist() == ["00005.HK"]
+    assert combined["ts_code"].tolist() == ["00005.HK"]
+    assert combined["trade_date_key"].tolist() == ["20260131"]
 
 
 class _FakeDuckDBConnection:

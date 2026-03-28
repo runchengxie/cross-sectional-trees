@@ -16,7 +16,7 @@ def test_backup_data_copies_selected_paths_and_writes_manifest(tmp_path, monkeyp
     )
     (repo_root / "artifacts" / "assets" / "universe").mkdir(parents=True)
     (repo_root / "artifacts" / "assets" / "universe" / "universe_by_date.csv").write_text(
-        "trade_date,ts_code\n20250131,00005.HK\n",
+        "trade_date,symbol\n20250131,00005.HK\n",
         encoding="utf-8",
     )
     (repo_root / "config").mkdir()

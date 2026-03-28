@@ -23,7 +23,7 @@ def test_daily_ic_series_perfect_rank():
             "trade_date": pd.to_datetime(
                 ["2020-01-01"] * 3 + ["2020-01-02"] * 3
             ),
-            "ts_code": ["A", "B", "C"] * 2,
+            "symbol": ["A", "B", "C"] * 2,
             "pred": [1, 2, 3, 3, 2, 1],
             "target": [1, 2, 3, 3, 2, 1],
         }
@@ -43,7 +43,7 @@ def test_quantile_returns_shape_and_turnover():
             "trade_date": pd.to_datetime(
                 ["2020-01-01"] * 4 + ["2020-01-02"] * 4
             ),
-            "ts_code": ["A", "B", "C", "D"] * 2,
+            "symbol": ["A", "B", "C", "D"] * 2,
             "pred": [4, 3, 2, 1, 4, 3, 2, 1],
             "target": [0.04, 0.03, 0.02, 0.01] * 2,
         }
@@ -62,7 +62,7 @@ def test_quantile_returns_insufficient_symbols():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01"] * 2),
-            "ts_code": ["A", "B"],
+            "symbol": ["A", "B"],
             "pred": [1, 2],
             "target": [0.01, 0.02],
         }
@@ -75,7 +75,7 @@ def test_daily_ic_series_pearson_perfect():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01"] * 3),
-            "ts_code": ["A", "B", "C"],
+            "symbol": ["A", "B", "C"],
             "pred": [1.0, 2.0, 3.0],
             "target": [2.0, 4.0, 6.0],
         }
@@ -99,7 +99,7 @@ def test_hit_rate_and_topk_positive_ratio():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01"] * 4),
-            "ts_code": ["A", "B", "C", "D"],
+            "symbol": ["A", "B", "C", "D"],
             "pred": [0.2, -0.1, 0.0, 0.3],
             "target": [0.1, -0.05, 0.0, -0.2],
         }
@@ -117,7 +117,7 @@ def test_bucket_ic_summary_quantile():
     df = pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2020-01-01"] * 4 + ["2020-01-02"] * 4),
-            "ts_code": ["A", "B", "C", "D"] * 2,
+            "symbol": ["A", "B", "C", "D"] * 2,
             "pred": [1, 2, 3, 4, 4, 3, 2, 1],
             "target": [1, 2, 3, 4, 4, 3, 2, 1],
             "mcap": [10, 20, 30, 40, 10, 20, 30, 40],

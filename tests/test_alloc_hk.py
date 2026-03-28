@@ -79,7 +79,7 @@ def _write_positions(path) -> None:
         {
             "entry_date": ["2020-01-02", "2020-01-02"],
             "rebalance_date": ["2020-01-01", "2020-01-01"],
-            "ts_code": ["0001.HK", "0002.HK"],
+            "symbol": ["0001.HK", "0002.HK"],
             "weight": [0.75, 0.25],
             "signal": [0.20, 0.10],
             "rank": [1, 2],

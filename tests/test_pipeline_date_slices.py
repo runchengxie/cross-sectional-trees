@@ -11,8 +11,8 @@ def _build_frame() -> pd.DataFrame:
     dates = pd.date_range("2020-01-01", periods=8, freq="D")
     rows: list[dict] = []
     for date in dates:
-        rows.append({"trade_date": date, "ts_code": "A", "value": 1.0})
-        rows.append({"trade_date": date, "ts_code": "B", "value": 2.0})
+        rows.append({"trade_date": date, "symbol": "A", "value": 1.0})
+        rows.append({"trade_date": date, "symbol": "B", "value": 2.0})
     return pd.DataFrame(rows).sample(frac=1.0, random_state=42).reset_index(drop=True)
 
 

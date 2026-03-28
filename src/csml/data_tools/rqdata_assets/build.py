@@ -524,7 +524,8 @@ def build_hk_pit_fundamentals_file(args) -> int:
         frame = ensure_symbol_columns(frame, context=f"PIT asset file {data_file.name}")
         if "symbol" not in frame.columns or "info_date" not in frame.columns:
             raise SystemExit(
-                f"PIT asset file must include symbol/ts_code and info_date columns: {data_file}"
+                "PIT asset file must include canonical symbol and info_date columns "
+                f"(legacy ts_code inputs remain compatible): {data_file}"
             )
         missing_fields = [field for field in fields if field not in frame.columns]
         if missing_fields:
@@ -571,7 +572,6 @@ def build_hk_pit_fundamentals_file(args) -> int:
         sort_columns = [
             col
             for col in [
-                "ts_code",
                 "symbol",
                 "trade_date",
                 "quarter",

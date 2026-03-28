@@ -11,6 +11,7 @@ def _write_positions(
     entry_date="2020-01-02",
     rebalance_date="2020-01-01",
     symbol_col="symbol",
+    symbol_value="0001.HK",
 ):
     df = pd.DataFrame(
         {
@@ -21,7 +22,7 @@ def _write_positions(
             "rank": [1],
         }
     )
-    df[symbol_col] = ["0001.HK"]
+    df[symbol_col] = [symbol_value]
     df.to_csv(path, index=False)
 
 
@@ -117,7 +118,34 @@ def test_holdings_accepts_stock_ticker_column(tmp_path, capsys):
 
     payload = json.loads(capsys.readouterr().out)
     row = payload["holdings"][0]
-    assert row["symbol"] == "0001.HK"
+    assert row["symbol"] == "00001.HK"
+    assert "stock_ticker" not in row
+    assert "ts_code" not in row
+
+
+def test_holdings_accepts_order_book_id_column(tmp_path, capsys):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    positions_path = run_dir / "positions_by_rebalance_live.csv"
+    _write_positions(positions_path, symbol_col="order_book_id", symbol_value="00001.XHKG")
+
+    holdings.main(
+        [
+            "--run-dir",
+            str(run_dir),
+            "--source",
+            "live",
+            "--as-of",
+            "2020-01-03",
+            "--format",
+            "json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    row = payload["holdings"][0]
+    assert row["symbol"] == "00001.HK"
+    assert "order_book_id" not in row
     assert "stock_ticker" not in row
     assert "ts_code" not in row
 

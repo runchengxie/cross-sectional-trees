@@ -398,7 +398,7 @@ fundamentals:
       - pb_ratio_ttm
     column_map:
       trade_date: trade_date
-      symbol: ts_code
+      symbol: symbol
       market_cap: hk_total_market_val
       pe_ttm: pe_ratio_ttm
       pb: pb_ratio_ttm

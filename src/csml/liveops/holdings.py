@@ -11,7 +11,7 @@ import pandas as pd
 from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, resolve_repo_path
 from ..config_utils import resolve_pipeline_config
 from ..date_utils import resolve_date_token
-from ..data_tools.symbols import ensure_symbol_columns
+from ..data_tools.symbols import ensure_symbol_columns, normalize_symbol_for_market
 
 
 def _normalize_provider(value: object | None) -> str | None:
@@ -98,6 +98,17 @@ def _resolve_output_dir(config_path: str | None) -> tuple[Path, str]:
     run_name = eval_cfg.get("run_name") or resolved.label
     output_path = resolve_repo_path(output_dir)
     return output_path, str(run_name)
+
+
+def _infer_market_from_symbols(symbols: list[object]) -> str | None:
+    inferred: set[str] = set()
+    for value in symbols:
+        text = str(value or "").strip().upper()
+        if text.endswith(".HK") or text.endswith(".XHKG"):
+            inferred.add("hk")
+    if len(inferred) == 1:
+        return next(iter(inferred))
+    return None
 
 
 def _find_latest_summary(output_dir: Path, run_name: str, top_k: int | None) -> Path | None:
@@ -474,7 +485,11 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("No holdings found for the latest entry date.")
 
     selection = ensure_symbol_columns(selection, context=positions_path.name)
-    selection = selection.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    selection_market = date_market or _infer_market_from_symbols(selection["symbol"].tolist())
+    selection["symbol"] = selection["symbol"].map(
+        lambda value: normalize_symbol_for_market(value, market=selection_market)
+    )
+    selection = selection.drop(columns=["ts_code", "stock_ticker", "order_book_id"], errors="ignore")
     if "side" not in selection.columns:
         selection["side"] = "long"
     if "rank" not in selection.columns:

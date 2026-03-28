@@ -1304,7 +1304,7 @@ def test_mirror_hk_southbound_writes_symbol_history_assets(tmp_path, monkeypatch
     by_date_file.write_text(
         "\n".join(
             [
-                "trade_date,ts_code,selected",
+                "trade_date,symbol,selected",
                 "20250102,00005.HK,1",
                 "20250102,00011.HK,1",
                 "20250131,00012.HK,1",
@@ -1475,7 +1475,7 @@ def test_mirror_hk_instrument_industry_writes_snapshot_assets(tmp_path, monkeypa
     (repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_by_date.csv").write_text(
         "\n".join(
             [
-                "trade_date,ts_code,selected",
+                "trade_date,symbol,selected",
                 "20250131,00005.HK,1",
                 "20250131,00700.HK,1",
                 "20250228,00005.HK,1",
@@ -1719,7 +1719,9 @@ def test_validate_resume_inputs_preserves_whitespace_fields(tmp_path, monkeypatc
     )
 
 
-def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_path, monkeypatch):
+def test_mirror_hk_pit_financials_uses_config_universe_with_legacy_symbol_column_and_writes_manifest(
+    tmp_path, monkeypatch
+):
     repo_root = tmp_path / "repo"
     (repo_root / "config").mkdir(parents=True)
     (repo_root / "artifacts" / "assets" / "universe").mkdir(parents=True)
@@ -1900,7 +1902,7 @@ def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, m
             "revenue",
             "net_profit",
             "order_book_id",
-            "ts_code",
+            "symbol",
         ],
     }
     (asset_dir / "manifest.yml").write_text(
@@ -1921,7 +1923,7 @@ def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, m
             "revenue": [100.0, 101.0, 120.0],
             "net_profit": [10.0, 11.0, 12.0],
             "order_book_id": ["00005.XHKG", "00005.XHKG", "00005.XHKG"],
-            "ts_code": ["00005.HK", "00005.HK", "00005.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00005.HK"],
         }
     ).to_parquet(data_dir / "00005.HK.parquet", index=False)
     pd.DataFrame(
@@ -1935,7 +1937,7 @@ def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, m
             "revenue": [220.0],
             "net_profit": [22.0],
             "order_book_id": ["00011.XHKG"],
-            "ts_code": ["00011.HK"],
+            "symbol": ["00011.HK"],
         }
     ).to_parquet(data_dir / "00011.HK.parquet", index=False)
 
@@ -1998,7 +2000,7 @@ def test_build_hk_pit_fundamentals_file_field_profile_full_overrides_manifest_se
             "revenue",
             "net_profit",
             "order_book_id",
-            "ts_code",
+            "symbol",
         ],
     }
     (asset_dir / "manifest.yml").write_text(
@@ -2017,7 +2019,7 @@ def test_build_hk_pit_fundamentals_file_field_profile_full_overrides_manifest_se
             "revenue": [100.0],
             "net_profit": [10.0],
             "order_book_id": ["00005.XHKG"],
-            "ts_code": ["00005.HK"],
+            "symbol": ["00005.HK"],
         }
     ).to_parquet(data_dir / "00005.HK.parquet", index=False)
 
@@ -2078,7 +2080,7 @@ def test_build_hk_pit_fundamentals_file_normalizes_whitespace_fields_and_derives
             "revenue",
             "goodwill_and_intangible_assets ",
             "order_book_id",
-            "ts_code",
+            "symbol",
         ],
     }
     (asset_dir / "manifest.yml").write_text(
@@ -2097,7 +2099,7 @@ def test_build_hk_pit_fundamentals_file_normalizes_whitespace_fields_and_derives
             "revenue": [100.0],
             "goodwill_and_intangible_assets ": [55.0],
             "order_book_id": ["00005.XHKG"],
-            "ts_code": ["00005.HK"],
+            "symbol": ["00005.HK"],
         }
     ).to_parquet(data_dir / "00005.HK.parquet", index=False)
 
@@ -2106,8 +2108,7 @@ def test_build_hk_pit_fundamentals_file_normalizes_whitespace_fields_and_derives
     pd.DataFrame(
         {
             "trade_date": ["20250320", "20250320"],
-            "ts_code": ["00005.HK", "00011.HK"],
-            "stock_ticker": ["00005.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00011.HK"],
             "selected": [1, 1],
         }
     ).to_csv(source_universe, index=False)
@@ -2172,7 +2173,7 @@ def test_build_hk_industry_labels_file_from_universe_grid(tmp_path, monkeypatch)
         "dataset": "industry_changes",
         "query": {"source": "citics_2019", "level": 1},
         "columns": [
-            "ts_code",
+            "symbol",
             "order_book_id",
             "start_date",
             "cancel_date",
@@ -2190,7 +2191,7 @@ def test_build_hk_industry_labels_file_from_universe_grid(tmp_path, monkeypatch)
     )
     pd.DataFrame(
         {
-            "ts_code": ["00005.HK", "00005.HK"],
+            "symbol": ["00005.HK", "00005.HK"],
             "order_book_id": ["00005.XHKG", "00005.XHKG"],
             "start_date": pd.to_datetime(["2025-01-01", "2025-03-15"]),
             "cancel_date": pd.to_datetime(["2025-03-15", "2200-12-31"]),
@@ -2204,7 +2205,7 @@ def test_build_hk_industry_labels_file_from_universe_grid(tmp_path, monkeypatch)
     ).to_parquet(data_dir / "00005.HK.parquet", index=False)
     pd.DataFrame(
         {
-            "ts_code": ["00700.HK"],
+            "symbol": ["00700.HK"],
             "order_book_id": ["00700.XHKG"],
             "start_date": pd.to_datetime(["2025-01-01"]),
             "cancel_date": pd.to_datetime(["2200-12-31"]),
@@ -2222,7 +2223,7 @@ def test_build_hk_industry_labels_file_from_universe_grid(tmp_path, monkeypatch)
     universe_path.write_text(
         "\n".join(
             [
-                "trade_date,ts_code,selected",
+                "trade_date,symbol,selected",
                 "20250131,00005.HK,1",
                 "20250228,00005.HK,1",
                 "20250331,00005.HK,1",
@@ -2300,7 +2301,7 @@ def test_build_hk_industry_labels_file_from_daily_assets_daily_frequency(tmp_pat
     )
     pd.DataFrame(
         {
-            "ts_code": ["00005.HK", "00005.HK"],
+            "symbol": ["00005.HK", "00005.HK"],
             "order_book_id": ["00005.XHKG", "00005.XHKG"],
             "start_date": pd.to_datetime(["2025-01-01", "2025-03-15"]),
             "cancel_date": pd.to_datetime(["2025-03-15", "2200-12-31"]),
@@ -2316,7 +2317,7 @@ def test_build_hk_industry_labels_file_from_daily_assets_daily_frequency(tmp_pat
     pd.DataFrame(
         {
             "trade_date": ["20250314", "20250317", "20250331"],
-            "ts_code": ["00005.HK", "00005.HK", "00005.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00005.HK"],
             "close": [10.0, 10.5, 11.0],
         }
     ).to_parquet(daily_asset_dir / "data" / "00005.HK.parquet", index=False)
@@ -2381,7 +2382,7 @@ def test_inspect_hk_pit_coverage_supports_config_selected_derived_features(tmp_p
     pd.DataFrame(
         {
             "trade_date": ["20250320", "20250320", "20250820", "20250820"],
-            "ts_code": ["00005.HK", "00011.HK", "00005.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00011.HK", "00005.HK", "00011.HK"],
             "revenue": [100.0, 200.0, 120.0, None],
             "net_profit": [10.0, 20.0, 12.0, 5.0],
             "total_assets": [1000.0, 2000.0, 1100.0, 2100.0],
@@ -2499,7 +2500,7 @@ def test_inspect_hk_pit_coverage_trainable_mode_estimates_fill_recovered_sample(
     pd.DataFrame(
         {
             "trade_date": ["20250320", "20250820", "20250820"],
-            "ts_code": ["00005.HK", "00005.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK"],
             "revenue": [100.0, 120.0, None],
             "net_profit": [10.0, 12.0, 5.0],
         }
@@ -2530,7 +2531,7 @@ def test_inspect_hk_pit_coverage_trainable_mode_estimates_fill_recovered_sample(
     pd.DataFrame(
         {
             "trade_date": ["20250331", "20250930", "20250930"],
-            "ts_code": ["00005.HK", "00005.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK"],
         }
     ).to_csv(universe_by_date, index=False)
 
@@ -2694,7 +2695,9 @@ def test_mirror_hk_pit_financials_normalizes_whitespace_field_columns(tmp_path, 
     assert "goodwill_and_intangible_assets " not in manifest["columns"]
 
 
-def test_mirror_hk_pit_financials_resume_skips_existing_and_writes_audit(tmp_path, monkeypatch):
+def test_mirror_hk_pit_financials_resume_accepts_legacy_ts_code_storage_and_writes_audit(
+    tmp_path, monkeypatch
+):
     repo_root = tmp_path / "repo"
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
     data_dir = output_dir / "data"
@@ -2785,7 +2788,9 @@ def test_mirror_hk_pit_financials_resume_skips_existing_and_writes_audit(tmp_pat
     assert manifest["status_counts"]["written"] == 1
 
 
-def test_mirror_hk_daily_resume_skips_existing_and_writes_audit(tmp_path, monkeypatch):
+def test_mirror_hk_daily_resume_accepts_legacy_ts_code_storage_and_writes_audit(
+    tmp_path, monkeypatch
+):
     repo_root = tmp_path / "repo"
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_demo"
     data_dir = output_dir / "data"

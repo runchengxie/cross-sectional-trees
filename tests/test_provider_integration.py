@@ -43,7 +43,7 @@ def test_rqdata_provider_fetch_hk_fundamentals_real_account(tmp_path):
             "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
             "column_map": {
                 "trade_date": "trade_date",
-                "symbol": "ts_code",
+                "symbol": "symbol",
                 "market_cap": "hk_total_market_val",
                 "pe_ttm": "pe_ratio_ttm",
                 "pb": "pb_ratio_ttm",

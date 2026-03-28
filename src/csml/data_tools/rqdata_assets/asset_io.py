@@ -140,6 +140,14 @@ def _canonicalize_output_columns(columns: Sequence[str], *, preferred: Sequence[
     return preferred_columns + remaining
 
 
+def _normalize_storage_symbol_column(frame: pd.DataFrame) -> pd.DataFrame:
+    if "symbol" not in frame.columns:
+        return frame.copy()
+    normalized = frame.copy()
+    normalized["symbol"] = normalized["symbol"].map(_normalize_hk_symbol)
+    return normalized
+
+
 def _canonicalize_symbol_frame_for_storage(
     symbol_frame: pd.DataFrame,
     *,
@@ -147,6 +155,7 @@ def _canonicalize_symbol_frame_for_storage(
     preferred: Sequence[str],
 ) -> pd.DataFrame:
     normalized = ensure_symbol_columns(symbol_frame, context=context)
+    normalized = _normalize_storage_symbol_column(normalized)
     normalized = normalized.drop(columns=list(LEGACY_STORAGE_SYMBOL_COLUMNS), errors="ignore")
     columns = _canonicalize_output_columns(normalized.columns.tolist(), preferred=preferred)
     if not columns:
@@ -204,6 +213,7 @@ def _load_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
     if normalized.empty and len(normalized.columns) == 0:
         return normalized
     normalized = ensure_symbol_columns(normalized, context=f"Mirror asset file {path.name}")
+    normalized = _normalize_storage_symbol_column(normalized)
     return normalized.drop(columns=["ts_code"], errors="ignore")
 
 
@@ -401,6 +411,7 @@ def _load_daily_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFra
     if normalized.empty and len(normalized.columns) == 0:
         return normalized
     normalized = ensure_symbol_columns(normalized, context=f"Daily mirror asset file {path.name}")
+    normalized = _normalize_storage_symbol_column(normalized)
     return normalized.drop(columns=["ts_code"], errors="ignore")
 
 
@@ -559,6 +570,7 @@ def _load_dated_symbol_frame(path: Path, *, date_column: str, fields: Sequence[s
     if normalized.empty and len(normalized.columns) == 0:
         return normalized
     normalized = ensure_symbol_columns(normalized, context=f"Dated mirror asset file {path.name}")
+    normalized = _normalize_storage_symbol_column(normalized)
     return normalized.drop(columns=["ts_code"], errors="ignore")
 
 

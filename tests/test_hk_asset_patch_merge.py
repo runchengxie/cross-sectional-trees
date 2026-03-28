@@ -15,7 +15,7 @@ def _write_daily_snapshot(root: Path, name: str, *, end_date: str) -> Path:
     pd.DataFrame(
         {
             "trade_date": ["20260318"],
-            "ts_code": ["00005.HK"],
+            "symbol": ["00005.HK"],
             "order_book_id": ["00005.XHKG"],
             "open": [10.0],
             "close": [10.5],
@@ -46,7 +46,7 @@ def _write_daily_snapshot(root: Path, name: str, *, end_date: str) -> Path:
                     "symbols_file": str(asset_dir / "symbols.txt"),
                     "count": 2,
                 },
-                "columns": ["trade_date", "ts_code", "order_book_id", "open", "close"],
+                "columns": ["trade_date", "symbol", "order_book_id", "open", "close"],
                 "totals": {"rows": 1},
             },
             sort_keys=False,
@@ -63,21 +63,19 @@ def _write_daily_patch(root: Path, name: str) -> Path:
     pd.DataFrame(
         {
             "trade_date": ["20260318", "20260319"],
-            "ts_code": ["00005.HK", "00005.HK"],
+            "symbol": ["00005.HK", "00005.HK"],
             "order_book_id": ["00005.XHKG", "00005.XHKG"],
             "open": [11.0, 12.0],
             "close": [11.5, 12.5],
-            "symbol": ["00005.HK", "00005.HK"],
         }
     ).to_parquet(data_dir / "00005.HK.parquet", index=False)
     pd.DataFrame(
         {
             "trade_date": ["20260319"],
-            "ts_code": ["00006.HK"],
+            "symbol": ["00006.HK"],
             "order_book_id": ["00006.XHKG"],
             "open": [20.0],
             "close": [21.0],
-            "symbol": ["00006.HK"],
         }
     ).to_parquet(data_dir / "00006.HK.parquet", index=False)
     (asset_dir / "fields.txt").write_text("open\nclose\n", encoding="utf-8")
@@ -105,7 +103,7 @@ def _write_daily_patch(root: Path, name: str) -> Path:
                     "symbols_file": str(asset_dir / "symbols.txt"),
                     "count": 2,
                 },
-                "columns": ["trade_date", "ts_code", "order_book_id", "open", "close", "symbol"],
+                "columns": ["trade_date", "symbol", "order_book_id", "open", "close"],
                 "totals": {"rows": 3},
             },
             sort_keys=False,
@@ -121,7 +119,7 @@ def _write_valuation_snapshot(root: Path, name: str, *, end_date: str) -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
         {
-            "ts_code": ["00005.HK"],
+            "symbol": ["00005.HK"],
             "order_book_id": ["00005.XHKG"],
             "trade_date": ["20260324"],
             "hk_total_market_val": [100.0],
@@ -152,7 +150,7 @@ def _write_valuation_snapshot(root: Path, name: str, *, end_date: str) -> Path:
                     "count": 1,
                 },
                 "columns": [
-                    "ts_code",
+                    "symbol",
                     "order_book_id",
                     "trade_date",
                     "hk_total_market_val",
@@ -173,7 +171,7 @@ def _write_valuation_patch(root: Path, name: str) -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
         {
-            "ts_code": ["00005.HK", "00005.HK"],
+            "symbol": ["00005.HK", "00005.HK"],
             "order_book_id": ["00005.XHKG", "00005.XHKG"],
             "trade_date": ["20260324", "20260326"],
             "hk_total_market_val": [101.0, 103.0],
@@ -204,7 +202,7 @@ def _write_valuation_patch(root: Path, name: str) -> Path:
                     "count": 1,
                 },
                 "columns": [
-                    "ts_code",
+                    "symbol",
                     "order_book_id",
                     "trade_date",
                     "hk_total_market_val",
@@ -284,3 +282,44 @@ def test_merge_asset_patch_dated_prefers_patch_row_for_overlap(tmp_path: Path) -
     ]
     assert manifest["query"]["end_date"] == "20260326"
     assert manifest["totals"]["rows"] == 2
+
+
+def test_merge_asset_patch_daily_accepts_legacy_ts_code_snapshot(tmp_path: Path) -> None:
+    base_dir = _write_daily_snapshot(tmp_path, "daily_base_legacy", end_date="20260318")
+    patch_dir = _write_daily_patch(tmp_path, "daily_patch_symbol")
+    out_dir = tmp_path / "daily_latest_legacy"
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260318"],
+            "ts_code": ["00005.HK"],
+            "order_book_id": ["00005.XHKG"],
+            "open": [10.0],
+            "close": [10.5],
+        }
+    ).to_parquet(base_dir / "data" / "00005.HK.parquet", index=False)
+    (base_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                **yaml.safe_load((base_dir / "manifest.yml").read_text(encoding="utf-8")),
+                "columns": ["trade_date", "ts_code", "order_book_id", "open", "close"],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    merge_asset_patch(
+        base_dir=base_dir,
+        patch_dir=patch_dir,
+        out_dir=out_dir,
+        alias_path=None,
+        overwrite=False,
+    )
+
+    merged = pd.read_parquet(out_dir / "data" / "00005.HK.parquet")
+    assert merged.columns.tolist() == ["trade_date", "symbol", "order_book_id", "open", "close"]
+    assert merged["symbol"].tolist() == ["00005.HK", "00005.HK"]
+
+    manifest = yaml.safe_load((out_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["columns"] == ["trade_date", "symbol", "order_book_id", "open", "close"]

@@ -134,7 +134,7 @@ def test_alloc_from_latest_live_holdings(tmp_path, monkeypatch, capsys):
     assert len(rows) == 2
 
     row_a = rows[0]
-    assert row_a["symbol"] == "0001.HK"
+    assert row_a["symbol"] == "00001.HK"
     assert row_a["order_book_id"] == "00001.XHKG"
     assert row_a["round_lot"] == 100
     assert row_a["lots"] == 100
@@ -142,7 +142,7 @@ def test_alloc_from_latest_live_holdings(tmp_path, monkeypatch, capsys):
     assert row_a["est_value"] == 500000.0
 
     row_b = rows[1]
-    assert row_b["symbol"] == "0002.HK"
+    assert row_b["symbol"] == "00002.HK"
     assert row_b["order_book_id"] == "00002.XHKG"
     assert row_b["round_lot"] == 200
     assert row_b["lots"] == 125
@@ -187,7 +187,7 @@ def test_alloc_positions_file_mode(tmp_path, monkeypatch, capsys):
     assert payload["cash_left"] == 0.0
     assert payload["total_gap_to_target"] == 0.0
     row = payload["allocations"][0]
-    assert row["symbol"] == "0001.HK"
+    assert row["symbol"] == "00001.HK"
     assert row["lots"] == 200
     assert row["shares"] == 20000
 
@@ -225,7 +225,43 @@ def test_alloc_positions_file_accepts_stock_ticker(tmp_path, monkeypatch, capsys
 
     payload = json.loads(capsys.readouterr().out)
     row = payload["allocations"][0]
-    assert row["symbol"] == "0001.HK"
+    assert row["symbol"] == "00001.HK"
+
+
+def test_alloc_positions_file_accepts_order_book_id(tmp_path, monkeypatch, capsys):
+    positions_path = tmp_path / "positions.csv"
+    _write_positions(positions_path, ["00001.XHKG", "00002.XHKG"], symbol_col="order_book_id")
+
+    _install_fake_rqdatac(
+        monkeypatch,
+        price_map={
+            "00001.XHKG": [49.0, 50.0],
+            "00002.XHKG": [19.0, 20.0],
+        },
+        lot_map={
+            "00001.XHKG": 100,
+            "00002.XHKG": 200,
+        },
+    )
+
+    alloc.main(
+        [
+            "--positions-file",
+            str(positions_path),
+            "--as-of",
+            "2020-01-03",
+            "--top-n",
+            "1",
+            "--cash",
+            "1000000",
+            "--format",
+            "json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    row = payload["allocations"][0]
+    assert row["symbol"] == "00001.HK"
 
 
 def test_alloc_text_output_uses_symbol_header_and_lots(tmp_path, monkeypatch, capsys):

@@ -9,7 +9,7 @@ def test_time_series_cv_gap_skips_all():
     df = pd.DataFrame(
         {
             "trade_date": dates.repeat(2),
-            "ts_code": ["A", "B"] * len(dates),
+            "symbol": ["A", "B"] * len(dates),
             "f1": [1.0] * (len(dates) * 2),
             "target": [0.1] * (len(dates) * 2),
         }
@@ -32,7 +32,7 @@ def test_build_sample_weight_date_equal():
     df = pd.DataFrame(
         {
             "trade_date": dates,
-            "ts_code": ["A", "B", "A"],
+            "symbol": ["A", "B", "A"],
             "f1": [1.0, 2.0, 3.0],
             "target": [0.1, 0.2, 0.3],
         }
@@ -57,7 +57,7 @@ def test_build_sample_weight_exp_decay_increases_recent_dates():
     df = pd.DataFrame(
         {
             "trade_date": dates,
-            "ts_code": ["A", "B", "A", "B", "A"],
+            "symbol": ["A", "B", "A", "B", "A"],
             "f1": [1.0, 2.0, 3.0, 4.0, 5.0],
             "target": [0.1, 0.2, 0.3, 0.4, 0.5],
         }
@@ -91,8 +91,8 @@ def test_time_series_cv_supports_model_cfg():
     dates = pd.date_range("2020-01-01", periods=8, freq="D")
     rows = []
     for idx, date in enumerate(dates):
-        rows.append({"trade_date": date, "ts_code": "A", "f1": 0.0, "target": 0.0 + idx * 0.01})
-        rows.append({"trade_date": date, "ts_code": "B", "f1": 1.0, "target": 1.0 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "A", "f1": 0.0, "target": 0.0 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "B", "f1": 1.0, "target": 1.0 + idx * 0.01})
     df = pd.DataFrame(rows)
 
     scores = time_series_cv_ic(
@@ -117,7 +117,7 @@ def test_time_series_cv_supports_separate_fit_target_col():
         rows.append(
             {
                 "trade_date": date,
-                "ts_code": "A",
+                "symbol": "A",
                 "f1": 0.0,
                 "target": 1.0,
                 "train_target": 0.0,
@@ -126,7 +126,7 @@ def test_time_series_cv_supports_separate_fit_target_col():
         rows.append(
             {
                 "trade_date": date,
-                "ts_code": "B",
+                "symbol": "B",
                 "f1": 1.0,
                 "target": 0.0,
                 "train_target": 1.0,
@@ -155,9 +155,9 @@ def test_time_series_cv_supports_ranker_date_equal_weights():
     dates = pd.date_range("2020-01-01", periods=8, freq="D")
     rows = []
     for idx, date in enumerate(dates):
-        rows.append({"trade_date": date, "ts_code": "A", "f1": 0.1, "target": 0.0 + idx * 0.01})
-        rows.append({"trade_date": date, "ts_code": "B", "f1": 0.9, "target": 1.0 + idx * 0.01})
-        rows.append({"trade_date": date, "ts_code": "C", "f1": 0.5, "target": 0.5 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "A", "f1": 0.1, "target": 0.0 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "B", "f1": 0.9, "target": 1.0 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "C", "f1": 0.5, "target": 0.5 + idx * 0.01})
     df = pd.DataFrame(rows)
 
     scores = time_series_cv_ic(
@@ -192,7 +192,7 @@ def test_time_series_cv_supports_custom_date_col_with_unsorted_rows():
         rows.append(
             {
                 "trade_dt": date,
-                "ts_code": "A",
+                "symbol": "A",
                 "f1": 0.0,
                 "target": 0.0 + idx * 0.01,
             }
@@ -200,7 +200,7 @@ def test_time_series_cv_supports_custom_date_col_with_unsorted_rows():
         rows.append(
             {
                 "trade_dt": date,
-                "ts_code": "B",
+                "symbol": "B",
                 "f1": 1.0,
                 "target": 1.0 + idx * 0.01,
             }
@@ -227,8 +227,8 @@ def test_time_series_cv_supports_exp_decay_and_train_window():
     dates = pd.date_range("2020-01-01", periods=12, freq="D")
     rows = []
     for idx, date in enumerate(dates):
-        rows.append({"trade_date": date, "ts_code": "A", "f1": 0.0, "target": 0.1 + idx * 0.01})
-        rows.append({"trade_date": date, "ts_code": "B", "f1": 1.0, "target": 0.9 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "A", "f1": 0.0, "target": 0.1 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "B", "f1": 1.0, "target": 0.9 + idx * 0.01})
     df = pd.DataFrame(rows)
 
     scores = time_series_cv_ic(
@@ -255,8 +255,8 @@ def test_time_series_cv_avoids_trade_date_isin(monkeypatch):
     dates = pd.date_range("2020-01-01", periods=12, freq="D")
     rows = []
     for idx, date in enumerate(dates):
-        rows.append({"trade_date": date, "ts_code": "A", "f1": 0.0, "target": 0.0 + idx * 0.01})
-        rows.append({"trade_date": date, "ts_code": "B", "f1": 1.0, "target": 1.0 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "A", "f1": 0.0, "target": 0.0 + idx * 0.01})
+        rows.append({"trade_date": date, "symbol": "B", "f1": 1.0, "target": 1.0 + idx * 0.01})
     df = pd.DataFrame(rows).sample(frac=1.0, random_state=7).reset_index(drop=True)
 
     original_isin = pd.Series.isin

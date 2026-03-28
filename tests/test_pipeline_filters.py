@@ -32,7 +32,7 @@ def _build_frames(
             vol = np.full(len(dates), 1000.0 + idx, dtype=float)
         payload = {
             "trade_date": [d.strftime("%Y%m%d") for d in dates],
-            "ts_code": symbol,
+            "symbol": symbol,
             "close": np.asarray(close, dtype=float),
             "vol": np.asarray(vol, dtype=float),
         }
@@ -77,7 +77,7 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
     }
     frames = _build_frames(symbols, dates, vol_map=vol_map, include_amount=False)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["Alpha", "ST Beta", "Gamma"]}
+        {"symbol": symbols, "name": ["Alpha", "ST Beta", "Gamma"]}
     )
 
     output_dir = tmp_path / "runs"
@@ -172,7 +172,7 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
     pd.DataFrame(
         {
             "trade_date": ["20200101", "20200101", "20200113", "20200113", "20200116"],
-            "ts_code": ["AAA.HK", "BBB.HK", "AAA.HK", "BBB.HK", "BBB.HK"],
+            "symbol": ["AAA.HK", "BBB.HK", "AAA.HK", "BBB.HK", "BBB.HK"],
         }
     ).to_csv(universe_path, index=False)
 
@@ -504,7 +504,7 @@ def test_pipeline_price_features_follow_price_col(tmp_path, monkeypatch):
         frames[symbol] = pd.DataFrame(
             {
                 "trade_date": [d.strftime("%Y%m%d") for d in dates],
-                "ts_code": symbol,
+                "symbol": symbol,
                 "close": close,
                 "tr_close": tr_close,
                 "vol": vol,
@@ -589,7 +589,7 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
     symbols = ["00005.HK", "00011.HK"]
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
     )
 
     seen_cache_dirs = {}
@@ -611,7 +611,7 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
         return pd.DataFrame(
             {
                 "trade_date": [d.strftime("%Y%m%d") for d in dates],
-                "ts_code": symbol,
+                "symbol": symbol,
                 "market_cap": np.linspace(1000.0, 1100.0, len(dates)),
                 "pe_ttm": np.linspace(8.0, 9.0, len(dates)),
                 "pb": np.linspace(1.0, 1.1, len(dates)),
@@ -644,7 +644,7 @@ def test_pipeline_hk_rqdata_provider_fundamentals_enabled(tmp_path, monkeypatch)
             "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
             "column_map": {
                 "trade_date": "trade_date",
-                "ts_code": "ts_code",
+                "symbol": "symbol",
                 "market_cap": "hk_total_market_val",
                 "pe_ttm": "pe_ratio_ttm",
                 "pb": "pb_ratio_ttm",
@@ -746,7 +746,7 @@ def test_pipeline_hk_provider_fundamentals_excludes_benchmark_symbol(
         return pd.DataFrame(
             {
                 "trade_date": [d.strftime("%Y%m%d") for d in dates],
-                "ts_code": symbol,
+                "symbol": symbol,
                 "market_cap": np.linspace(1000.0, 1100.0, len(dates)),
                 "pe_ttm": np.linspace(8.0, 9.0, len(dates)),
                 "pb": np.linspace(1.0, 1.1, len(dates)),
@@ -779,7 +779,7 @@ def test_pipeline_hk_provider_fundamentals_excludes_benchmark_symbol(
             "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
             "column_map": {
                 "trade_date": "trade_date",
-                "ts_code": "ts_code",
+                "symbol": "symbol",
                 "market_cap": "hk_total_market_val",
                 "pe_ttm": "pe_ratio_ttm",
                 "pb": "pb_ratio_ttm",
@@ -865,7 +865,7 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
                     "revenue",
                     "net_profit",
                     "order_book_id",
-                    "ts_code",
+                    "symbol",
                 ],
             },
             sort_keys=False,
@@ -884,7 +884,7 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
             "revenue": [100.0],
             "net_profit": [10.0],
             "order_book_id": ["00005.XHKG"],
-            "ts_code": ["00005.HK"],
+            "symbol": ["00005.HK"],
         }
     ).to_parquet(data_dir / "00005.HK.parquet", index=False)
     pd.DataFrame(
@@ -898,7 +898,7 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
             "revenue": [220.0],
             "net_profit": [22.0],
             "order_book_id": ["00011.XHKG"],
-            "ts_code": ["00011.HK"],
+            "symbol": ["00011.HK"],
         }
     ).to_parquet(data_dir / "00011.HK.parquet", index=False)
 
@@ -926,7 +926,7 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
     symbols = ["00005.HK", "00011.HK"]
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
     )
 
     output_dir = repo_root / "runs"
@@ -1025,14 +1025,14 @@ def test_pipeline_hk_file_fundamentals_derived_slow_features(tmp_path, monkeypat
     symbols = ["00005.HK", "00011.HK"]
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
     )
 
     fundamentals_path = tmp_path / "pit_fundamentals.parquet"
     pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2025-03-20", "2025-03-20"]),
-            "ts_code": ["00005.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00011.HK"],
             "revenue": [100.0, 220.0],
             "net_profit": [10.0, 22.0],
             "total_assets": [200.0, 440.0],
@@ -1163,14 +1163,14 @@ def test_pipeline_hk_file_fundamentals_missing_fill_with_indicators(tmp_path, mo
     symbols = ["00005.HK", "00011.HK", "00016.HK"]
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["HSBC", "Hang Seng", "Sun Hung Kai"], "list_date": ["20000101"] * 3}
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng", "Sun Hung Kai"], "list_date": ["20000101"] * 3}
     )
 
     fundamentals_path = tmp_path / "pit_fundamentals.parquet"
     pd.DataFrame(
         {
             "trade_date": pd.to_datetime(["2025-03-20", "2025-03-20", "2025-03-20"]),
-            "ts_code": symbols,
+            "symbol": symbols,
             "revenue": [100.0, 200.0, 300.0],
             "net_profit": [10.0, 20.0, np.nan],
         }
@@ -1274,7 +1274,7 @@ def test_pipeline_hk_file_fundamentals_supports_sales_delta_and_report_age(tmp_p
     symbols = ["00005.HK", "00011.HK"]
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
     )
 
     fundamentals_path = tmp_path / "pit_fundamentals.parquet"
@@ -1283,7 +1283,7 @@ def test_pipeline_hk_file_fundamentals_supports_sales_delta_and_report_age(tmp_p
             "trade_date": pd.to_datetime(
                 ["2025-03-20", "2025-04-10", "2025-03-20", "2025-04-10"]
             ),
-            "ts_code": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
             "revenue": [100.0, 130.0, 200.0, 220.0],
             "operating_revenue": [np.nan, np.nan, np.nan, np.nan],
             "net_profit": [10.0, 13.0, 20.0, 22.0],
@@ -1387,7 +1387,7 @@ def test_pipeline_hk_file_fundamentals_recomputes_valuation_age_days(
     symbols = ["00005.HK", "00011.HK"]
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
     )
 
     fundamentals_path = tmp_path / "pit_fundamentals_with_provider.parquet"
@@ -1396,7 +1396,7 @@ def test_pipeline_hk_file_fundamentals_recomputes_valuation_age_days(
             "trade_date": pd.to_datetime(
                 ["2025-03-20", "2025-04-10", "2025-03-20", "2025-04-10"]
             ),
-            "ts_code": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
             "market_cap": [1000.0, 1100.0, 1500.0, 1550.0],
             "pe_ttm": [8.0, 8.5, 10.0, 10.2],
             "pb": [1.1, 1.15, 1.4, 1.45],
@@ -1502,7 +1502,7 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
     symbols = ["00005.HK", "00011.HK"]
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
     )
 
     fundamentals_path = tmp_path / "pit_fundamentals.parquet"
@@ -1511,7 +1511,7 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
             "trade_date": pd.to_datetime(
                 ["2025-03-20", "2025-04-10", "2025-03-20", "2025-04-10"]
             ),
-            "ts_code": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
             "net_profit": [10.0, 13.0, 20.0, 22.0],
         }
     ).to_parquet(fundamentals_path, index=False)
@@ -1535,7 +1535,7 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
         return pd.DataFrame(
             {
                 "trade_date": ["20250410"],
-                "ts_code": [symbol],
+                "symbol": [symbol],
                 "market_cap": [base_cap],
                 "pe_ttm": [8.5 if symbol == "00005.HK" else 10.2],
                 "pb": [1.15 if symbol == "00005.HK" else 1.45],
@@ -1580,7 +1580,7 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
                 "provider": "rqdata",
                 "column_map": {
                     "trade_date": "trade_date",
-                    "ts_code": "ts_code",
+                    "symbol": "symbol",
                     "market_cap": "market_cap",
                     "pe_ttm": "pe_ttm",
                     "pb": "pb",
@@ -1669,7 +1669,7 @@ def test_pipeline_hk_file_fundamentals_supports_growth_and_structure_ratios(
     symbols = ["00005.HK", "00011.HK"]
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
-        {"ts_code": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
     )
 
     fundamentals_path = tmp_path / "pit_fundamentals.parquet"
@@ -1678,7 +1678,7 @@ def test_pipeline_hk_file_fundamentals_supports_growth_and_structure_ratios(
             "trade_date": pd.to_datetime(
                 ["2025-03-20", "2025-04-10", "2025-03-20", "2025-04-10"]
             ),
-            "ts_code": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
             "revenue": [100.0, 130.0, 200.0, 220.0],
             "net_profit": [10.0, 15.0, 20.0, 18.0],
             "short_term_debt": [30.0, 35.0, 50.0, 48.0],
@@ -2001,7 +2001,7 @@ def test_pipeline_industry_file_join_preserves_labels_for_dataset_and_bucket_ic(
     frames = _build_frames(symbols, dates, include_amount=True)
     basic_df = pd.DataFrame(
         {
-            "ts_code": symbols,
+            "symbol": symbols,
             "name": ["HSBC", "Hang Seng", "Tencent", "China Mobile"],
             "list_date": ["20000101"] * len(symbols),
         }
@@ -2015,7 +2015,7 @@ def test_pipeline_industry_file_join_preserves_labels_for_dataset_and_bucket_ic(
             industry_rows.append(
                 {
                     "trade_date": trade_date,
-                    "ts_code": symbol,
+                    "symbol": symbol,
                     "industry_name": industry_name,
                     "first_industry_name": industry_name,
                 }

@@ -12,6 +12,7 @@ from ..data_providers import normalize_market
 from ..data_tools.symbols import (
     PROVIDER_SYMBOL_PRIORITY,
     ensure_symbol_columns,
+    normalize_symbol_for_market,
     normalize_symbol_standard_name,
 )
 
@@ -266,19 +267,7 @@ def coerce_bool(value) -> bool:
 
 
 def normalize_universe_symbol(symbol: str, market: str) -> str:
-    text = str(symbol or "").strip()
-    if not text:
-        return text
-    if normalize_market(market) == "hk":
-        upper = text.upper()
-        if upper.endswith(".XHKG"):
-            upper = upper[:-5]
-        if upper.endswith(".HK"):
-            upper = upper[:-3]
-        if upper.isdigit():
-            upper = upper.zfill(5)
-        return f"{upper}.HK"
-    return text
+    return normalize_symbol_for_market(symbol, market=normalize_market(market))
 
 
 def normalize_date_like_series(series: pd.Series) -> pd.Series:

@@ -9,6 +9,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from csml.data_tools.symbols import normalize_symbol_for_market
 
 
 REPO_ROOT = find_repo_root(__file__)
@@ -45,26 +46,44 @@ def _to_rq_order_book_id(symbol: str) -> str:
     return f"{text}.XHKG"
 
 
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        deduped.append(text)
+        seen.add(text)
+    return deduped
+
+
 def _read_symbol_file(path: Path) -> list[str]:
     suffix = path.suffix.lower()
     if suffix in {".txt", ".list"}:
         values = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
-        return [value for value in values if value]
-
-    if suffix in {".csv", ".parquet"}:
+    elif suffix in {".csv", ".parquet"}:
         if suffix == ".parquet":
             frame = pd.read_parquet(path)
         else:
             frame = pd.read_csv(path)
         for candidate in ("symbol", "ts_code", "stock_ticker", "order_book_id"):
             if candidate in frame.columns:
-                values = frame[candidate].astype(str).str.strip()
-                return sorted(values[values.ne("")].unique().tolist())
-        raise SystemExit(
-            f"Unsupported symbol file schema: {path}. Expected one of symbol/ts_code/stock_ticker/order_book_id."
-        )
+                values = frame[candidate].astype(str).str.strip().tolist()
+                break
+        else:
+            raise SystemExit(
+                "Unsupported symbol file schema: "
+                f"{path}. Expected canonical symbol column, or legacy ts_code/stock_ticker/order_book_id."
+            )
+    else:
+        raise SystemExit(f"Unsupported symbol file format: {path}")
 
-    raise SystemExit(f"Unsupported symbol file format: {path}")
+    normalized = [
+        normalize_symbol_for_market(value, market="hk")
+        for value in values
+    ]
+    return _dedupe_preserve_order(normalized)
 
 
 def normalize_hk_symbols(symbols: list[str]) -> list[str]:
@@ -243,12 +262,8 @@ def main() -> None:
 
     order_book_ids = normalize_hk_symbols(symbols)
     order_book_to_symbol = {
-        order_book_id: symbol
-        for symbol, order_book_id in zip(
-            symbols,
-            [_to_rq_order_book_id(symbol) for symbol in symbols],
-            strict=False,
-        )
+        _to_rq_order_book_id(symbol): symbol
+        for symbol in symbols
     }
 
     output_path = resolve_repo_path(args.output)

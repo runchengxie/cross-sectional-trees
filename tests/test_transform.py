@@ -10,7 +10,7 @@ def test_cross_sectional_zscore_by_date():
             "trade_date": pd.to_datetime(
                 ["2020-01-01"] * 3 + ["2020-01-02"] * 3
             ),
-            "ts_code": ["A", "B", "C"] * 2,
+            "symbol": ["A", "B", "C"] * 2,
             "f1": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
             "f2": [2.0, 3.0, 4.0, 1.0, 0.0, -1.0],
         }

@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from ..config_utils import resolve_pipeline_config
 from ..data_providers import normalize_market
 from . import holdings
-from ..data_tools.symbols import ensure_symbol_columns
+from ..data_tools.symbols import ensure_symbol_columns, normalize_symbol_for_market
 
 
 def _load_config(path: str | None) -> dict:
@@ -341,6 +341,10 @@ def _select_from_positions_file(
     latest_entry = entry_dates[eligible].max()
     selection = df[entry_dates == latest_entry].copy()
     selection = ensure_symbol_columns(selection, context=positions_path.name)
+    selection_market = _resolve_market({}, selection["symbol"].tolist())
+    selection["symbol"] = selection["symbol"].map(
+        lambda value: normalize_symbol_for_market(value, market=selection_market)
+    )
     if selection.empty:
         raise SystemExit("No holdings found for the latest entry date.")
     return selection, latest_entry
@@ -377,7 +381,11 @@ def _prepare_selection(
     top_n: int,
 ) -> pd.DataFrame:
     prepared = ensure_symbol_columns(selection, context="Holdings payload")
-    prepared = prepared.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    prepared_market = _resolve_market({}, prepared["symbol"].tolist())
+    prepared["symbol"] = prepared["symbol"].map(
+        lambda value: normalize_symbol_for_market(value, market=prepared_market)
+    )
+    prepared = prepared.drop(columns=["ts_code", "stock_ticker", "order_book_id"], errors="ignore")
     if "side" not in prepared.columns:
         prepared["side"] = "long"
     if "rank" not in prepared.columns:

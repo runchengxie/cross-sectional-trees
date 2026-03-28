@@ -34,7 +34,7 @@ DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS = {
 DEFAULT_COLUMN_MAPS = {
     "hk": {
         "trade_date": "trade_date",
-        "symbol": "ts_code",
+        "symbol": "symbol",
         "close": "close",
         "vol": "vol",
         "amount": "amount",

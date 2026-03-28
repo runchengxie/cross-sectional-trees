@@ -42,7 +42,7 @@ def test_fetch_fundamentals_rqdata_hk_provider_standardizes_and_caches(tmp_path)
         "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
         "column_map": {
             "trade_date": "trade_date",
-            "symbol": "ts_code",
+            "symbol": "symbol",
             "market_cap": "hk_total_market_val",
             "pe_ttm": "pe_ratio_ttm",
             "pb": "pb_ratio_ttm",
@@ -99,7 +99,7 @@ def test_fetch_fundamentals_cache_key_tracks_field_config(tmp_path):
         "endpoint": "get_factor",
         "column_map": {
             "trade_date": "trade_date",
-            "symbol": "ts_code",
+            "symbol": "symbol",
             "market_cap": "hk_total_market_val",
         },
     }

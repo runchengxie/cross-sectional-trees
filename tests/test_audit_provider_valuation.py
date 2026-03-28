@@ -35,7 +35,7 @@ def test_audit_provider_overlay_uses_cached_frames_without_provider_init(tmp_pat
         "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
         "column_map": {
             "trade_date": "trade_date",
-            "symbol": "ts_code",
+            "symbol": "symbol",
             "market_cap": "hk_total_market_val",
             "pe_ttm": "pe_ratio_ttm",
             "pb": "pb_ratio_ttm",
@@ -77,7 +77,7 @@ def test_audit_provider_overlay_uses_cached_frames_without_provider_init(tmp_pat
     eval_scored = pd.DataFrame(
         {
             "trade_date": ["2020-01-02", "2020-01-03"],
-            "ts_code": ["00001.HK", "00001.HK"],
+            "symbol": ["00001.HK", "00001.HK"],
             "score": [1.0, 0.8],
         }
     )
@@ -96,7 +96,7 @@ def test_audit_provider_overlay_uses_cached_frames_without_provider_init(tmp_pat
     pd.DataFrame(
         {
             "trade_date": ["2020-01-02", "2020-01-03"],
-            "ts_code": ["00001.HK", "00001.HK"],
+            "symbol": ["00001.HK", "00001.HK"],
             "market_cap": [100.0, 101.0],
             "pe_ttm": [10.0, 11.0],
             "pb": [1.0, 1.1],

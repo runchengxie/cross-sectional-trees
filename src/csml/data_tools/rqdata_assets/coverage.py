@@ -841,7 +841,8 @@ def inspect_hk_pit_coverage(args) -> int:
     frame = ensure_symbol_columns(frame, context=f"Fundamentals file {fundamentals_file.name}")
     if "trade_date" not in frame.columns or "symbol" not in frame.columns:
         raise SystemExit(
-            f"Fundamentals file must include trade_date and symbol/ts_code columns: {fundamentals_file}"
+            "Fundamentals file must include trade_date and a canonical symbol column "
+            f"(legacy ts_code inputs remain compatible): {fundamentals_file}"
         )
 
     trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")

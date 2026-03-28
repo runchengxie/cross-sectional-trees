@@ -19,7 +19,7 @@ def _prepare_demo_assets(repo_root: Path) -> None:
 
     universe_dir = repo_root / "artifacts" / "assets" / "universe"
     universe_dir.mkdir(parents=True, exist_ok=True)
-    (universe_dir / "by_date_demo.csv").write_text("trade_date,ts_code\n20260318,00005.HK\n", encoding="utf-8")
+    (universe_dir / "by_date_demo.csv").write_text("trade_date,symbol\n20260318,00005.HK\n", encoding="utf-8")
     (universe_dir / "symbols_demo.txt").write_text("00005.HK\n", encoding="utf-8")
     (universe_dir / "meta_demo.yml").write_text("name: demo\n", encoding="utf-8")
 

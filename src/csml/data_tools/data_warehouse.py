@@ -22,23 +22,24 @@ from ..artifacts import (
     default_path_text,
     resolve_repo_path,
 )
+from .symbols import resolve_symbol_series
 
 
 PRESET_DEFAULTS: dict[str, dict[str, str]] = {
     "rqdata-daily": {
         "dataset": "daily",
         "date_col": "trade_date",
-        "symbol_col": "ts_code",
+        "symbol_col": "symbol",
     },
     "pit-fundamentals": {
         "dataset": "pit_fundamentals",
         "date_col": "trade_date",
-        "symbol_col": "ts_code",
+        "symbol_col": "symbol",
     },
     "industry-labels": {
         "dataset": "industry_labels",
         "date_col": "trade_date",
-        "symbol_col": "ts_code",
+        "symbol_col": "symbol",
     },
     "generic": {
         "dataset": "generic",
@@ -263,10 +264,19 @@ def _normalize_frame(
 ) -> tuple[pd.DataFrame, dict[str, int]]:
     if date_col not in frame.columns:
         raise SystemExit(f"Missing date column {date_col!r} in {source_path}")
-    if symbol_col not in frame.columns:
-        raise SystemExit(f"Missing symbol column {symbol_col!r} in {source_path}")
 
     work = frame.copy()
+    resolved_symbol_col = symbol_col if symbol_col in work.columns else None
+    temp_symbol_col: str | None = None
+    if resolved_symbol_col is None:
+        if symbol_col != "symbol":
+            raise SystemExit(f"Missing symbol column {symbol_col!r} in {source_path}")
+        temp_symbol_col = "__resolved_symbol__"
+        work[temp_symbol_col] = resolve_symbol_series(
+            work,
+            context=f"Materialize input {source_path}",
+        )
+        resolved_symbol_col = temp_symbol_col
     for reserved, alias in (
         ("trade_date", "source_trade_date"),
         ("symbol", "source_symbol"),
@@ -277,11 +287,11 @@ def _normalize_frame(
         if reserved in work.columns and reserved not in {date_col, symbol_col}:
             work = work.rename(columns={reserved: alias})
     source_date_col = date_col
-    source_symbol_col = symbol_col
+    source_symbol_col = resolved_symbol_col
     if date_col == "trade_date":
         work = work.rename(columns={"trade_date": "source_trade_date"})
         source_date_col = "source_trade_date"
-    if symbol_col == "symbol":
+    if resolved_symbol_col == "symbol":
         work = work.rename(columns={"symbol": "source_symbol"})
         source_symbol_col = "source_symbol"
 
@@ -294,6 +304,8 @@ def _normalize_frame(
     rows_missing_symbol_dropped = int((normalized_symbol == "").sum())
     work.insert(1, "trade_date_key", work["trade_date"].dt.strftime("%Y%m%d"))
     work.insert(2, "symbol", normalized_symbol)
+    if temp_symbol_col is not None:
+        work = work.drop(columns=[temp_symbol_col], errors="ignore")
     work = work[work["symbol"] != ""].copy()
     work.insert(3, "_source_file", str(source_path))
     work = work.sort_values(["symbol", "trade_date"]).reset_index(drop=True)

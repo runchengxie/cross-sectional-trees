@@ -89,6 +89,28 @@ def test_compute_daily_slippage_metrics_aggregates_session_prices():
     assert np.isclose(row["buy_open_to_close_bps"], 200.0)
 
 
+def test_compute_daily_slippage_metrics_accepts_rq_order_book_id_and_normalizes_symbol():
+    frame = pd.DataFrame(
+        {
+            "rq_order_book_id": ["700.XHKG", "00700.XHKG"],
+            "trade_datetime": [
+                pd.Timestamp("2026-03-26 09:35:00"),
+                pd.Timestamp("2026-03-26 09:40:00"),
+            ],
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.5],
+            "low": [99.0, 100.5],
+            "close": [100.5, 102.0],
+            "volume": [10.0, 30.0],
+            "amount": [1_000.0, 3_150.0],
+        }
+    )
+
+    daily = compute_daily_slippage_metrics(frame)
+
+    assert daily["symbol"].tolist() == ["00700.HK"]
+
+
 def test_summarize_slippage_metrics_and_liquidity_buckets():
     daily = pd.DataFrame(
         {

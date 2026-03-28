@@ -197,6 +197,11 @@ csml data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir ar
 csml data materialize --name hk_pit_panel --preset pit-fundamentals --file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 ```
 
+说明：
+
+* `rqdata-daily`、`pit-fundamentals`、`industry-labels` 这些 preset 现在默认按 `symbol` 读取输入列。
+* 历史文件如果还保留 `ts_code` / `stock_ticker` / `order_book_id`，会自动兼容；需要显式指定时也可以继续传 `--symbol-col ts_code`。
+
 默认输出根目录：
 
 * `artifacts/standardized/<market>/<dataset>/<name>/`

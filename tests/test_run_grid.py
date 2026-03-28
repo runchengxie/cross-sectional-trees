@@ -18,7 +18,7 @@ def _build_scored_data() -> pd.DataFrame:
             rows.append(
                 {
                     "trade_date": trade_date,
-                    "ts_code": symbol,
+                    "symbol": symbol,
                     "close": 100.0 + d_idx + s_idx,
                     "future_return": 0.01 * (3 - s_idx) + 0.001 * d_idx,
                     "pred": pred,

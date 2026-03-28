@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from csml.data_tools.symbols import normalize_symbol_for_market
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 
@@ -59,6 +60,16 @@ def _bps(move: pd.Series) -> pd.Series:
     return move.astype(float) * 10_000.0
 
 
+def _resolve_intraday_symbol_series(frame: pd.DataFrame) -> pd.Series:
+    for column in ("symbol", "ts_code", "rq_order_book_id", "order_book_id"):
+        if column in frame.columns:
+            return frame[column]
+    raise SystemExit(
+        "Intraday frame is missing canonical symbol column. "
+        "Accepted legacy aliases: ts_code, rq_order_book_id, order_book_id."
+    )
+
+
 def compute_daily_slippage_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     required = {"trade_datetime", "open", "close", "volume", "amount"}
     missing = required.difference(frame.columns)
@@ -66,16 +77,9 @@ def compute_daily_slippage_metrics(frame: pd.DataFrame) -> pd.DataFrame:
         raise SystemExit(f"Intraday frame is missing required columns: {sorted(missing)}")
 
     work = frame.copy()
-    symbol_col = (
-        "symbol"
-        if "symbol" in work.columns
-        else "ts_code"
-        if "ts_code" in work.columns
-        else "rq_order_book_id"
+    work["symbol"] = _resolve_intraday_symbol_series(work).map(
+        lambda value: normalize_symbol_for_market(value, market="hk")
     )
-    if symbol_col not in work.columns:
-        raise SystemExit("Intraday frame must contain symbol, ts_code, or rq_order_book_id.")
-    work["symbol"] = work[symbol_col].astype(str).str.upper()
     work["trade_datetime"] = pd.to_datetime(work["trade_datetime"], errors="coerce")
     work = work.dropna(subset=["trade_datetime", "symbol"]).copy()
     work["trade_date"] = work["trade_datetime"].dt.normalize()

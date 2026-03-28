@@ -13,7 +13,7 @@ def _write_positions(run_dir, df, name="positions_by_rebalance.csv"):
 
 def test_holdings_empty_file_raises(tmp_path):
     run_dir = tmp_path / "run"
-    df = pd.DataFrame(columns=["entry_date", "ts_code", "weight"])
+    df = pd.DataFrame(columns=["entry_date", "symbol", "weight"])
     _write_positions(run_dir, df)
     with pytest.raises(SystemExit, match="positions_by_rebalance.csv is empty."):
         holdings.main(
@@ -30,7 +30,7 @@ def test_holdings_empty_file_raises(tmp_path):
 
 def test_holdings_missing_entry_date_raises(tmp_path):
     run_dir = tmp_path / "run"
-    df = pd.DataFrame({"ts_code": ["AAA"], "weight": [1.0]})
+    df = pd.DataFrame({"symbol": ["00001.HK"], "weight": [1.0]})
     _write_positions(run_dir, df)
     with pytest.raises(SystemExit, match="positions_by_rebalance.csv is missing entry_date."):
         holdings.main(
@@ -47,7 +47,7 @@ def test_holdings_missing_entry_date_raises(tmp_path):
 
 def test_holdings_unparseable_entry_date_raises(tmp_path):
     run_dir = tmp_path / "run"
-    df = pd.DataFrame({"entry_date": ["bad-date"], "ts_code": ["AAA"], "weight": [1.0]})
+    df = pd.DataFrame({"entry_date": ["bad-date"], "symbol": ["00001.HK"], "weight": [1.0]})
     _write_positions(run_dir, df)
     with pytest.raises(SystemExit, match="Failed to parse entry_date column."):
         holdings.main(
@@ -67,7 +67,7 @@ def test_holdings_asof_before_entries_raises(tmp_path):
     df = pd.DataFrame(
         {
             "entry_date": ["2020-01-05"],
-            "ts_code": ["AAA"],
+            "symbol": ["00001.HK"],
             "weight": [1.0],
         }
     )
@@ -107,7 +107,7 @@ def test_holdings_missing_symbol_column_raises(tmp_path):
 
 def test_holdings_invalid_asof_raises(tmp_path):
     run_dir = tmp_path / "run"
-    df = pd.DataFrame({"entry_date": ["2020-01-02"], "ts_code": ["AAA"], "weight": [1.0]})
+    df = pd.DataFrame({"entry_date": ["2020-01-02"], "symbol": ["00001.HK"], "weight": [1.0]})
     _write_positions(run_dir, df)
     with pytest.raises(SystemExit, match="Invalid --as-of date: not-a-date"):
         holdings.main(

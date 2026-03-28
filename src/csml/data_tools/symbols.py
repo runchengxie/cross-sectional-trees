@@ -11,6 +11,23 @@ DEFAULT_SYMBOL_PRIORITY = ("symbol", "ts_code", "stock_ticker", "order_book_id")
 PROVIDER_SYMBOL_PRIORITY = ("ts_code", "stock_ticker", "order_book_id", "symbol")
 
 
+def normalize_symbol_for_market(value: object, *, market: str | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if str(market or "").strip().lower() != "hk":
+        return text
+
+    upper = text.upper()
+    if upper.endswith(".XHKG"):
+        upper = upper[:-5]
+    if upper.endswith(".HK"):
+        upper = upper[:-3]
+    if upper.isdigit():
+        upper = upper.zfill(5)
+    return f"{upper}.HK"
+
+
 def _clean_symbol_series(values: pd.Series) -> pd.Series:
     text = values.where(values.notna(), "").astype(str).str.strip()
     return text
