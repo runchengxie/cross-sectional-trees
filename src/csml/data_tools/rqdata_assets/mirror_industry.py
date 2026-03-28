@@ -1,10 +1,104 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from types import SimpleNamespace
 
 import pandas as pd
 
-from csml.data_tools import rqdata_assets as _base
+from ...data_providers import _to_rqdata_symbol
+from .asset_io import (
+    _chunked,
+    _dated_audit_record,
+    _ensure_requested_fields,
+    _field_coverage_template,
+    _load_existing_dated_entry,
+    _prepare_dated_asset_frame,
+    _update_field_coverage,
+    _write_dated_audit_csv,
+    _write_dated_symbol_frame,
+)
+from .fetch_runtime import _retry_fetch
+from .industry_ops import (
+    HK_INDUSTRY_HIERARCHY_COLUMNS,
+    _build_hk_industry_catalog,
+    _prepare_hk_industry_change_frame,
+    _prepare_hk_instrument_industry_frame,
+    _resolve_hk_industry_change_level,
+    _resolve_hk_industry_source,
+    _resolve_hk_instrument_industry_level,
+    _resolve_hk_snapshot_dates,
+    _resolve_hk_southbound_trading_types,
+    _resolve_hk_trading_snapshot_dates,
+)
+from .manifest_ops import _build_dated_manifest, _validate_dated_resume_inputs
+from .models import DatedMirrorAuditRecord, DatedMirrorEntry, MirrorFetchError, MirrorQuotaError
+from .package_api import _package_attr
+from .request_groups import _resolve_symbols
+from .shared import (
+    _dedupe_preserve_order,
+    _load_existing_text_list,
+    _load_manifest,
+    _normalize_absolute_date,
+    _normalize_hk_symbol,
+    _path_mtime_iso,
+    _prepare_daily_output_dir,
+    _timestamp_now,
+    _write_manifest,
+    _write_text_list,
+)
+
+
+DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
+DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
+DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
+DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
+DEFAULT_BATCH_SIZE = _package_attr("DEFAULT_BATCH_SIZE")
+
+_base = SimpleNamespace(
+    DEFAULT_MIRROR_MAX_ATTEMPTS=DEFAULT_MIRROR_MAX_ATTEMPTS,
+    DEFAULT_MIRROR_BACKOFF_SECONDS=DEFAULT_MIRROR_BACKOFF_SECONDS,
+    DEFAULT_MIRROR_MAX_BACKOFF_SECONDS=DEFAULT_MIRROR_MAX_BACKOFF_SECONDS,
+    DEFAULT_OUT_ROOT=DEFAULT_OUT_ROOT,
+    DEFAULT_BATCH_SIZE=DEFAULT_BATCH_SIZE,
+    DatedMirrorAuditRecord=DatedMirrorAuditRecord,
+    DatedMirrorEntry=DatedMirrorEntry,
+    HK_INDUSTRY_HIERARCHY_COLUMNS=HK_INDUSTRY_HIERARCHY_COLUMNS,
+    MirrorFetchError=MirrorFetchError,
+    MirrorQuotaError=MirrorQuotaError,
+    _build_dated_manifest=_build_dated_manifest,
+    _build_hk_industry_catalog=_build_hk_industry_catalog,
+    _chunked=_chunked,
+    _dedupe_preserve_order=_dedupe_preserve_order,
+    _dated_audit_record=_dated_audit_record,
+    _ensure_requested_fields=_ensure_requested_fields,
+    _field_coverage_template=_field_coverage_template,
+    _load_existing_dated_entry=_load_existing_dated_entry,
+    _load_existing_text_list=_load_existing_text_list,
+    _load_manifest=_load_manifest,
+    _normalize_absolute_date=_normalize_absolute_date,
+    _normalize_hk_symbol=_normalize_hk_symbol,
+    _path_mtime_iso=_path_mtime_iso,
+    _prepare_daily_output_dir=_prepare_daily_output_dir,
+    _prepare_dated_asset_frame=_prepare_dated_asset_frame,
+    _prepare_hk_industry_change_frame=_prepare_hk_industry_change_frame,
+    _prepare_hk_instrument_industry_frame=_prepare_hk_instrument_industry_frame,
+    _resolve_hk_industry_change_level=_resolve_hk_industry_change_level,
+    _resolve_hk_industry_source=_resolve_hk_industry_source,
+    _resolve_hk_instrument_industry_level=_resolve_hk_instrument_industry_level,
+    _resolve_hk_snapshot_dates=_resolve_hk_snapshot_dates,
+    _resolve_hk_southbound_trading_types=_resolve_hk_southbound_trading_types,
+    _resolve_hk_trading_snapshot_dates=_resolve_hk_trading_snapshot_dates,
+    _resolve_symbols=_resolve_symbols,
+    _retry_fetch=_retry_fetch,
+    _timestamp_now=_timestamp_now,
+    _to_rqdata_symbol=_to_rqdata_symbol,
+    _update_field_coverage=_update_field_coverage,
+    _validate_dated_resume_inputs=_validate_dated_resume_inputs,
+    _write_dated_audit_csv=_write_dated_audit_csv,
+    _write_dated_symbol_frame=_write_dated_symbol_frame,
+    _write_manifest=_write_manifest,
+    _write_text_list=_write_text_list,
+)
 
 
 def mirror_hk_southbound(args, rqdatac) -> int:

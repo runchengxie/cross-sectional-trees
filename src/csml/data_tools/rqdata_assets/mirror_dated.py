@@ -4,8 +4,23 @@ from pathlib import Path
 
 import pandas as pd
 
+from .fetch_runtime import (
+    _ensure_rqdatac_hk_plugin,
+    _fetch_hk_dividends_direct,
+    _fetch_hk_ex_factors_direct,
+    _fetch_hk_shares_direct,
+    _retry_fetch,
+)
+from .manifest_ops import _validate_global_daily_resume_inputs
 from .mirror_workflow import _mirror_dated_dataset
+from .models import MirrorQuotaError
 from .package_api import _package_attr
+from .request_groups import (
+    _normalize_hk_dated_payload,
+    _normalize_hk_valuation_payload,
+    _resolve_hk_dated_request_groups,
+    _uses_hk_unique_ids,
+)
 from .shared import (
     DEFAULT_HK_EXCHANGE_RATE_FIELDS,
     DEFAULT_HK_SHARES_FIELDS,
@@ -28,22 +43,6 @@ DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr(
     "DEFAULT_MIRROR_MAX_BACKOFF_SECONDS"
 )
 DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
-MirrorQuotaError = _package_attr("MirrorQuotaError")
-_fetch_hk_dividends_direct = _package_attr("_fetch_hk_dividends_direct")
-_fetch_hk_ex_factors_direct = _package_attr("_fetch_hk_ex_factors_direct")
-_fetch_hk_shares_direct = _package_attr("_fetch_hk_shares_direct")
-_normalize_hk_dated_payload = _package_attr("_normalize_hk_dated_payload")
-_normalize_hk_valuation_payload = _package_attr("_normalize_hk_valuation_payload")
-_resolve_hk_dated_request_groups = _package_attr("_resolve_hk_dated_request_groups")
-_retry_fetch = _package_attr("_retry_fetch")
-_uses_hk_unique_ids = _package_attr("_uses_hk_unique_ids")
-_validate_global_daily_resume_inputs = _package_attr(
-    "_validate_global_daily_resume_inputs"
-)
-
-
-def _ensure_rqdatac_hk_plugin() -> None:
-    _package_attr("_ensure_rqdatac_hk_plugin")()
 
 
 def mirror_hk_valuation(args, rqdatac) -> int:

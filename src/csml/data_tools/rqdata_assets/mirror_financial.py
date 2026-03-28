@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .fetch_runtime import _ensure_rqdatac_hk_plugin
 from .mirror_workflow import _mirror_dataset
 from .package_api import _package_attr
+from .request_groups import _default_hk_instruments_out_path, _resolve_instrument_symbol_filter
 from .shared import (
     _git_metadata,
     _load_hk_financial_fields as _load_hk_financial_fields_shared,
@@ -13,13 +15,6 @@ from .shared import (
     _timestamp_now,
     _write_manifest,
 )
-
-_default_hk_instruments_out_path = _package_attr("_default_hk_instruments_out_path")
-_resolve_instrument_symbol_filter = _package_attr("_resolve_instrument_symbol_filter")
-
-
-def _ensure_rqdatac_hk_plugin() -> None:
-    _package_attr("_ensure_rqdatac_hk_plugin")()
 
 
 def _load_hk_financial_fields() -> list[str]:

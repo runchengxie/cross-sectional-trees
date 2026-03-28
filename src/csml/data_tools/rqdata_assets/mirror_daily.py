@@ -14,8 +14,10 @@ from .asset_io import (
     _write_daily_symbol_frame,
 )
 from .manifest_ops import _build_daily_manifest, _validate_daily_resume_inputs
+from .fetch_runtime import _retry_fetch
 from .models import DailyMirrorAuditRecord, DailyMirrorEntry, MirrorFetchError, MirrorQuotaError
 from .package_api import _package_attr
+from .request_groups import _resolve_symbols
 from .shared import (
     _normalize_absolute_date,
     _path_mtime_iso,
@@ -23,6 +25,7 @@ from .shared import (
     _resolve_daily_fields,
     _timestamp_now,
     _write_text_list,
+    _write_manifest,
 )
 
 
@@ -30,8 +33,6 @@ DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
 DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
 DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
-_resolve_symbols = _package_attr("_resolve_symbols")
-_retry_fetch = _package_attr("_retry_fetch")
 
 
 def mirror_hk_daily(args, rqdatac) -> int:
@@ -393,7 +394,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
             error=error,
             config_ref=getattr(args, "config", None),
         )
-        _package_attr("_write_manifest")(output_dir / "manifest.yml", manifest)
+        _write_manifest(output_dir / "manifest.yml", manifest)
 
     totals = {
         "files": len(entries_by_symbol),

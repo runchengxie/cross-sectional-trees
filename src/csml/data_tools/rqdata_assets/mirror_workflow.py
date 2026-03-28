@@ -22,6 +22,7 @@ from .asset_io import (
     _write_dated_symbol_frame,
     _write_symbol_frame,
 )
+from .fetch_runtime import _extract_invalid_field_name, _retry_fetch
 from .manifest_ops import (
     _build_dated_manifest,
     _build_manifest,
@@ -37,6 +38,7 @@ from .models import (
     MirrorQuotaError,
 )
 from .package_api import _package_attr
+from .request_groups import _build_default_dated_request_groups, _resolve_symbols
 from .shared import (
     _normalize_absolute_date,
     _path_mtime_iso,
@@ -44,6 +46,7 @@ from .shared import (
     _prepare_output_dir,
     _timestamp_now,
     _write_text_list,
+    _write_manifest,
 )
 
 
@@ -52,11 +55,7 @@ DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
 DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
 DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
-_build_default_dated_request_groups = _package_attr("_build_default_dated_request_groups")
-_extract_invalid_field_name = _package_attr("_extract_invalid_field_name")
 _resolve_fields = _package_attr("_resolve_fields")
-_resolve_symbols = _package_attr("_resolve_symbols")
-_retry_fetch = _package_attr("_retry_fetch")
 
 
 def _collect_pending_mirror_items(
@@ -574,7 +573,7 @@ def _mirror_dated_dataset(
             error=error,
             config_ref=getattr(args, "config", None),
         )
-        _package_attr("_write_manifest")(output_dir / "manifest.yml", manifest)
+        _write_manifest(output_dir / "manifest.yml", manifest)
 
     _run_partitioned_mirror_batches(
         pending_items=pending_symbols,
@@ -1014,7 +1013,7 @@ def _mirror_dataset(
             error=error,
             config_ref=getattr(args, "config", None),
         )
-        _package_attr("_write_manifest")(output_dir / "manifest.yml", manifest)
+        _write_manifest(output_dir / "manifest.yml", manifest)
 
     _run_partitioned_mirror_batches(
         pending_items=pending_order_book_ids,
