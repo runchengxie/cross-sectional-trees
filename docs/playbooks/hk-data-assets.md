@@ -647,7 +647,7 @@ csml backup-data \
 uv run python -m csml.release_tools.package_assets \
   --preset hk_full \
   --daily-snapshot hk_all_2000_20260326_daily_final_latest \
-  --dest /home/richard/code/csml_asset_parts/hk_full_20260327 \
+  --dest ~/csml_asset_parts/hk_full_20260327 \
   --mode copy \
   --overwrite
 ```
