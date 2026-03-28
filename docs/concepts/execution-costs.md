@@ -35,9 +35,9 @@
 
 仓库当前已经提供三条可直接复用的月频 HK execution 配置：
 
-* [hk_selected__execution_stress_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_stress_local.yml)：本地资产 + `adv20_amount` + 较宽松的 stress baseline。
-* [hk_selected__execution_balanced_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_balanced_local.yml)：按当前 `5m` 校准结果收口后的 balanced 档。
-* [hk_selected__execution_connect_conservative_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)：更贴近港股通研究池的保守档。
+* [hk_selected__execution_stress_local.yml](../../configs/experiments/variants/hk_selected__execution_stress_local.yml)：本地资产 + `adv20_amount` + 较宽松的 stress baseline。
+* [hk_selected__execution_balanced_local.yml](../../configs/experiments/variants/hk_selected__execution_balanced_local.yml)：按当前 `5m` 校准结果收口后的 balanced 档。
+* [hk_selected__execution_connect_conservative_local.yml](../../configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)：更贴近港股通研究池的保守档。
 
 ## 为什么现在建议用 `adv20_amount`
 

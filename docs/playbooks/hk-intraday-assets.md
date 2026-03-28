@@ -167,7 +167,7 @@
 所以当前更适合落成三档 execution 候选，而不是假装自己已经做完 broker TCA。仓库里现在已经落成了两条 calibrated 入口，加上一条 lagged-ADV stress baseline：
 
 * `balanced`
-  对应 [hk_selected__execution_balanced_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_balanced_local.yml)
+  对应 [hk_selected__execution_balanced_local.yml](../../configs/experiments/variants/hk_selected__execution_balanced_local.yml)
 
 ```yaml
 backtest:
@@ -187,7 +187,7 @@ backtest:
 ```
 
 * `connect_conservative`
-  对应 [hk_selected__execution_connect_conservative_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)
+  对应 [hk_selected__execution_connect_conservative_local.yml](../../configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)
 
 ```yaml
 backtest:
@@ -207,7 +207,7 @@ backtest:
 ```
 
 * `stress baseline`
-  对应 [hk_selected__execution_stress_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_stress_local.yml)
+  对应 [hk_selected__execution_stress_local.yml](../../configs/experiments/variants/hk_selected__execution_stress_local.yml)
 
 ```yaml
 backtest:

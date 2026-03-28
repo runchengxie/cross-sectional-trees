@@ -345,9 +345,9 @@ logging:
 * `constraints.min_amount` 和 `slippage_model.amount_col` 读取的是仓库标准化后的列名；常见 provider 原始字段如 `total_turnover` 会先映射成 `amount`。
 * 若想避免 `open` 入场直接读取同日总成交额带来的轻微 look-ahead，可把 `amount_col` 设成派生流动性代理列，例如 `adv20_amount` 或 `medadv20_amount`；它们分别表示按 symbol 计算、排除当日后的过去 `20` 个交易日平均/中位成交额。
 * 当前仓库里已经给出三条可直接复用的月频 HK execution variants：
-  [hk_selected__execution_stress_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_stress_local.yml)、
-  [hk_selected__execution_balanced_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_balanced_local.yml)、
-  [hk_selected__execution_connect_conservative_local.yml](/home/richard/code/cross-sectional-machine-learning/configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)。
+  [hk_selected__execution_stress_local.yml](../configs/experiments/variants/hk_selected__execution_stress_local.yml)、
+  [hk_selected__execution_balanced_local.yml](../configs/experiments/variants/hk_selected__execution_balanced_local.yml)、
+  [hk_selected__execution_connect_conservative_local.yml](../configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)。
 
 ### `logging`
 
