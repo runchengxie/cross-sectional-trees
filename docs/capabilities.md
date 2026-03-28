@@ -37,6 +37,19 @@
 
 它们不是 `csml` CLI 子命令，主要用于私有备份、跨机器搬运和 Release 分发。
 
+## 入口分层与稳定性
+
+不要把“仓库里有这个模块”直接等同于“这是稳定公共接口”。当前建议按下面四层理解：
+
+| 层级 | 典型入口 | 当前承诺 |
+| --- | --- | --- |
+| 公开主线 CLI | `csml run`、`csml summarize`、`csml grid`、`csml sweep-linear`、`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`、`csml init-config`、`csml backup-data`、`csml data ...`、`csml rqdata ...`、`csml universe ...` | 当前正式用户入口；文档、测试和 README 会持续跟随 |
+| 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets`、`python -m csml.release_tools.release_assets`、`python -m csml.release_tools.package_runs`、`python -m csml.release_tools.release_runs` | 已文档化、可复用，但不是 `csml` CLI 子命令 |
+| 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details`、`python -m csml.research.hk_selected_provider_valuation_audit`、`python -m csml.research.hk_intraday_download`、`python -m csml.research.hk_asset_patch_merge` | 只在专题页或 playbook 里按场景引用；可用，但不当作默认新手入口 |
+| 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | `run_tests.sh` 服务开发与 CI；`scripts/internal/` 属于维护者私有工具，不属于公开研究工作流 |
+
+如果某个入口没有出现在 `README.md`、本页、`docs/cli.md` 或对应 playbook 里，就不要默认把它视为稳定公共接口。
+
 ## 主流程能力
 
 ### 数据与市场
@@ -95,6 +108,8 @@ provider 差异见 `docs/providers.md`。
 artifacts/
   cache/
   assets/
+  metadata/
+  standardized/
   runs/
   live_runs/
   sweeps/

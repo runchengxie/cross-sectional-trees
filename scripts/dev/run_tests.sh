@@ -6,11 +6,14 @@ usage() {
 Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage] [pytest args...]
 
 Modes:
-  all          Run the full test suite without coverage.
+  all          Run the main pytest suite without coverage.
+               Does not include optional-extra smoke jobs or opt-in real provider tests.
   fast, unit   Run the default fast offline regression suite.
   slow         Run heavier offline regression tests.
-  integration  Run integration tests.
-  coverage     Run the full suite with coverage.
+  integration  Run the marked cross-module integration suite.
+               Real provider integration still requires CSML_RUN_PROVIDER_INTEGRATION=1.
+  coverage     Run the main pytest suite with coverage.
+               Scope matches 'all'; it is not the full CI matrix.
 EOF
 }
 

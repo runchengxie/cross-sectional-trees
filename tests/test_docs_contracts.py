@@ -48,6 +48,35 @@ EXPECTED_DEV_TEST_TOKENS = [
     "CSML_RUN_PROVIDER_INTEGRATION=1",
     "不等于完整复现 CI",
 ]
+EXPECTED_DEV_TEST_MATRIX_TOKENS = [
+    "### 测试矩阵",
+    "`all != 完整 CI`",
+    "最小 DuckDB 查询",
+    "最小 xlsx 写出",
+]
+EXPECTED_DEV_CHANGE_MAP_TOKENS = [
+    "## 改哪里跑哪些测试",
+    "`tests/test_data_warehouse.py`",
+    "`tests/test_asset_release_scripts.py`",
+    "`tests/test_run_release_scripts.py`",
+    "`tests/test_hk_intraday_download.py`",
+]
+EXPECTED_README_ENTRYPOINT_LAYER_TOKENS = [
+    "## 入口分层",
+    "公开主线 CLI",
+    "公开但非 CLI 模块工具",
+    "研究 / 专题模块工具",
+    "维护与开发辅助",
+    "`python -m csml.research.hk_financial_details`",
+    "`scripts/dev/run_tests.sh`",
+]
+EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
+    "## 入口分层与稳定性",
+    "公开但非 CLI 模块工具",
+    "`python -m csml.release_tools.package_assets`",
+    "`python -m csml.research.hk_intraday_download`",
+    "不是 `csml` CLI 子命令",
+]
 EXPECTED_RQDATA_OUTPUT_DATASETS = {
     "daily",
     "pit_financials",
@@ -62,6 +91,10 @@ EXPECTED_RQDATA_OUTPUT_DATASETS = {
     "instrument_industry",
     "industry_changes",
 }
+EXPECTED_WORKFLOW_SMOKE_SNIPPETS = [
+    'csml data query --sql "select 1 as value"',
+    "alloc_hk_smoke.xlsx",
+]
 
 
 def _repo_root() -> Path:
@@ -220,6 +253,27 @@ def test_capabilities_doc_covers_public_command_families():
     assert missing == []
 
 
+def test_readme_and_capabilities_cover_entrypoint_layers():
+    repo_root = _repo_root()
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    capabilities = (repo_root / "docs" / "capabilities.md").read_text(encoding="utf-8")
+
+    missing_readme = sorted(token for token in EXPECTED_README_ENTRYPOINT_LAYER_TOKENS if token not in readme)
+    missing_capabilities = sorted(
+        token for token in EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS if token not in capabilities
+    )
+
+    assert missing_readme == []
+    assert missing_capabilities == []
+
+
+def test_capabilities_doc_mentions_metadata_and_standardized_roots():
+    capabilities = (_repo_root() / "docs" / "capabilities.md").read_text(encoding="utf-8")
+
+    assert "  metadata/" in capabilities
+    assert "  standardized/" in capabilities
+
+
 def test_outputs_doc_lists_public_rqdata_output_datasets():
     outputs_text = (_repo_root() / "docs" / "outputs.md").read_text(encoding="utf-8")
     documented = _extract_outputs_dataset_bullets(outputs_text)
@@ -232,6 +286,8 @@ def test_tests_workflow_uses_expected_jobs_and_run_tests_modes():
     )
     assert _extract_workflow_job_names(workflow_text) == EXPECTED_TEST_WORKFLOW_JOBS
     assert _extract_run_tests_modes(workflow_text) == EXPECTED_TEST_WORKFLOW_SCRIPT_MODES
+    missing_smokes = sorted(token for token in EXPECTED_WORKFLOW_SMOKE_SNIPPETS if token not in workflow_text)
+    assert missing_smokes == []
 
 
 def test_dev_doc_covers_test_entrypoints_and_ci_contract():
@@ -243,3 +299,13 @@ def test_dev_doc_covers_test_entrypoints_and_ci_contract():
 
     assert missing_tokens == []
     assert missing_jobs == []
+
+
+def test_dev_doc_covers_test_matrix_and_change_based_mapping():
+    dev_text = (_repo_root() / "docs" / "dev.md").read_text(encoding="utf-8")
+
+    missing_matrix_tokens = sorted(token for token in EXPECTED_DEV_TEST_MATRIX_TOKENS if token not in dev_text)
+    missing_mapping_tokens = sorted(token for token in EXPECTED_DEV_CHANGE_MAP_TOKENS if token not in dev_text)
+
+    assert missing_matrix_tokens == []
+    assert missing_mapping_tokens == []

@@ -97,6 +97,20 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 * `tests/test_provider_integration.py` 也带 `integration` 标记，但未设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时会自动 skip，所以“integration” 不等于真实 provider 在线联调。
 * 文档引用和公开入口契约现在也有测试兜底，主要看 `tests/test_docs_contracts.py` 和 `tests/test_run_tests_script.py`。
 
+### 测试矩阵
+
+把最容易混淆的事实放在一张表里：
+
+| 入口 / mode | 默认会跑什么 | 明确不跑什么 | 额外依赖 / 凭证 | 和 CI 的关系 |
+| --- | --- | --- | --- | --- |
+| `scripts/dev/run_tests.sh all` | 主 `pytest` 测试集 | 四个 optional extra smoke、显式启用前的真实 provider 联调 | `uv sync --extra dev` | 只覆盖主测试集，`all != 完整 CI` |
+| `scripts/dev/run_tests.sh fast` / `unit` | `not integration and not slow` 的离线快回归 | `slow`、`integration`、extra smoke、真实 provider 联调 | `uv sync --extra dev` | 对应 CI 的 `fast` job |
+| `scripts/dev/run_tests.sh slow` | `@pytest.mark.slow` 的较重离线回归 | `fast`、`integration`、extra smoke、真实 provider 联调 | `uv sync --extra dev` | 对应 CI 的 `slow` job |
+| `scripts/dev/run_tests.sh integration` | `@pytest.mark.integration` 的跨模块流程 | 四个 optional extra smoke；未显式开启时真实 provider 联调会 skip | `uv sync --extra dev` | 对应 CI 的 `integration` job，但默认仍以离线流程为主 |
+| `scripts/dev/run_tests.sh coverage` | 和 `all` 同一范围，但显式开启 coverage | 四个 optional extra smoke、显式启用前的真实 provider 联调 | `uv sync --extra dev` | 方便本地看覆盖率，不代表完整 CI |
+| `CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration` | 真实 HK + RQData provider 联调 | 其他主测试集与 extra smoke | `--extra rqdata` + 真实账号 / token | 不在默认 CI，也不在 `run_tests.sh all` 里 |
+| `rqdata-extra-smoke` / `duckdb-extra-smoke` / `liveops-hk-extra-smoke` / `stats-extra-smoke` | optional extra 的安装、导入和最小正向调用 | 主 `pytest` 测试集 | 各自对应的 extra | 只在 CI 单独执行；本地要显式补跑 |
+
 ## 测试分层约定
 
 建议按以下分层维护测试，避免把“离线回归”与“端到端验证”混在一起：
@@ -128,8 +142,8 @@ CI 默认拆成七段：
 1. `slow`：`scripts/dev/run_tests.sh slow`
 1. `integration`：`scripts/dev/run_tests.sh integration`
 1. `rqdata-extra-smoke`：安装 `--extra rqdata`，验证 optional extra 和 `csml rqdata --help`
-1. `duckdb-extra-smoke`：安装 `--extra duckdb`，验证 optional extra 和 `csml data query --help`
-1. `liveops-hk-extra-smoke`：安装 `--extra liveops-hk`，验证 `openpyxl` 和 `csml alloc-hk --help`
+1. `duckdb-extra-smoke`：安装 `--extra duckdb`，验证 optional extra 和最小 DuckDB 查询
+1. `liveops-hk-extra-smoke`：安装 `--extra liveops-hk`，验证 `openpyxl` 和最小 xlsx 写出
 1. `stats-extra-smoke`：安装 `--extra stats`，验证 `scipy` 和 `summarize_ic` 的最小调用
 
 这样可以把默认离线回归、较重离线回归、端到端流程，以及 optional extra 的安装/导入烟雾检查分开看。排查失败时，先在本地复现对应那一段。
@@ -145,12 +159,12 @@ uv run csml rqdata --help > /dev/null
 # duckdb-extra-smoke
 uv sync --locked --extra dev --extra duckdb
 uv run python -c "import duckdb; print(duckdb.__version__)"
-uv run csml data query --help > /dev/null
+uv run csml data query --sql "select 1 as value" > /dev/null
 
 # liveops-hk-extra-smoke
 uv sync --locked --extra dev --extra liveops-hk
 uv run python -c "import openpyxl; print(openpyxl.__version__)"
-uv run csml alloc-hk --help > /dev/null
+uv run python -c "from pathlib import Path; import pandas as pd; from csml.liveops.alloc_hk import write_xlsx_report; out = Path('/tmp/alloc_hk_smoke.xlsx'); write_xlsx_report(out, pd.DataFrame([{'symbol': '0001.HK'}]), pd.DataFrame([{'as_of': '2026-03-20'}]), pd.DataFrame([{'symbol': '0001.HK'}])); assert out.exists() and out.stat().st_size > 0"
 
 # stats-extra-smoke
 uv sync --locked --extra dev --extra stats
@@ -190,6 +204,21 @@ scripts/dev/run_tests.sh all \
 1. `tests/test_linear_sweep.py`：季度 PIT 线性 sweep 配置是否能被正确读取，生成的 jobs 和 base config 是否匹配。
 1. `tests/test_data_providers_cache.py`：RQData 日线缓存、上市日裁剪和空区间处理，避免低频研究被脏缓存干扰。
 1. `tests/test_summarize_runs.py`：`summary.json` 下游汇总字段是否完整，尤其是 `backtest.active` 的 benchmark 指标能否进入 `runs_summary.csv`。
+
+## 改哪里跑哪些测试
+
+下面这张表不是“全量回归清单”，而是提交前最少该先跑哪几组：
+
+| 你改的范围 | 最少先跑 | 通常再补 |
+| --- | --- | --- |
+| CLI / 参数解析 / wrapper 转发 | `tests/test_cli_core.py`、`tests/test_cli_rqdata.py`、`tests/test_cli_research.py`、`tests/test_cli_liveops.py` | `scripts/dev/run_tests.sh fast` |
+| 文档 / `README.md` / `docs/` / workflow 说明 | `tests/test_docs_contracts.py`、`tests/test_repo_path_references.py`、`tests/test_run_tests_script.py` | `scripts/dev/run_tests.sh fast` |
+| `scripts/dev/run_tests.sh` / CI 测试入口 | `tests/test_run_tests_script.py`、`tests/test_docs_contracts.py` | 对应复现一遍 `fast` / `slow` / `integration` 或相关 smoke |
+| `release_tools` 打包 / Release staging | `tests/test_asset_release_scripts.py`、`tests/test_run_release_scripts.py` | `tests/test_export_repo_source.py` |
+| `csml data query` / metadata catalog / standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py` | 本地补一个 `csml data query --sql "select 1 as value"` |
+| `alloc-hk` / `liveops-hk` / xlsx 输出 | `tests/test_alloc_hk.py`、`tests/test_cli_liveops.py` | `uv sync --extra dev --extra liveops-hk` 后补最小 xlsx smoke |
+| HK + RQData provider / PIT fundamentals / universe | `tests/test_pipeline_validation.py`、`tests/test_pipeline_filters.py`、`tests/test_fundamentals_providers.py`、`tests/test_rqdata_assets.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
+| intraday / patch merge / provider overlay audit / financial details 分析 | `tests/test_hk_intraday_download.py`、`tests/test_hk_intraday_tools.py`、`tests/test_hk_asset_patch_merge.py`、`tests/test_audit_provider_valuation.py`、`tests/test_hk_financial_details_analysis.py` | 对应 playbook 里的最小命令烟雾检查 |
 
 ## 提交前检查建议
 

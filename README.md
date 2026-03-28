@@ -45,6 +45,19 @@ cp .env.example .env
 
 完整能力地图见 `docs/capabilities.md`。
 
+## 入口分层
+
+不要把“仓库里有这个模块 / 脚本”直接理解成“这是稳定公共接口”。当前建议按下面四层理解：
+
+| 层级 | 典型入口 | 当前定位 |
+| --- | --- | --- |
+| 公开主线 CLI | `csml run` / `csml summarize` / `csml grid` / `csml sweep-linear` / `csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk` / `csml data ...` / `csml rqdata ...` / `csml universe ...` | 当前正式对外说明、持续维护的用户入口 |
+| 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets` / `release_assets` / `package_runs` / `release_runs` | 已在文档中说明的打包 / 分发工具，但它们不是 `csml` 子命令 |
+| 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details` / `hk_selected_provider_valuation_audit` / `hk_intraday_download` / `hk_asset_patch_merge` | 只在对应 playbook 或专题页里按场景使用；可复用，但不属于新手默认主线 |
+| 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 前者服务开发与 CI；后者是维护者私有工具，不属于公开研究工作流 |
+
+如果你拿不准某个入口算不算“正式支持”，优先看 `README.md`、`docs/capabilities.md`、`docs/cli.md` 和对应 playbook 是否把它当作主线入口写出来。
+
 ## 跑完先看什么
 
 优先看 `summary.json`、`config.used.yml` 和 `positions_current.csv`。最短跑通步骤和产物检查清单放在 `docs/get-started.md`，这里不再重复展开。

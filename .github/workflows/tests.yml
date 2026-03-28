@@ -99,7 +99,7 @@ jobs:
       - name: Smoke duckdb extra
         run: |
           uv run python -c "import duckdb; print(duckdb.__version__)"
-          uv run csml data query --help > /dev/null
+          uv run csml data query --sql "select 1 as value" > /dev/null
 
   liveops-hk-extra-smoke:
     runs-on: ubuntu-latest
@@ -118,7 +118,7 @@ jobs:
       - name: Smoke liveops-hk extra
         run: |
           uv run python -c "import openpyxl; print(openpyxl.__version__)"
-          uv run csml alloc-hk --help > /dev/null
+          uv run python -c "from pathlib import Path; import pandas as pd; from csml.liveops.alloc_hk import write_xlsx_report; out = Path('/tmp/alloc_hk_smoke.xlsx'); write_xlsx_report(out, pd.DataFrame([{'symbol': '0001.HK'}]), pd.DataFrame([{'as_of': '2026-03-20'}]), pd.DataFrame([{'symbol': '0001.HK'}])); assert out.exists() and out.stat().st_size > 0"
 
   stats-extra-smoke:
     runs-on: ubuntu-latest
