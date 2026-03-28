@@ -2,11 +2,36 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from csml.data_tools import rqdata_assets as _base
+from .mirror_workflow import _mirror_dataset
+from .package_api import _package_attr
+from .shared import (
+    _git_metadata,
+    _load_hk_financial_fields as _load_hk_financial_fields_shared,
+    _normalize_frame_columns,
+    _normalize_hk_symbol,
+    _resolve_path,
+    _timestamp_now,
+    _write_manifest,
+)
+
+_default_hk_instruments_out_path = _package_attr("_default_hk_instruments_out_path")
+_resolve_instrument_symbol_filter = _package_attr("_resolve_instrument_symbol_filter")
+
+
+def _ensure_rqdatac_hk_plugin() -> None:
+    _package_attr("_ensure_rqdatac_hk_plugin")()
+
+
+def _load_hk_financial_fields() -> list[str]:
+    loader = _package_attr(
+        "_load_hk_financial_fields",
+        default=_load_hk_financial_fields_shared,
+    )
+    return loader()
 
 
 def list_hk_financial_fields(args) -> int:
-    fields = _base._load_hk_financial_fields()
+    fields = _load_hk_financial_fields()
     contains = [
         str(item).strip().lower()
         for item in (getattr(args, "contains", None) or [])
@@ -27,7 +52,7 @@ def list_hk_financial_fields(args) -> int:
         output += "\n"
     out = getattr(args, "out", None)
     if out:
-        out_path = _base._resolve_path(out)
+        out_path = _resolve_path(out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(output, encoding="utf-8")
         print(f"Wrote {len(fields)} HK financial fields to {out_path}")
@@ -37,8 +62,8 @@ def list_hk_financial_fields(args) -> int:
 
 
 def export_hk_instruments(args, rqdatac) -> int:
-    _base._ensure_rqdatac_hk_plugin()
-    symbol_filter, symbol_metadata = _base._resolve_instrument_symbol_filter(args)
+    _ensure_rqdatac_hk_plugin()
+    symbol_filter, symbol_metadata = _resolve_instrument_symbol_filter(args)
     try:
         frame = rqdatac.all_instruments("CS", market="hk")
     except TypeError:
@@ -46,11 +71,11 @@ def export_hk_instruments(args, rqdatac) -> int:
     if frame is None or frame.empty:
         raise SystemExit("rqdatac.all_instruments returned no HK instruments.")
 
-    instruments = _base._normalize_frame_columns(frame.copy())
+    instruments = _normalize_frame_columns(frame.copy())
     if "order_book_id" not in instruments.columns:
         raise SystemExit("HK instruments payload is missing order_book_id.")
     instruments["order_book_id"] = instruments["order_book_id"].astype(str).str.strip()
-    instruments["ts_code"] = instruments["order_book_id"].map(_base._normalize_hk_symbol)
+    instruments["ts_code"] = instruments["order_book_id"].map(_normalize_hk_symbol)
     instruments = instruments[instruments["ts_code"] != ""].copy()
 
     if symbol_filter is not None:
@@ -88,7 +113,7 @@ def export_hk_instruments(args, rqdatac) -> int:
     instruments.reset_index(drop=True, inplace=True)
 
     out_arg = getattr(args, "out", None)
-    out_path = _base._resolve_path(out_arg) if out_arg else _base._default_hk_instruments_out_path()
+    out_path = _resolve_path(out_arg) if out_arg else _default_hk_instruments_out_path()
     if not out_path.suffix:
         out_path = out_path.with_suffix(".parquet")
     if out_path.exists() and not getattr(args, "force", False):
@@ -105,7 +130,7 @@ def export_hk_instruments(args, rqdatac) -> int:
     symbol_metadata["count"] = int(instruments["ts_code"].nunique())
     manifest = {
         "name": out_path.stem,
-        "created_at": _base._timestamp_now(),
+        "created_at": _timestamp_now(),
         "dataset": "hk_instruments",
         "api": "rqdatac.all_instruments",
         "market": "hk",
@@ -121,9 +146,9 @@ def export_hk_instruments(args, rqdatac) -> int:
             if "round_lot" in instruments.columns
             else 0,
         },
-        "git": _base._git_metadata(Path.cwd().resolve()),
+        "git": _git_metadata(Path.cwd().resolve()),
     }
-    _base._write_manifest(manifest_path, manifest)
+    _write_manifest(manifest_path, manifest)
     print(
         f"Wrote {len(instruments)} HK instruments to {out_path} "
         f"(manifest: {manifest_path})"
@@ -132,7 +157,7 @@ def export_hk_instruments(args, rqdatac) -> int:
 
 
 def mirror_hk_pit_financials(args, rqdatac) -> int:
-    return _base._mirror_dataset(
+    return _mirror_dataset(
         args=args,
         rqdatac=rqdatac,
         dataset_name="pit_financials",
@@ -149,13 +174,13 @@ def mirror_hk_pit_financials(args, rqdatac) -> int:
 
 
 def mirror_hk_financial_details(args, rqdatac) -> int:
-    _base._ensure_rqdatac_hk_plugin()
+    _ensure_rqdatac_hk_plugin()
     hk_api = getattr(rqdatac, "hk", None)
     if hk_api is None or not hasattr(hk_api, "get_detailed_financial_items"):
         raise SystemExit(
             "rqdatac.hk.get_detailed_financial_items is unavailable. Check rqdatac-hk installation."
         )
-    return _base._mirror_dataset(
+    return _mirror_dataset(
         args=args,
         rqdatac=rqdatac,
         dataset_name="financial_details",

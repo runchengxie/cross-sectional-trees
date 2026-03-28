@@ -3,26 +3,36 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
+import sys
 
 import pandas as pd
 
-from csml.data_tools import rqdata_assets as _base
+from .shared import (
+    DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX,
+    DEFAULT_PIPELINE_FUNDAMENTALS_NAME,
+    HK_INDUSTRY_HIERARCHY_COLUMNS,
+    PIT_METADATA_COLUMNS,
+    _coerce_bool,
+    _git_metadata,
+    _load_manifest,
+    _normalize_absolute_date,
+    _normalize_field_list,
+    _normalize_frame_columns,
+    _normalize_hk_symbol,
+    _resolve_fields_with_overrides,
+    _resolve_path,
+    _resolve_universe_by_date_columns,
+    _write_manifest,
+)
 
-DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX = _base.DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX
-DEFAULT_PIPELINE_FUNDAMENTALS_NAME = _base.DEFAULT_PIPELINE_FUNDAMENTALS_NAME
-HK_INDUSTRY_HIERARCHY_COLUMNS = _base.HK_INDUSTRY_HIERARCHY_COLUMNS
-PIT_METADATA_COLUMNS = _base.PIT_METADATA_COLUMNS
-_coerce_bool = _base._coerce_bool
-_git_metadata = _base._git_metadata
-_load_manifest = _base._load_manifest
-_normalize_absolute_date = _base._normalize_absolute_date
-_normalize_field_list = _base._normalize_field_list
-_normalize_frame_columns = _base._normalize_frame_columns
-_normalize_hk_symbol = _base._normalize_hk_symbol
-_resolve_fields = _base._resolve_fields
-_resolve_path = _base._resolve_path
-_resolve_universe_by_date_columns = _base._resolve_universe_by_date_columns
-_write_manifest = _base._write_manifest
+
+def _resolve_fields(args) -> tuple[list[str], dict]:
+    package = sys.modules.get("csml.data_tools.rqdata_assets")
+    override = getattr(package, "_load_hk_financial_fields", None) if package is not None else None
+    return _resolve_fields_with_overrides(
+        args,
+        load_hk_financial_fields_override=override,
+    )
 
 
 def _resolve_pit_asset_dir(path_text: str | Path) -> tuple[Path, dict | None]:

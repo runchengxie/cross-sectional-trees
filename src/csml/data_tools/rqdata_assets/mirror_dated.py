@@ -4,16 +4,55 @@ from pathlib import Path
 
 import pandas as pd
 
-from csml.data_tools import rqdata_assets as _base
+from .mirror_workflow import _mirror_dated_dataset
+from .package_api import _package_attr
+from .shared import (
+    DEFAULT_HK_EXCHANGE_RATE_FIELDS,
+    DEFAULT_HK_SHARES_FIELDS,
+    DEFAULT_HK_VALUATION_FIELDS,
+    _git_metadata,
+    _normalize_absolute_date,
+    _normalize_frame_columns,
+    _prepare_daily_output_dir,
+    _resolve_default_plus_explicit_fields,
+    _resolve_optional_explicit_fields,
+    _split_daily_range_by_year,
+    _timestamp_now,
+    _write_text_list,
+    _write_manifest,
+)
+
+DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
+DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
+DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr(
+    "DEFAULT_MIRROR_MAX_BACKOFF_SECONDS"
+)
+DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
+MirrorQuotaError = _package_attr("MirrorQuotaError")
+_fetch_hk_dividends_direct = _package_attr("_fetch_hk_dividends_direct")
+_fetch_hk_ex_factors_direct = _package_attr("_fetch_hk_ex_factors_direct")
+_fetch_hk_shares_direct = _package_attr("_fetch_hk_shares_direct")
+_normalize_hk_dated_payload = _package_attr("_normalize_hk_dated_payload")
+_normalize_hk_valuation_payload = _package_attr("_normalize_hk_valuation_payload")
+_resolve_hk_dated_request_groups = _package_attr("_resolve_hk_dated_request_groups")
+_retry_fetch = _package_attr("_retry_fetch")
+_uses_hk_unique_ids = _package_attr("_uses_hk_unique_ids")
+_validate_global_daily_resume_inputs = _package_attr(
+    "_validate_global_daily_resume_inputs"
+)
+
+
+def _ensure_rqdatac_hk_plugin() -> None:
+    _package_attr("_ensure_rqdatac_hk_plugin")()
 
 
 def mirror_hk_valuation(args, rqdatac) -> int:
-    fields, field_metadata = _base._resolve_default_plus_explicit_fields(
+    fields, field_metadata = _resolve_default_plus_explicit_fields(
         args,
-        default_fields=_base.DEFAULT_HK_VALUATION_FIELDS,
+        default_fields=DEFAULT_HK_VALUATION_FIELDS,
         source_label="default_plus_explicit",
     )
-    return _base._mirror_dated_dataset(
+    return _mirror_dated_dataset(
         args=args,
         rqdatac=rqdatac,
         dataset_name="valuation",
@@ -21,13 +60,13 @@ def mirror_hk_valuation(args, rqdatac) -> int:
         date_column="trade_date",
         fields=fields,
         field_metadata=field_metadata,
-        resolve_request_groups=lambda symbols, start_date, end_date, args: _base._resolve_hk_dated_request_groups(
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
             symbols,
             start_date=start_date,
             end_date=end_date,
-            out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         ),
-        normalize_payload=_base._normalize_hk_valuation_payload,
+        normalize_payload=_normalize_hk_valuation_payload,
         fetch_batch=lambda order_book_ids, selected_fields, start_date, end_date: rqdatac.get_factor(
             list(order_book_ids),
             list(selected_fields),
@@ -39,7 +78,7 @@ def mirror_hk_valuation(args, rqdatac) -> int:
 
 
 def mirror_hk_ex_factors(args, rqdatac) -> int:
-    return _base._mirror_dated_dataset(
+    return _mirror_dated_dataset(
         args=args,
         rqdatac=rqdatac,
         dataset_name="ex_factors",
@@ -53,20 +92,20 @@ def mirror_hk_ex_factors(args, rqdatac) -> int:
             "base_fields": [],
         },
         sort_columns=("announcement_date", "ex_end_date"),
-        resolve_request_groups=lambda symbols, start_date, end_date, args: _base._resolve_hk_dated_request_groups(
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
             symbols,
             start_date=start_date,
             end_date=end_date,
-            out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         ),
-        normalize_payload=_base._normalize_hk_dated_payload,
+        normalize_payload=_normalize_hk_dated_payload,
         fetch_batch=lambda order_book_ids, fields, start_date, end_date: (
-            _base._fetch_hk_ex_factors_direct(
+            _fetch_hk_ex_factors_direct(
                 order_book_ids,
                 start_date=start_date,
                 end_date=end_date,
             )
-            if _base._uses_hk_unique_ids(order_book_ids)
+            if _uses_hk_unique_ids(order_book_ids)
             else rqdatac.get_ex_factor(
                 order_book_ids,
                 start_date=start_date,
@@ -78,7 +117,7 @@ def mirror_hk_ex_factors(args, rqdatac) -> int:
 
 
 def mirror_hk_dividends(args, rqdatac) -> int:
-    return _base._mirror_dated_dataset(
+    return _mirror_dated_dataset(
         args=args,
         rqdatac=rqdatac,
         dataset_name="dividends",
@@ -92,20 +131,20 @@ def mirror_hk_dividends(args, rqdatac) -> int:
             "base_fields": [],
         },
         sort_columns=("ex_dividend_date", "payable_date"),
-        resolve_request_groups=lambda symbols, start_date, end_date, args: _base._resolve_hk_dated_request_groups(
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
             symbols,
             start_date=start_date,
             end_date=end_date,
-            out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         ),
-        normalize_payload=_base._normalize_hk_dated_payload,
+        normalize_payload=_normalize_hk_dated_payload,
         fetch_batch=lambda order_book_ids, fields, start_date, end_date: (
-            _base._fetch_hk_dividends_direct(
+            _fetch_hk_dividends_direct(
                 order_book_ids,
                 start_date=start_date,
                 end_date=end_date,
             )
-            if _base._uses_hk_unique_ids(order_book_ids)
+            if _uses_hk_unique_ids(order_book_ids)
             else rqdatac.get_dividend(
                 order_book_ids,
                 start_date=start_date,
@@ -117,12 +156,12 @@ def mirror_hk_dividends(args, rqdatac) -> int:
 
 
 def mirror_hk_shares(args, rqdatac) -> int:
-    fields, field_metadata = _base._resolve_default_plus_explicit_fields(
+    fields, field_metadata = _resolve_default_plus_explicit_fields(
         args,
-        default_fields=_base.DEFAULT_HK_SHARES_FIELDS,
+        default_fields=DEFAULT_HK_SHARES_FIELDS,
         source_label="default_plus_explicit",
     )
-    return _base._mirror_dated_dataset(
+    return _mirror_dated_dataset(
         args=args,
         rqdatac=rqdatac,
         dataset_name="shares",
@@ -130,21 +169,21 @@ def mirror_hk_shares(args, rqdatac) -> int:
         date_column="date",
         fields=fields,
         field_metadata=field_metadata,
-        resolve_request_groups=lambda symbols, start_date, end_date, args: _base._resolve_hk_dated_request_groups(
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
             symbols,
             start_date=start_date,
             end_date=end_date,
-            out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         ),
-        normalize_payload=_base._normalize_hk_dated_payload,
+        normalize_payload=_normalize_hk_dated_payload,
         fetch_batch=lambda order_book_ids, selected_fields, start_date, end_date: (
-            _base._fetch_hk_shares_direct(
+            _fetch_hk_shares_direct(
                 order_book_ids,
                 fields=list(selected_fields),
                 start_date=start_date,
                 end_date=end_date,
             )
-            if _base._uses_hk_unique_ids(order_book_ids)
+            if _uses_hk_unique_ids(order_book_ids)
             else rqdatac.get_shares(
                 order_book_ids,
                 start_date=start_date,
@@ -157,29 +196,29 @@ def mirror_hk_shares(args, rqdatac) -> int:
 
 
 def mirror_hk_exchange_rate(args, rqdatac) -> int:
-    start_date = _base._normalize_absolute_date(args.start_date, label="--start-date")
-    end_date = _base._normalize_absolute_date(args.end_date, label="--end-date")
+    start_date = _normalize_absolute_date(args.start_date, label="--start-date")
+    end_date = _normalize_absolute_date(args.end_date, label="--end-date")
     if start_date > end_date:
         raise SystemExit("--start-date must be <= --end-date.")
 
-    fields, field_metadata = _base._resolve_default_plus_explicit_fields(
+    fields, field_metadata = _resolve_default_plus_explicit_fields(
         args,
-        default_fields=_base.DEFAULT_HK_EXCHANGE_RATE_FIELDS,
+        default_fields=DEFAULT_HK_EXCHANGE_RATE_FIELDS,
         source_label="default_plus_explicit",
     )
     resume = bool(getattr(args, "resume", False))
     max_attempts = max(
         1,
-        int(getattr(args, "max_attempts", _base.DEFAULT_MIRROR_MAX_ATTEMPTS) or 1),
+        int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1),
     )
     backoff_seconds = float(
-        getattr(args, "backoff_seconds", _base.DEFAULT_MIRROR_BACKOFF_SECONDS)
+        getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS)
     )
     max_backoff_seconds = float(
-        getattr(args, "max_backoff_seconds", _base.DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
     )
-    output_dir = _base._prepare_daily_output_dir(
-        out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+    output_dir = _prepare_daily_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         dataset_name="exchange_rate",
         start_date=start_date,
         end_date=end_date,
@@ -187,7 +226,7 @@ def mirror_hk_exchange_rate(args, rqdatac) -> int:
         resume=resume,
     )
     if resume:
-        _base._validate_global_daily_resume_inputs(
+        _validate_global_daily_resume_inputs(
             output_dir=output_dir,
             dataset_name="exchange_rate",
             fields=fields,
@@ -202,13 +241,13 @@ def mirror_hk_exchange_rate(args, rqdatac) -> int:
     currency_pairs_path = output_dir / "currency_pairs.txt"
     dates_path = output_dir / "dates.txt"
 
-    started_at = _base._timestamp_now()
+    started_at = _timestamp_now()
     finished_at: str | None = None
     status = "completed"
     error: str | None = None
     result_code = 0
     total_attempts = 0
-    fetch_chunks = _base._split_daily_range_by_year(start_date, end_date)
+    fetch_chunks = _split_daily_range_by_year(start_date, end_date)
     frame = pd.DataFrame()
 
     try:
@@ -218,7 +257,7 @@ def mirror_hk_exchange_rate(args, rqdatac) -> int:
                 f"Fetching exchange_rate chunk {chunk_index}/{len(fetch_chunks)}: "
                 f"{chunk_start} -> {chunk_end}"
             )
-            payload, attempts = _base._retry_fetch(
+            payload, attempts = _retry_fetch(
                 f"exchange_rate fetch failed for {chunk_start}->{chunk_end}",
                 lambda chunk_start=chunk_start, chunk_end=chunk_end: rqdatac.get_exchange_rate(
                     start_date=chunk_start,
@@ -236,7 +275,7 @@ def mirror_hk_exchange_rate(args, rqdatac) -> int:
                 chunk_frame = payload.reset_index()
             else:
                 chunk_frame = pd.DataFrame(payload)
-            chunk_frames.append(_base._normalize_frame_columns(chunk_frame))
+            chunk_frames.append(_normalize_frame_columns(chunk_frame))
 
         if chunk_frames:
             frame = pd.concat(chunk_frames, ignore_index=True)
@@ -258,25 +297,25 @@ def mirror_hk_exchange_rate(args, rqdatac) -> int:
         frame.sort_values(["date", "currency_pair"], kind="mergesort", inplace=True)
         frame.reset_index(drop=True, inplace=True)
 
-        _base._write_text_list(fields_path, fields)
-        _base._write_text_list(
+        _write_text_list(fields_path, fields)
+        _write_text_list(
             currency_pairs_path,
             frame["currency_pair"].drop_duplicates().tolist(),
         )
-        _base._write_text_list(dates_path, frame["date"].drop_duplicates().tolist())
+        _write_text_list(dates_path, frame["date"].drop_duplicates().tolist())
         frame.to_parquet(data_path, index=False)
-    except _base.MirrorQuotaError as exc:
+    except MirrorQuotaError as exc:
         status = "quota_exhausted"
         error = str(exc)
         result_code = 2
-        finished_at = _base._timestamp_now()
+        finished_at = _timestamp_now()
     except Exception as exc:
         status = "failed"
         error = str(exc)
         result_code = 1
-        finished_at = _base._timestamp_now()
+        finished_at = _timestamp_now()
     else:
-        finished_at = _base._timestamp_now()
+        finished_at = _timestamp_now()
     finally:
         totals = {
             "rows": int(len(frame)),
@@ -315,9 +354,9 @@ def mirror_hk_exchange_rate(args, rqdatac) -> int:
             "finished_at": finished_at,
             "attempts": total_attempts,
             "fetch_chunks": len(fetch_chunks),
-            "git": _base._git_metadata(Path.cwd().resolve()),
+            "git": _git_metadata(Path.cwd().resolve()),
         }
-        _base._write_manifest(output_dir / "manifest.yml", manifest)
+        _write_manifest(output_dir / "manifest.yml", manifest)
 
     print(
         f"Wrote exchange_rate mirror to {output_dir} "
@@ -329,15 +368,15 @@ def mirror_hk_exchange_rate(args, rqdatac) -> int:
 
 
 def mirror_hk_announcement(args, rqdatac) -> int:
-    _base._ensure_rqdatac_hk_plugin()
+    _ensure_rqdatac_hk_plugin()
     hk_api = getattr(rqdatac, "hk", None)
     if hk_api is None or not hasattr(hk_api, "get_announcement"):
         raise SystemExit(
             "rqdatac.hk.get_announcement is unavailable. Check rqdatac-hk installation."
         )
 
-    fields, field_metadata = _base._resolve_optional_explicit_fields(args)
-    return _base._mirror_dated_dataset(
+    fields, field_metadata = _resolve_optional_explicit_fields(args)
+    return _mirror_dated_dataset(
         args=args,
         rqdatac=rqdatac,
         dataset_name="announcement",
@@ -352,13 +391,13 @@ def mirror_hk_announcement(args, rqdatac) -> int:
             "third_category",
             "title",
         ),
-        resolve_request_groups=lambda symbols, start_date, end_date, args: _base._resolve_hk_dated_request_groups(
+        resolve_request_groups=lambda symbols, start_date, end_date, args: _resolve_hk_dated_request_groups(
             symbols,
             start_date=start_date,
             end_date=end_date,
-            out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+            out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         ),
-        normalize_payload=_base._normalize_hk_dated_payload,
+        normalize_payload=_normalize_hk_dated_payload,
         fetch_batch=lambda order_book_ids, selected_fields, start_date, end_date: hk_api.get_announcement(
             order_book_ids=list(order_book_ids),
             start_date=start_date,

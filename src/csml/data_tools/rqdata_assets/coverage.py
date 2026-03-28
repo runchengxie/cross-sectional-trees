@@ -2,25 +2,37 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+import sys
 
 import numpy as np
 import pandas as pd
 
 from ...config_utils import resolve_pipeline_config
 from ...rebalance import get_rebalance_dates
-from csml.data_tools import rqdata_assets as _base
+from .build import (
+    _default_pipeline_fundamentals_path,
+    _load_universe_by_date_frame,
+    _pipeline_fundamentals_manifest_path,
+    _resolve_build_fields,
+)
+from .shared import (
+    DEFAULT_PIPELINE_FUNDAMENTALS_NAME,
+    DERIVED_PIT_FEATURES,
+    _load_manifest,
+    _normalize_field_list,
+    _normalize_frame_columns,
+    _resolve_fields_with_overrides,
+    _resolve_path,
+)
 
-DEFAULT_PIPELINE_FUNDAMENTALS_NAME = _base.DEFAULT_PIPELINE_FUNDAMENTALS_NAME
-DERIVED_PIT_FEATURES = _base.DERIVED_PIT_FEATURES
-_default_pipeline_fundamentals_path = _base._default_pipeline_fundamentals_path
-_load_manifest = _base._load_manifest
-_load_universe_by_date_frame = _base._load_universe_by_date_frame
-_normalize_field_list = _base._normalize_field_list
-_normalize_frame_columns = _base._normalize_frame_columns
-_pipeline_fundamentals_manifest_path = _base._pipeline_fundamentals_manifest_path
-_resolve_build_fields = _base._resolve_build_fields
-_resolve_fields = _base._resolve_fields
-_resolve_path = _base._resolve_path
+
+def _resolve_fields(args) -> tuple[list[str], dict]:
+    package = sys.modules.get("csml.data_tools.rqdata_assets")
+    override = getattr(package, "_load_hk_financial_fields", None) if package is not None else None
+    return _resolve_fields_with_overrides(
+        args,
+        load_hk_financial_fields_override=override,
+    )
 
 
 def _is_supported_pit_coverage_feature(feature: str, available_columns: set[str]) -> bool:
