@@ -10,7 +10,6 @@ import logging
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from datetime import datetime, timedelta
 from typing import Any
 
 import numpy as np
@@ -18,10 +17,6 @@ import numpy as np
 if not hasattr(np, "NaN"):
     np.NaN = np.nan
 import pandas as pd
-import pandas_ta as ta
-import pyarrow  # ensures parquet support
-from dotenv import load_dotenv
-import yaml
 import warnings
 
 from ..artifacts import (
@@ -29,25 +24,14 @@ from ..artifacts import (
     RUNS_DIR as DEFAULT_RUNS_DIR,
     resolve_repo_path,
 )
-from ..config_utils import resolve_pipeline_config
-from ..date_utils import (
-    is_relative_date_token as _is_relative_date_token,
-    resolve_date_token as _resolve_date_token,
-)
 from ..data_interface import DataInterface
 from ..data_providers import (
     fundamentals_provider_supported,
-    normalize_market,
     resolve_provider,
 )
-from ..data_tools.symbols import (
-    ensure_symbol_columns,
-)
-from ..dataset import DatasetSchema, build_dataset
 from ..execution import (
     BpsCostModel,
     build_execution_model,
-    describe_execution_model,
     required_pricing_columns,
 )
 from ..metrics import (
@@ -55,33 +39,29 @@ from ..metrics import (
     daily_ic_series,
     summarize_ic,
 )
-from ..transform import apply_cross_sectional_series_transform, apply_cross_sectional_transform
 from ..split import build_sample_weight, time_series_cv_ic
 from ..modeling import build_model, fit_model, resolve_model_spec, feature_importance_frame
 from ..backtest import backtest_topk
+from .config import (
+    load_run_config,
+    normalize_eval_settings,
+    normalize_universe_filters,
+    prepare_run_artifacts,
+    resolve_date_range_and_label_settings,
+    resolve_universe_inputs,
+)
 from .support import (
     _annotate_positions_window,
-    _build_rebalance_diff,
     _ensure_symbol_alias,
     _parse_window_config,
     _prepare_panel_join_frame,
     _select_panel_join_columns,
     _summarize_walk_forward_feature_stability,
     apply_universe_by_date,
-    load_symbols_file,
-    load_universe_by_date,
     normalize_symbol_list,
     parse_feature_windows,
-    save_frame,
-    save_json,
-    save_parquet,
-    save_series,
 )
 from .dates import (
-    _apply_model_train_window,
-    _build_trade_date_slices,
-    _slice_trade_date_range,
-    _slice_trade_dates,
     _slice_with_train_window,
     build_walk_forward_windows,
 )
@@ -89,21 +69,16 @@ from .data import _load_research_panel, _prepare_feature_dataset
 from .eval import (
     _evaluate_period,
     _evaluate_walk_forward_window,
-    _warn_if_delay_exit_lag,
-    build_benchmark_series,
 )
 from .live import _prepare_live_snapshot
-from .runtime import _prepare_split_context, config_hash, setup_logging
+from .output import persist_run_outputs
+from .runtime import _prepare_split_context
 from .stats import (
     _compute_rolling_ic,
     _compute_rolling_sharpe,
     _ensure_execution_daily_fields,
     _latest_rolling_stats,
-    _normalize_bucket_schemes,
-    _normalize_window_months,
-    _warn_if_purge_too_small,
 )
-from ..rebalance import estimate_rebalance_gap, get_rebalance_dates
 
 warnings.filterwarnings("ignore")
 
@@ -122,32 +97,23 @@ def run(config_ref: str | Path | None = None) -> None:
         if package_api is not None
         else bucket_ic_summary
     )
-    resolved = resolve_pipeline_config(config_ref)
-    config = resolved.data
-    config_label = resolved.label
-    config_path = resolved.path
-    config_source = resolved.source
-    active_log_file = setup_logging(config)
-
-    data_cfg = config.get("data", {})
-    MARKET = normalize_market(config.get("market") or data_cfg.get("market"))
-    universe_cfg = config.get("universe", {})
-    label_cfg = config.get("label", {})
-    features_cfg = config.get("features", {})
-    fundamentals_cfg = config.get("fundamentals", {})
-    model_cfg = config.get("model", {})
-    eval_cfg = config.get("eval", {})
-    backtest_cfg = config.get("backtest", {})
-    live_cfg = config.get("live", {})
-    if not isinstance(model_cfg, dict):
-        sys.exit("model must be a mapping with keys: type, params, sample_weight_mode.")
-    if not isinstance(live_cfg, dict):
-        live_cfg = {}
-
-    load_dotenv()
-    CACHE_DIR = resolve_repo_path(
-        data_cfg.get("cache_dir", DEFAULT_CACHE_DIR.as_posix())
-    )
+    loaded = load_run_config(config_ref, default_cache_dir=DEFAULT_CACHE_DIR)
+    config = loaded["config"]
+    config_label = loaded["config_label"]
+    config_path = loaded["config_path"]
+    config_source = loaded["config_source"]
+    active_log_file = loaded["active_log_file"]
+    data_cfg = loaded["data_cfg"]
+    MARKET = loaded["market"]
+    universe_cfg = loaded["universe_cfg"]
+    label_cfg = loaded["label_cfg"]
+    features_cfg = loaded["features_cfg"]
+    fundamentals_cfg = loaded["fundamentals_cfg"]
+    model_cfg = loaded["model_cfg"]
+    eval_cfg = loaded["eval_cfg"]
+    backtest_cfg = loaded["backtest_cfg"]
+    live_cfg = loaded["live_cfg"]
+    CACHE_DIR = loaded["cache_dir"]
     data_interface = DataInterface(MARKET, data_cfg, cache_dir=CACHE_DIR, logger=logger)
     provider = data_interface.provider
 
@@ -158,228 +124,100 @@ def run(config_ref: str | Path | None = None) -> None:
         "00001.HK",
         "00388.HK",
     ]
+    universe_inputs = resolve_universe_inputs(
+        universe_cfg,
+        market=MARKET,
+        logger=logger,
+        default_symbols=DEFAULT_SYMBOLS,
+    )
+    UNIVERSE_MODE = universe_inputs["UNIVERSE_MODE"]
+    REQUIRE_BY_DATE = universe_inputs["REQUIRE_BY_DATE"]
+    symbols = universe_inputs["symbols"]
+    symbols_file = universe_inputs["symbols_file"]
+    by_date_file = universe_inputs["by_date_file"]
+    universe_by_date = universe_inputs["universe_by_date"]
+    universe_mode_effective = universe_inputs["universe_mode_effective"]
 
-    UNIVERSE_MODE = str(universe_cfg.get("mode", "auto")).strip().lower()
-    if UNIVERSE_MODE not in {"auto", "pit", "static"}:
-        sys.exit("universe.mode must be one of: auto, pit, static.")
-    REQUIRE_BY_DATE = bool(universe_cfg.get("require_by_date", False))
+    date_label_settings = resolve_date_range_and_label_settings(
+        data_cfg=data_cfg,
+        label_cfg=label_cfg,
+        eval_cfg=eval_cfg,
+        live_cfg=live_cfg,
+        market=MARKET,
+        provider=provider,
+        logger=logger,
+    )
+    end_date = date_label_settings["end_date"]
+    start_date = date_label_settings["start_date"]
+    START_DATE = date_label_settings["START_DATE"]
+    END_DATE = date_label_settings["END_DATE"]
+    PRICE_COL = date_label_settings["PRICE_COL"]
+    LABEL_HORIZON_DAYS = date_label_settings["LABEL_HORIZON_DAYS"]
+    LABEL_SHIFT_DAYS = date_label_settings["LABEL_SHIFT_DAYS"]
+    LABEL_HORIZON_MODE = date_label_settings["LABEL_HORIZON_MODE"]
+    LABEL_REBALANCE_FREQUENCY = date_label_settings["LABEL_REBALANCE_FREQUENCY"]
+    TARGET = date_label_settings["TARGET"]
+    TRAIN_TARGET_TRANSFORM = date_label_settings["TRAIN_TARGET_TRANSFORM"]
+    TRAIN_TARGET = date_label_settings["TRAIN_TARGET"]
+    WINSORIZE_PCT = date_label_settings["WINSORIZE_PCT"]
 
-    symbols = normalize_symbol_list(universe_cfg.get("symbols"))
-    symbols_file = universe_cfg.get("symbols_file")
-    by_date_file = universe_cfg.get("by_date_file")
-    universe_by_date = None
-    universe_mode_effective = UNIVERSE_MODE
-
-    if not symbols and symbols_file:
-        symbols = load_symbols_file(Path(symbols_file))
-
-    if by_date_file:
-        universe_by_date = load_universe_by_date(
-            resolve_repo_path(by_date_file),
-            MARKET,
-        )
-        symbols_from_universe = sorted(universe_by_date["symbol"].unique().tolist())
-        if symbols:
-            symbols = sorted(set(symbols) | set(symbols_from_universe))
-        else:
-            symbols = symbols_from_universe
-        universe_mode_effective = "pit"
-        if UNIVERSE_MODE == "static":
-            logger.warning("universe.mode=static but by_date_file provided; using PIT universe.")
-    else:
-        if REQUIRE_BY_DATE or UNIVERSE_MODE == "pit":
-            sys.exit("universe.by_date_file is required when universe.mode=pit or require_by_date=true.")
-        universe_mode_effective = "static"
-        if UNIVERSE_MODE == "auto":
-            logger.warning(
-                "Universe-by-date not provided; using static symbols (survivorship bias). "
-                "Set universe.mode=static to acknowledge or provide by_date_file for PIT."
-            )
-
-    if not symbols:
-        symbols = DEFAULT_SYMBOLS
-
-    if not symbols:
-        sys.exit("No symbols configured.")
-
-    end_date_cfg = data_cfg.get("end_date", "today")
-    if _is_relative_date_token(end_date_cfg) and not bool(live_cfg.get("enabled", False)):
-        logger.warning(
-            "data.end_date=%s is a relative token; prefer a fixed YYYYMMDD date for reproducibility.",
-            end_date_cfg,
-        )
-    end_date = _resolve_date_token(end_date_cfg, default="today", market=MARKET, provider=provider)
-
-    start_date_cfg = data_cfg.get("start_date")
-    if start_date_cfg:
-        start_date = datetime.strptime(str(start_date_cfg), "%Y%m%d")
-    else:
-        start_years = float(data_cfg.get("start_years", 5))
-        start_date = end_date - timedelta(days=int(start_years * 365))
-
-    START_DATE = start_date.strftime("%Y%m%d")
-    END_DATE = end_date.strftime("%Y%m%d")
-
-    PRICE_COL = data_cfg.get("price_col", "close")
-
-    LABEL_HORIZON_DAYS = int(label_cfg.get("horizon_days", 5))
-    LABEL_SHIFT_DAYS = int(label_cfg.get("shift_days", 0))
-    LABEL_HORIZON_MODE = str(label_cfg.get("horizon_mode", "fixed")).strip().lower()
-    if LABEL_HORIZON_MODE not in {"fixed", "next_rebalance"}:
-        sys.exit("label.horizon_mode must be one of: fixed, next_rebalance.")
-    LABEL_REBALANCE_FREQUENCY = label_cfg.get("rebalance_frequency", eval_cfg.get("rebalance_frequency", "M"))
-    TARGET = label_cfg.get("target_col", "future_return")
-    TRAIN_TARGET_TRANSFORM = str(label_cfg.get("train_target_transform", "none")).strip().lower()
-    if TRAIN_TARGET_TRANSFORM not in {"none", "zscore", "rank"}:
-        sys.exit("label.train_target_transform must be one of: none, zscore, rank.")
-    TRAIN_TARGET = TARGET if TRAIN_TARGET_TRANSFORM == "none" else f"{TARGET}__train_target"
-    WINSORIZE_PCT = label_cfg.get("winsorize_pct")
-    if WINSORIZE_PCT is not None:
-        WINSORIZE_PCT = float(WINSORIZE_PCT)
-        if not 0 < WINSORIZE_PCT < 0.5:
-            sys.exit("winsorize_pct must be between 0 and 0.5.")
-
-    TEST_SIZE = float(eval_cfg.get("test_size", 0.2))
-    N_SPLITS = int(eval_cfg.get("n_splits", 5))
-    N_QUANTILES = int(eval_cfg.get("n_quantiles", 5))
-    TOP_K = int(eval_cfg.get("top_k", 20))
-    REBALANCE_FREQUENCY = eval_cfg.get("rebalance_frequency", "W")
-    TRANSACTION_COST_BPS = float(eval_cfg.get("transaction_cost_bps", 10))
-    EVAL_BUFFER_EXIT = int(eval_cfg.get("buffer_exit", backtest_cfg.get("buffer_exit", 0) if isinstance(backtest_cfg, dict) else 0))
-    EVAL_BUFFER_ENTRY = int(eval_cfg.get("buffer_entry", backtest_cfg.get("buffer_entry", 0) if isinstance(backtest_cfg, dict) else 0))
-    SIGNAL_DIRECTION_MODE = str(eval_cfg.get("signal_direction_mode", "fixed")).strip().lower()
-    if SIGNAL_DIRECTION_MODE not in {"fixed", "train_ic", "cv_ic"}:
-        sys.exit("eval.signal_direction_mode must be one of: fixed, train_ic, cv_ic.")
-    SIGNAL_DIRECTION_RAW = eval_cfg.get("signal_direction", 1.0)
-    SIGNAL_DIRECTION = float(SIGNAL_DIRECTION_RAW) if SIGNAL_DIRECTION_RAW is not None else 1.0
-    if SIGNAL_DIRECTION == 0:
-        sys.exit("eval.signal_direction cannot be 0.")
-    MIN_ABS_IC_TO_FLIP_RAW = eval_cfg.get("min_abs_ic_to_flip", 0.0)
-    MIN_ABS_IC_TO_FLIP = float(MIN_ABS_IC_TO_FLIP_RAW) if MIN_ABS_IC_TO_FLIP_RAW is not None else 0.0
-    if MIN_ABS_IC_TO_FLIP < 0:
-        sys.exit("eval.min_abs_ic_to_flip must be >= 0.")
-    EMBARGO_DAYS_RAW = eval_cfg.get("embargo_days")
-    EMBARGO_DAYS_CFG = int(EMBARGO_DAYS_RAW) if EMBARGO_DAYS_RAW is not None else 0
-    PURGE_DAYS_RAW = eval_cfg.get("purge_days")
-    PURGE_DAYS_CFG = int(PURGE_DAYS_RAW) if PURGE_DAYS_RAW is not None else None
-    PURGE_STEPS = None
-    EMBARGO_STEPS = None
-    EFFECTIVE_GAP_STEPS = None
-    REPORT_TRAIN_IC = bool(eval_cfg.get("report_train_ic", True))
-    SAMPLE_ON_REBALANCE_DATES = bool(eval_cfg.get("sample_on_rebalance_dates", False))
-    rolling_cfg = eval_cfg.get("rolling") if isinstance(eval_cfg, dict) else None
-    if isinstance(rolling_cfg, dict):
-        rolling_enabled = bool(rolling_cfg.get("enabled", True))
-        if rolling_enabled:
-            ROLLING_WINDOWS_MONTHS = _normalize_window_months(
-                rolling_cfg.get("windows_months"), [6, 12]
-            )
-        else:
-            ROLLING_WINDOWS_MONTHS = []
-    else:
-        ROLLING_WINDOWS_MONTHS = _normalize_window_months(rolling_cfg, [6, 12])
-
-    bucket_ic_cfg = eval_cfg.get("bucket_ic") if isinstance(eval_cfg, dict) else None
-    BUCKET_IC_ENABLED = False
-    BUCKET_IC_METHOD = "spearman"
-    BUCKET_IC_MIN_COUNT = 0
-    BUCKET_IC_SCHEMES = []
-    if isinstance(bucket_ic_cfg, dict):
-        BUCKET_IC_ENABLED = bool(bucket_ic_cfg.get("enabled", False))
-        BUCKET_IC_METHOD = str(bucket_ic_cfg.get("method", "spearman")).strip().lower()
-        BUCKET_IC_MIN_COUNT = int(bucket_ic_cfg.get("min_count", 0) or 0)
-        BUCKET_IC_SCHEMES = _normalize_bucket_schemes(bucket_ic_cfg.get("schemes"))
-    elif bucket_ic_cfg is not None:
-        BUCKET_IC_ENABLED = bool(bucket_ic_cfg)
-    if BUCKET_IC_METHOD not in {"spearman", "pearson"}:
-        sys.exit("eval.bucket_ic.method must be one of: spearman, pearson.")
+    eval_settings = normalize_eval_settings(eval_cfg, backtest_cfg=backtest_cfg)
+    TEST_SIZE = eval_settings["TEST_SIZE"]
+    N_SPLITS = eval_settings["N_SPLITS"]
+    N_QUANTILES = eval_settings["N_QUANTILES"]
+    TOP_K = eval_settings["TOP_K"]
+    REBALANCE_FREQUENCY = eval_settings["REBALANCE_FREQUENCY"]
+    TRANSACTION_COST_BPS = eval_settings["TRANSACTION_COST_BPS"]
+    EVAL_BUFFER_EXIT = eval_settings["EVAL_BUFFER_EXIT"]
+    EVAL_BUFFER_ENTRY = eval_settings["EVAL_BUFFER_ENTRY"]
+    SIGNAL_DIRECTION_MODE = eval_settings["SIGNAL_DIRECTION_MODE"]
+    SIGNAL_DIRECTION = eval_settings["SIGNAL_DIRECTION"]
+    MIN_ABS_IC_TO_FLIP = eval_settings["MIN_ABS_IC_TO_FLIP"]
+    EMBARGO_DAYS_CFG = eval_settings["EMBARGO_DAYS_CFG"]
+    PURGE_DAYS_CFG = eval_settings["PURGE_DAYS_CFG"]
+    PURGE_STEPS = eval_settings["PURGE_STEPS"]
+    EMBARGO_STEPS = eval_settings["EMBARGO_STEPS"]
+    EFFECTIVE_GAP_STEPS = eval_settings["EFFECTIVE_GAP_STEPS"]
+    REPORT_TRAIN_IC = eval_settings["REPORT_TRAIN_IC"]
+    SAMPLE_ON_REBALANCE_DATES = eval_settings["SAMPLE_ON_REBALANCE_DATES"]
+    ROLLING_WINDOWS_MONTHS = eval_settings["ROLLING_WINDOWS_MONTHS"]
+    BUCKET_IC_ENABLED = eval_settings["BUCKET_IC_ENABLED"]
+    BUCKET_IC_METHOD = eval_settings["BUCKET_IC_METHOD"]
+    BUCKET_IC_MIN_COUNT = eval_settings["BUCKET_IC_MIN_COUNT"]
+    BUCKET_IC_SCHEMES = eval_settings["BUCKET_IC_SCHEMES"]
+    PERM_TEST_ENABLED = eval_settings["PERM_TEST_ENABLED"]
+    PERM_TEST_RUNS = eval_settings["PERM_TEST_RUNS"]
+    PERM_TEST_SEED = eval_settings["PERM_TEST_SEED"]
+    WF_ENABLED = eval_settings["WF_ENABLED"]
+    WF_N_WINDOWS = eval_settings["WF_N_WINDOWS"]
+    WF_TEST_SIZE = eval_settings["WF_TEST_SIZE"]
+    WF_STEP_SIZE = eval_settings["WF_STEP_SIZE"]
+    WF_ANCHOR_END = eval_settings["WF_ANCHOR_END"]
+    WF_FEATURE_TOP_K = eval_settings["WF_FEATURE_TOP_K"]
+    WF_BACKTEST_ENABLED = eval_settings["WF_BACKTEST_ENABLED"]
+    WF_PERM_TEST_ENABLED = eval_settings["WF_PERM_TEST_ENABLED"]
+    WF_PERM_TEST_RUNS = eval_settings["WF_PERM_TEST_RUNS"]
+    WF_PERM_TEST_SEED = eval_settings["WF_PERM_TEST_SEED"]
+    FINAL_OOS_ENABLED = eval_settings["FINAL_OOS_ENABLED"]
+    FINAL_OOS_SIZE_RAW = eval_settings["FINAL_OOS_SIZE_RAW"]
+    SAVE_ARTIFACTS = eval_settings["SAVE_ARTIFACTS"]
+    SAVE_SCORED_ARTIFACT = eval_settings["SAVE_SCORED_ARTIFACT"]
+    SAVE_DATASET = eval_settings["SAVE_DATASET"]
+    OUTPUT_DIR = eval_settings["OUTPUT_DIR"] or DEFAULT_RUNS_DIR.as_posix()
+    RUN_NAME = eval_settings["RUN_NAME"]
     if BUCKET_IC_ENABLED and not BUCKET_IC_SCHEMES:
         logger.warning("eval.bucket_ic.enabled=true but no schemes configured.")
-    perm_cfg = eval_cfg.get("permutation_test") or {}
-    if isinstance(perm_cfg, dict):
-        PERM_TEST_ENABLED = bool(perm_cfg.get("enabled", False))
-        PERM_TEST_RUNS = int(perm_cfg.get("n_runs", 1))
-        PERM_TEST_SEED = perm_cfg.get("seed")
-    else:
-        PERM_TEST_ENABLED = bool(perm_cfg)
-        PERM_TEST_RUNS = 1
-        PERM_TEST_SEED = None
-    if PERM_TEST_SEED is not None:
-        PERM_TEST_SEED = int(PERM_TEST_SEED)
-    if PERM_TEST_RUNS < 1:
-        PERM_TEST_ENABLED = False
 
-    wf_cfg = eval_cfg.get("walk_forward") or {}
-    if isinstance(wf_cfg, dict):
-        WF_ENABLED = bool(wf_cfg.get("enabled", False))
-        WF_N_WINDOWS = int(wf_cfg.get("n_windows", 3))
-        WF_TEST_SIZE = wf_cfg.get("test_size", TEST_SIZE)
-        WF_STEP_SIZE = wf_cfg.get("step_size")
-        WF_ANCHOR_END = bool(wf_cfg.get("anchor_end", True))
-        WF_FEATURE_TOP_K = int(wf_cfg.get("feature_top_k", 5))
-        WF_BACKTEST_ENABLED = bool(wf_cfg.get("backtest_enabled", backtest_cfg.get("enabled", True)))
-        wf_perm_cfg = wf_cfg.get("permutation_test")
-        if isinstance(wf_perm_cfg, dict):
-            WF_PERM_TEST_ENABLED = bool(wf_perm_cfg.get("enabled", False))
-            WF_PERM_TEST_RUNS = int(wf_perm_cfg.get("n_runs", PERM_TEST_RUNS))
-            WF_PERM_TEST_SEED = wf_perm_cfg.get("seed", PERM_TEST_SEED)
-        elif wf_perm_cfg is None:
-            WF_PERM_TEST_ENABLED = False
-            WF_PERM_TEST_RUNS = PERM_TEST_RUNS
-            WF_PERM_TEST_SEED = PERM_TEST_SEED
-        else:
-            WF_PERM_TEST_ENABLED = bool(wf_perm_cfg)
-            WF_PERM_TEST_RUNS = PERM_TEST_RUNS
-            WF_PERM_TEST_SEED = PERM_TEST_SEED
-    else:
-        WF_ENABLED = bool(wf_cfg)
-        WF_N_WINDOWS = 3
-        WF_TEST_SIZE = TEST_SIZE
-        WF_STEP_SIZE = None
-        WF_ANCHOR_END = True
-        WF_FEATURE_TOP_K = 5
-        WF_BACKTEST_ENABLED = bool(backtest_cfg.get("enabled", True))
-        WF_PERM_TEST_ENABLED = False
-        WF_PERM_TEST_RUNS = PERM_TEST_RUNS
-        WF_PERM_TEST_SEED = PERM_TEST_SEED
-    if WF_PERM_TEST_SEED is not None:
-        WF_PERM_TEST_SEED = int(WF_PERM_TEST_SEED)
-    if WF_PERM_TEST_RUNS < 1:
-        WF_PERM_TEST_ENABLED = False
-    if WF_FEATURE_TOP_K < 1:
-        sys.exit("eval.walk_forward.feature_top_k must be >= 1.")
-
-    final_oos_cfg = eval_cfg.get("final_oos")
-    FINAL_OOS_SIZE_RAW = None
-    if isinstance(final_oos_cfg, dict):
-        FINAL_OOS_SIZE_RAW = final_oos_cfg.get("size")
-        FINAL_OOS_ENABLED = bool(final_oos_cfg.get("enabled", False) or FINAL_OOS_SIZE_RAW)
-    elif final_oos_cfg is None:
-        FINAL_OOS_ENABLED = False
-    else:
-        FINAL_OOS_SIZE_RAW = final_oos_cfg
-        FINAL_OOS_ENABLED = bool(final_oos_cfg)
-
-    SAVE_ARTIFACTS = bool(eval_cfg.get("save_artifacts", True))
-    SAVE_SCORED_ARTIFACT = bool(eval_cfg.get("save_scored_artifact", False))
-    SAVE_DATASET = bool(eval_cfg.get("save_dataset", False))
-    OUTPUT_DIR = eval_cfg.get("output_dir", DEFAULT_RUNS_DIR.as_posix())
-    RUN_NAME = eval_cfg.get("run_name")
-    if SAVE_SCORED_ARTIFACT and not SAVE_ARTIFACTS:
-        raise SystemExit("eval.save_scored_artifact=true requires eval.save_artifacts=true.")
-    if SAVE_DATASET and not SAVE_ARTIFACTS:
-        raise SystemExit("eval.save_dataset=true requires eval.save_artifacts=true.")
-
-    MIN_SYMBOLS_PER_DATE = int(universe_cfg.get("min_symbols_per_date", N_QUANTILES))
-    MIN_LISTED_DAYS = int(universe_cfg.get("min_listed_days", 0))
-    MIN_TURNOVER = float(universe_cfg.get("min_turnover", 0))
-    DROP_ST = bool(universe_cfg.get("drop_st", False))
-    DROP_SUSPENDED = bool(universe_cfg.get("drop_suspended", True))
-    SUSPENDED_POLICY = str(universe_cfg.get("suspended_policy", "mark")).strip().lower()
-    if SUSPENDED_POLICY not in {"mark", "filter"}:
-        sys.exit("universe.suspended_policy must be one of: mark, filter.")
-    if MIN_SYMBOLS_PER_DATE < N_QUANTILES:
-        MIN_SYMBOLS_PER_DATE = N_QUANTILES
+    universe_filters = normalize_universe_filters(
+        universe_cfg,
+        n_quantiles=N_QUANTILES,
+    )
+    MIN_SYMBOLS_PER_DATE = universe_filters["MIN_SYMBOLS_PER_DATE"]
+    MIN_LISTED_DAYS = universe_filters["MIN_LISTED_DAYS"]
+    MIN_TURNOVER = universe_filters["MIN_TURNOVER"]
+    DROP_ST = universe_filters["DROP_ST"]
+    DROP_SUSPENDED = universe_filters["DROP_SUSPENDED"]
+    SUSPENDED_POLICY = universe_filters["SUSPENDED_POLICY"]
 
     fundamentals_cfg = fundamentals_cfg if isinstance(fundamentals_cfg, dict) else {}
     FUNDAMENTALS_ENABLED = bool(fundamentals_cfg.get("enabled", False))
@@ -665,14 +503,22 @@ def run(config_ref: str | Path | None = None) -> None:
             "live.enabled=true requires eval.save_artifacts=true to persist holdings."
         )
 
-    run_name = str(RUN_NAME or config_label)
-    run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_hash = config_hash(config)
-    run_dir = Path(OUTPUT_DIR) / f"{run_name}_{run_stamp}_{run_hash}"
-    if SAVE_ARTIFACTS:
-        run_dir.mkdir(parents=True, exist_ok=True)
-        active_log_file = setup_logging(config, default_log_file=run_dir / "run.log")
-        logger.info("Artifacts will be saved to %s", run_dir)
+    run_artifacts = prepare_run_artifacts(
+        config=config,
+        config_label=config_label,
+        output_dir=OUTPUT_DIR,
+        run_name=RUN_NAME,
+        save_artifacts=SAVE_ARTIFACTS,
+        active_log_file=active_log_file,
+        default_runs_dir=DEFAULT_RUNS_DIR,
+        logger=logger,
+    )
+    OUTPUT_DIR = run_artifacts["OUTPUT_DIR"]
+    run_name = run_artifacts["run_name"]
+    run_stamp = run_artifacts["run_stamp"]
+    run_hash = run_artifacts["run_hash"]
+    run_dir = run_artifacts["run_dir"]
+    active_log_file = run_artifacts["active_log_file"]
 
     fundamentals_cols: list[str] = []
     industry_cols: list[str] = []
@@ -1501,546 +1347,7 @@ def run(config_ref: str | Path | None = None) -> None:
         feature_importance_nonzero = int((importance_values.abs() > 0.0).sum())
         zero_feature_importance = feature_importance_nonzero == 0
 
-    # Persist artifacts
-    dataset_path: Optional[Path] = None
-    eval_scored_path: Optional[Path] = None
-    feature_importance_path: Optional[Path] = None
-    if SAVE_ARTIFACTS:
-        rolling_ic_files: dict[str, str] = {}
-        rolling_sharpe_files: dict[str, str] = {}
-        rolling_ic_oos_files: dict[str, str] = {}
-        rolling_sharpe_oos_files: dict[str, str] = {}
-        bucket_ic_path: Optional[Path] = None
-        bucket_ic_oos_path: Optional[Path] = None
-        walk_forward_importance_path: Optional[Path] = None
-        walk_forward_feature_stability_path: Optional[Path] = None
-        if SAVE_DATASET:
-            dataset_path = run_dir / "dataset.parquet"
-            save_parquet(dataset.as_multiindex(), dataset_path)
-        if SAVE_SCORED_ARTIFACT and eval_scored_data is not None and not eval_scored_data.empty:
-            eval_scored_path = run_dir / "eval_scored.parquet"
-            save_parquet(eval_scored_data, eval_scored_path)
-        feature_importance_path = run_dir / "feature_importance.csv"
-        save_frame(importance_df, feature_importance_path)
-        if not walk_forward_importance_df.empty:
-            walk_forward_importance_path = run_dir / "walk_forward_feature_importance.csv"
-            save_frame(walk_forward_importance_df, walk_forward_importance_path)
-        if not walk_forward_feature_stability_df.empty:
-            walk_forward_feature_stability_path = run_dir / "walk_forward_feature_stability.csv"
-            save_frame(walk_forward_feature_stability_df, walk_forward_feature_stability_path)
-        save_series(ic_series, run_dir / "ic_test.csv", value_name="ic")
-        save_series(pearson_ic_series, run_dir / "ic_pearson_test.csv", value_name="ic")
-        if REPORT_TRAIN_IC:
-            save_series(train_ic_series, run_dir / "ic_train.csv", value_name="ic")
-            save_series(train_pearson_ic_series, run_dir / "ic_pearson_train.csv", value_name="ic")
-        if not quantile_ts.empty:
-            quantile_out = quantile_ts.reset_index()
-            save_frame(quantile_out, run_dir / "quantile_returns.csv")
-        save_series(turnover_series, run_dir / "turnover_eval.csv", value_name="turnover")
-        if bucket_ic_records:
-            bucket_ic_path = run_dir / "bucket_ic.csv"
-            save_frame(pd.DataFrame(bucket_ic_records), bucket_ic_path)
-        if rolling_ic_results:
-            for label, frame in rolling_ic_results.items():
-                if frame.empty:
-                    continue
-                out = frame.copy()
-                out.index.name = "trade_date"
-                path = run_dir / f"ic_rolling_{label}.csv"
-                save_frame(out.reset_index(), path)
-                rolling_ic_files[label] = str(path)
-        if rolling_sharpe_results:
-            for label, frame in rolling_sharpe_results.items():
-                if frame.empty:
-                    continue
-                out = frame.copy()
-                out.index.name = "trade_date"
-                path = run_dir / f"backtest_rolling_sharpe_{label}.csv"
-                save_frame(out.reset_index(), path)
-                rolling_sharpe_files[label] = str(path)
-        if final_oos_eval is not None:
-            save_series(ic_series_oos, run_dir / "ic_oos.csv", value_name="ic")
-            save_series(
-                pearson_ic_series_oos, run_dir / "ic_pearson_oos.csv", value_name="ic"
-            )
-            if not quantile_ts_oos.empty:
-                quantile_oos_out = quantile_ts_oos.reset_index()
-                save_frame(quantile_oos_out, run_dir / "quantile_returns_oos.csv")
-            save_series(
-                turnover_series_oos,
-                run_dir / "turnover_eval_oos.csv",
-                value_name="turnover",
-            )
-            if bucket_ic_records_oos:
-                bucket_ic_oos_path = run_dir / "bucket_ic_oos.csv"
-                save_frame(pd.DataFrame(bucket_ic_records_oos), bucket_ic_oos_path)
-            if rolling_ic_oos_results:
-                for label, frame in rolling_ic_oos_results.items():
-                    if frame.empty:
-                        continue
-                    out = frame.copy()
-                    out.index.name = "trade_date"
-                    path = run_dir / f"ic_rolling_{label}_oos.csv"
-                    save_frame(out.reset_index(), path)
-                    rolling_ic_oos_files[label] = str(path)
-            if rolling_sharpe_oos_results:
-                for label, frame in rolling_sharpe_oos_results.items():
-                    if frame.empty:
-                        continue
-                    out = frame.copy()
-                    out.index.name = "trade_date"
-                    path = run_dir / f"backtest_rolling_sharpe_{label}_oos.csv"
-                    save_frame(out.reset_index(), path)
-                    rolling_sharpe_oos_files[label] = str(path)
-        if not dropped_date_counts.empty:
-            dropped_df = dropped_date_counts.rename("symbol_count").reset_index()
-            save_frame(dropped_df, run_dir / "dropped_dates.csv")
-        if bt_stats is not None:
-            save_series(bt_net_series, run_dir / "backtest_net.csv", value_name="net_return")
-            save_series(bt_gross_series, run_dir / "backtest_gross.csv", value_name="gross_return")
-            save_series(bt_turnover_series, run_dir / "backtest_turnover.csv", value_name="turnover")
-            if not bt_benchmark_series.empty:
-                save_series(
-                    bt_benchmark_series, run_dir / "backtest_benchmark.csv", value_name="benchmark_return"
-                )
-            if not bt_active_series.empty:
-                save_series(bt_active_series, run_dir / "backtest_active.csv", value_name="active_return")
-            if bt_periods:
-                save_frame(pd.DataFrame(bt_periods), run_dir / "backtest_periods.csv")
-        if bt_stats_oos is not None:
-            save_series(bt_net_series_oos, run_dir / "backtest_net_oos.csv", value_name="net_return")
-            save_series(
-                bt_gross_series_oos, run_dir / "backtest_gross_oos.csv", value_name="gross_return"
-            )
-            save_series(
-                bt_turnover_series_oos, run_dir / "backtest_turnover_oos.csv", value_name="turnover"
-            )
-            if not bt_benchmark_series_oos.empty:
-                save_series(
-                    bt_benchmark_series_oos,
-                    run_dir / "backtest_benchmark_oos.csv",
-                    value_name="benchmark_return",
-                )
-            if not bt_active_series_oos.empty:
-                save_series(
-                    bt_active_series_oos,
-                    run_dir / "backtest_active_oos.csv",
-                    value_name="active_return",
-                )
-            if bt_periods_oos:
-                save_frame(pd.DataFrame(bt_periods_oos), run_dir / "backtest_periods_oos.csv")
-
-        if (
-            positions_by_rebalance is not None
-            and not positions_by_rebalance.empty
-            and (BACKTEST_ENABLED or not LIVE_ENABLED)
-        ):
-            positions_by_rebalance_path = run_dir / "positions_by_rebalance.csv"
-            save_frame(positions_by_rebalance, positions_by_rebalance_path)
-            entry_dates = pd.to_datetime(positions_by_rebalance["entry_date"], errors="coerce")
-            if entry_dates.notna().any():
-                latest_entry = entry_dates.max()
-                positions_current = positions_by_rebalance[entry_dates == latest_entry].copy()
-                if not positions_current.empty:
-                    positions_current_path = run_dir / "positions_current.csv"
-                    save_frame(positions_current, positions_current_path)
-        if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
-            positions_by_rebalance_oos_path = run_dir / "positions_by_rebalance_oos.csv"
-            save_frame(positions_by_rebalance_oos, positions_by_rebalance_oos_path)
-            oos_entry_dates = pd.to_datetime(
-                positions_by_rebalance_oos["entry_date"], errors="coerce"
-            )
-            if oos_entry_dates.notna().any():
-                oos_latest_entry = oos_entry_dates.max()
-                positions_current_oos = positions_by_rebalance_oos[
-                    oos_entry_dates == oos_latest_entry
-                ].copy()
-                if not positions_current_oos.empty:
-                    positions_current_oos_path = run_dir / "positions_current_oos.csv"
-                    save_frame(positions_current_oos, positions_current_oos_path)
-
-        if (
-            LIVE_ENABLED
-            and positions_by_rebalance_live is not None
-            and not positions_by_rebalance_live.empty
-        ):
-            positions_by_rebalance_live_path = run_dir / "positions_by_rebalance_live.csv"
-            save_frame(positions_by_rebalance_live, positions_by_rebalance_live_path)
-            live_entry_dates = pd.to_datetime(
-                positions_by_rebalance_live["entry_date"], errors="coerce"
-            )
-            if live_entry_dates.notna().any():
-                live_latest_entry = live_entry_dates.max()
-                positions_current_live = positions_by_rebalance_live[
-                    live_entry_dates == live_latest_entry
-                ].copy()
-                if not positions_current_live.empty:
-                    positions_current_live_path = run_dir / "positions_current_live.csv"
-                    save_frame(positions_current_live, positions_current_live_path)
-
-        if (
-            positions_by_rebalance is not None
-            and not positions_by_rebalance.empty
-            and (BACKTEST_ENABLED or not LIVE_ENABLED)
-        ):
-            diff_frame = _build_rebalance_diff(positions_by_rebalance)
-            if not diff_frame.empty:
-                positions_diff_path = run_dir / "rebalance_diff.csv"
-                save_frame(diff_frame, positions_diff_path)
-        if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
-            diff_oos = _build_rebalance_diff(positions_by_rebalance_oos)
-            if not diff_oos.empty:
-                positions_diff_oos_path = run_dir / "rebalance_diff_oos.csv"
-                save_frame(diff_oos, positions_diff_oos_path)
-
-        if LIVE_ENABLED and positions_by_rebalance_live is not None and not positions_by_rebalance_live.empty:
-            diff_live = _build_rebalance_diff(positions_by_rebalance_live)
-            if not diff_live.empty:
-                positions_diff_live_path = run_dir / "rebalance_diff_live.csv"
-                save_frame(diff_live, positions_diff_live_path)
-
-        if perm_stats and perm_stats.get("scores"):
-            save_frame(
-                pd.DataFrame({"ic": perm_stats["scores"]}),
-                run_dir / "permutation_test.csv",
-            )
-
-        if walk_forward_results:
-            save_frame(pd.DataFrame(walk_forward_results), run_dir / "walk_forward_summary.csv")
-
-        live_positions_file = None
-        live_current_file = None
-        if LIVE_ENABLED:
-            if positions_by_rebalance_live_path is not None:
-                live_positions_file = positions_by_rebalance_live_path
-            if positions_current_live_path is not None:
-                live_current_file = positions_current_live_path
-
-        summary = {
-            "run": {
-                "name": run_name,
-                "timestamp": run_stamp,
-                "config_hash": run_hash,
-                "config_path": str(config_path) if config_path else None,
-                "config_source": config_source,
-                "model_type": MODEL_TYPE,
-                "sample_weight_mode": SAMPLE_WEIGHT_MODE,
-                "sample_weight_params": SAMPLE_WEIGHT_PARAMS,
-                "train_window": {
-                    "mode": TRAIN_WINDOW_MODE,
-                    "size": TRAIN_WINDOW_SIZE,
-                    "unit": TRAIN_WINDOW_UNIT,
-                },
-                "output_dir": str(run_dir),
-                "log_file": str(active_log_file) if active_log_file else None,
-            },
-            "data": {
-                "market": MARKET,
-                "provider": provider,
-                "start_date": START_DATE,
-                "end_date": END_DATE,
-                "symbols": len(symbols),
-                "rows": len(df_full),
-                "rows_model": len(df_model_all),
-                "rows_model_in_sample": len(df_model),
-                "rows_model_oos": len(df_model_oos) if FINAL_OOS_ENABLED else 0,
-                "min_symbols_per_date": MIN_SYMBOLS_PER_DATE,
-                "dropped_dates": int(dropped_date_counts.shape[0]),
-            },
-            "dataset": {
-                "schema": dataset.schema.to_dict() if dataset is not None else None,
-                "rows": int(len(dataset.frame)) if dataset is not None else 0,
-                "file": str(dataset_path) if dataset_path else None,
-                "index": [dataset.schema.date_col, dataset.schema.instrument_col]
-                if dataset is not None
-                else None,
-            },
-            "universe": {
-                "mode": universe_mode_effective,
-                "by_date_file": str(by_date_file) if by_date_file else None,
-                "require_by_date": REQUIRE_BY_DATE,
-                "drop_suspended": DROP_SUSPENDED,
-                "suspended_policy": SUSPENDED_POLICY,
-            },
-            "label": {
-                "horizon_days": LABEL_HORIZON_DAYS,
-                "horizon_days_effective": label_horizon_effective,
-                "horizon_mode": LABEL_HORIZON_MODE,
-                "rebalance_frequency": LABEL_REBALANCE_FREQUENCY,
-                "shift_days": LABEL_SHIFT_DAYS,
-                "winsorize_pct": WINSORIZE_PCT,
-                "train_target_transform": TRAIN_TARGET_TRANSFORM,
-            },
-            "split": {
-                "train_dates": len(train_dates),
-                "train_dates_raw": len(train_dates_full),
-                "test_dates": len(test_dates),
-                "purge_days": purge_days,
-                "embargo_days": embargo_days,
-                "purge_steps": PURGE_STEPS,
-                "embargo_steps": EMBARGO_STEPS,
-                "train_window": {
-                    "mode": TRAIN_WINDOW_MODE,
-                    "size": TRAIN_WINDOW_SIZE,
-                    "unit": TRAIN_WINDOW_UNIT,
-                    "applied": bool(
-                        TRAIN_WINDOW_MODE == "rolling"
-                        and len(train_dates) < len(train_dates_full)
-                    ),
-                },
-                "rebalance_gap_days": float(rebalance_gap_days)
-                if SAMPLE_ON_REBALANCE_DATES
-                and rebalance_gap_days is not None
-                and np.isfinite(rebalance_gap_days)
-                else None,
-            },
-            "eval": {
-                "ic": ic_stats,
-                "pearson_ic": pearson_ic_stats,
-                "train_ic": train_ic_stats if REPORT_TRAIN_IC else None,
-                "train_ic_raw": train_ic_raw_stats if train_ic_raw_stats else None,
-                "train_pearson_ic": train_pearson_ic_stats if REPORT_TRAIN_IC else None,
-                "cv_ic": cv_stats,
-                "cv_ic_raw": cv_stats_raw,
-                "signal_direction": SIGNAL_DIRECTION,
-                "signal_direction_mode": SIGNAL_DIRECTION_MODE,
-                "error_metrics": error_metrics,
-                "hit_rate": hit_rate_stats,
-                "topk_positive_ratio": topk_positive_stats,
-                "bucket_ic": bucket_ic_records,
-                "bucket_ic_file": str(bucket_ic_path) if bucket_ic_path else None,
-                "rolling_ic": {
-                    "windows_months": ROLLING_WINDOWS_MONTHS,
-                    "obs_per_year": rolling_ic_obs_per_year,
-                    "latest": rolling_ic_latest,
-                    "series_files": rolling_ic_files,
-                },
-                "quantile_mean": quantile_mean.to_dict() if not quantile_mean.empty else {},
-                "long_short": float(quantile_mean.iloc[-1] - quantile_mean.iloc[0])
-                if not quantile_mean.empty
-                else None,
-                "turnover_mean": float(turnover_series.mean()) if not turnover_series.empty else None,
-                "turnover_count": int(turnover_series.shape[0]),
-                "buffer_exit": EVAL_BUFFER_EXIT,
-                "buffer_entry": EVAL_BUFFER_ENTRY,
-                "sample_on_rebalance_dates": SAMPLE_ON_REBALANCE_DATES,
-                "rebalance_frequency": REBALANCE_FREQUENCY,
-                "rebalance_dates": [
-                    pd.to_datetime(date).strftime("%Y%m%d") for date in eval_rebalance_dates
-                ],
-                "save_scored_artifact": SAVE_SCORED_ARTIFACT,
-                "scored_file": str(eval_scored_path) if eval_scored_path else None,
-                "scored_pred_col": "pred",
-                "scored_signal_col": "signal_eval",
-                "scored_signal_backtest_col": "signal_backtest",
-                "pred_nunique": pred_nunique,
-                "constant_prediction": constant_prediction,
-                "feature_importance_file": str(feature_importance_path)
-                if feature_importance_path
-                else None,
-                "feature_importance_source": importance_source,
-                "feature_importance_nonzero": feature_importance_nonzero,
-                "zero_feature_importance": zero_feature_importance,
-                "permutation_test": perm_stats,
-            },
-            "backtest": {
-                "enabled": BACKTEST_ENABLED,
-                "exit_mode": BACKTEST_EXIT_MODE,
-                "exit_horizon_days": BACKTEST_EXIT_HORIZON_DAYS,
-                "exit_price_policy": BACKTEST_EXIT_PRICE_POLICY,
-                "exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
-                "buffer_exit": BACKTEST_BUFFER_EXIT,
-                "buffer_entry": BACKTEST_BUFFER_ENTRY,
-                "mode": "long_only" if BACKTEST_LONG_ONLY else "long_short",
-                "weighting": BACKTEST_WEIGHTING,
-                "group_col": BACKTEST_GROUP_COL,
-                "max_names_per_group": BACKTEST_MAX_NAMES_PER_GROUP,
-                "top_k": BACKTEST_TOP_K,
-                "short_k": BACKTEST_SHORT_K,
-                "rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,
-                "rebalance_dates": [
-                    pd.to_datetime(date).strftime("%Y%m%d")
-                    for date in backtest_rebalance_dates
-                ],
-                "shift_days": LABEL_SHIFT_DAYS,
-                "trading_days_per_year": BACKTEST_TRADING_DAYS_PER_YEAR,
-                "tradable_col": BACKTEST_TRADABLE_COL,
-                "signal_direction": BACKTEST_SIGNAL_DIRECTION,
-                "benchmark_symbol": benchmark_symbol,
-                "transaction_cost_bps": BACKTEST_COST_BPS_REPORT,
-                "execution": describe_execution_model(execution_model),
-                "stats": bt_stats,
-                "benchmark": bt_benchmark_stats,
-                "active": bt_active_stats,
-                "rolling_sharpe": {
-                    "windows_months": ROLLING_WINDOWS_MONTHS,
-                    "latest": rolling_sharpe_latest,
-                    "series_files": rolling_sharpe_files,
-                },
-            },
-            "final_oos": {
-                "enabled": FINAL_OOS_ENABLED,
-                "size": FINAL_OOS_SIZE_RAW,
-                "dates": int(final_oos_len) if FINAL_OOS_ENABLED else 0,
-                "start": final_oos_start.strftime("%Y%m%d") if final_oos_start else None,
-                "end": final_oos_end.strftime("%Y%m%d") if final_oos_end else None,
-                "ic": ic_stats_oos if final_oos_eval is not None else None,
-                "pearson_ic": pearson_ic_stats_oos if final_oos_eval is not None else None,
-                "error_metrics": error_metrics_oos if final_oos_eval is not None else None,
-                "hit_rate": hit_rate_stats_oos if final_oos_eval is not None else None,
-                "topk_positive_ratio": topk_positive_stats_oos if final_oos_eval is not None else None,
-                "bucket_ic": bucket_ic_records_oos if final_oos_eval is not None else None,
-                "bucket_ic_file": str(bucket_ic_oos_path) if bucket_ic_oos_path else None,
-                "rolling_ic": {
-                    "windows_months": ROLLING_WINDOWS_MONTHS,
-                    "obs_per_year": rolling_ic_oos_obs_per_year,
-                    "latest": rolling_ic_latest_oos,
-                    "series_files": rolling_ic_oos_files,
-                }
-                if final_oos_eval is not None
-                else None,
-                "quantile_mean": quantile_mean_oos.to_dict()
-                if final_oos_eval is not None and not quantile_mean_oos.empty
-                else {},
-                "long_short": float(quantile_mean_oos.iloc[-1] - quantile_mean_oos.iloc[0])
-                if final_oos_eval is not None and not quantile_mean_oos.empty
-                else None,
-                "turnover_mean": float(turnover_series_oos.mean())
-                if final_oos_eval is not None and not turnover_series_oos.empty
-                else None,
-                "turnover_count": int(turnover_series_oos.shape[0])
-                if final_oos_eval is not None
-                else 0,
-                "backtest": {
-                    "stats": bt_stats_oos,
-                    "benchmark": bt_benchmark_stats_oos,
-                    "active": bt_active_stats_oos,
-                    "rolling_sharpe": {
-                        "windows_months": ROLLING_WINDOWS_MONTHS,
-                        "latest": rolling_sharpe_latest_oos,
-                        "series_files": rolling_sharpe_oos_files,
-                    },
-                }
-                if final_oos_eval is not None
-                else None,
-                "positions": {
-                    "by_rebalance_file": str(positions_by_rebalance_oos_path)
-                    if positions_by_rebalance_oos_path
-                    else None,
-                    "current_file": str(positions_current_oos_path)
-                    if positions_current_oos_path
-                    else None,
-                    "diff_file": str(positions_diff_oos_path) if positions_diff_oos_path else None,
-                }
-                if final_oos_eval is not None
-                else None,
-            },
-            "positions": {
-                "by_rebalance_file": str(positions_by_rebalance_path)
-                if positions_by_rebalance_path
-                else None,
-                "current_file": str(positions_current_path) if positions_current_path else None,
-                "diff_file": str(positions_diff_path) if positions_diff_path else None,
-                "shift_days": LABEL_SHIFT_DAYS,
-                "buffer_exit": BACKTEST_BUFFER_EXIT,
-                "buffer_entry": BACKTEST_BUFFER_ENTRY,
-                "window_fields": {
-                    "signal_asof": "signal_asof",
-                    "entry_date": "entry_date",
-                    "next_entry_date": "next_entry_date",
-                    "holding_window": "holding_window",
-                },
-            },
-            "live": {
-                "enabled": LIVE_ENABLED,
-                "as_of": live_as_of.strftime("%Y%m%d") if LIVE_ENABLED and live_as_of else None,
-                "train_mode": LIVE_TRAIN_MODE if LIVE_ENABLED else None,
-                "positions_file": str(live_positions_file) if live_positions_file else None,
-                "current_file": str(live_current_file) if live_current_file else None,
-                "diff_file": str(positions_diff_live_path) if positions_diff_live_path else None,
-            },
-            "fundamentals": {
-                "enabled": FUNDAMENTALS_ENABLED,
-                "source": FUNDAMENTALS_SOURCE if FUNDAMENTALS_ENABLED else None,
-                "provider": FUNDAMENTALS_PROVIDER if FUNDAMENTALS_ENABLED else None,
-                "file": str(FUNDAMENTALS_FILE) if FUNDAMENTALS_FILE else None,
-                "cache_dir": str(fund_cache_dir) if fund_cache_dir else None,
-                "features": FUNDAMENTALS_FEATURES,
-                "log_market_cap": FUNDAMENTALS_LOG_MCAP,
-                "market_cap_col": FUNDAMENTALS_MCAP_COL,
-                "provider_overlay": {
-                    "enabled": FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED,
-                    "source": (
-                        FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE
-                        if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED
-                        else None
-                    ),
-                    "provider": (
-                        FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER
-                        if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED
-                        else None
-                    ),
-                    "cache_dir": (
-                        str(provider_overlay_cache_dir)
-                        if provider_overlay_cache_dir
-                        else None
-                    ),
-                    "features": FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES,
-                },
-            },
-            "industry": {
-                "enabled": INDUSTRY_ENABLED,
-                "source": INDUSTRY_SOURCE if INDUSTRY_ENABLED else None,
-                "file": str(INDUSTRY_FILE) if INDUSTRY_FILE else None,
-                "keep_columns": INDUSTRY_KEEP_COLUMNS,
-                "resolved_columns": passthrough_cols,
-                "ffill": INDUSTRY_FFILL,
-                "ffill_limit": INDUSTRY_FFILL_LIMIT,
-            },
-            "walk_forward": {
-                "enabled": WF_ENABLED,
-                "n_windows": WF_N_WINDOWS,
-                "actual_windows": len(walk_forward_results),
-                "test_size": WF_TEST_SIZE,
-                "step_size": WF_STEP_SIZE,
-                "anchor_end": WF_ANCHOR_END,
-                "feature_top_k": WF_FEATURE_TOP_K,
-                "feature_importance_windows": int(walk_forward_importance_df["window"].nunique())
-                if not walk_forward_importance_df.empty
-                else 0,
-                "feature_importance_file": str(walk_forward_importance_path)
-                if walk_forward_importance_path
-                else None,
-                "feature_stability_file": str(walk_forward_feature_stability_path)
-                if walk_forward_feature_stability_path
-                else None,
-                "stable_top_features": (
-                    walk_forward_feature_stability_df["feature"]
-                    .head(WF_FEATURE_TOP_K)
-                    .astype(str)
-                    .tolist()
-                )
-                if not walk_forward_feature_stability_df.empty
-                else [],
-                "results": walk_forward_results,
-            },
-        }
-        save_json(summary, run_dir / "summary.json")
-        with (run_dir / "config.used.yml").open("w", encoding="utf-8") as handle:
-            yaml.safe_dump(config, handle, sort_keys=False)
-        if LIVE_ENABLED:
-            latest_payload = {
-                "run_dir": str(run_dir),
-                "run_name": run_name,
-                "timestamp": run_stamp,
-                "config_hash": run_hash,
-                "summary_file": str(run_dir / "summary.json"),
-                "as_of": summary.get("live", {}).get("as_of"),
-                "positions_file": summary.get("live", {}).get("positions_file"),
-                "current_file": summary.get("live", {}).get("current_file"),
-                "diff_file": summary.get("live", {}).get("diff_file"),
-            }
-            save_json(latest_payload, run_dir.parent / "latest.json")
+    persist_run_outputs(context=dict(locals()))
 
     # Optional: save the model
     # from joblib import dump; dump(model, "xgb_factor_model.joblib")
