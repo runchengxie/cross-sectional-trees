@@ -40,7 +40,7 @@ def test_flatten_intraday_payload_flattens_multiindex_frame():
 
     flat = flatten_intraday_payload(
         payload,
-        order_book_to_ts_code={"00700.XHKG": "00700.HK"},
+        order_book_to_symbol={"00700.XHKG": "00700.HK"},
     )
 
     assert list(flat.columns) == [
@@ -52,17 +52,17 @@ def test_flatten_intraday_payload_flattens_multiindex_frame():
         "close",
         "volume",
         "amount",
-        "ts_code",
+        "symbol",
     ]
     assert flat["rq_order_book_id"].tolist() == ["00700.XHKG", "00700.XHKG"]
-    assert flat["ts_code"].tolist() == ["00700.HK", "00700.HK"]
+    assert flat["symbol"].tolist() == ["00700.HK", "00700.HK"]
     assert flat["amount"].tolist() == [1_002_500.0, 1_522_500.0]
 
 
 def test_compute_daily_slippage_metrics_aggregates_session_prices():
     frame = pd.DataFrame(
         {
-            "ts_code": ["00700.HK", "00700.HK"],
+            "symbol": ["00700.HK", "00700.HK"],
             "trade_datetime": [
                 pd.Timestamp("2026-03-26 09:35:00"),
                 pd.Timestamp("2026-03-26 09:40:00"),
@@ -135,7 +135,7 @@ def test_build_daily_metrics_from_inputs_aggregates_part_files(tmp_path):
     parts_dir.mkdir()
     batch_a = pd.DataFrame(
         {
-            "ts_code": ["00005.HK", "00005.HK"],
+            "symbol": ["00005.HK", "00005.HK"],
             "trade_datetime": [
                 pd.Timestamp("2026-03-24 09:35:00"),
                 pd.Timestamp("2026-03-24 09:40:00"),
@@ -148,7 +148,7 @@ def test_build_daily_metrics_from_inputs_aggregates_part_files(tmp_path):
     )
     batch_b = pd.DataFrame(
         {
-            "ts_code": ["00700.HK", "00700.HK"],
+            "symbol": ["00700.HK", "00700.HK"],
             "trade_datetime": [
                 pd.Timestamp("2026-03-25 09:35:00"),
                 pd.Timestamp("2026-03-25 09:40:00"),

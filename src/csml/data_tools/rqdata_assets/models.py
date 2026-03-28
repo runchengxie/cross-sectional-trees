@@ -6,7 +6,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class MirrorEntry:
-    ts_code: str
+    symbol: str
     order_book_id: str
     path: Path
     rows: int
@@ -19,7 +19,7 @@ class MirrorEntry:
 
 @dataclass(frozen=True)
 class MirrorAuditRecord:
-    ts_code: str
+    symbol: str
     order_book_id: str
     status: str
     attempts: int
@@ -38,7 +38,7 @@ class MirrorAuditRecord:
 
 @dataclass(frozen=True)
 class DailyMirrorEntry:
-    ts_code: str
+    symbol: str
     order_book_id: str
     path: Path
     rows: int
@@ -49,7 +49,7 @@ class DailyMirrorEntry:
 
 @dataclass(frozen=True)
 class DailyMirrorAuditRecord:
-    ts_code: str
+    symbol: str
     order_book_id: str
     status: str
     attempts: int
@@ -65,7 +65,7 @@ class DailyMirrorAuditRecord:
 
 @dataclass(frozen=True)
 class DatedMirrorEntry:
-    ts_code: str
+    symbol: str
     order_book_id: str
     path: Path
     rows: int
@@ -76,7 +76,7 @@ class DatedMirrorEntry:
 
 @dataclass(frozen=True)
 class DatedMirrorAuditRecord:
-    ts_code: str
+    symbol: str
     order_book_id: str
     status: str
     attempts: int
@@ -93,7 +93,7 @@ class DatedMirrorAuditRecord:
 
 @dataclass(frozen=True)
 class DatedRequestGroup:
-    ts_code: str
+    symbol: str
     request_ids: tuple[str, ...]
     order_book_ids: tuple[str, ...]
 

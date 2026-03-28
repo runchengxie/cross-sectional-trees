@@ -670,7 +670,7 @@ def add_hk_pit_fundamentals_build_args(
     )
     parser.add_argument(
         "--symbols-out",
-        help="Optional text file output with one symbol per line for names present in the derived fundamentals file (legacy ts_code-compatible).",
+        help="Optional text file output with one symbol per line for names present in the derived fundamentals file (old ts_code inputs remain compatible).",
     )
     parser.add_argument(
         "--keep-meta",
@@ -732,7 +732,7 @@ def add_hk_industry_labels_build_args(
     )
     parser.add_argument(
         "--symbols-out",
-        help="Optional text file output with one symbol per line for names present in the derived label file (legacy ts_code-compatible).",
+        help="Optional text file output with one symbol per line for names present in the derived label file (old ts_code inputs remain compatible).",
     )
     parser.add_argument(
         "--force",

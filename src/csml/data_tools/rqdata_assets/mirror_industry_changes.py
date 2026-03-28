@@ -127,7 +127,7 @@ def mirror_hk_industry_changes(args, rqdatac) -> int:
             columns = symbol_frame.columns.tolist()
         _update_field_coverage(field_coverage, symbol_frame, fields=fields)
         audit_by_symbol[symbol] = _dated_audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=entry.order_book_id,
             status=record_status,
             attempts=attempts,
@@ -149,7 +149,7 @@ def mirror_hk_industry_changes(args, rqdatac) -> int:
         error_text: str | None = None,
     ) -> None:
         audit_by_symbol[symbol] = _dated_audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=order_book_id,
             status=record_status,
             attempts=attempts,
@@ -293,8 +293,8 @@ def mirror_hk_industry_changes(args, rqdatac) -> int:
             )
             if prepared.empty:
                 continue
-            for symbol in prepared["ts_code"].drop_duplicates().tolist():
-                symbol_frame = prepared[prepared["ts_code"] == symbol].reset_index(drop=True)
+            for symbol in prepared["symbol"].drop_duplicates().tolist():
+                symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
                 if symbol_frame.empty:
                     continue
                 frames_by_symbol.setdefault(symbol, []).append(symbol_frame)
@@ -355,7 +355,7 @@ def mirror_hk_industry_changes(args, rqdatac) -> int:
             symbol_metadata=symbol_metadata,
             symbols_requested=symbols,
             entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
-            missing_symbols=[item.ts_code for item in audit_records if item.status == "missing_remote"],
+            missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
             start_date=start_date,
             end_date=end_date,
             date_column="start_date",

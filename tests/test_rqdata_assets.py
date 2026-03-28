@@ -898,7 +898,7 @@ def test_export_hk_instruments_writes_filtered_asset_and_manifest(tmp_path, monk
     assert result == 0
     assert client.calls == [{"instrument_type": "CS", "market": "hk"}]
     frame = pd.read_parquet(out_path)
-    assert frame["ts_code"].tolist() == ["00005.HK"]
+    assert frame["symbol"].tolist() == ["00005.HK"]
     assert int(frame["round_lot"].iloc[0]) == 400
 
     manifest = yaml.safe_load(Path(f"{out_path}.manifest.yml").read_text(encoding="utf-8"))
@@ -968,7 +968,7 @@ def test_mirror_hk_daily_writes_manifest_and_assets(tmp_path, monkeypatch):
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_demo"
     data = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
     assert data["trade_date"].tolist() == ["20250102", "20250103"]
-    assert data["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert data["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert data["order_book_id"].tolist() == ["00005.XHKG", "00005.XHKG"]
     assert data["total_turnover"].tolist() == [10000.0, 12000.0]
 
@@ -1027,7 +1027,7 @@ def test_mirror_hk_valuation_writes_manifest_and_assets(tmp_path, monkeypatch):
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_demo"
     data = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
     assert data["trade_date"].tolist() == ["20250102", "20250103"]
-    assert data["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert data["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert data["order_book_id"].tolist() == ["00005.XHKG", "00005.XHKG"]
     assert data["hk_total_market_val"].tolist() == [1000.0, 1010.0]
 
@@ -1127,7 +1127,7 @@ def test_mirror_hk_ex_factors_writes_manifest_and_assets(tmp_path, monkeypatch):
 
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "ex_factors" / "ex_factor_demo"
     frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
-    assert frame["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert frame["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert frame["order_book_id"].tolist() == ["00005.XHKG", "00005.XHKG"]
     assert frame["ex_factor"].tolist() == [0.98, 0.97]
 
@@ -1179,7 +1179,7 @@ def test_mirror_hk_dividends_tracks_missing_symbols(tmp_path, monkeypatch):
 
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "dividends" / "dividend_demo"
     frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
-    assert frame["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert frame["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert frame["dividend_cash_before_tax"].tolist() == [0.5, 0.6]
 
     manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
@@ -1231,7 +1231,7 @@ def test_mirror_hk_shares_uses_default_fields(tmp_path, monkeypatch):
 
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "shares" / "shares_demo"
     frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
-    assert frame["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert frame["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert frame["total_hk1"].tolist() == [4_800_000_000, 4_900_000_000]
 
     manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
@@ -1531,7 +1531,7 @@ def test_mirror_hk_instrument_industry_writes_snapshot_assets(tmp_path, monkeypa
 
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instrument_industry" / "industry_snapshot_demo"
     frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
-    assert frame["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert frame["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert frame["date"].dt.strftime("%Y%m%d").tolist() == ["20250131", "20250228"]
     assert frame["first_industry_name"].tolist() == ["银行", "银行"]
     assert (output_dir / "dates.txt").read_text(encoding="utf-8") == "20250131\n20250228\n"
@@ -1586,7 +1586,7 @@ def test_mirror_hk_industry_changes_writes_symbol_assets(tmp_path, monkeypatch):
 
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "industry_changes" / "industry_changes_demo"
     frame = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
-    assert frame["ts_code"].tolist() == ["00005.HK"]
+    assert frame["symbol"].tolist() == ["00005.HK"]
     assert frame["industry_code"].tolist() == ["40"]
     assert frame["industry_name"].tolist() == ["银行"]
     assert frame["cancel_date"].dt.strftime("%Y%m%d").tolist() == ["22001231"]
@@ -1639,7 +1639,7 @@ def test_resolve_hk_dated_request_groups_uses_local_unique_ids(tmp_path):
     )
 
     assert info["mode"] == "local_hk_instruments_snapshot"
-    assert [group.ts_code for group in groups] == ["00013.HK", "00005.HK"]
+    assert [group.symbol for group in groups] == ["00013.HK", "00005.HK"]
     assert groups[0].request_ids == ("00013_01.XHKG", "00013_02.XHKG")
     assert groups[0].order_book_ids == ("00013.XHKG",)
     assert groups[1].request_ids == ("00005_01.XHKG",)
@@ -1814,7 +1814,7 @@ def test_mirror_hk_pit_financials_uses_config_universe_and_writes_manifest(tmp_p
     assert manifest["missing_symbols"] == []
 
     first = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
-    assert first["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert first["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert first["order_book_id"].tolist() == ["00005.XHKG", "00005.XHKG"]
     assert first["quarter"].tolist() == ["2024q4", "2025q1"]
     assert set(["revenue", "net_profit", "info_date", "fiscal_year"]).issubset(first.columns)
@@ -1862,7 +1862,7 @@ def test_mirror_hk_financial_details_tracks_missing_symbols(tmp_path, monkeypatc
 
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "financial_details" / "details_demo"
     detail = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
-    assert detail["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert detail["symbol"].tolist() == ["00005.HK", "00005.HK"]
     assert detail["field"].tolist() == ["revenue", "revenue"]
     assert detail["subject"].tolist() == ["保费收入", "手续费收入"]
 
@@ -1953,9 +1953,9 @@ def test_build_hk_pit_fundamentals_file_writes_pipeline_ready_output(tmp_path, m
     assert rqdata_assets.build_hk_pit_fundamentals_file(args) == 0
 
     fundamentals = pd.read_parquet(out_path)
-    assert fundamentals.columns.tolist() == ["trade_date", "ts_code", "revenue", "net_profit"]
+    assert fundamentals.columns.tolist() == ["trade_date", "symbol", "revenue", "net_profit"]
     assert fundamentals["trade_date"].tolist() == ["20250320", "20250820", "20250825"]
-    assert fundamentals["ts_code"].tolist() == ["00005.HK", "00005.HK", "00011.HK"]
+    assert fundamentals["symbol"].tolist() == ["00005.HK", "00005.HK", "00011.HK"]
     assert fundamentals["revenue"].tolist() == [101.0, 120.0, 220.0]
     assert fundamentals["net_profit"].tolist() == [11.0, 12.0, 22.0]
 
@@ -2040,7 +2040,7 @@ def test_build_hk_pit_fundamentals_file_field_profile_full_overrides_manifest_se
     assert rqdata_assets.build_hk_pit_fundamentals_file(args) == 0
 
     fundamentals = pd.read_parquet(out_path)
-    assert fundamentals.columns.tolist() == ["trade_date", "ts_code", "revenue", "net_profit"]
+    assert fundamentals.columns.tolist() == ["trade_date", "symbol", "revenue", "net_profit"]
 
     output_manifest = yaml.safe_load(
         (
@@ -2135,15 +2135,15 @@ def test_build_hk_pit_fundamentals_file_normalizes_whitespace_fields_and_derives
     fundamentals = pd.read_parquet(out_path)
     assert fundamentals.columns.tolist() == [
         "trade_date",
-        "ts_code",
+        "symbol",
         "revenue",
         "goodwill_and_intangible_assets",
     ]
     assert fundamentals["goodwill_and_intangible_assets"].tolist() == [55.0]
 
     research_universe = pd.read_csv(research_universe_out)
-    assert research_universe["ts_code"].tolist() == ["00005.HK"]
-    assert research_universe["stock_ticker"].tolist() == ["00005.HK"]
+    assert research_universe["symbol"].tolist() == ["00005.HK"]
+    assert "stock_ticker" not in research_universe.columns
     assert symbols_out.read_text(encoding="utf-8") == "00005.HK\n"
 
     output_manifest = yaml.safe_load(
@@ -2260,7 +2260,7 @@ def test_build_hk_industry_labels_file_from_universe_grid(tmp_path, monkeypatch)
         "20250331",
         "20250331",
     ]
-    assert labels["ts_code"].tolist() == [
+    assert labels["symbol"].tolist() == [
         "00005.HK",
         "00700.HK",
         "00005.HK",
@@ -2268,8 +2268,8 @@ def test_build_hk_industry_labels_file_from_universe_grid(tmp_path, monkeypatch)
         "00005.HK",
         "00700.HK",
     ]
-    assert labels.loc[labels["ts_code"] == "00005.HK", "industry_name"].tolist() == ["银行", "银行", "传媒"]
-    assert labels.loc[labels["ts_code"] == "00700.HK", "industry_name"].tolist() == ["传媒", "传媒", "传媒"]
+    assert labels.loc[labels["symbol"] == "00005.HK", "industry_name"].tolist() == ["银行", "银行", "传媒"]
+    assert labels.loc[labels["symbol"] == "00700.HK", "industry_name"].tolist() == ["传媒", "传媒", "传媒"]
     assert symbols_out.read_text(encoding="utf-8") == "00005.HK\n00700.HK\n"
 
     output_manifest = yaml.safe_load(
@@ -2773,7 +2773,7 @@ def test_mirror_hk_pit_financials_resume_skips_existing_and_writes_audit(tmp_pat
     ]
 
     audit = pd.read_csv(output_dir / "audit.csv")
-    status_map = dict(zip(audit["ts_code"], audit["status"]))
+    status_map = dict(zip(audit["symbol"], audit["status"]))
     assert status_map["00005.HK"] == "skipped_existing"
     assert status_map["00011.HK"] == "written"
 
@@ -2869,7 +2869,7 @@ def test_mirror_hk_daily_resume_skips_existing_and_writes_audit(tmp_path, monkey
     ]
 
     audit = pd.read_csv(output_dir / "audit.csv")
-    status_map = dict(zip(audit["ts_code"], audit["status"]))
+    status_map = dict(zip(audit["symbol"], audit["status"]))
     assert status_map["00005.HK"] == "skipped_existing"
     assert status_map["00011.HK"] == "written"
 
@@ -2914,7 +2914,7 @@ def test_mirror_hk_pit_financials_retries_and_records_attempts(tmp_path, monkeyp
 
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_retry_demo"
     audit = pd.read_csv(output_dir / "audit.csv")
-    assert audit.loc[audit["ts_code"] == "00005.HK", "attempts"].iloc[0] == 2
+    assert audit.loc[audit["symbol"] == "00005.HK", "attempts"].iloc[0] == 2
 
     manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
     assert manifest["batches"][0]["attempts"] == 2
@@ -2957,7 +2957,7 @@ def test_mirror_hk_daily_stops_on_quota_and_marks_remaining_symbols(tmp_path, mo
         repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_quota_demo"
     )
     audit = pd.read_csv(output_dir / "audit.csv")
-    status_map = dict(zip(audit["ts_code"], audit["status"]))
+    status_map = dict(zip(audit["symbol"], audit["status"]))
     assert status_map["00005.HK"] == "written"
     assert status_map["00011.HK"] == "quota_blocked"
     assert status_map["00012.HK"] == "quota_blocked"
@@ -3003,7 +3003,7 @@ def test_mirror_hk_pit_financials_stops_on_quota_and_marks_remaining_symbols(tmp
 
     output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_quota_demo"
     audit = pd.read_csv(output_dir / "audit.csv")
-    status_map = dict(zip(audit["ts_code"], audit["status"]))
+    status_map = dict(zip(audit["symbol"], audit["status"]))
     assert status_map["00005.HK"] == "written"
     assert status_map["00011.HK"] == "quota_blocked"
     assert status_map["00012.HK"] == "quota_blocked"
@@ -3057,8 +3057,8 @@ def test_mirror_hk_pit_financials_drops_invalid_field_per_symbol_and_keeps_schem
     assert data["goodwill_and_intangible_assets"].isna().all()
 
     audit = pd.read_csv(output_dir / "audit.csv")
-    assert audit.loc[audit["ts_code"] == "00005.HK", "status"].iloc[0] == "written"
+    assert audit.loc[audit["symbol"] == "00005.HK", "status"].iloc[0] == "written"
     assert (
-        audit.loc[audit["ts_code"] == "00005.HK", "dropped_fields"].iloc[0]
+        audit.loc[audit["symbol"] == "00005.HK", "dropped_fields"].iloc[0]
         == "goodwill_and_intangible_assets"
     )

@@ -7,6 +7,7 @@ import sys
 
 import pandas as pd
 
+from ..symbols import ensure_symbol_columns
 from .shared import (
     DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX,
     DEFAULT_PIPELINE_FUNDAMENTALS_NAME,
@@ -111,7 +112,7 @@ def _load_trade_date_grid_from_daily_asset_dir(
     parts: list[pd.DataFrame] = []
     for path in sorted(data_dir.glob("*.parquet")):
         try:
-            frame = pd.read_parquet(path, columns=["trade_date", "ts_code"])
+            frame = pd.read_parquet(path, columns=["trade_date", "symbol", "ts_code"])
         except Exception:
             frame = pd.read_parquet(path)
         frame = _normalize_frame_columns(frame)
@@ -119,16 +120,17 @@ def _load_trade_date_grid_from_daily_asset_dir(
             continue
         if "trade_date" not in frame.columns:
             continue
-        if "ts_code" not in frame.columns:
-            frame["ts_code"] = path.stem
+        if "symbol" not in frame.columns and "ts_code" not in frame.columns:
+            frame["symbol"] = path.stem
+        frame = ensure_symbol_columns(frame, context=f"Daily asset file {path.name}")
         trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")
         valid = trade_dates.notna()
         if not valid.any():
             continue
-        work = frame.loc[valid, ["ts_code"]].copy()
+        work = frame.loc[valid, ["symbol"]].copy()
         work["trade_date"] = trade_dates.loc[valid].dt.normalize()
-        work["ts_code"] = work["ts_code"].astype(str).str.strip().map(_normalize_hk_symbol)
-        work = work[work["ts_code"] != ""].copy()
+        work["symbol"] = work["symbol"].astype(str).str.strip().map(_normalize_hk_symbol)
+        work = work[work["symbol"] != ""].copy()
         if start_ts is not None:
             work = work[work["trade_date"] >= start_ts.normalize()].copy()
         if end_ts is not None:
@@ -136,12 +138,12 @@ def _load_trade_date_grid_from_daily_asset_dir(
         if work.empty:
             continue
         work = work.drop_duplicates(subset=["trade_date"]).reset_index(drop=True)
-        parts.append(work[["trade_date", "ts_code"]])
+        parts.append(work[["trade_date", "symbol"]])
 
     if not parts:
         raise SystemExit(f"No trade_date grid rows resolved from daily assets under {daily_asset_dir}")
     grid = pd.concat(parts, ignore_index=True)
-    return grid.drop_duplicates().sort_values(["trade_date", "ts_code"]).reset_index(drop=True)
+    return grid.drop_duplicates().sort_values(["trade_date", "symbol"]).reset_index(drop=True)
 
 
 def _sample_trade_date_grid(grid: pd.DataFrame, *, frequency: str) -> tuple[pd.DataFrame, dict[str, object]]:
@@ -154,19 +156,19 @@ def _sample_trade_date_grid(grid: pd.DataFrame, *, frequency: str) -> tuple[pd.D
         work = grid.copy()
         work["__period"] = work["trade_date"].dt.to_period(frequency)
         sampled = (
-            work.sort_values(["ts_code", "trade_date"])
-            .groupby(["ts_code", "__period"], group_keys=False)
-            .tail(1)[["trade_date", "ts_code"]]
+            work.sort_values(["symbol", "trade_date"])
+            .groupby(["symbol", "__period"], group_keys=False)
+            .tail(1)[["trade_date", "symbol"]]
             .reset_index(drop=True)
         )
         sampling_mode = "period_last_trade_date"
-    sampled = sampled.drop_duplicates().sort_values(["trade_date", "ts_code"]).reset_index(drop=True)
+    sampled = sampled.drop_duplicates().sort_values(["trade_date", "symbol"]).reset_index(drop=True)
     return sampled, {
         "sampling_mode": sampling_mode,
         "frequency": frequency,
         "rows_in": int(len(grid)),
         "rows_out": int(len(sampled)),
-        "symbols": int(sampled["ts_code"].nunique()) if not sampled.empty else 0,
+        "symbols": int(sampled["symbol"].nunique()) if not sampled.empty else 0,
         "trade_dates": int(sampled["trade_date"].nunique()) if not sampled.empty else 0,
     }
 
@@ -237,15 +239,16 @@ def _load_industry_changes_frame(data_files: Sequence[Path]) -> tuple[pd.DataFra
         input_rows += int(len(frame))
         if frame.empty:
             continue
-        required = {"ts_code", "start_date", "cancel_date"}
+        frame = ensure_symbol_columns(frame, context=f"Industry changes asset file {data_file.name}")
+        required = {"symbol", "start_date", "cancel_date"}
         missing = [column for column in required if column not in frame.columns]
         if missing:
             raise SystemExit(
                 f"Industry changes asset file is missing required columns {missing}: {data_file}"
             )
         work = frame.copy()
-        work["ts_code"] = work["ts_code"].astype(str).str.strip().map(_normalize_hk_symbol)
-        work = work[work["ts_code"] != ""].copy()
+        work["symbol"] = work["symbol"].astype(str).str.strip().map(_normalize_hk_symbol)
+        work = work[work["symbol"] != ""].copy()
         if work.empty:
             continue
         work["start_date"] = pd.to_datetime(work["start_date"], errors="coerce").dt.normalize()
@@ -253,17 +256,17 @@ def _load_industry_changes_frame(data_files: Sequence[Path]) -> tuple[pd.DataFra
         work = work[work["start_date"].notna()].copy()
         if work.empty:
             continue
-        sort_columns = [column for column in ("ts_code", "start_date", "cancel_date", "industry_code") if column in work.columns]
+        sort_columns = [column for column in ("symbol", "start_date", "cancel_date", "industry_code") if column in work.columns]
         if sort_columns:
             work = work.sort_values(sort_columns).reset_index(drop=True)
         frames.append(work)
     if not frames:
         return pd.DataFrame(), input_rows
     combined = pd.concat(frames, ignore_index=True)
-    dedupe_subset = [column for column in ("ts_code", "start_date", "cancel_date", "industry_code") if column in combined.columns]
+    dedupe_subset = [column for column in ("symbol", "start_date", "cancel_date", "industry_code") if column in combined.columns]
     if dedupe_subset:
         combined = combined.drop_duplicates(subset=dedupe_subset, keep="last")
-    combined = combined.sort_values([column for column in ("ts_code", "start_date", "cancel_date", "industry_code") if column in combined.columns]).reset_index(drop=True)
+    combined = combined.sort_values([column for column in ("symbol", "start_date", "cancel_date", "industry_code") if column in combined.columns]).reset_index(drop=True)
     return combined, input_rows
 
 
@@ -273,7 +276,7 @@ def _derive_hk_industry_labels(
     intervals: pd.DataFrame,
 ) -> tuple[pd.DataFrame, int]:
     if grid.empty:
-        return pd.DataFrame(columns=["trade_date", "ts_code"]), 0
+        return pd.DataFrame(columns=["trade_date", "symbol"]), 0
     if intervals.empty:
         output = grid.copy()
         output["trade_date"] = output["trade_date"].dt.strftime("%Y%m%d")
@@ -281,11 +284,11 @@ def _derive_hk_industry_labels(
 
     parts: list[pd.DataFrame] = []
     invalid_rows = 0
-    interval_groups = {symbol: frame.copy() for symbol, frame in intervals.groupby("ts_code", sort=False)}
+    interval_groups = {symbol: frame.copy() for symbol, frame in intervals.groupby("symbol", sort=False)}
 
-    for ts_code, symbol_grid in grid.groupby("ts_code", sort=False):
+    for symbol, symbol_grid in grid.groupby("symbol", sort=False):
         left = symbol_grid.copy().sort_values("trade_date").reset_index(drop=True)
-        right = interval_groups.get(ts_code)
+        right = interval_groups.get(symbol)
         if right is None or right.empty:
             parts.append(left)
             continue
@@ -298,14 +301,14 @@ def _derive_hk_industry_labels(
             direction="backward",
             allow_exact_matches=True,
         )
-        if "ts_code_x" in merged.columns:
-            merged = merged.rename(columns={"ts_code_x": "ts_code"})
-        if "ts_code_y" in merged.columns:
-            merged = merged.drop(columns=["ts_code_y"])
+        if "symbol_x" in merged.columns:
+            merged = merged.rename(columns={"symbol_x": "symbol"})
+        if "symbol_y" in merged.columns:
+            merged = merged.drop(columns=["symbol_y"])
         cancel_date = pd.to_datetime(merged.get("cancel_date"), errors="coerce")
         valid_mask = cancel_date.isna() | (merged["trade_date"] < cancel_date)
         invalid_rows += int((~valid_mask).sum())
-        label_columns = [column for column in merged.columns if column not in {"trade_date", "ts_code"}]
+        label_columns = [column for column in merged.columns if column not in {"trade_date", "symbol"}]
         merged.loc[~valid_mask, label_columns] = pd.NA
         parts.append(merged)
 
@@ -335,7 +338,7 @@ def _resolve_build_fields(
         fields = _normalize_field_list(manifest_fields)
         source = "asset_manifest"
         if not fields:
-            excluded = {"ts_code", "order_book_id", *PIT_METADATA_COLUMNS}
+            excluded = {"symbol", "ts_code", "order_book_id", *PIT_METADATA_COLUMNS}
             fields = [
                 field
                 for field in _normalize_field_list(available_columns)
@@ -384,7 +387,7 @@ def _load_universe_by_date_frame(path_text: str | Path) -> pd.DataFrame:
     if selected_col and selected_col in df.columns:
         df = df[df[selected_col].map(_coerce_bool)].copy()
 
-    df = df.rename(columns={date_col: "trade_date", symbol_col: "ts_code"})
+    df = df.rename(columns={date_col: "trade_date", symbol_col: "symbol"})
     trade_date_text = (
         df["trade_date"].astype(str).str.strip().str.replace(r"\.0+$", "", regex=True)
     )
@@ -404,10 +407,10 @@ def _load_universe_by_date_frame(path_text: str | Path) -> pd.DataFrame:
     df["trade_date"] = parsed
     df = df[df["trade_date"].notna()].copy()
     df["trade_date"] = df["trade_date"].dt.normalize()
-    df["ts_code"] = df["ts_code"].astype(str).str.strip().map(_normalize_hk_symbol)
-    df = df[df["ts_code"] != ""].copy()
-    return df[["trade_date", "ts_code"]].drop_duplicates().sort_values(
-        ["trade_date", "ts_code"]
+    df["symbol"] = df["symbol"].astype(str).str.strip().map(_normalize_hk_symbol)
+    df = df[df["symbol"] != ""].copy()
+    return df[["trade_date", "symbol"]].drop_duplicates().sort_values(
+        ["trade_date", "symbol"]
     ).reset_index(drop=True)
 
 
@@ -434,13 +437,14 @@ def _build_filtered_universe_by_date(
     normalized_symbols = universe[symbol_col].astype(str).map(_normalize_hk_symbol)
     selected_symbols = set(symbols)
     filtered = universe.loc[normalized_symbols.isin(selected_symbols)].copy()
-    filtered["ts_code"] = normalized_symbols.loc[filtered.index]
-    if "stock_ticker" in filtered.columns:
-        filtered["stock_ticker"] = filtered["ts_code"]
+    filtered["symbol"] = normalized_symbols.loc[filtered.index]
+    filtered = filtered.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    if symbol_col == "order_book_id":
+        filtered = filtered.drop(columns=["order_book_id"], errors="ignore")
 
     preferred = []
     seen: set[str] = set()
-    for column in [date_col, "ts_code", *filtered.columns]:
+    for column in [date_col, "symbol", *filtered.columns]:
         if column in filtered.columns and column not in seen:
             preferred.append(column)
             seen.add(column)
@@ -453,9 +457,9 @@ def _build_filtered_universe_by_date(
         "source_path": str(source_path),
         "output_path": str(out_path),
         "rows": int(len(filtered)),
-        "symbols": int(filtered["ts_code"].nunique()) if not filtered.empty else 0,
+        "symbols": int(filtered["symbol"].nunique()) if not filtered.empty else 0,
         "date_column": date_col,
-        "symbol_column": symbol_col,
+        "symbol_column": "symbol",
     }
 
 
@@ -517,7 +521,8 @@ def build_hk_pit_fundamentals_file(args) -> int:
         input_rows += int(len(frame))
         if frame.empty:
             continue
-        if "ts_code" not in frame.columns or "info_date" not in frame.columns:
+        frame = ensure_symbol_columns(frame, context=f"PIT asset file {data_file.name}")
+        if "symbol" not in frame.columns or "info_date" not in frame.columns:
             raise SystemExit(
                 f"PIT asset file must include symbol/ts_code and info_date columns: {data_file}"
             )
@@ -528,7 +533,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
             )
 
         work = frame.copy()
-        work["ts_code"] = work["ts_code"].astype(str).str.strip()
+        work["symbol"] = work["symbol"].astype(str).str.strip()
         info_dates = pd.to_datetime(work["info_date"], errors="coerce")
         valid_info_date = info_dates.notna()
         dropped_missing_info_date += int((~valid_info_date).sum())
@@ -545,12 +550,12 @@ def build_hk_pit_fundamentals_file(args) -> int:
 
         # Early dedup per file: keep only the latest row for each symbol + trade_date pair.
         # Different info_date values must survive into the combined frame.
-        if "trade_date" in work.columns and "ts_code" in work.columns:
+        if "trade_date" in work.columns and "symbol" in work.columns:
             local_duplicate_rows_seen = int(
-                work.duplicated(subset=["trade_date", "ts_code"], keep=False).sum()
+                work.duplicated(subset=["trade_date", "symbol"], keep=False).sum()
             )
             work = work.sort_values(["trade_date", "rice_create_tm"] if "rice_create_tm" in work.columns else ["trade_date"])
-            deduped_work = work.drop_duplicates(subset=["ts_code", "trade_date"], keep="last")
+            deduped_work = work.drop_duplicates(subset=["symbol", "trade_date"], keep="last")
             precombine_duplicate_rows_seen += local_duplicate_rows_seen
             precombine_duplicate_rows_dropped += int(len(work) - len(deduped_work))
             work = deduped_work
@@ -558,7 +563,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
         combined_frames.append(work)
 
     meta_columns = [col for col in PIT_METADATA_COLUMNS if keep_meta and col in available_columns]
-    output_columns = ["trade_date", "ts_code", *fields, *meta_columns]
+    output_columns = ["trade_date", "symbol", *fields, *meta_columns]
     duplicate_rows_seen = 0
     duplicate_rows_dropped = 0
     if combined_frames:
@@ -567,6 +572,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
             col
             for col in [
                 "ts_code",
+                "symbol",
                 "trade_date",
                 "quarter",
                 "fiscal_year",
@@ -580,7 +586,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
         if sort_columns:
             combined = combined.sort_values(sort_columns).reset_index(drop=True)
         duplicate_rows_seen = int(
-            combined.duplicated(subset=["trade_date", "ts_code"], keep=False).sum()
+            combined.duplicated(subset=["trade_date", "symbol"], keep=False).sum()
         )
         duplicate_rows_seen += precombine_duplicate_rows_seen
         if duplicate_rows_seen and getattr(args, "duplicate_policy", "keep-last") == "error":
@@ -588,13 +594,13 @@ def build_hk_pit_fundamentals_file(args) -> int:
                 "Duplicate trade_date + symbol rows found in PIT asset. "
                 "Retry with --duplicate-policy keep-last if you want automatic deduplication."
             )
-        deduped = combined.drop_duplicates(subset=["trade_date", "ts_code"], keep="last")
+        deduped = combined.drop_duplicates(subset=["trade_date", "symbol"], keep="last")
         duplicate_rows_dropped = precombine_duplicate_rows_dropped + int(len(combined) - len(deduped))
         output_df = deduped.loc[:, [col for col in output_columns if col in deduped.columns]].copy()
-        output_df = output_df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+        output_df = output_df.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
     else:
         output_df = pd.DataFrame(columns=output_columns)
-    research_symbols = sorted(output_df["ts_code"].astype(str).str.strip().unique().tolist()) if not output_df.empty else []
+    research_symbols = sorted(output_df["symbol"].astype(str).str.strip().unique().tolist()) if not output_df.empty else []
 
     if out_path.suffix.lower() == ".csv":
         output_df.to_csv(out_path, index=False)
@@ -642,7 +648,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
             "input_files": len(data_files),
             "input_rows": input_rows,
             "output_rows": int(len(output_df)),
-            "symbols": int(output_df["ts_code"].nunique()) if not output_df.empty else 0,
+            "symbols": int(output_df["symbol"].nunique()) if not output_df.empty else 0,
             "dropped_missing_info_date": dropped_missing_info_date,
             "dropped_all_missing_fields": dropped_all_missing_fields,
             "duplicate_rows_seen": duplicate_rows_seen,
@@ -681,7 +687,7 @@ def build_hk_industry_labels_file(args) -> int:
     grid, grid_metadata = _resolve_hk_industry_label_grid(args)
     intervals, input_rows = _load_industry_changes_frame(data_files)
     output_df, interval_miss_rows = _derive_hk_industry_labels(grid=grid, intervals=intervals)
-    output_df = output_df.sort_values(["trade_date", "ts_code"]).reset_index(drop=True)
+    output_df = output_df.sort_values(["trade_date", "symbol"]).reset_index(drop=True)
 
     if out_path.suffix.lower() == ".csv":
         output_df.to_csv(out_path, index=False)
@@ -691,8 +697,8 @@ def build_hk_industry_labels_file(args) -> int:
         output_format = "parquet"
 
     resolved_symbols = (
-        sorted(output_df["ts_code"].astype(str).str.strip().unique().tolist())
-        if "ts_code" in output_df.columns and not output_df.empty
+        sorted(output_df["symbol"].astype(str).str.strip().unique().tolist())
+        if "symbol" in output_df.columns and not output_df.empty
         else []
     )
     outputs = {"industry_labels_file": str(out_path)}
@@ -745,7 +751,7 @@ def build_hk_industry_labels_file(args) -> int:
             "resolved_rows": resolved_rows,
             "unresolved_rows": int(len(output_df) - resolved_rows),
             "interval_miss_rows": interval_miss_rows,
-            "symbols": int(output_df["ts_code"].nunique()) if "ts_code" in output_df.columns and not output_df.empty else 0,
+            "symbols": int(output_df["symbol"].nunique()) if "symbol" in output_df.columns and not output_df.empty else 0,
             "trade_dates": int(output_df["trade_date"].nunique()) if "trade_date" in output_df.columns and not output_df.empty else 0,
         },
         "outputs": outputs,

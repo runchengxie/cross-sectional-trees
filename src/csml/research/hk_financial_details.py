@@ -9,6 +9,7 @@ import pandas as pd
 import yaml
 
 from ..config_utils import resolve_repo_configs_dir
+from ..data_tools.symbols import ensure_symbol_columns
 
 
 def _resolve_default_mapping_file() -> Path:
@@ -32,10 +33,10 @@ REQUIRED_COLUMNS = {
     "relationship",
     "standard",
     "subject",
-    "ts_code",
+    "symbol",
 }
 DEDUP_KEYS = [
-    "ts_code",
+    "symbol",
     "order_book_id",
     "field",
     "quarter",
@@ -132,11 +133,12 @@ def _load_probe_frame(probe_dir: Path, fields: tuple[str, ...]) -> pd.DataFrame:
     if not frames:
         raise SystemExit(f"No non-empty parquet files found under {data_dir}")
     frame = pd.concat(frames, ignore_index=True)
+    frame = ensure_symbol_columns(frame, context="financial_details probe").copy()
     missing = sorted(REQUIRED_COLUMNS.difference(frame.columns))
     if missing:
         raise SystemExit(f"Probe data is missing required columns: {missing}")
     frame = frame.copy()
-    frame["ts_code"] = _normalize_text(frame["ts_code"]).str.upper()
+    frame["symbol"] = _normalize_text(frame["symbol"]).str.upper()
     frame["order_book_id"] = _normalize_text(frame["order_book_id"]).str.upper()
     frame["field"] = _normalize_text(frame["field"])
     frame["quarter"] = _normalize_text(frame["quarter"]).str.lower()
@@ -150,9 +152,10 @@ def _load_probe_frame(probe_dir: Path, fields: tuple[str, ...]) -> pd.DataFrame:
     frame["if_adjusted"] = pd.to_numeric(frame["if_adjusted"], errors="coerce").astype("Int64")
     if fields:
         frame = frame[frame["field"].isin(fields)].copy()
-    frame = frame.dropna(subset=["ts_code", "field", "quarter", "subject", "standard"]).copy()
+    frame = frame.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    frame = frame.dropna(subset=["symbol", "field", "quarter", "subject", "standard"]).copy()
     frame = frame.sort_values(
-        ["field", "standard", "subject", "ts_code", "quarter", "info_date"],
+        ["field", "standard", "subject", "symbol", "quarter", "info_date"],
         kind="mergesort",
     ).reset_index(drop=True)
     return frame
@@ -161,18 +164,20 @@ def _load_probe_frame(probe_dir: Path, fields: tuple[str, ...]) -> pd.DataFrame:
 def _load_audit(probe_dir: Path) -> pd.DataFrame:
     audit_path = probe_dir / "audit.csv"
     if not audit_path.exists():
-        return pd.DataFrame(columns=["ts_code", "order_book_id", "status", "rows"])
+        return pd.DataFrame(columns=["symbol", "order_book_id", "status", "rows"])
     audit = pd.read_csv(audit_path)
+    audit = ensure_symbol_columns(audit, context="financial_details audit").copy()
     audit = audit.copy()
-    for column in ("ts_code", "order_book_id", "status", "min_quarter", "max_quarter"):
+    for column in ("symbol", "order_book_id", "status", "min_quarter", "max_quarter"):
         if column in audit.columns:
             audit[column] = _normalize_text(audit[column])
-    if "ts_code" in audit.columns:
-        audit["ts_code"] = audit["ts_code"].str.upper()
+    if "symbol" in audit.columns:
+        audit["symbol"] = audit["symbol"].str.upper()
     if "order_book_id" in audit.columns:
         audit["order_book_id"] = audit["order_book_id"].str.upper()
     if "rows" in audit.columns:
         audit["rows"] = pd.to_numeric(audit["rows"], errors="coerce").fillna(0).astype(int)
+    audit = audit.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
     return audit
 
 
@@ -297,7 +302,7 @@ def _deduplicate_frame(frame: pd.DataFrame, dedup_mode: str) -> pd.DataFrame:
         columns=["_info_date_sort", "_if_adjusted_sort"]
     )
     return deduped.sort_values(
-        ["field", "standard", "subject", "ts_code", "quarter", "info_date"],
+        ["field", "standard", "subject", "symbol", "quarter", "info_date"],
         kind="mergesort",
     ).reset_index(drop=True)
 
@@ -331,7 +336,7 @@ def _build_duplicate_disclosure_summary(frame: pd.DataFrame) -> pd.DataFrame:
     if grouped.empty:
         return grouped
     grouped = grouped.sort_values(
-        ["disclosure_count", "field", "ts_code", "quarter", "subject"],
+        ["disclosure_count", "field", "symbol", "quarter", "subject"],
         ascending=[False, True, True, True, True],
         kind="mergesort",
     ).reset_index(drop=True)
@@ -341,7 +346,7 @@ def _build_duplicate_disclosure_summary(frame: pd.DataFrame) -> pd.DataFrame:
 def _build_subject_frequency(frame: pd.DataFrame) -> pd.DataFrame:
     return (
         frame.groupby(["field", "standard", "subject"], dropna=False)
-        .agg(rows=("ts_code", "size"), symbols=("ts_code", "nunique"))
+        .agg(rows=("symbol", "size"), symbols=("symbol", "nunique"))
         .reset_index()
         .sort_values(["field", "rows", "symbols", "standard", "subject"], ascending=[True, False, False, True, True])
         .reset_index(drop=True)
@@ -349,9 +354,9 @@ def _build_subject_frequency(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def _build_subject_examples(frame: pd.DataFrame) -> pd.DataFrame:
-    columns = ["ts_code", "field", "standard", "subject", "quarter", "info_date", "amount", "currency"]
+    columns = ["symbol", "field", "standard", "subject", "quarter", "info_date", "amount", "currency"]
     return frame[columns].sort_values(
-        ["field", "standard", "subject", "ts_code", "quarter", "info_date"],
+        ["field", "standard", "subject", "symbol", "quarter", "info_date"],
         kind="mergesort",
     ).reset_index(drop=True)
 
@@ -381,7 +386,7 @@ def _apply_mapping(
     merged["dedup_mode"] = dedup_mode
     merged = merged.drop(columns=["raw_subject", "notes"])
     columns = [
-        "ts_code",
+        "symbol",
         "order_book_id",
         "quarter",
         "info_date",
@@ -401,7 +406,7 @@ def _apply_mapping(
         "dedup_mode",
     ]
     return merged[columns].sort_values(
-        ["field", "standard", "normalized_subject", "ts_code", "quarter", "info_date"],
+        ["field", "standard", "normalized_subject", "symbol", "quarter", "info_date"],
         kind="mergesort",
     ).reset_index(drop=True)
 
@@ -410,8 +415,8 @@ def _build_normalized_subject_frequency(normalized_long: pd.DataFrame) -> pd.Dat
     return (
         normalized_long.groupby(["field", "standard", "normalized_subject"], dropna=False)
         .agg(
-            rows=("ts_code", "size"),
-            symbols=("ts_code", "nunique"),
+            rows=("symbol", "size"),
+            symbols=("symbol", "nunique"),
             currencies=("currency", _join_unique),
         )
         .reset_index()
@@ -431,7 +436,7 @@ def _build_normalization_stats(frame: pd.DataFrame, normalized_long: pd.DataFram
         .rename("normalized_unique_subjects")
     )
     rows = normalized_long.groupby("field", dropna=False).size().rename("rows")
-    symbols = normalized_long.groupby("field", dropna=False)["ts_code"].nunique().rename("symbols")
+    symbols = normalized_long.groupby("field", dropna=False)["symbol"].nunique().rename("symbols")
     stats = pd.concat([rows, symbols, raw_unique, normalized_unique], axis=1).reset_index()
     stats["subject_reduction"] = stats["raw_unique_subjects"] - stats["normalized_unique_subjects"]
     return stats.sort_values("field", kind="mergesort").reset_index(drop=True)
@@ -443,9 +448,9 @@ def _build_probe_coverage(
     compare_symbols: set[str],
 ) -> pd.DataFrame:
     written = (
-        frame.groupby("ts_code", dropna=False)
+        frame.groupby("symbol", dropna=False)
         .agg(
-            rows=("ts_code", "size"),
+            rows=("symbol", "size"),
             fields_present=("field", _join_unique),
             standards_present=("standard", _join_unique),
             min_quarter=("quarter", "min"),
@@ -457,22 +462,22 @@ def _build_probe_coverage(
         coverage = written.copy()
         coverage["status"] = "written"
     else:
-        base_columns = [column for column in ["ts_code", "status"] if column in audit.columns]
-        coverage = audit[base_columns].drop_duplicates(subset=["ts_code"]).copy()
-        coverage = coverage.merge(written, how="left", on="ts_code")
+        base_columns = [column for column in ["symbol", "status"] if column in audit.columns]
+        coverage = audit[base_columns].drop_duplicates(subset=["symbol"]).copy()
+        coverage = coverage.merge(written, how="left", on="symbol")
         coverage["rows"] = coverage["rows"].fillna(0).astype(int)
         for column in ("fields_present", "standards_present", "min_quarter", "max_quarter"):
             if column in coverage.columns:
                 coverage[column] = coverage[column].fillna("")
     if compare_symbols:
-        coverage["in_compare_probe"] = coverage["ts_code"].isin(compare_symbols)
-    return coverage.sort_values("ts_code", kind="mergesort").reset_index(drop=True)
+        coverage["in_compare_probe"] = coverage["symbol"].isin(compare_symbols)
+    return coverage.sort_values("symbol", kind="mergesort").reset_index(drop=True)
 
 
 def _extract_compare_symbols(compare_audit: pd.DataFrame, compare_frame: pd.DataFrame) -> set[str]:
-    if not compare_audit.empty and "ts_code" in compare_audit.columns:
-        return {str(value) for value in compare_audit["ts_code"].dropna().tolist()}
-    return {str(value) for value in compare_frame["ts_code"].dropna().unique().tolist()}
+    if not compare_audit.empty and "symbol" in compare_audit.columns:
+        return {str(value) for value in compare_audit["symbol"].dropna().tolist()}
+    return {str(value) for value in compare_frame["symbol"].dropna().unique().tolist()}
 
 
 def _build_new_subjects_vs_compare(current_frame: pd.DataFrame, compare_frame: pd.DataFrame) -> pd.DataFrame:
@@ -498,9 +503,9 @@ def _build_summary_text(
     compare_probe_dir: Path | None,
     new_subjects_vs_compare: pd.DataFrame | None,
 ) -> str:
-    requested_symbols = int(len(audit)) if not audit.empty else int(raw_frame["ts_code"].nunique())
+    requested_symbols = int(len(audit)) if not audit.empty else int(raw_frame["symbol"].nunique())
     written_symbols = int(
-        (audit["status"].astype(str) == "written").sum() if not audit.empty and "status" in audit.columns else raw_frame["ts_code"].nunique()
+        (audit["status"].astype(str) == "written").sum() if not audit.empty and "status" in audit.columns else raw_frame["symbol"].nunique()
     )
     missing_symbols = int(
         (audit["status"].astype(str) == "missing_remote").sum()

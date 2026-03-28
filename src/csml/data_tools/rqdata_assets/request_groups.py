@@ -9,6 +9,7 @@ import pandas as pd
 from ...artifacts import RQDATA_ASSETS_DIR as DEFAULT_RQDATA_ASSETS_DIR
 from ...config_utils import resolve_pipeline_config
 from ...data_providers import _to_rqdata_symbol
+from ..symbols import ensure_symbol_columns
 from .models import DatedRequestGroup
 from .shared import (
     _dedupe_preserve_order,
@@ -165,10 +166,11 @@ def _load_cached_hk_instruments_frame(path: Path) -> pd.DataFrame:
 
     frame = pd.read_parquet(path)
     instruments = _normalize_frame_columns(frame.copy())
-    if "ts_code" not in instruments.columns or "order_book_id" not in instruments.columns:
-        raise ValueError(f"HK instruments snapshot is missing ts_code/order_book_id: {path}")
+    instruments = ensure_symbol_columns(instruments, context=f"HK instruments snapshot {path.name}")
+    if "symbol" not in instruments.columns or "order_book_id" not in instruments.columns:
+        raise ValueError(f"HK instruments snapshot is missing symbol/order_book_id: {path}")
 
-    instruments["ts_code"] = instruments["ts_code"].map(_normalize_hk_symbol)
+    instruments["symbol"] = instruments["symbol"].map(_normalize_hk_symbol)
     instruments["order_book_id"] = instruments["order_book_id"].astype(str).str.strip()
     if "unique_id" in instruments.columns:
         instruments["unique_id"] = instruments["unique_id"].astype(str).str.strip()
@@ -188,13 +190,13 @@ def _build_default_dated_request_groups(
         order_book_id = _to_rqdata_symbol("hk", symbol)
         groups.append(
             DatedRequestGroup(
-                ts_code=symbol,
+                symbol=symbol,
                 request_ids=(order_book_id,),
                 order_book_ids=(order_book_id,),
             )
         )
         metadata[order_book_id] = {
-            "ts_code": symbol,
+            "symbol": symbol,
             "order_book_id": order_book_id,
             "unique_id": None,
         }
@@ -224,7 +226,7 @@ def _resolve_hk_dated_request_groups(
         except Exception:
             continue
 
-        subset = instruments[instruments["ts_code"].isin(symbols)].copy()
+        subset = instruments[instruments["symbol"].isin(symbols)].copy()
         if subset.empty:
             continue
 
@@ -250,18 +252,18 @@ def _resolve_hk_dated_request_groups(
         groups: list[DatedRequestGroup] = []
         metadata: dict[str, dict[str, str | None]] = {}
         for symbol in symbols:
-            symbol_rows = effective[effective["ts_code"] == symbol].copy()
+            symbol_rows = effective[effective["symbol"] == symbol].copy()
             if symbol_rows.empty:
                 fallback_order_book_id = _to_rqdata_symbol("hk", symbol)
                 groups.append(
                     DatedRequestGroup(
-                        ts_code=symbol,
+                        symbol=symbol,
                         request_ids=(fallback_order_book_id,),
                         order_book_ids=(fallback_order_book_id,),
                     )
                 )
                 metadata[fallback_order_book_id] = {
-                    "ts_code": symbol,
+                    "symbol": symbol,
                     "order_book_id": fallback_order_book_id,
                     "unique_id": None,
                 }
@@ -282,12 +284,12 @@ def _resolve_hk_dated_request_groups(
                 request_ids.append(request_id)
                 order_book_ids.append(order_book_id or request_id)
                 metadata[request_id] = {
-                    "ts_code": symbol,
+                    "symbol": symbol,
                     "order_book_id": order_book_id or request_id,
                     "unique_id": unique_id,
                 }
                 metadata[order_book_id or request_id] = {
-                    "ts_code": symbol,
+                    "symbol": symbol,
                     "order_book_id": order_book_id or request_id,
                     "unique_id": unique_id,
                 }
@@ -299,14 +301,14 @@ def _resolve_hk_dated_request_groups(
                 request_ids = [fallback_order_book_id]
                 order_book_ids = [fallback_order_book_id]
                 metadata[fallback_order_book_id] = {
-                    "ts_code": symbol,
+                    "symbol": symbol,
                     "order_book_id": fallback_order_book_id,
                     "unique_id": None,
                 }
 
             groups.append(
                 DatedRequestGroup(
-                    ts_code=symbol,
+                    symbol=symbol,
                     request_ids=tuple(request_ids),
                     order_book_ids=tuple(order_book_ids),
                 )

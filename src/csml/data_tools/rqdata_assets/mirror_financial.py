@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
+
 from .fetch_runtime import _ensure_rqdatac_hk_plugin
 from .mirror_workflow import _mirror_dataset
 from .package_api import _package_attr
@@ -69,15 +71,19 @@ def export_hk_instruments(args, rqdatac) -> int:
     instruments = _normalize_frame_columns(frame.copy())
     if "order_book_id" not in instruments.columns:
         raise SystemExit("HK instruments payload is missing order_book_id.")
+    if "symbol" in instruments.columns and "name" not in instruments.columns:
+        instruments = instruments.rename(columns={"symbol": "name"})
+    elif "symbol" in instruments.columns:
+        instruments = instruments.rename(columns={"symbol": "instrument_symbol"})
     instruments["order_book_id"] = instruments["order_book_id"].astype(str).str.strip()
-    instruments["ts_code"] = instruments["order_book_id"].map(_normalize_hk_symbol)
-    instruments = instruments[instruments["ts_code"] != ""].copy()
+    instruments["symbol"] = instruments["order_book_id"].map(_normalize_hk_symbol)
+    instruments = instruments[instruments["symbol"] != ""].copy()
 
     if symbol_filter is not None:
-        instruments = instruments[instruments["ts_code"].isin(symbol_filter)].copy()
+        instruments = instruments[instruments["symbol"].isin(symbol_filter)].copy()
     elif getattr(args, "limit", None) is not None:
         instruments = (
-            instruments.sort_values(["ts_code", "order_book_id"], kind="mergesort")
+            instruments.sort_values(["symbol", "order_book_id"], kind="mergesort")
             .head(args.limit)
             .copy()
         )
@@ -88,10 +94,10 @@ def export_hk_instruments(args, rqdatac) -> int:
     preferred_columns = [
         column
         for column in (
-            "ts_code",
-            "order_book_id",
             "symbol",
+            "order_book_id",
             "name",
+            "instrument_symbol",
             "listed_date",
             "de_listed_date",
             "round_lot",
@@ -104,7 +110,7 @@ def export_hk_instruments(args, rqdatac) -> int:
         column for column in instruments.columns if column not in preferred_columns
     ]
     instruments = instruments[preferred_columns + remaining_columns].copy()
-    instruments.sort_values(["ts_code", "order_book_id"], kind="mergesort", inplace=True)
+    instruments.sort_values(["symbol", "order_book_id"], kind="mergesort", inplace=True)
     instruments.reset_index(drop=True, inplace=True)
 
     out_arg = getattr(args, "out", None)
@@ -122,7 +128,7 @@ def export_hk_instruments(args, rqdatac) -> int:
 
     manifest_path = Path(f"{out_path}.manifest.yml")
     symbol_metadata = dict(symbol_metadata)
-    symbol_metadata["count"] = int(instruments["ts_code"].nunique())
+    symbol_metadata["count"] = int(instruments["symbol"].nunique())
     manifest = {
         "name": out_path.stem,
         "created_at": _timestamp_now(),
@@ -136,7 +142,7 @@ def export_hk_instruments(args, rqdatac) -> int:
         "columns": instruments.columns.tolist(),
         "totals": {
             "rows": int(len(instruments)),
-            "symbols": int(instruments["ts_code"].nunique()),
+            "symbols": int(instruments["symbol"].nunique()),
             "round_lot_nonnull": int(instruments["round_lot"].notna().sum())
             if "round_lot" in instruments.columns
             else 0,

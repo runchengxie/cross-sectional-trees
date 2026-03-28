@@ -116,7 +116,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
             columns = symbol_frame.columns.tolist()
         _update_field_coverage(field_coverage, symbol_frame, fields=fields)
         audit_by_symbol[symbol] = _daily_audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=entry.order_book_id,
             status=record_status,
             attempts=attempts,
@@ -138,7 +138,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
         error_text: str | None = None,
     ) -> None:
         audit_by_symbol[symbol] = _daily_audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=order_book_id,
             status=record_status,
             attempts=attempts,
@@ -376,7 +376,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
                 if symbol in entries_by_symbol
             ],
             missing_symbols=[
-                item.ts_code for item in audit_records if item.status == "missing_remote"
+                item.symbol for item in audit_records if item.status == "missing_remote"
             ],
             start_date=start_date,
             end_date=end_date,

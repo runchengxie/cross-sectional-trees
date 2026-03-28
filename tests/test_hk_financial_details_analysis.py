@@ -20,15 +20,15 @@ def _write_probe_asset(
     data_dir = probe_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     frame = pd.DataFrame(rows)
-    for ts_code, group in frame.groupby("ts_code", dropna=False):
-        group.to_parquet(data_dir / f"{ts_code}.parquet", index=False)
+    for symbol, group in frame.groupby("symbol", dropna=False):
+        group.to_parquet(data_dir / f"{symbol}.parquet", index=False)
     audit_rows: list[dict[str, object]] = []
     for symbol in requested_symbols:
-        symbol_frame = frame[frame["ts_code"] == symbol]
+        symbol_frame = frame[frame["symbol"] == symbol]
         status = statuses.get(symbol, "written" if not symbol_frame.empty else "missing_remote")
         audit_rows.append(
             {
-                "ts_code": symbol,
+                "symbol": symbol,
                 "order_book_id": f"{symbol[:5]}.XHKG",
                 "status": status,
                 "attempts": 1,
@@ -56,7 +56,7 @@ def test_analyze_probe_normalizes_known_subject_variants(tmp_path: Path):
     probe_dir = tmp_path / "probe"
     rows = [
         {
-            "ts_code": "00883.HK",
+            "symbol": "00883.HK",
             "order_book_id": "00883.XHKG",
             "quarter": "2024q1",
             "info_date": "2025-04-29",
@@ -70,7 +70,7 @@ def test_analyze_probe_normalizes_known_subject_variants(tmp_path: Path):
             "if_adjusted": 1,
         },
         {
-            "ts_code": "01211.HK",
+            "symbol": "01211.HK",
             "order_book_id": "01211.XHKG",
             "quarter": "2024q4",
             "info_date": "2025-03-24",
@@ -84,7 +84,7 @@ def test_analyze_probe_normalizes_known_subject_variants(tmp_path: Path):
             "if_adjusted": 0,
         },
         {
-            "ts_code": "00939.HK",
+            "symbol": "00939.HK",
             "order_book_id": "00939.XHKG",
             "quarter": "2024q1",
             "info_date": "2025-04-29",
@@ -123,7 +123,7 @@ def test_analyze_probe_override_mapping_file_takes_precedence(tmp_path: Path):
     probe_dir = tmp_path / "probe"
     rows = [
         {
-            "ts_code": "00883.HK",
+            "symbol": "00883.HK",
             "order_book_id": "00883.XHKG",
             "quarter": "2024q1",
             "info_date": "2025-04-29",
@@ -168,7 +168,7 @@ def test_analyze_probe_dedups_latest_adjusted_then_info_date(tmp_path: Path):
     probe_dir = tmp_path / "probe_all"
     rows = [
         {
-            "ts_code": "02318.HK",
+            "symbol": "02318.HK",
             "order_book_id": "02318.XHKG",
             "quarter": "2024q1",
             "info_date": "2024-04-23",
@@ -182,7 +182,7 @@ def test_analyze_probe_dedups_latest_adjusted_then_info_date(tmp_path: Path):
             "if_adjusted": 0,
         },
         {
-            "ts_code": "02318.HK",
+            "symbol": "02318.HK",
             "order_book_id": "02318.XHKG",
             "quarter": "2024q1",
             "info_date": "2025-04-25",
@@ -196,7 +196,7 @@ def test_analyze_probe_dedups_latest_adjusted_then_info_date(tmp_path: Path):
             "if_adjusted": 1,
         },
         {
-            "ts_code": "02318.HK",
+            "symbol": "02318.HK",
             "order_book_id": "02318.XHKG",
             "quarter": "2024q1",
             "info_date": "2025-04-25",
@@ -235,7 +235,7 @@ def test_write_analysis_bundle_writes_compare_outputs(tmp_path: Path):
     compare_dir = tmp_path / "compare_probe"
     compare_rows = [
         {
-            "ts_code": "00883.HK",
+            "symbol": "00883.HK",
             "order_book_id": "00883.XHKG",
             "quarter": "2024q1",
             "info_date": "2025-04-29",
@@ -254,7 +254,7 @@ def test_write_analysis_bundle_writes_compare_outputs(tmp_path: Path):
     probe_dir = tmp_path / "probe"
     current_rows = compare_rows + [
         {
-            "ts_code": "00011.HK",
+            "symbol": "00011.HK",
             "order_book_id": "00011.XHKG",
             "quarter": "2024q2",
             "info_date": "2025-07-30",
@@ -294,5 +294,5 @@ def test_write_analysis_bundle_writes_compare_outputs(tmp_path: Path):
 
     coverage = pd.read_csv(tmp_path / "analysis" / "probe_coverage.csv")
     assert "in_compare_probe" in coverage.columns
-    assert bool(coverage.loc[coverage["ts_code"] == "00883.HK", "in_compare_probe"].iloc[0]) is True
-    assert bool(coverage.loc[coverage["ts_code"] == "00011.HK", "in_compare_probe"].iloc[0]) is False
+    assert bool(coverage.loc[coverage["symbol"] == "00883.HK", "in_compare_probe"].iloc[0]) is True
+    assert bool(coverage.loc[coverage["symbol"] == "00011.HK", "in_compare_probe"].iloc[0]) is False

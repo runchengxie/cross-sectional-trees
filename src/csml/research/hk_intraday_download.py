@@ -56,12 +56,12 @@ def _read_symbol_file(path: Path) -> list[str]:
             frame = pd.read_parquet(path)
         else:
             frame = pd.read_csv(path)
-        for candidate in ("ts_code", "symbol", "stock_ticker", "order_book_id"):
+        for candidate in ("symbol", "ts_code", "stock_ticker", "order_book_id"):
             if candidate in frame.columns:
                 values = frame[candidate].astype(str).str.strip()
                 return sorted(values[values.ne("")].unique().tolist())
         raise SystemExit(
-            f"Unsupported symbol file schema: {path}. Expected one of ts_code/symbol/stock_ticker/order_book_id."
+            f"Unsupported symbol file schema: {path}. Expected one of symbol/ts_code/stock_ticker/order_book_id."
         )
 
     raise SystemExit(f"Unsupported symbol file format: {path}")
@@ -75,7 +75,7 @@ def normalize_hk_symbols(symbols: list[str]) -> list[str]:
 def flatten_intraday_payload(
     payload: pd.DataFrame | None,
     *,
-    order_book_to_ts_code: dict[str, str],
+    order_book_to_symbol: dict[str, str],
 ) -> pd.DataFrame:
     if payload is None:
         return pd.DataFrame(
@@ -88,7 +88,7 @@ def flatten_intraday_payload(
                 "close",
                 "volume",
                 "amount",
-                "ts_code",
+                "symbol",
             ]
         )
     if payload.empty:
@@ -102,7 +102,7 @@ def flatten_intraday_payload(
                 "close",
                 "volume",
                 "amount",
-                "ts_code",
+                "symbol",
             ]
         )
     if not isinstance(payload.index, pd.MultiIndex):
@@ -120,7 +120,7 @@ def flatten_intraday_payload(
     frame["trade_datetime"] = pd.to_datetime(frame["trade_datetime"], errors="coerce")
     frame = frame.dropna(subset=["trade_datetime", "rq_order_book_id"]).copy()
     frame["rq_order_book_id"] = frame["rq_order_book_id"].astype(str).str.upper()
-    frame["ts_code"] = frame["rq_order_book_id"].map(order_book_to_ts_code)
+    frame["symbol"] = frame["rq_order_book_id"].map(order_book_to_symbol)
     keep = [
         "rq_order_book_id",
         "trade_datetime",
@@ -130,7 +130,7 @@ def flatten_intraday_payload(
         "close",
         "volume",
         "amount",
-        "ts_code",
+        "symbol",
     ]
     for column in keep:
         if column not in frame.columns:
@@ -172,7 +172,7 @@ def merge_batch_parts(parts_dir: Path, output_path: Path) -> tuple[int, int]:
                 writer = pq.ParquetWriter(output_path, table.schema)
             writer.write_table(table)
         if writer is None:
-            empty = flatten_intraday_payload(pd.DataFrame(), order_book_to_ts_code={})
+            empty = flatten_intraday_payload(pd.DataFrame(), order_book_to_symbol={})
             empty.to_parquet(output_path, index=False)
     finally:
         if writer is not None:
@@ -242,7 +242,7 @@ def main() -> None:
         raise SystemExit(f"No symbols found in: {symbol_file}")
 
     order_book_ids = normalize_hk_symbols(symbols)
-    order_book_to_ts_code = {
+    order_book_to_symbol = {
         order_book_id: symbol
         for symbol, order_book_id in zip(
             symbols,
@@ -288,7 +288,7 @@ def main() -> None:
                 market="hk",
                 expect_df=True,
             )
-            frame = flatten_intraday_payload(payload, order_book_to_ts_code=order_book_to_ts_code)
+            frame = flatten_intraday_payload(payload, order_book_to_symbol=order_book_to_symbol)
             frame.to_parquet(part_path, index=False)
             rows = int(len(frame))
         batch_rows.append(

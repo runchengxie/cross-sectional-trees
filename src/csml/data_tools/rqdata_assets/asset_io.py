@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from ...data_providers import _to_rqdata_symbol
+from ..symbols import ensure_symbol_columns
 from .models import (
     DailyMirrorAuditRecord,
     DailyMirrorEntry,
@@ -69,10 +70,10 @@ def _prepare_asset_frame(frame: pd.DataFrame | pd.Series | None, *, symbol_map: 
         else:
             raise ValueError("RQData payload is missing order_book_id.")
     normalized["order_book_id"] = normalized["order_book_id"].astype(str).str.strip()
-    normalized["ts_code"] = normalized["order_book_id"].map(symbol_map)
-    missing_mask = normalized["ts_code"].isna()
+    normalized["symbol"] = normalized["order_book_id"].map(symbol_map)
+    missing_mask = normalized["symbol"].isna()
     if missing_mask.any():
-        normalized.loc[missing_mask, "ts_code"] = normalized.loc[missing_mask, "order_book_id"].map(
+        normalized.loc[missing_mask, "symbol"] = normalized.loc[missing_mask, "order_book_id"].map(
             _normalize_hk_symbol
         )
     if "quarter" in normalized.columns:
@@ -80,7 +81,7 @@ def _prepare_asset_frame(frame: pd.DataFrame | pd.Series | None, *, symbol_map: 
 
     sort_cols = [
         col
-        for col in ["ts_code", "quarter", "info_date", "rice_create_tm", "field", "subject"]
+        for col in ["symbol", "quarter", "info_date", "rice_create_tm", "field", "subject"]
         if col in normalized.columns
     ]
     if sort_cols:
@@ -120,16 +121,16 @@ def _field_columns_for_audit(fields: Sequence[str]) -> list[str]:
 
 
 def _entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -> MirrorEntry:
-    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    symbol = str(symbol_frame["symbol"].iloc[0])
     order_book_id = (
         str(symbol_frame["order_book_id"].iloc[0])
         if "order_book_id" in symbol_frame.columns
-        else _to_rqdata_symbol("hk", ts_code)
+        else _to_rqdata_symbol("hk", symbol)
     )
     min_quarter, max_quarter = _series_bounds_as_text(symbol_frame, "quarter")
     min_info_date, max_info_date = _series_bounds_as_date(symbol_frame, "info_date")
     return MirrorEntry(
-        ts_code=ts_code,
+        symbol=symbol,
         order_book_id=order_book_id,
         path=out_path,
         rows=int(len(symbol_frame)),
@@ -142,14 +143,14 @@ def _entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -> Mirr
 
 
 def _write_symbol_frame(data_dir: Path, symbol_frame: pd.DataFrame) -> MirrorEntry:
-    ts_code = str(symbol_frame["ts_code"].iloc[0])
-    out_path = data_dir / f"{ts_code}.parquet"
+    symbol = str(symbol_frame["symbol"].iloc[0])
+    out_path = data_dir / f"{symbol}.parquet"
     symbol_frame.to_parquet(out_path, index=False)
     return _entry_from_symbol_frame(out_path, symbol_frame)
 
 
 def _load_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
-    columns = ["ts_code", "order_book_id", "quarter", "info_date", *_field_columns_for_audit(fields)]
+    columns = ["symbol", "ts_code", "order_book_id", "quarter", "info_date", *_field_columns_for_audit(fields)]
     requested: list[str] = []
     seen: set[str] = set()
     for column in columns:
@@ -160,16 +161,20 @@ def _load_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
         frame = pd.read_parquet(path, columns=requested)
     except Exception:
         frame = pd.read_parquet(path)
-    return _normalize_frame_columns(frame)
+    normalized = _normalize_frame_columns(frame)
+    if normalized.empty and len(normalized.columns) == 0:
+        return normalized
+    normalized = ensure_symbol_columns(normalized, context=f"Mirror asset file {path.name}")
+    return normalized.drop(columns=["ts_code"], errors="ignore")
 
 
 def _load_existing_entry(path: Path, *, fields: Sequence[str]) -> tuple[MirrorEntry, pd.DataFrame]:
     frame = _ensure_requested_fields(_load_symbol_frame(path, fields=fields), fields)
     if frame.empty:
-        ts_code = path.stem
-        order_book_id = _to_rqdata_symbol("hk", ts_code)
+        symbol = path.stem
+        order_book_id = _to_rqdata_symbol("hk", symbol)
         entry = MirrorEntry(
-            ts_code=ts_code,
+            symbol=symbol,
             order_book_id=order_book_id,
             path=path,
             rows=0,
@@ -218,7 +223,7 @@ def _update_field_coverage(
 
 def _audit_record(
     *,
-    ts_code: str,
+    symbol: str,
     order_book_id: str,
     status: str,
     attempts: int,
@@ -230,7 +235,7 @@ def _audit_record(
     entry: MirrorEntry | None = None,
 ) -> MirrorAuditRecord:
     return MirrorAuditRecord(
-        ts_code=ts_code,
+        symbol=symbol,
         order_book_id=order_book_id,
         status=status,
         attempts=attempts,
@@ -251,7 +256,7 @@ def _audit_record(
 def _write_audit_csv(path: Path, records: Sequence[MirrorAuditRecord]) -> None:
     rows = [
         {
-            "ts_code": item.ts_code,
+            "symbol": item.symbol,
             "order_book_id": item.order_book_id,
             "status": item.status,
             "attempts": item.attempts,
@@ -304,9 +309,9 @@ def _prepare_daily_asset_frame(
     if work.empty:
         return work
     work["trade_date"] = trade_dates.loc[valid_trade_date].dt.strftime("%Y%m%d")
-    work["ts_code"] = symbol
+    work["symbol"] = symbol
     work["order_book_id"] = order_book_id
-    preferred = ["trade_date", "ts_code", "order_book_id"]
+    preferred = ["trade_date", "symbol", "order_book_id"]
     remaining = [column for column in work.columns if column not in preferred]
     work = work.loc[:, preferred + remaining].copy()
     work = work.drop_duplicates(subset=["trade_date"], keep="last")
@@ -315,11 +320,11 @@ def _prepare_daily_asset_frame(
 
 
 def _daily_entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -> DailyMirrorEntry:
-    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    symbol = str(symbol_frame["symbol"].iloc[0])
     order_book_id = str(symbol_frame["order_book_id"].iloc[0])
     min_trade_date, max_trade_date = _series_bounds_as_text(symbol_frame, "trade_date")
     return DailyMirrorEntry(
-        ts_code=ts_code,
+        symbol=symbol,
         order_book_id=order_book_id,
         path=out_path,
         rows=int(len(symbol_frame)),
@@ -330,14 +335,14 @@ def _daily_entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -
 
 
 def _write_daily_symbol_frame(data_dir: Path, symbol_frame: pd.DataFrame) -> DailyMirrorEntry:
-    ts_code = str(symbol_frame["ts_code"].iloc[0])
-    out_path = data_dir / f"{ts_code}.parquet"
+    symbol = str(symbol_frame["symbol"].iloc[0])
+    out_path = data_dir / f"{symbol}.parquet"
     symbol_frame.to_parquet(out_path, index=False)
     return _daily_entry_from_symbol_frame(out_path, symbol_frame)
 
 
 def _load_daily_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
-    columns = ["trade_date", "ts_code", "order_book_id", *_field_columns_for_audit(fields)]
+    columns = ["trade_date", "symbol", "ts_code", "order_book_id", *_field_columns_for_audit(fields)]
     requested: list[str] = []
     seen: set[str] = set()
     for column in columns:
@@ -348,16 +353,20 @@ def _load_daily_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFra
         frame = pd.read_parquet(path, columns=requested)
     except Exception:
         frame = pd.read_parquet(path)
-    return _normalize_frame_columns(frame)
+    normalized = _normalize_frame_columns(frame)
+    if normalized.empty and len(normalized.columns) == 0:
+        return normalized
+    normalized = ensure_symbol_columns(normalized, context=f"Daily mirror asset file {path.name}")
+    return normalized.drop(columns=["ts_code"], errors="ignore")
 
 
 def _load_existing_daily_entry(path: Path, *, fields: Sequence[str]) -> tuple[DailyMirrorEntry, pd.DataFrame]:
     frame = _ensure_requested_fields(_load_daily_symbol_frame(path, fields=fields), fields)
     if frame.empty:
-        ts_code = path.stem
-        order_book_id = _to_rqdata_symbol("hk", ts_code)
+        symbol = path.stem
+        order_book_id = _to_rqdata_symbol("hk", symbol)
         entry = DailyMirrorEntry(
-            ts_code=ts_code,
+            symbol=symbol,
             order_book_id=order_book_id,
             path=path,
             rows=0,
@@ -371,7 +380,7 @@ def _load_existing_daily_entry(path: Path, *, fields: Sequence[str]) -> tuple[Da
 
 def _daily_audit_record(
     *,
-    ts_code: str,
+    symbol: str,
     order_book_id: str,
     status: str,
     attempts: int,
@@ -382,7 +391,7 @@ def _daily_audit_record(
     entry: DailyMirrorEntry | None = None,
 ) -> DailyMirrorAuditRecord:
     return DailyMirrorAuditRecord(
-        ts_code=ts_code,
+        symbol=symbol,
         order_book_id=order_book_id,
         status=status,
         attempts=attempts,
@@ -400,7 +409,7 @@ def _daily_audit_record(
 def _write_daily_audit_csv(path: Path, records: Sequence[DailyMirrorAuditRecord]) -> None:
     rows = [
         {
-            "ts_code": item.ts_code,
+            "symbol": item.symbol,
             "order_book_id": item.order_book_id,
             "status": item.status,
             "attempts": item.attempts,
@@ -440,10 +449,10 @@ def _prepare_dated_asset_frame(
     else:
         work[date_column] = parsed_dates.loc[valid_dates]
 
-    preferred = [column for column in ["ts_code", "order_book_id", date_column] if column in work.columns]
+    preferred = [column for column in ["symbol", "order_book_id", date_column] if column in work.columns]
     remaining = [column for column in work.columns if column not in preferred]
     work = work.loc[:, preferred + remaining].copy()
-    ordered_sort_cols = [column for column in ["ts_code", date_column, *sort_columns] if column in work.columns]
+    ordered_sort_cols = [column for column in ["symbol", date_column, *sort_columns] if column in work.columns]
     if ordered_sort_cols:
         work = work.sort_values(ordered_sort_cols).reset_index(drop=True)
     return work
@@ -455,15 +464,15 @@ def _dated_entry_from_symbol_frame(
     *,
     date_column: str,
 ) -> DatedMirrorEntry:
-    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    symbol = str(symbol_frame["symbol"].iloc[0])
     order_book_id = (
         str(symbol_frame["order_book_id"].iloc[0])
         if "order_book_id" in symbol_frame.columns
-        else _to_rqdata_symbol("hk", ts_code)
+        else _to_rqdata_symbol("hk", symbol)
     )
     min_date, max_date = _series_bounds_as_date(symbol_frame, date_column)
     return DatedMirrorEntry(
-        ts_code=ts_code,
+        symbol=symbol,
         order_book_id=order_book_id,
         path=out_path,
         rows=int(len(symbol_frame)),
@@ -479,14 +488,14 @@ def _write_dated_symbol_frame(
     *,
     date_column: str,
 ) -> DatedMirrorEntry:
-    ts_code = str(symbol_frame["ts_code"].iloc[0])
-    out_path = data_dir / f"{ts_code}.parquet"
+    symbol = str(symbol_frame["symbol"].iloc[0])
+    out_path = data_dir / f"{symbol}.parquet"
     symbol_frame.to_parquet(out_path, index=False)
     return _dated_entry_from_symbol_frame(out_path, symbol_frame, date_column=date_column)
 
 
 def _load_dated_symbol_frame(path: Path, *, date_column: str, fields: Sequence[str]) -> pd.DataFrame:
-    columns = ["ts_code", "order_book_id", date_column, *_field_columns_for_audit(fields)]
+    columns = ["symbol", "ts_code", "order_book_id", date_column, *_field_columns_for_audit(fields)]
     requested: list[str] = []
     seen: set[str] = set()
     for column in columns:
@@ -497,7 +506,11 @@ def _load_dated_symbol_frame(path: Path, *, date_column: str, fields: Sequence[s
         frame = pd.read_parquet(path, columns=requested)
     except Exception:
         frame = pd.read_parquet(path)
-    return _normalize_frame_columns(frame)
+    normalized = _normalize_frame_columns(frame)
+    if normalized.empty and len(normalized.columns) == 0:
+        return normalized
+    normalized = ensure_symbol_columns(normalized, context=f"Dated mirror asset file {path.name}")
+    return normalized.drop(columns=["ts_code"], errors="ignore")
 
 
 def _load_existing_dated_entry(
@@ -508,10 +521,10 @@ def _load_existing_dated_entry(
 ) -> tuple[DatedMirrorEntry, pd.DataFrame]:
     frame = _ensure_requested_fields(_load_dated_symbol_frame(path, date_column=date_column, fields=fields), fields)
     if frame.empty:
-        ts_code = path.stem
-        order_book_id = _to_rqdata_symbol("hk", ts_code)
+        symbol = path.stem
+        order_book_id = _to_rqdata_symbol("hk", symbol)
         entry = DatedMirrorEntry(
-            ts_code=ts_code,
+            symbol=symbol,
             order_book_id=order_book_id,
             path=path,
             rows=0,
@@ -525,7 +538,7 @@ def _load_existing_dated_entry(
 
 def _dated_audit_record(
     *,
-    ts_code: str,
+    symbol: str,
     order_book_id: str,
     status: str,
     attempts: int,
@@ -537,7 +550,7 @@ def _dated_audit_record(
     entry: DatedMirrorEntry | None = None,
 ) -> DatedMirrorAuditRecord:
     return DatedMirrorAuditRecord(
-        ts_code=ts_code,
+        symbol=symbol,
         order_book_id=order_book_id,
         status=status,
         attempts=attempts,
@@ -556,7 +569,7 @@ def _dated_audit_record(
 def _write_dated_audit_csv(path: Path, records: Sequence[DatedMirrorAuditRecord]) -> None:
     rows = [
         {
-            "ts_code": item.ts_code,
+            "symbol": item.symbol,
             "order_book_id": item.order_book_id,
             "status": item.status,
             "attempts": item.attempts,

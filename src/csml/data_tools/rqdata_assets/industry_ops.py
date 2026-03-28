@@ -188,15 +188,15 @@ def _prepare_hk_instrument_industry_frame(
     if "order_book_id" not in normalized.columns:
         raise ValueError("RQData payload is missing order_book_id.")
     normalized["order_book_id"] = normalized["order_book_id"].astype(str).str.strip()
-    normalized["ts_code"] = normalized["order_book_id"].map(
+    normalized["symbol"] = normalized["order_book_id"].map(
         lambda value: symbol_map.get(value) or _normalize_hk_symbol(value)
     )
-    normalized = normalized[normalized["ts_code"] != ""].copy()
+    normalized = normalized[normalized["symbol"] != ""].copy()
     normalized["date"] = pd.to_datetime(query_date, format="%Y%m%d", errors="coerce")
-    preferred = [column for column in ("ts_code", "order_book_id", "date") if column in normalized.columns]
+    preferred = [column for column in ("symbol", "order_book_id", "date") if column in normalized.columns]
     remaining = [column for column in normalized.columns if column not in preferred]
     work = normalized.loc[:, preferred + remaining].copy()
-    return work.sort_values(["ts_code", "date"]).reset_index(drop=True)
+    return work.sort_values(["symbol", "date"]).reset_index(drop=True)
 
 
 def _build_hk_industry_catalog(
@@ -254,8 +254,8 @@ def _prepare_hk_industry_change_frame(
         raise ValueError("RQData payload is missing start_date/cancel_date.")
 
     normalized["order_book_id"] = normalized["order_book_id"].astype(str).str.strip()
-    normalized["ts_code"] = normalized["order_book_id"].map(_normalize_hk_symbol)
-    normalized = normalized[normalized["ts_code"].isin(symbol_filter)].copy()
+    normalized["symbol"] = normalized["order_book_id"].map(_normalize_hk_symbol)
+    normalized = normalized[normalized["symbol"].isin(symbol_filter)].copy()
     if normalized.empty:
         return normalized
 
@@ -281,12 +281,12 @@ def _prepare_hk_industry_change_frame(
         if column in catalog_row:
             normalized[column] = catalog_row[column]
 
-    preferred = [column for column in ("ts_code", "order_book_id", "start_date") if column in normalized.columns]
+    preferred = [column for column in ("symbol", "order_book_id", "start_date") if column in normalized.columns]
     remaining = [column for column in normalized.columns if column not in preferred]
     work = normalized.loc[:, preferred + remaining].copy()
     sort_columns = [
         column
-        for column in ("ts_code", "start_date", "cancel_date", "industry_code")
+        for column in ("symbol", "start_date", "cancel_date", "industry_code")
         if column in work.columns
     ]
     return work.sort_values(sort_columns).reset_index(drop=True)

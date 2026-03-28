@@ -219,7 +219,7 @@ def _build_manifest(
         "batches": list(batches),
         "entries": [
             {
-                "ts_code": item.ts_code,
+                "symbol": item.symbol,
                 "order_book_id": item.order_book_id,
                 "path": str(item.path),
                 "rows": item.rows,
@@ -232,8 +232,8 @@ def _build_manifest(
             for item in entries
         ],
         "missing_symbols": list(missing_symbols),
-        "failed_symbols": [item.ts_code for item in audit_records if item.status == "failed"],
-        "quota_blocked_symbols": [item.ts_code for item in audit_records if item.status == "quota_blocked"],
+        "failed_symbols": [item.symbol for item in audit_records if item.status == "failed"],
+        "quota_blocked_symbols": [item.symbol for item in audit_records if item.status == "quota_blocked"],
         "totals": {
             "symbols_requested": len(symbols_requested),
             "symbols_written": len(entries),
@@ -311,7 +311,7 @@ def _build_daily_manifest(
         "batches": list(batches),
         "entries": [
             {
-                "ts_code": item.ts_code,
+                "symbol": item.symbol,
                 "order_book_id": item.order_book_id,
                 "path": str(item.path),
                 "rows": item.rows,
@@ -322,8 +322,8 @@ def _build_daily_manifest(
             for item in entries
         ],
         "missing_symbols": list(missing_symbols),
-        "failed_symbols": [item.ts_code for item in audit_records if item.status == "failed"],
-        "quota_blocked_symbols": [item.ts_code for item in audit_records if item.status == "quota_blocked"],
+        "failed_symbols": [item.symbol for item in audit_records if item.status == "failed"],
+        "quota_blocked_symbols": [item.symbol for item in audit_records if item.status == "quota_blocked"],
         "totals": {
             "symbols_requested": len(symbols_requested),
             "symbols_written": len(entries),
@@ -397,7 +397,7 @@ def _build_dated_manifest(
         "batches": list(batches),
         "entries": [
             {
-                "ts_code": item.ts_code,
+                "symbol": item.symbol,
                 "order_book_id": item.order_book_id,
                 "path": str(item.path),
                 "rows": item.rows,
@@ -408,8 +408,8 @@ def _build_dated_manifest(
             for item in entries
         ],
         "missing_symbols": list(missing_symbols),
-        "failed_symbols": [item.ts_code for item in audit_records if item.status == "failed"],
-        "quota_blocked_symbols": [item.ts_code for item in audit_records if item.status == "quota_blocked"],
+        "failed_symbols": [item.symbol for item in audit_records if item.status == "failed"],
+        "quota_blocked_symbols": [item.symbol for item in audit_records if item.status == "quota_blocked"],
         "totals": {
             "symbols_requested": len(symbols_requested),
             "symbols_written": len(entries),

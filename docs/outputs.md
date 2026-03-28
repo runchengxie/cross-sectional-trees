@@ -99,25 +99,25 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 字段约定：
 
-* `daily` 保留 `rqdatac.get_price` 返回的日频字段名，并额外写入 `trade_date`、legacy `ts_code`（仓库归一后的 symbol alias）和 `order_book_id`。
-* `pit_financials` 保留 `rqdatac.get_pit_financials_ex` 的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
-* `financial_details` 保留 `rqdatac.hk.get_detailed_financial_items` 的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
+* `daily` 保留 `rqdatac.get_price` 返回的日频字段名，并额外写入 `trade_date`、`symbol` 和 `order_book_id`。
+* `pit_financials` 保留 `rqdatac.get_pit_financials_ex` 的字段名，并额外写入 `symbol` 和 `order_book_id`。
+* `financial_details` 保留 `rqdatac.hk.get_detailed_financial_items` 的字段名，并额外写入 `symbol` 和 `order_book_id`。
   当前实测最有用的是长表列 `field`、`amount`、`subject`、`currency`；`manifest.yml` 里的 `field_coverage` 也按这组长表记录统计。
-* `ex_factors` 保留 `rqdatac.get_ex_factor` 返回的字段名，并额外写入 legacy `ts_code`。
-* `dividends` 保留 `rqdatac.get_dividend` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
-* `shares` 保留 `rqdatac.get_shares` 返回的字段名，并额外写入 legacy `ts_code` 和 `order_book_id`。
-* `valuation` 保留 `rqdatac.get_factor` 返回的因子列，并额外写入 legacy `ts_code`、`order_book_id` 和 `trade_date`。这类资产适合冻结 `market_cap / pe_ttm / pb` 一类日频估值口径，但它本身不是 pipeline 默认直读入口。
+* `ex_factors` 保留 `rqdatac.get_ex_factor` 返回的字段名，并额外写入 `symbol`。
+* `dividends` 保留 `rqdatac.get_dividend` 返回的字段名，并额外写入 `symbol` 和 `order_book_id`。
+* `shares` 保留 `rqdatac.get_shares` 返回的字段名，并额外写入 `symbol` 和 `order_book_id`。
+* `valuation` 保留 `rqdatac.get_factor` 返回的因子列，并额外写入 `symbol`、`order_book_id` 和 `trade_date`。这类资产适合冻结 `market_cap / pe_ttm / pb` 一类日频估值口径，但它本身不是 pipeline 默认直读入口。
 * `exchange_rate` 保留 `rqdatac.get_exchange_rate` 返回的字段名，固定要求至少有 `date` 和 `currency_pair`；`date` 会规范成字符串 `YYYYMMDD`。
-* `announcement` 保留 `rqdatac.hk.get_announcement` 返回的字段名，并额外写入 legacy `ts_code`、`order_book_id` 和 `info_date`。
-* `southbound` 固定写出 `date`、legacy `ts_code`、`order_book_id`、`trading_type`、`eligible`；其中 `trading_type` 表示 `sh` / `sz` 渠道，`eligible` 当前固定为 `1`。
-* `instrument_industry` 保留 `rqdatac.get_instrument_industry` 返回的行业列，并额外写入 legacy `ts_code`、`order_book_id`、`date`。
-* `industry_changes` 保留 `start_date` / `cancel_date`，并额外写入 legacy `ts_code`、`order_book_id`、`industry_code`、`industry_name`、`industry_level`、`industry_source` 和完整行业层级列。
+* `announcement` 保留 `rqdatac.hk.get_announcement` 返回的字段名，并额外写入 `symbol`、`order_book_id` 和 `info_date`。
+* `southbound` 固定写出 `date`、`symbol`、`order_book_id`、`trading_type`、`eligible`；其中 `trading_type` 表示 `sh` / `sz` 渠道，`eligible` 当前固定为 `1`。
+* `instrument_industry` 保留 `rqdatac.get_instrument_industry` 返回的行业列，并额外写入 `symbol`、`order_book_id`、`date`。
+* `industry_changes` 保留 `start_date` / `cancel_date`，并额外写入 `symbol`、`order_book_id`、`industry_code`、`industry_name`、`industry_level`、`industry_source` 和完整行业层级列。
 
 补充：
 
 * `manifest.yml` 的 `status` 会记录本次镜像是否完整完成。
 * 这类镜像目录供下游项目复用，不属于 `artifacts/cache/` 的 query cache。
-* 对 RQData 来说，原生标识是 `order_book_id`；这里的 `ts_code` 只是仓库历史兼容列，值等于本仓库归一后的 symbol。
+* 对 RQData 来说，原生标识是 `order_book_id`；raw asset 新输出默认也统一写 `symbol`。旧快照里的 `ts_code` 仍会在读取时自动兼容到 `symbol`。
 
 ## Metadata Catalog
 
@@ -204,7 +204,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 字段约定：
 
-* 固定列：`trade_date`、`ts_code`（legacy symbol alias；研究主链路读入后会自动映射到 `symbol`）
+* 固定列：`trade_date`、`symbol`
 * 值列：你在命令里选中的 PIT 财报字段；如果没显式传字段，默认沿用源资产 `manifest.yml` 里的字段列表
 * `trade_date` 默认等于原始 PIT 行的 `info_date`
 * 传 `--keep-meta` 时，会额外保留 `quarter`、`info_date`、`fiscal_year`、`standard`、`if_adjusted`、`rice_create_tm`、`order_book_id`
@@ -230,7 +230,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 字段约定：
 
-* 固定列：`trade_date`、`ts_code`（legacy symbol alias；研究主链路读入后会自动映射到 `symbol`）
+* 固定列：`trade_date`、`symbol`
 * 区间元数据列：通常还会保留 `order_book_id`、`start_date`、`cancel_date`
 * 行业值列：如果源资产里有，会保留 `industry_code`、`industry_name`、`industry_level`、`industry_source` 以及完整行业层级列
 * `trade_date` 永远是字符串 `YYYYMMDD`

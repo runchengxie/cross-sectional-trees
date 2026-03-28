@@ -9,6 +9,7 @@ import pandas as pd
 
 from ...config_utils import resolve_pipeline_config
 from ...rebalance import get_rebalance_dates
+from ..symbols import ensure_symbol_columns
 from .build import (
     _default_pipeline_fundamentals_path,
     _load_universe_by_date_frame,
@@ -124,11 +125,11 @@ def _compute_pit_coverage_series(
     elif feature.startswith("delta_"):
         base_feature = feature.removeprefix("delta_")
         base_series = _get(base_feature)
-        series = base_series.groupby(frame["ts_code"]).diff()
+        series = base_series.groupby(frame["symbol"]).diff()
     elif feature.startswith("growth_"):
         base_feature = feature.removeprefix("growth_")
         current = _get(base_feature)
-        previous = current.groupby(frame["ts_code"]).shift()
+        previous = current.groupby(frame["symbol"]).shift()
         scale = ((current.abs() + previous.abs()) / 2.0).where(
             lambda values: values.notna() & (values != 0)
         )
@@ -356,34 +357,34 @@ def _build_trainable_period_grid(
             if len(rebalance_dates) > 0:
                 universe = universe[universe["trade_date"].isin(set(rebalance_dates))].copy()
         universe["__period"] = universe["trade_date"].dt.to_period(rebalance_frequency)
-        universe = universe.sort_values(["ts_code", "trade_date"])
+        universe = universe.sort_values(["symbol", "trade_date"])
         grid = (
-            universe.groupby(["ts_code", "__period"], group_keys=False)
-            .tail(1)[["trade_date", "ts_code", "__period"]]
+            universe.groupby(["symbol", "__period"], group_keys=False)
+            .tail(1)[["trade_date", "symbol", "__period"]]
             .reset_index(drop=True)
         )
         return grid, "universe_by_date"
 
-    disclosure_periods = frame[["trade_date", "ts_code"]].copy()
+    disclosure_periods = frame[["trade_date", "symbol"]].copy()
     disclosure_periods["__period"] = disclosure_periods["trade_date"].dt.to_period(rebalance_frequency)
-    disclosure_periods = disclosure_periods.sort_values(["ts_code", "trade_date"])
-    disclosure_periods = disclosure_periods.groupby(["ts_code", "__period"], group_keys=False).tail(1)
+    disclosure_periods = disclosure_periods.sort_values(["symbol", "trade_date"])
+    disclosure_periods = disclosure_periods.groupby(["symbol", "__period"], group_keys=False).tail(1)
 
     parts: list[pd.DataFrame] = []
-    for ts_code, symbol_periods in disclosure_periods.groupby("ts_code"):
+    for symbol, symbol_periods in disclosure_periods.groupby("symbol"):
         start_period = symbol_periods["__period"].min()
         end_period = symbol_periods["__period"].max()
         if pd.isna(start_period) or pd.isna(end_period):
             continue
         period_range = pd.period_range(start=start_period, end=end_period, freq=rebalance_frequency)
         symbol_grid = pd.DataFrame({"__period": period_range})
-        symbol_grid["ts_code"] = ts_code
+        symbol_grid["symbol"] = symbol
         symbol_grid["trade_date"] = symbol_grid["__period"].dt.to_timestamp(how="end").dt.normalize()
-        parts.append(symbol_grid[["trade_date", "ts_code", "__period"]])
+        parts.append(symbol_grid[["trade_date", "symbol", "__period"]])
     if not parts:
-        return disclosure_periods.iloc[0:0][["trade_date", "ts_code", "__period"]].copy(), "disclosure_period_range"
+        return disclosure_periods.iloc[0:0][["trade_date", "symbol", "__period"]].copy(), "disclosure_period_range"
     grid = pd.concat(parts, ignore_index=True)
-    grid = grid.sort_values(["ts_code", "__period"]).reset_index(drop=True)
+    grid = grid.sort_values(["symbol", "__period"]).reset_index(drop=True)
     return grid, "disclosure_period_range"
 
 
@@ -446,19 +447,19 @@ def _estimate_trainable_pit_coverage(
         )
 
     disclosure = (
-        frame.loc[:, ["trade_date", "ts_code"]]
+        frame.loc[:, ["trade_date", "symbol"]]
         .assign(__period=frame["trade_date"].dt.to_period(rebalance_frequency))
         .join(feature_frame[selected_features])
-        .sort_values(["ts_code", "trade_date"])
-        .groupby(["ts_code", "__period"], group_keys=False)
-        .tail(1)[["ts_code", "__period", *selected_features]]
+        .sort_values(["symbol", "trade_date"])
+        .groupby(["symbol", "__period"], group_keys=False)
+        .tail(1)[["symbol", "__period", *selected_features]]
         .reset_index(drop=True)
     )
 
-    pre_fill = period_grid.merge(disclosure, on=["ts_code", "__period"], how="left")
-    pre_fill = pre_fill.sort_values(["ts_code", "__period"]).reset_index(drop=True)
+    pre_fill = period_grid.merge(disclosure, on=["symbol", "__period"], how="left")
+    pre_fill = pre_fill.sort_values(["symbol", "__period"]).reset_index(drop=True)
     if bool(settings["fundamentals_ffill"]) and selected_features:
-        pre_fill[selected_features] = pre_fill.groupby("ts_code")[selected_features].ffill(
+        pre_fill[selected_features] = pre_fill.groupby("symbol")[selected_features].ffill(
             limit=settings["fundamentals_ffill_limit"]
         )
 
@@ -490,16 +491,16 @@ def _estimate_trainable_pit_coverage(
     )
 
     period_table = (
-        period_grid.groupby("__period")["ts_code"].nunique().rename("active_symbols").to_frame()
+        period_grid.groupby("__period")["symbol"].nunique().rename("active_symbols").to_frame()
     )
     period_table["symbols_with_any_selected_features_after_ffill"] = (
-        pre_fill.loc[any_mask].groupby("__period")["ts_code"].nunique()
+        pre_fill.loc[any_mask].groupby("__period")["symbol"].nunique()
     )
     period_table["symbols_with_all_selected_features_after_ffill"] = (
-        pre_fill.loc[pre_all_mask].groupby("__period")["ts_code"].nunique()
+        pre_fill.loc[pre_all_mask].groupby("__period")["symbol"].nunique()
     )
     period_table["symbols_with_all_selected_features_after_missing_fill"] = (
-        post_fill.loc[post_all_mask].groupby("__period")["ts_code"].nunique()
+        post_fill.loc[post_all_mask].groupby("__period")["symbol"].nunique()
     )
     period_table = period_table.fillna(0).astype(int).reset_index()
     period_table = period_table.sort_values("__period").reset_index(drop=True)
@@ -520,7 +521,7 @@ def _estimate_trainable_pit_coverage(
         "missing_features_considered": len(missing_features),
         "indicator_features_added": len(missing_features) if bool(settings["add_indicators"]) else 0,
         "active_rows": int(len(period_grid)),
-        "active_symbols": int(period_grid["ts_code"].nunique()),
+        "active_symbols": int(period_grid["symbol"].nunique()),
         "periods": int(period_table["period"].nunique()),
         "rows_with_all_selected_features_after_ffill": int(pre_all_mask.sum()),
         "rows_with_all_selected_features_after_missing_fill": int(post_all_mask.sum()),
@@ -837,7 +838,8 @@ def inspect_hk_pit_coverage(args) -> int:
     else:
         frame = pd.read_csv(fundamentals_file)
     frame = _normalize_frame_columns(frame)
-    if "trade_date" not in frame.columns or "ts_code" not in frame.columns:
+    frame = ensure_symbol_columns(frame, context=f"Fundamentals file {fundamentals_file.name}")
+    if "trade_date" not in frame.columns or "symbol" not in frame.columns:
         raise SystemExit(
             f"Fundamentals file must include trade_date and symbol/ts_code columns: {fundamentals_file}"
         )
@@ -848,8 +850,9 @@ def inspect_hk_pit_coverage(args) -> int:
     frame = frame.loc[valid_trade_date].copy()
     trade_dates = trade_dates.loc[valid_trade_date].dt.normalize()
     frame["trade_date"] = trade_dates
-    frame["ts_code"] = frame["ts_code"].astype(str).str.strip()
-    frame = frame.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+    frame["symbol"] = frame["symbol"].astype(str).str.strip()
+    frame = frame.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    frame = frame.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
     trade_dates = frame["trade_date"]
     available_columns = frame.columns.tolist()
 
@@ -892,25 +895,25 @@ def inspect_hk_pit_coverage(args) -> int:
     feature_frame = pd.DataFrame(feature_series, index=frame.index)
 
     total_rows = int(len(frame))
-    total_symbols = int(frame["ts_code"].nunique())
+    total_symbols = int(frame["symbol"].nunique())
     total_dates = int(trade_dates.nunique())
     quarter_labels = trade_dates.dt.to_period("Q").astype(str)
     total_quarters = int(pd.Index(quarter_labels).nunique())
-    date_counts = frame.groupby("trade_date")["ts_code"].nunique()
+    date_counts = frame.groupby("trade_date")["symbol"].nunique()
 
     if selected_features:
         complete_rows_mask = feature_frame.notna().all(axis=1)
     else:
         complete_rows_mask = pd.Series(True, index=frame.index)
     complete_rows = int(complete_rows_mask.sum())
-    complete_symbols = int(frame.loc[complete_rows_mask, "ts_code"].nunique())
+    complete_symbols = int(frame.loc[complete_rows_mask, "symbol"].nunique())
 
     quarter_latest = (
-        frame.loc[:, ["trade_date", "ts_code"]]
+        frame.loc[:, ["trade_date", "symbol"]]
         .assign(__quarter=quarter_labels)
         .join(feature_frame)
-        .sort_values(["__quarter", "ts_code", "trade_date"])
-        .groupby(["__quarter", "ts_code"], group_keys=False)
+        .sort_values(["__quarter", "symbol", "trade_date"])
+        .groupby(["__quarter", "symbol"], group_keys=False)
         .tail(1)
         .reset_index(drop=True)
     )
@@ -924,13 +927,13 @@ def inspect_hk_pit_coverage(args) -> int:
         else pd.Series(True, index=quarter_latest.index)
     )
     quarter_table = (
-        quarter_latest.groupby("__quarter")["ts_code"].nunique().rename("symbols_in_file").to_frame()
+        quarter_latest.groupby("__quarter")["symbol"].nunique().rename("symbols_in_file").to_frame()
     )
     quarter_table["symbols_with_any_selected_feature"] = (
-        quarter_latest.loc[quarter_any_mask].groupby("__quarter")["ts_code"].nunique()
+        quarter_latest.loc[quarter_any_mask].groupby("__quarter")["symbol"].nunique()
     )
     quarter_table["symbols_with_all_selected_features"] = (
-        quarter_latest.loc[quarter_complete_mask].groupby("__quarter")["ts_code"].nunique()
+        quarter_latest.loc[quarter_complete_mask].groupby("__quarter")["symbol"].nunique()
     )
     quarter_table = quarter_table.fillna(0).astype(int).reset_index().rename(columns={"__quarter": "quarter"})
     quarter_table = quarter_table.sort_values("quarter").reset_index(drop=True)
@@ -956,9 +959,9 @@ def inspect_hk_pit_coverage(args) -> int:
                 "feature": feature,
                 "nonnull_rows": int(mask.sum()),
                 "row_coverage_pct": round(float(mask.mean() * 100.0), 2),
-                "symbols_with_values": int(frame.loc[mask, "ts_code"].nunique()),
+                "symbols_with_values": int(frame.loc[mask, "symbol"].nunique()),
                 "symbol_coverage_pct": round(
-                    float(frame.loc[mask, "ts_code"].nunique() / total_symbols * 100.0) if total_symbols else 0.0,
+                    float(frame.loc[mask, "symbol"].nunique() / total_symbols * 100.0) if total_symbols else 0.0,
                     2,
                 ),
                 "quarters_with_values": quarters_with_values,

@@ -170,12 +170,12 @@ def _mirror_dated_dataset(
         symbol_metadata = dict(symbol_metadata)
         symbol_metadata["request_groups"] = dict(request_group_metadata)
 
-    request_ids_by_symbol = {group.ts_code: list(group.request_ids) for group in request_groups}
+    request_ids_by_symbol = {group.symbol: list(group.request_ids) for group in request_groups}
     primary_order_book_id_by_symbol = {
-        group.ts_code: (
+        group.symbol: (
             next((item for item in group.order_book_ids if str(item).strip()), None)
             or next((item for item in group.request_ids if str(item).strip()), None)
-            or _to_rqdata_symbol("hk", group.ts_code)
+            or _to_rqdata_symbol("hk", group.symbol)
         )
         for group in request_groups
     }
@@ -184,7 +184,7 @@ def _mirror_dated_dataset(
         for request_id in (*group.request_ids, *group.order_book_ids):
             text = str(request_id or "").strip()
             if text:
-                symbol_map[text] = group.ts_code
+                symbol_map[text] = group.symbol
 
     entries_by_symbol: dict[str, DatedMirrorEntry] = {}
     audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
@@ -220,7 +220,7 @@ def _mirror_dated_dataset(
             columns = symbol_frame.columns.tolist()
         _update_field_coverage(field_coverage, symbol_frame, fields=fields)
         audit_by_symbol[symbol] = _dated_audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=entry.order_book_id,
             status=record_status,
             attempts=attempts,
@@ -244,7 +244,7 @@ def _mirror_dated_dataset(
         error_text: str | None = None,
     ) -> None:
         audit_by_symbol[symbol] = _dated_audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=order_book_id,
             status=record_status,
             attempts=attempts,
@@ -440,7 +440,7 @@ def _mirror_dated_dataset(
         batch_symbols_written = 0
         batch_symbols_missing = 0
         for symbol in batch_symbols:
-            symbol_frame = prepared[prepared["ts_code"] == symbol].reset_index(drop=True)
+            symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
             if symbol_frame.empty:
                 batch_symbols_missing += 1
                 _record_non_entry(
@@ -558,7 +558,7 @@ def _mirror_dated_dataset(
             symbol_metadata=symbol_metadata,
             symbols_requested=symbols,
             entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
-            missing_symbols=[item.ts_code for item in audit_records if item.status == "missing_remote"],
+            missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
             start_date=start_date,
             end_date=end_date,
             date_column=date_column,
@@ -660,7 +660,7 @@ def _mirror_dataset(
             columns = symbol_frame.columns.tolist()
         _update_field_coverage(field_coverage, symbol_frame, fields=fields)
         audit_by_symbol[symbol] = _audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=entry.order_book_id,
             status=record_status,
             attempts=attempts,
@@ -684,7 +684,7 @@ def _mirror_dataset(
         error_text: str | None = None,
     ) -> None:
         audit_by_symbol[symbol] = _audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=order_book_id,
             status=record_status,
             attempts=attempts,
@@ -879,7 +879,7 @@ def _mirror_dataset(
         batch_symbols_missing = 0
         for order_book_id in batch_order_book_ids:
             symbol = symbol_map[order_book_id]
-            symbol_frame = prepared[prepared["ts_code"] == symbol].reset_index(drop=True)
+            symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
             if symbol_frame.empty:
                 batch_symbols_missing += 1
                 _record_non_entry(
@@ -997,7 +997,7 @@ def _mirror_dataset(
             symbol_metadata=symbol_metadata,
             symbols_requested=symbols,
             entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
-            missing_symbols=[item.ts_code for item in audit_records if item.status == "missing_remote"],
+            missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
             query_date=getattr(args, "date", None),
             start_quarter=args.start_quarter,
             end_quarter=args.end_quarter,

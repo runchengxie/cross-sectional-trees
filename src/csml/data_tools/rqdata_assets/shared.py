@@ -262,9 +262,9 @@ def _resolve_universe_by_date_columns(df: pd.DataFrame) -> tuple[str, str]:
     columns = {str(col).lower(): str(col) for col in df.columns}
     date_col = columns.get("trade_date") or columns.get("date") or columns.get("rebalance_date")
     symbol_col = (
-        columns.get("ts_code")
+        columns.get("symbol")
+        or columns.get("ts_code")
         or columns.get("stock_ticker")
-        or columns.get("symbol")
         or columns.get("order_book_id")
     )
     if not date_col or not symbol_col:
@@ -292,7 +292,7 @@ def _load_symbols_from_by_date(path_text: str | Path) -> list[str]:
     if selected_col and selected_col in df.columns:
         df = df[df[selected_col].map(_coerce_bool)].copy()
 
-    df = df.rename(columns={date_col: "trade_date", symbol_col: "ts_code"})
+    df = df.rename(columns={date_col: "trade_date", symbol_col: "symbol"})
     trade_date_text = df["trade_date"].astype(str).str.strip().str.replace(r"\.0+$", "", regex=True)
     digits_mask = trade_date_text.str.fullmatch(r"\d{8}")
     parsed = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
@@ -309,10 +309,10 @@ def _load_symbols_from_by_date(path_text: str | Path) -> list[str]:
         )
     df["trade_date"] = parsed
     df = df[df["trade_date"].notna()].copy()
-    df["ts_code"] = df["ts_code"].astype(str).str.strip()
-    df["ts_code"] = df["ts_code"].map(_normalize_hk_symbol)
-    df = df[df["ts_code"] != ""].copy()
-    return df["ts_code"].drop_duplicates().tolist()
+    df["symbol"] = df["symbol"].astype(str).str.strip()
+    df["symbol"] = df["symbol"].map(_normalize_hk_symbol)
+    df = df[df["symbol"] != ""].copy()
+    return df["symbol"].drop_duplicates().tolist()
 
 
 def _load_field_profile(profile_name: str) -> list[str]:

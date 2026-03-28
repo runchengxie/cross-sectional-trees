@@ -66,9 +66,15 @@ def compute_daily_slippage_metrics(frame: pd.DataFrame) -> pd.DataFrame:
         raise SystemExit(f"Intraday frame is missing required columns: {sorted(missing)}")
 
     work = frame.copy()
-    symbol_col = "ts_code" if "ts_code" in work.columns else "rq_order_book_id"
+    symbol_col = (
+        "symbol"
+        if "symbol" in work.columns
+        else "ts_code"
+        if "ts_code" in work.columns
+        else "rq_order_book_id"
+    )
     if symbol_col not in work.columns:
-        raise SystemExit("Intraday frame must contain ts_code or rq_order_book_id.")
+        raise SystemExit("Intraday frame must contain symbol, ts_code, or rq_order_book_id.")
     work["symbol"] = work[symbol_col].astype(str).str.upper()
     work["trade_datetime"] = pd.to_datetime(work["trade_datetime"], errors="coerce")
     work = work.dropna(subset=["trade_datetime", "symbol"]).copy()

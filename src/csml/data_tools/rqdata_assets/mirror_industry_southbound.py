@@ -115,7 +115,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
             columns = symbol_frame.columns.tolist()
         _update_field_coverage(field_coverage, symbol_frame, fields=fields)
         audit_by_symbol[symbol] = _dated_audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=entry.order_book_id,
             status=record_status,
             attempts=attempts,
@@ -136,7 +136,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
         error_text: str | None = None,
     ) -> None:
         audit_by_symbol[symbol] = _dated_audit_record(
-            ts_code=symbol,
+            symbol=symbol,
             order_book_id=order_book_id_by_symbol[symbol],
             status=record_status,
             attempts=attempts,
@@ -271,14 +271,14 @@ def mirror_hk_southbound(args, rqdatac) -> int:
 
                 rows = []
                 for order_book_id in list(payload or []):
-                    ts_code = _normalize_hk_symbol(order_book_id)
-                    if not ts_code or ts_code not in pending_symbol_set:
+                    symbol = _normalize_hk_symbol(order_book_id)
+                    if not symbol or symbol not in pending_symbol_set:
                         continue
                     rows.append(
                         {
                             "date": query_date,
-                            "ts_code": ts_code,
-                            "order_book_id": order_book_id_by_symbol[ts_code],
+                            "symbol": symbol,
+                            "order_book_id": order_book_id_by_symbol[symbol],
                             "trading_type": trading_type,
                             "eligible": 1,
                         }
@@ -286,7 +286,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                 prepared = _prepare_dated_asset_frame(
                     pd.DataFrame(
                         rows,
-                        columns=["date", "ts_code", "order_book_id", "trading_type", "eligible"],
+                        columns=["date", "symbol", "order_book_id", "trading_type", "eligible"],
                     ),
                     symbol_map=symbol_map,
                     date_column="date",
@@ -298,7 +298,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                         "date": query_date,
                         "trading_type": trading_type,
                         "rows": int(len(prepared)),
-                        "symbols": int(prepared["ts_code"].nunique()) if not prepared.empty else 0,
+                        "symbols": int(prepared["symbol"].nunique()) if not prepared.empty else 0,
                         "status": "completed",
                         "attempts": attempts,
                         "started_at": batch_started_at,
@@ -307,8 +307,8 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                 )
                 if prepared.empty:
                     continue
-                for symbol in prepared["ts_code"].drop_duplicates().tolist():
-                    symbol_frame = prepared[prepared["ts_code"] == symbol].reset_index(drop=True)
+                for symbol in prepared["symbol"].drop_duplicates().tolist():
+                    symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
                     if symbol_frame.empty:
                         continue
                     frames_by_symbol.setdefault(symbol, []).append(symbol_frame)
@@ -362,7 +362,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
             symbol_metadata=symbol_metadata,
             symbols_requested=symbols,
             entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
-            missing_symbols=[item.ts_code for item in audit_records if item.status == "missing_remote"],
+            missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
             start_date=start_date,
             end_date=end_date,
             date_column="date",
