@@ -520,12 +520,11 @@ def main(argv: list[str] | None = None) -> None:
 
         selected = select_liquid_symbols(liq, top_quantile)
         for order_book_id, metric in selected.items():
-            ts_code = normalize_hk_symbol(order_book_id)
+            symbol = normalize_hk_symbol(order_book_id)
             results.append(
                 {
                     "trade_date": reb_date.strftime("%Y%m%d"),
-                    "ts_code": ts_code,
-                    "stock_ticker": ts_code,
+                    "symbol": symbol,
                     "liq_metric": float(metric),
                     "selected": 1,
                 }
@@ -541,14 +540,14 @@ def main(argv: list[str] | None = None) -> None:
 
     if latest_out_path:
         latest_date = max(row["trade_date"] for row in results)
-        latest_symbols = sorted({row["ts_code"] for row in results if row["trade_date"] == latest_date})
+        latest_symbols = sorted({row["symbol"] for row in results if row["trade_date"] == latest_date})
         latest_out_path.parent.mkdir(parents=True, exist_ok=True)
         latest_out_path.write_text("\n".join(latest_symbols), encoding="utf-8")
         print(f"Wrote latest symbols ({latest_date}) -> {latest_out_path}")
 
     if write_meta and meta_out_path:
         counts = (
-            output_df.groupby("trade_date")["ts_code"].nunique().sort_index()
+            output_df.groupby("trade_date")["symbol"].nunique().sort_index()
             if not output_df.empty
             else pd.Series(dtype=int)
         )
@@ -577,7 +576,7 @@ def main(argv: list[str] | None = None) -> None:
                 "median": float(counts.median()) if not counts.empty else 0.0,
             },
             "total_rows": int(len(output_df)),
-            "unique_symbols": int(output_df["ts_code"].nunique()),
+            "unique_symbols": int(output_df["symbol"].nunique()),
             "out": str(out_path),
             "latest_out": str(latest_out_path) if latest_out_path else None,
             "meta_out": str(meta_out_path),

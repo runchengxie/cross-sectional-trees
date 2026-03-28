@@ -413,6 +413,8 @@ fundamentals:
 约定：
 
 - `provider_overlay` 目前只支持 `source=provider`。
+- provider / overlay 配置里的 canonical 标的键统一写 `symbol`；若原始列名还是 `ts_code`，请在 `column_map` 里写成 `symbol: ts_code`。
+- `fundamentals.symbol_param` 的 canonical 默认值也是 `symbol`。
 - 研究主链路内部以 `symbol` 为 canonical 标的列；旧配置里的 `column_map.ts_code` 仍然兼容。
 - 主 `fundamentals.file` 仍按原逻辑做按 `symbol` 的 `ffill`，适合 PIT 财报。
 - `provider_overlay` 按 `trade_date + symbol` 精确并到 daily panel，不做额外 `ffill`。

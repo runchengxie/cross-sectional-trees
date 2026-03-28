@@ -11,6 +11,7 @@ import pandas as pd
 import yaml
 
 from csml.data_providers import _cache_tag, _fundamentals_cache_file, normalize_market, resolve_provider
+from csml.data_tools.symbols import ensure_symbol_columns
 from csml.rebalance import get_rebalance_dates
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
@@ -56,6 +57,19 @@ def _normalize_trade_date(series: pd.Series) -> pd.Series:
 
 def _normalize_symbol(series: pd.Series) -> pd.Series:
     return series.astype(str).str.strip().str.upper()
+
+
+def _normalize_symbol_frame(frame: pd.DataFrame, *, label: str) -> pd.DataFrame:
+    frame = ensure_symbol_columns(frame, context=label).copy()
+    frame["trade_date"] = _normalize_trade_date(frame["trade_date"])
+    frame["symbol"] = _normalize_symbol(frame["symbol"])
+    if "valuation_trade_date" in frame.columns:
+        frame["valuation_trade_date"] = _normalize_trade_date(frame["valuation_trade_date"])
+    frame = frame.dropna(subset=["trade_date", "symbol"])
+    frame = frame.drop_duplicates(subset=["trade_date", "symbol"]).reset_index(drop=True)
+    frame = frame.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    frame = frame.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
+    return frame
 
 
 def _mapping_value(mapping: Mapping[str, object] | None, key: str) -> object:
@@ -157,18 +171,11 @@ def resolve_valuation_source(
 
 def load_eval_sample(path: Path) -> pd.DataFrame:
     frame = _read_frame(path)
-    required = {"trade_date", "ts_code"}
-    missing = required.difference(frame.columns)
-    if missing:
-        raise SystemExit(f"Scored file is missing required columns: {sorted(missing)}")
-    frame = frame.copy()
-    frame["trade_date"] = _normalize_trade_date(frame["trade_date"])
-    frame["ts_code"] = _normalize_symbol(frame["ts_code"])
-    frame = frame.dropna(subset=["trade_date", "ts_code"])
-    frame = frame.drop_duplicates(subset=["trade_date", "ts_code"]).reset_index(drop=True)
-    frame = frame.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+    if "trade_date" not in frame.columns:
+        raise SystemExit("Scored file is missing required column: trade_date")
+    frame = _normalize_symbol_frame(frame, label="scored file")
     if frame.empty:
-        raise SystemExit(f"Scored file has no valid trade_date/ts_code rows: {path}")
+        raise SystemExit(f"Scored file has no valid trade_date/symbol rows: {path}")
     return frame
 
 
@@ -200,29 +207,20 @@ def restrict_eval_sample_to_rebalance_dates(
             "Resolved sample_on_rebalance_dates=true, but no eval rows matched the "
             f"derived rebalance dates for frequency={rebalance_frequency}."
         )
-    return filtered.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+    return filtered.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
 
 
 def load_fundamentals_frame(path: Path) -> tuple[pd.DataFrame, list[str]]:
     frame = _read_frame(path)
-    required = {"trade_date", "ts_code"}
-    missing = required.difference(frame.columns)
-    if missing:
-        raise SystemExit(f"Fundamentals file is missing required columns: {sorted(missing)}")
-    frame = frame.copy()
-    frame["trade_date"] = _normalize_trade_date(frame["trade_date"])
-    frame["ts_code"] = _normalize_symbol(frame["ts_code"])
-    if "valuation_trade_date" in frame.columns:
-        frame["valuation_trade_date"] = _normalize_trade_date(frame["valuation_trade_date"])
+    if "trade_date" not in frame.columns:
+        raise SystemExit("Fundamentals file is missing required column: trade_date")
+    frame = _normalize_symbol_frame(frame, label="fundamentals file")
     provider_cols = [name for name in VALUATION_COLUMNS if name in frame.columns]
     if not provider_cols:
         raise SystemExit(
             "Fundamentals file does not contain any provider valuation columns: "
             f"{', '.join(VALUATION_COLUMNS)}"
         )
-    frame = frame.dropna(subset=["trade_date", "ts_code"])
-    frame = frame.drop_duplicates(subset=["trade_date", "ts_code"]).reset_index(drop=True)
-    frame = frame.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
     return frame, provider_cols
 
 
@@ -265,7 +263,7 @@ def load_provider_overlay_frame(
     tag = _cache_tag(data_cfg)
     overlay_frames: list[pd.DataFrame] = []
     cache_hits = 0
-    symbols = sorted(eval_sample["ts_code"].unique().tolist())
+    symbols = sorted(eval_sample["symbol"].unique().tolist())
     for symbol in symbols:
         cache_file = _fundamentals_cache_file(
             overlay_cache_dir,
@@ -289,23 +287,15 @@ def load_provider_overlay_frame(
             f"Checked {len(symbols)} symbols under {overlay_cache_dir} with window {start_date}..{end_date}; "
             "re-run the model first or point the audit to the same cache directory used by the run."
         )
-    frame = pd.concat(overlay_frames, ignore_index=True)
-    frame = frame.copy()
-    frame["trade_date"] = _normalize_trade_date(frame["trade_date"])
-    frame["ts_code"] = _normalize_symbol(frame["ts_code"])
+    frame = _normalize_symbol_frame(pd.concat(overlay_frames, ignore_index=True), label="provider overlay cache")
     provider_cols = [name for name in VALUATION_COLUMNS if name in frame.columns]
     if not provider_cols:
         raise SystemExit(
             "Provider overlay data does not contain any valuation columns: "
             f"{', '.join(VALUATION_COLUMNS)}"
         )
-    if "valuation_trade_date" in frame.columns:
-        frame["valuation_trade_date"] = _normalize_trade_date(frame["valuation_trade_date"])
-    else:
+    if "valuation_trade_date" not in frame.columns:
         frame["valuation_trade_date"] = frame["trade_date"]
-    frame = frame.dropna(subset=["trade_date", "ts_code"])
-    frame = frame.drop_duplicates(subset=["trade_date", "ts_code"]).reset_index(drop=True)
-    frame = frame.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
     frame.attrs["cache_symbol_hits"] = cache_hits
     frame.attrs["cache_symbol_total"] = len(symbols)
     return frame, provider_cols, overlay_cache_dir
@@ -318,25 +308,25 @@ def reconstruct_eval_valuation_panel(
     *,
     merge_mode: str,
 ) -> pd.DataFrame:
-    keep_cols = ["trade_date", "ts_code"] + provider_cols
+    keep_cols = ["trade_date", "symbol"] + provider_cols
     if "valuation_trade_date" in fundamentals.columns:
         keep_cols.append("valuation_trade_date")
-    right = fundamentals[keep_cols].copy().sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+    right = fundamentals[keep_cols].copy().sort_values(["symbol", "trade_date"]).reset_index(drop=True)
     right["fundamentals_trade_date"] = right["trade_date"]
 
     if merge_mode == "exact":
-        merged = eval_sample.merge(right, on=["trade_date", "ts_code"], how="left")
+        merged = eval_sample.merge(right, on=["trade_date", "symbol"], how="left")
     elif merge_mode == "backward_asof":
         provider_fill_cols = provider_cols + ["fundamentals_trade_date"]
         if "valuation_trade_date" in right.columns:
             provider_fill_cols.append("valuation_trade_date")
 
         right_groups = {
-            symbol: group.drop(columns=["ts_code"]).sort_values("trade_date").reset_index(drop=True)
-            for symbol, group in right.groupby("ts_code", sort=False)
+            symbol: group.drop(columns=["symbol"]).sort_values("trade_date").reset_index(drop=True)
+            for symbol, group in right.groupby("symbol", sort=False)
         }
         merged_parts: list[pd.DataFrame] = []
-        for symbol, left_group in eval_sample.groupby("ts_code", sort=False):
+        for symbol, left_group in eval_sample.groupby("symbol", sort=False):
             left_part = left_group.sort_values("trade_date").reset_index(drop=True)
             right_part = right_groups.get(symbol)
             if right_part is None or right_part.empty:
@@ -354,7 +344,7 @@ def reconstruct_eval_valuation_panel(
                 on="trade_date",
                 direction="backward",
             )
-            merged_part["ts_code"] = symbol
+            merged_part["symbol"] = symbol
             merged_parts.append(merged_part)
         merged = pd.concat(merged_parts, ignore_index=True)
     else:

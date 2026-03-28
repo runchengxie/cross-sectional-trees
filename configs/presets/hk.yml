@@ -24,7 +24,7 @@ data:
     ex_factors_dir: "artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest"
   column_map:
     trade_date: trade_date
-    ts_code: ts_code
+    symbol: ts_code
     close: close
     vol: volume
     amount: total_turnover
@@ -38,13 +38,13 @@ fundamentals:
     - "hk_total_market_val"
     - "pe_ratio_ttm"
     - "pb_ratio_ttm"
-  symbol_param: "ts_code"
+  symbol_param: "symbol"
   start_param: "start_date"
   end_param: "end_date"
   params: {}
   column_map:
     trade_date: trade_date
-    ts_code: ts_code
+    symbol: ts_code
     market_cap: hk_total_market_val
     pe_ttm: pe_ratio_ttm
     pb: pb_ratio_ttm

@@ -338,15 +338,10 @@ def _is_small_leading_calendar_gap(
     return 0 < gap_days <= int(max_gap_days)
 
 
-def _ensure_basic_symbol_aliases(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty or "symbol" not in df.columns:
+def _drop_legacy_symbol_aliases(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
         return df
-    out = df.copy()
-    if "ts_code" not in out.columns:
-        out["ts_code"] = out["symbol"]
-    if "stock_ticker" not in out.columns:
-        out["stock_ticker"] = out["symbol"]
-    return out
+    return df.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
 
 
 def _load_basic_rqdata(
@@ -394,7 +389,7 @@ def _load_basic_rqdata(
         df_basic = pd.DataFrame(rows)
         if "list_date" in df_basic.columns:
             df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
-        return _ensure_basic_symbol_aliases(
+        return _drop_legacy_symbol_aliases(
             ensure_symbol_columns(
                 df_basic,
                 context="RQData basic data",
@@ -417,8 +412,8 @@ def _load_basic_rqdata(
         context="RQData all instruments",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
-    df_basic = _ensure_basic_symbol_aliases(df_basic)
-    df_basic = df_basic[["symbol", "name", "list_date", "ts_code", "stock_ticker"]].copy()
+    df_basic = _drop_legacy_symbol_aliases(df_basic)
+    df_basic = df_basic[["symbol", "name", "list_date"]].copy()
     if "list_date" in df_basic.columns:
         df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
     return df_basic
@@ -471,6 +466,14 @@ def _infer_fundamental_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _force_symbol_value(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    out["symbol"] = str(symbol).strip()
+    return out
+
+
 def _standardize_fundamentals_frame(
     df: pd.DataFrame,
     column_map: Mapping[str, str],
@@ -486,9 +489,8 @@ def _standardize_fundamentals_frame(
         context="Fundamentals data",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
-    if "ts_code" not in df.columns:
-        df = df.copy()
-        df["ts_code"] = df["symbol"]
+    df = _force_symbol_value(df, symbol)
+    df = _drop_legacy_symbol_aliases(df)
     missing = [col for col in FUNDAMENTAL_REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         raise ValueError(f"Fundamentals data missing required columns: {missing}")
@@ -503,9 +505,6 @@ def _standardize_daily_frame(
 ) -> pd.DataFrame:
     df = _apply_column_map(df, _merge_column_map(market, data_cfg))
     df = _infer_missing_columns(df)
-    if "ts_code" not in df.columns and "symbol" in df.columns and "order_book_id" in df.columns:
-        df = df.copy()
-        df["ts_code"] = df["symbol"]
     if "symbol" not in df.columns:
         df = df.copy()
         df["symbol"] = symbol
@@ -514,10 +513,11 @@ def _standardize_daily_frame(
         context="Daily data",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
+    df = _force_symbol_value(df, symbol)
     missing = [col for col in REQUIRED_DAILY_COLUMNS if col not in df.columns]
     if missing:
         raise ValueError(f"Daily data missing required columns: {missing}")
-    return df
+    return _drop_legacy_symbol_aliases(df)
 
 
 def _resolve_local_path(path_text: object, *, label: str) -> Path | None:
@@ -772,14 +772,14 @@ def _load_basic_from_local_asset(
         context="Local RQData instruments file",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
-    work = _ensure_basic_symbol_aliases(work)
+    work = _drop_legacy_symbol_aliases(work)
     required = ["symbol", "name", "list_date"]
     missing = [column for column in required if column not in work.columns]
     if missing:
         raise SystemExit(
             f"Local RQData instruments file is missing required columns {missing}: {instruments_file}"
         )
-    work = work[["symbol", "name", "list_date", "ts_code", "stock_ticker"]].copy()
+    work = work[["symbol", "name", "list_date"]].copy()
     work["symbol"] = work["symbol"].astype(str).str.strip()
     work["list_date"] = pd.to_datetime(work["list_date"], errors="coerce").dt.strftime("%Y%m%d")
     if symbols:
@@ -835,12 +835,13 @@ def fetch_daily(
         if cache_file.exists():
             cached = pd.read_parquet(cache_file)
             if cached is None or cached.empty:
-                return cached
+                return _drop_legacy_symbol_aliases(cached)
             cached = ensure_symbol_columns(
                 cached,
                 context="Cached daily data",
                 priority=PROVIDER_SYMBOL_PRIORITY,
             )
+            cached = _force_symbol_value(cached, symbol)
             cached, cache_changed = _augment_daily_frame(
                 cached,
                 market=market,
@@ -850,7 +851,7 @@ def fetch_daily(
             if cache_changed:
                 cached = cached.copy(deep=True)
                 cached.to_parquet(cache_file)
-            return cached
+            return _drop_legacy_symbol_aliases(cached)
         df = _fetch_daily_from_provider(provider, market, symbol, start_date, end_date, client, data_cfg)
         if df is None or df.empty:
             return df
@@ -877,6 +878,7 @@ def fetch_daily(
                 context="Cached daily data",
                 priority=PROVIDER_SYMBOL_PRIORITY,
             )
+            cached = _force_symbol_value(cached, symbol)
         if cached is not None and not cached.empty and "trade_date" in cached.columns:
             trade_dates = sorted(cached["trade_date"].unique().tolist())
             if not trade_dates:
@@ -945,6 +947,7 @@ def fetch_daily(
         context="Daily data",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
+    merged = _force_symbol_value(merged, symbol)
     merged, augment_changed = _augment_daily_frame(
         merged,
         market=market,
@@ -960,7 +963,7 @@ def fetch_daily(
         merged.to_parquet(cache_file)
 
     mask = (merged["trade_date"] >= start_date) & (merged["trade_date"] <= end_date)
-    return merged.loc[mask].copy()
+    return _drop_legacy_symbol_aliases(merged.loc[mask].copy())
 
 
 def load_basic(
@@ -979,10 +982,12 @@ def load_basic(
         cached = pd.read_parquet(cache_file)
         if cached is None or cached.empty:
             return cached
-        return ensure_symbol_columns(
-            cached,
-            context="Cached basic data",
-            priority=PROVIDER_SYMBOL_PRIORITY,
+        return _drop_legacy_symbol_aliases(
+            ensure_symbol_columns(
+                cached,
+                context="Cached basic data",
+                priority=PROVIDER_SYMBOL_PRIORITY,
+            )
         )
 
     if provider != "rqdata":
@@ -993,10 +998,12 @@ def load_basic(
 
     if df_basic is None or df_basic.empty:
         return df_basic
-    df_basic = ensure_symbol_columns(
-        df_basic,
-        context="Basic data",
-        priority=PROVIDER_SYMBOL_PRIORITY,
+    df_basic = _drop_legacy_symbol_aliases(
+        ensure_symbol_columns(
+            df_basic,
+            context="Basic data",
+            priority=PROVIDER_SYMBOL_PRIORITY,
+        )
     )
 
     if symbols:
@@ -1047,10 +1054,8 @@ def fetch_fundamentals(
             context="Cached fundamentals data",
             priority=PROVIDER_SYMBOL_PRIORITY,
         )
-        if "ts_code" not in cached.columns:
-            cached = cached.copy()
-            cached["ts_code"] = cached["symbol"]
-        return cached
+        cached = _force_symbol_value(cached, symbol)
+        return _drop_legacy_symbol_aliases(cached)
 
     if provider != "rqdata":
         raise ValueError(

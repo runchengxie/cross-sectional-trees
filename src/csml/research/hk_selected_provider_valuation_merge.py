@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from csml.config_utils import resolve_pipeline_config
 from csml import data_providers
+from csml.data_tools.symbols import ensure_symbol_columns
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 
@@ -46,6 +47,16 @@ def _normalize_trade_date_dt(series: pd.Series) -> pd.Series:
 
 def _normalize_symbol(series: pd.Series) -> pd.Series:
     return series.astype(str).str.strip().str.upper()
+
+
+def _normalize_symbol_frame(frame: pd.DataFrame, *, label: str) -> pd.DataFrame:
+    frame = ensure_symbol_columns(frame, context=label).copy()
+    frame["trade_date"] = _normalize_trade_date(frame["trade_date"])
+    frame["symbol"] = _normalize_symbol(frame["symbol"])
+    frame = frame.dropna(subset=["trade_date", "symbol"])
+    frame = frame.drop_duplicates(subset=["trade_date", "symbol"]).reset_index(drop=True)
+    frame = frame.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    return frame
 
 
 def load_provider_config(path_text: str) -> dict:
@@ -96,16 +107,9 @@ def load_pit_frame(path: Path) -> pd.DataFrame:
     if not path.exists():
         raise SystemExit(f"PIT fundamentals file not found: {path}")
     frame = pd.read_parquet(path)
-    required_cols = {"trade_date", "ts_code"}
-    missing = required_cols.difference(frame.columns)
-    if missing:
-        raise SystemExit(f"PIT fundamentals file is missing columns: {sorted(missing)}")
-    frame = frame.copy()
-    frame["trade_date"] = _normalize_trade_date(frame["trade_date"])
-    frame["ts_code"] = _normalize_symbol(frame["ts_code"])
-    frame = frame.dropna(subset=["trade_date", "ts_code"])
-    frame = frame.drop_duplicates(subset=["trade_date", "ts_code"]).reset_index(drop=True)
-    return frame
+    if "trade_date" not in frame.columns:
+        raise SystemExit("PIT fundamentals file is missing required column: trade_date")
+    return _normalize_symbol_frame(frame, label="PIT fundamentals file")
 
 
 def fetch_provider_frame(
@@ -141,11 +145,7 @@ def fetch_provider_frame(
         raise SystemExit("No provider valuation data was fetched.")
 
     provider_df = pd.concat(frames, ignore_index=True)
-    provider_df["trade_date"] = _normalize_trade_date(provider_df["trade_date"])
-    provider_df["ts_code"] = _normalize_symbol(provider_df["ts_code"])
-    provider_df = provider_df.dropna(subset=["trade_date", "ts_code"])
-    provider_df = provider_df.drop_duplicates(subset=["trade_date", "ts_code"]).reset_index(drop=True)
-    return provider_df
+    return _normalize_symbol_frame(provider_df, label="provider valuation frame")
 
 
 def _value_columns_for_merge(
@@ -154,9 +154,9 @@ def _value_columns_for_merge(
     *,
     extra_output_cols: list[str] | None = None,
 ) -> list[str]:
-    value_cols = [col for col in provider_df.columns if col not in {"trade_date", "ts_code"}]
+    value_cols = [col for col in provider_df.columns if col not in {"trade_date", "symbol"}]
     output_cols = value_cols + list(extra_output_cols or [])
-    collisions = sorted((set(output_cols) & set(pit_df.columns)) - {"trade_date", "ts_code"})
+    collisions = sorted((set(output_cols) & set(pit_df.columns)) - {"trade_date", "symbol"})
     if collisions:
         raise SystemExit(
             "Provider valuation columns already exist in PIT file: "
@@ -168,8 +168,8 @@ def _value_columns_for_merge(
 def _merge_frames_exact(pit_df: pd.DataFrame, provider_df: pd.DataFrame) -> pd.DataFrame:
     value_cols = _value_columns_for_merge(pit_df, provider_df)
     merged = pit_df.merge(
-        provider_df[["trade_date", "ts_code"] + value_cols],
-        on=["trade_date", "ts_code"],
+        provider_df[["trade_date", "symbol"] + value_cols],
+        on=["trade_date", "symbol"],
         how="left",
     )
     return merged
@@ -194,9 +194,9 @@ def _merge_frames_asof(
     provider_work[source_date_col] = _normalize_trade_date(provider_work["trade_date"])
 
     merged_groups: list[pd.DataFrame] = []
-    for ts_code, pit_group in pit_work.groupby("ts_code", sort=False):
+    for symbol, pit_group in pit_work.groupby("symbol", sort=False):
         pit_group = pit_group.sort_values("trade_date_dt").copy()
-        provider_group = provider_work[provider_work["ts_code"] == ts_code].copy()
+        provider_group = provider_work[provider_work["symbol"] == symbol].copy()
         if provider_group.empty:
             pit_group[source_date_col] = pd.NA
             pit_group[age_col] = pd.NA
@@ -208,11 +208,11 @@ def _merge_frames_asof(
         merged_group = pd.merge_asof(
             pit_group,
             provider_group[
-                ["provider_trade_date_dt", source_date_col, "ts_code"] + value_cols
+                ["provider_trade_date_dt", source_date_col, "symbol"] + value_cols
             ],
             left_on="trade_date_dt",
             right_on="provider_trade_date_dt",
-            by="ts_code",
+            by="symbol",
             direction="backward",
         )
         merged_group[age_col] = (
@@ -308,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
     client = init_rqdatac(cfg, args.username, args.password)
 
     pit_df = load_pit_frame(pit_path)
-    symbols = sorted(pit_df["ts_code"].dropna().unique().tolist())
+    symbols = sorted(pit_df["symbol"].dropna().unique().tolist())
     start_date = str(pit_df["trade_date"].min())
     end_date = str(pit_df["trade_date"].max())
 
@@ -336,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     merged.to_parquet(output_path, index=False)
 
-    added_cols = [col for col in provider_df.columns if col not in {"trade_date", "ts_code"}]
+    added_cols = [col for col in provider_df.columns if col not in {"trade_date", "symbol"}]
     non_null_rows = int(merged[added_cols].notna().any(axis=1).sum()) if added_cols else 0
     print(f"Wrote merged parquet: {output_path}")
     print(f"Rows: {len(merged)}")

@@ -35,7 +35,7 @@ def test_audit_provider_overlay_uses_cached_frames_without_provider_init(tmp_pat
         "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
         "column_map": {
             "trade_date": "trade_date",
-            "ts_code": "ts_code",
+            "symbol": "ts_code",
             "market_cap": "hk_total_market_val",
             "pe_ttm": "pe_ratio_ttm",
             "pb": "pb_ratio_ttm",

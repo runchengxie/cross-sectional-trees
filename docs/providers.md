@@ -60,7 +60,7 @@ fundamentals:
     - pb_ratio_ttm
   column_map:
     trade_date: trade_date
-    ts_code: ts_code
+    symbol: ts_code
     market_cap: hk_total_market_val
     pe_ttm: pe_ratio_ttm
     pb: pb_ratio_ttm
@@ -71,6 +71,8 @@ fundamentals:
 * `hk_total_market_val`
 * `pe_ratio_ttm`
 * `pb_ratio_ttm`
+
+如果 provider 原始返回列还是 `ts_code`，配置里应写 `column_map.symbol: ts_code`；不要再把 `ts_code` 当成主研究链路的 canonical 列名。
 
 ## `fundamentals.provider_overlay`
 

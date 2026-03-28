@@ -240,7 +240,7 @@ def test_fetch_daily_reads_from_local_asset_dir_without_remote_fetch(tmp_path, m
             "cache_refresh_on_hit": False,
             "column_map": {
                 "trade_date": "trade_date",
-                "ts_code": "ts_code",
+                "symbol": "ts_code",
                 "close": "close",
                 "vol": "volume",
                 "amount": "total_turnover",
@@ -294,7 +294,7 @@ def test_fetch_daily_local_asset_prefers_ts_code_over_order_book_id(tmp_path, mo
             "cache_refresh_on_hit": False,
             "column_map": {
                 "trade_date": "trade_date",
-                "ts_code": "ts_code",
+                "symbol": "ts_code",
                 "close": "close",
                 "vol": "volume",
                 "amount": "total_turnover",
@@ -306,7 +306,7 @@ def test_fetch_daily_local_asset_prefers_ts_code_over_order_book_id(tmp_path, mo
     )
 
     assert result["symbol"].tolist() == [symbol, symbol]
-    assert result["ts_code"].tolist() == [symbol, symbol]
+    assert "ts_code" not in result.columns
 
 
 def test_fetch_daily_derives_tr_close_from_local_ex_factors(tmp_path, monkeypatch):
@@ -353,7 +353,7 @@ def test_fetch_daily_derives_tr_close_from_local_ex_factors(tmp_path, monkeypatc
             "cache_refresh_on_hit": False,
             "column_map": {
                 "trade_date": "trade_date",
-                "ts_code": "ts_code",
+                "symbol": "ts_code",
                 "close": "close",
                 "vol": "volume",
                 "amount": "total_turnover",

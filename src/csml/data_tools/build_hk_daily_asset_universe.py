@@ -204,8 +204,6 @@ def build_universe_frame(
                 {
                     "trade_date": liq.index.strftime("%Y%m%d"),
                     "symbol": symbol,
-                    "stock_ticker": symbol,
-                    "ts_code": symbol,
                     "liq_metric": liq.astype(float).to_numpy(),
                     "selected": 1,
                 }

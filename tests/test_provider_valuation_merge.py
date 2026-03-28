@@ -34,7 +34,7 @@ def _hk_factor_frame(order_book_id: str, market_caps: list[float]) -> pd.DataFra
     )
 
 
-def test_fetch_provider_frame_preserves_ts_code_from_real_fundamentals_fetch(tmp_path):
+def test_fetch_provider_frame_normalizes_to_symbol_from_real_fundamentals_fetch(tmp_path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     client = _FakeRQDataClient(
@@ -54,7 +54,7 @@ def test_fetch_provider_frame_preserves_ts_code_from_real_fundamentals_fetch(tmp
             "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
             "column_map": {
                 "trade_date": "trade_date",
-                "ts_code": "ts_code",
+                "symbol": "ts_code",
                 "market_cap": "hk_total_market_val",
                 "pe_ttm": "pe_ratio_ttm",
                 "pb": "pb_ratio_ttm",
@@ -69,7 +69,7 @@ def test_fetch_provider_frame_preserves_ts_code_from_real_fundamentals_fetch(tmp
         cache_dir=cache_dir,
         cfg=cfg,
         client=client,
-    ).sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+    ).sort_values(["symbol", "trade_date"]).reset_index(drop=True)
 
     assert client.calls == [
         (
@@ -93,12 +93,13 @@ def test_fetch_provider_frame_preserves_ts_code_from_real_fundamentals_fetch(tmp
         "20250102",
         "20250103",
     ]
-    assert provider_df["ts_code"].tolist() == [
+    assert provider_df["symbol"].tolist() == [
         "00005.HK",
         "00005.HK",
         "00011.HK",
         "00011.HK",
     ]
+    assert "ts_code" not in provider_df.columns
     assert {"market_cap", "pe_ttm", "pb"}.issubset(provider_df.columns)
 
 
@@ -106,14 +107,14 @@ def test_merge_frames_asof_uses_latest_provider_row_per_symbol():
     pit_df = pd.DataFrame(
         {
             "trade_date": ["20250320", "20250410", "20250320", "20250410", "20250320"],
-            "ts_code": ["00005.HK", "00005.HK", "00011.HK", "00011.HK", "00012.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK", "00011.HK", "00012.HK"],
             "revenue": [100.0, 130.0, 200.0, 220.0, 50.0],
         }
     )
     provider_df = pd.DataFrame(
         {
             "trade_date": ["20250318", "20250409", "20250319"],
-            "ts_code": ["00005.HK", "00005.HK", "00011.HK"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK"],
             "market_cap": [1000.0, 1100.0, 1500.0],
             "pe_ttm": [8.0, 8.5, 10.0],
             "pb": [1.1, 1.15, 1.4],
@@ -121,13 +122,13 @@ def test_merge_frames_asof_uses_latest_provider_row_per_symbol():
     )
 
     merged = MERGE_SCRIPT.merge_frames(pit_df, provider_df, merge_mode="asof")
-    merged = merged.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+    merged = merged.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
 
-    row_00005_report = merged[(merged["ts_code"] == "00005.HK") & (merged["trade_date"] == "20250320")]
-    row_00005_next = merged[(merged["ts_code"] == "00005.HK") & (merged["trade_date"] == "20250410")]
-    row_00011_report = merged[(merged["ts_code"] == "00011.HK") & (merged["trade_date"] == "20250320")]
-    row_00011_next = merged[(merged["ts_code"] == "00011.HK") & (merged["trade_date"] == "20250410")]
-    row_missing = merged[(merged["ts_code"] == "00012.HK") & (merged["trade_date"] == "20250320")]
+    row_00005_report = merged[(merged["symbol"] == "00005.HK") & (merged["trade_date"] == "20250320")]
+    row_00005_next = merged[(merged["symbol"] == "00005.HK") & (merged["trade_date"] == "20250410")]
+    row_00011_report = merged[(merged["symbol"] == "00011.HK") & (merged["trade_date"] == "20250320")]
+    row_00011_next = merged[(merged["symbol"] == "00011.HK") & (merged["trade_date"] == "20250410")]
+    row_missing = merged[(merged["symbol"] == "00012.HK") & (merged["trade_date"] == "20250320")]
 
     assert row_00005_report["market_cap"].iloc[0] == pytest.approx(1000.0)
     assert row_00005_report["valuation_trade_date"].iloc[0] == "20250318"

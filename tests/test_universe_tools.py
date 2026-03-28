@@ -76,7 +76,7 @@ def test_select_liquid_symbols_keeps_all_when_top_quantile_zero():
     assert selected.tolist() == [30.0, 20.0, 10.0]
 
 
-def test_build_hk_daily_asset_universe_outputs_symbol_aliases(tmp_path):
+def test_build_hk_daily_asset_universe_outputs_symbol_only(tmp_path):
     asset_dir = tmp_path / "daily_assets"
     data_dir = asset_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -111,15 +111,11 @@ def test_build_hk_daily_asset_universe_outputs_symbol_aliases(tmp_path):
     assert universe.columns.tolist() == [
         "trade_date",
         "symbol",
-        "stock_ticker",
-        "ts_code",
         "liq_metric",
         "selected",
     ]
     assert universe["trade_date"].tolist() == ["20200105", "20200105"]
     assert universe["symbol"].tolist() == ["AAA.HK", "BBB.HK"]
-    assert universe["stock_ticker"].tolist() == ["AAA.HK", "BBB.HK"]
-    assert universe["ts_code"].tolist() == ["AAA.HK", "BBB.HK"]
     assert universe["liq_metric"].tolist() == [35.0, 25.0]
 
 

@@ -43,7 +43,7 @@ def test_rqdata_provider_fetch_hk_fundamentals_real_account(tmp_path):
             "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
             "column_map": {
                 "trade_date": "trade_date",
-                "ts_code": "ts_code",
+                "symbol": "ts_code",
                 "market_cap": "hk_total_market_val",
                 "pe_ttm": "pe_ratio_ttm",
                 "pb": "pb_ratio_ttm",
@@ -52,4 +52,4 @@ def test_rqdata_provider_fetch_hk_fundamentals_real_account(tmp_path):
     )
     assert isinstance(frame, pd.DataFrame)
     assert not frame.empty
-    assert {"trade_date", "ts_code", "market_cap", "pe_ttm", "pb"}.issubset(frame.columns)
+    assert {"trade_date", "symbol", "market_cap", "pe_ttm", "pb"}.issubset(frame.columns)

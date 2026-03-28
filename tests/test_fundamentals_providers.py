@@ -42,7 +42,7 @@ def test_fetch_fundamentals_rqdata_hk_provider_standardizes_and_caches(tmp_path)
         "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
         "column_map": {
             "trade_date": "trade_date",
-            "ts_code": "ts_code",
+            "symbol": "ts_code",
             "market_cap": "hk_total_market_val",
             "pe_ttm": "pe_ratio_ttm",
             "pb": "pb_ratio_ttm",
@@ -81,7 +81,8 @@ def test_fetch_fundamentals_rqdata_hk_provider_standardizes_and_caches(tmp_path)
     ]
     assert first.equals(second)
     assert first["trade_date"].tolist() == ["20250102", "20250103"]
-    assert first["ts_code"].tolist() == ["00005.HK", "00005.HK"]
+    assert first["symbol"].tolist() == ["00005.HK", "00005.HK"]
+    assert "ts_code" not in first.columns
     assert {"market_cap", "pe_ttm", "pb"}.issubset(first.columns)
     assert len(list(cache_dir.glob("hk_rqdata_fundamentals_*.parquet"))) == 1
 
@@ -98,7 +99,7 @@ def test_fetch_fundamentals_cache_key_tracks_field_config(tmp_path):
         "endpoint": "get_factor",
         "column_map": {
             "trade_date": "trade_date",
-            "ts_code": "ts_code",
+            "symbol": "ts_code",
             "market_cap": "hk_total_market_val",
         },
     }

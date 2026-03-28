@@ -20,7 +20,7 @@ data:
     fields: ["close", "volume", "total_turnover"]
   column_map:
     trade_date: trade_date
-    ts_code: ts_code
+    symbol: ts_code
     close: close
     vol: volume
     amount: total_turnover
