@@ -65,8 +65,8 @@ def _resolve_intraday_symbol_series(frame: pd.DataFrame) -> pd.Series:
         if column in frame.columns:
             return frame[column]
     raise SystemExit(
-        "Intraday frame is missing canonical symbol column. "
-        "Accepted legacy aliases: ts_code, rq_order_book_id, order_book_id."
+        "Intraday frame is missing a canonical symbol column. "
+        "Legacy aliases ts_code, rq_order_book_id, and order_book_id remain accepted."
     )
 
 

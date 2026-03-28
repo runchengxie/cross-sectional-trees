@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from csml.research.hk_intraday_download import flatten_intraday_payload, normalize_hk_symbols
 from csml.research.hk_intraday_slippage_report import (
@@ -109,6 +110,21 @@ def test_compute_daily_slippage_metrics_accepts_rq_order_book_id_and_normalizes_
     daily = compute_daily_slippage_metrics(frame)
 
     assert daily["symbol"].tolist() == ["00700.HK"]
+
+
+def test_compute_daily_slippage_metrics_rejects_missing_symbol_aliases_with_symbol_first_message():
+    frame = pd.DataFrame(
+        {
+            "trade_datetime": [pd.Timestamp("2026-03-26 09:35:00")],
+            "open": [100.0],
+            "close": [100.5],
+            "volume": [10.0],
+            "amount": [1_000.0],
+        }
+    )
+
+    with pytest.raises(SystemExit, match="missing a canonical symbol column"):
+        compute_daily_slippage_metrics(frame)
 
 
 def test_summarize_slippage_metrics_and_liquidity_buckets():

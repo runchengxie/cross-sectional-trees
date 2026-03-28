@@ -117,7 +117,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 * `manifest.yml` 的 `status` 会记录本次镜像是否完整完成。
 * 这类镜像目录供下游项目复用，不属于 `artifacts/cache/` 的 query cache。
-* 对 RQData 来说，原生标识是 `order_book_id`；raw asset 新输出默认也统一写 `symbol`。旧快照里的 `ts_code` 仍会在读取时自动兼容到 `symbol`。
+* 对 RQData 来说，原生标识是 `order_book_id`；raw asset 新输出默认也统一写 canonical `symbol`。旧快照里的 `ts_code` 仍会在读取时自动兼容到 `symbol`。
 * 本地 merge / patch 生成的新快照也遵循同一口径：输出 parquet 和 `manifest.yml -> columns` 会归一成 `symbol`，不再把 `ts_code` 继续写回新产物。
 
 ## Metadata Catalog

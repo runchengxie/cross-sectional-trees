@@ -199,8 +199,8 @@ csml data materialize --name hk_pit_panel --preset pit-fundamentals --file artif
 
 说明：
 
-* `rqdata-daily`、`pit-fundamentals`、`industry-labels` 这些 preset 现在默认按 `symbol` 读取输入列。
-* 历史文件如果还保留 `ts_code` / `stock_ticker` / `order_book_id`，会自动兼容；需要显式指定时也可以继续传 `--symbol-col ts_code`。
+* `rqdata-daily`、`pit-fundamentals`、`industry-labels` 这些 preset 现在默认按 canonical `symbol` 读取输入列。
+* 历史文件如果还保留 `ts_code` / `stock_ticker` / `order_book_id`，会自动兼容并归一到 `symbol`；需要显式指定时也可以继续传 `--symbol-col ts_code`。
 
 默认输出根目录：
 

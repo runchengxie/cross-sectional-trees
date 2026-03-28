@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from csml.research.hk_intraday_download import _read_symbol_file, build_parser
 
@@ -50,3 +51,11 @@ def test_read_symbol_file_normalizes_legacy_hk_symbol_columns(tmp_path):
     out = _read_symbol_file(path)
 
     assert out == ["00700.HK", "00005.HK"]
+
+
+def test_read_symbol_file_rejects_missing_symbol_aliases_with_symbol_first_message(tmp_path):
+    path = tmp_path / "symbols.csv"
+    pd.DataFrame({"ticker": ["00005.HK"]}).to_csv(path, index=False)
+
+    with pytest.raises(SystemExit, match="Expected a canonical symbol column; legacy aliases"):
+        _read_symbol_file(path)

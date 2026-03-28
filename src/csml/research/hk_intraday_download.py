@@ -74,7 +74,8 @@ def _read_symbol_file(path: Path) -> list[str]:
         else:
             raise SystemExit(
                 "Unsupported symbol file schema: "
-                f"{path}. Expected canonical symbol column, or legacy ts_code/stock_ticker/order_book_id."
+                f"{path}. Expected a canonical symbol column; legacy aliases "
+                "ts_code/stock_ticker/order_book_id remain accepted."
             )
     else:
         raise SystemExit(f"Unsupported symbol file format: {path}")
