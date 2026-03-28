@@ -5,7 +5,58 @@ from pathlib import Path
 
 import pandas as pd
 
-from csml.data_tools import rqdata_assets as _base
+from ...data_providers import _to_rqdata_symbol
+from .asset_io import (
+    _audit_record,
+    _chunked,
+    _dated_audit_record,
+    _ensure_requested_fields,
+    _field_coverage_template,
+    _load_existing_dated_entry,
+    _load_existing_entry,
+    _prepare_asset_frame,
+    _prepare_dated_asset_frame,
+    _update_field_coverage,
+    _write_audit_csv,
+    _write_dated_audit_csv,
+    _write_dated_symbol_frame,
+    _write_symbol_frame,
+)
+from .manifest_ops import (
+    _build_dated_manifest,
+    _build_manifest,
+    _validate_dated_resume_inputs,
+    _validate_resume_inputs,
+)
+from .models import (
+    DatedMirrorAuditRecord,
+    DatedMirrorEntry,
+    MirrorAuditRecord,
+    MirrorEntry,
+    MirrorFetchError,
+    MirrorQuotaError,
+)
+from .package_api import _package_attr
+from .shared import (
+    _normalize_absolute_date,
+    _path_mtime_iso,
+    _prepare_daily_output_dir,
+    _prepare_output_dir,
+    _timestamp_now,
+    _write_text_list,
+)
+
+
+DEFAULT_BATCH_SIZE = _package_attr("DEFAULT_BATCH_SIZE")
+DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
+DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
+DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
+DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
+_build_default_dated_request_groups = _package_attr("_build_default_dated_request_groups")
+_extract_invalid_field_name = _package_attr("_extract_invalid_field_name")
+_resolve_fields = _package_attr("_resolve_fields")
+_resolve_symbols = _package_attr("_resolve_symbols")
+_retry_fetch = _package_attr("_retry_fetch")
 
 
 def _collect_pending_mirror_items(
@@ -34,7 +85,7 @@ def _collect_pending_mirror_items(
                 record_status="skipped_existing",
                 attempts=0,
                 started_at_value=None,
-                finished_at_value=_base._path_mtime_iso(out_path),
+                finished_at_value=_path_mtime_iso(out_path),
             )
             continue
         pending_items.append(item)
@@ -53,7 +104,7 @@ def _run_partitioned_mirror_batches(
     on_finalize: Callable[[], None],
 ) -> None:
     try:
-        for batch_items in _base._chunked(pending_items, batch_size):
+        for batch_items in _chunked(pending_items, batch_size):
             process_batch(list(batch_items))
             if quota_blocked():
                 break
@@ -82,21 +133,21 @@ def _mirror_dated_dataset(
     resolve_request_groups=None,
     normalize_payload=None,
 ) -> int:
-    symbols, symbol_metadata = _base._resolve_symbols(args)
-    start_date = _base._normalize_absolute_date(args.start_date, label="--start-date")
-    end_date = _base._normalize_absolute_date(args.end_date, label="--end-date")
+    symbols, symbol_metadata = _resolve_symbols(args)
+    start_date = _normalize_absolute_date(args.start_date, label="--start-date")
+    end_date = _normalize_absolute_date(args.end_date, label="--end-date")
     if start_date > end_date:
         raise SystemExit("--start-date must be <= --end-date.")
 
     resume = bool(getattr(args, "resume", False))
     skip_existing = bool(getattr(args, "skip_existing", False) or resume)
-    max_attempts = max(1, int(getattr(args, "max_attempts", _base.DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
-    backoff_seconds = float(getattr(args, "backoff_seconds", _base.DEFAULT_MIRROR_BACKOFF_SECONDS))
+    max_attempts = max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
+    backoff_seconds = float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS))
     max_backoff_seconds = float(
-        getattr(args, "max_backoff_seconds", _base.DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
     )
-    output_dir = _base._prepare_daily_output_dir(
-        out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+    output_dir = _prepare_daily_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         dataset_name=dataset_name,
         start_date=start_date,
         end_date=end_date,
@@ -115,7 +166,7 @@ def _mirror_dated_dataset(
             args=args,
         )
     else:
-        request_groups, request_id_metadata, request_group_metadata = _base._build_default_dated_request_groups(symbols)
+        request_groups, request_id_metadata, request_group_metadata = _build_default_dated_request_groups(symbols)
     if request_group_metadata:
         symbol_metadata = dict(symbol_metadata)
         symbol_metadata["request_groups"] = dict(request_group_metadata)
@@ -125,7 +176,7 @@ def _mirror_dated_dataset(
         group.ts_code: (
             next((item for item in group.order_book_ids if str(item).strip()), None)
             or next((item for item in group.request_ids if str(item).strip()), None)
-            or _base._to_rqdata_symbol("hk", group.ts_code)
+            or _to_rqdata_symbol("hk", group.ts_code)
         )
         for group in request_groups
     }
@@ -136,12 +187,12 @@ def _mirror_dated_dataset(
             if text:
                 symbol_map[text] = group.ts_code
 
-    entries_by_symbol: dict[str, _base.DatedMirrorEntry] = {}
-    audit_by_symbol: dict[str, _base.DatedMirrorAuditRecord] = {}
+    entries_by_symbol: dict[str, DatedMirrorEntry] = {}
+    audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
     batches: list[dict[str, object]] = []
     columns: list[str] = []
-    field_coverage = _base._field_coverage_template(fields)
-    started_at = _base._timestamp_now()
+    field_coverage = _field_coverage_template(fields)
+    started_at = _timestamp_now()
     status = "completed"
     error: str | None = None
     result_code = 0
@@ -155,7 +206,7 @@ def _mirror_dated_dataset(
     def _record_entry(
         *,
         symbol: str,
-        entry: _base.DatedMirrorEntry,
+        entry: DatedMirrorEntry,
         symbol_frame: pd.DataFrame,
         record_status: str,
         attempts: int,
@@ -168,15 +219,15 @@ def _mirror_dated_dataset(
         entries_by_symbol[symbol] = entry
         if not columns and not symbol_frame.empty:
             columns = symbol_frame.columns.tolist()
-        _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
-        audit_by_symbol[symbol] = _base._dated_audit_record(
+        _update_field_coverage(field_coverage, symbol_frame, fields=fields)
+        audit_by_symbol[symbol] = _dated_audit_record(
             ts_code=symbol,
             order_book_id=entry.order_book_id,
             status=record_status,
             attempts=attempts,
             started_at=started_at_value,
             finished_at=finished_at_value,
-            file_mtime=_base._path_mtime_iso(entry.path),
+            file_mtime=_path_mtime_iso(entry.path),
             dropped_fields=dropped_fields,
             error=error_text,
             entry=entry,
@@ -193,7 +244,7 @@ def _mirror_dated_dataset(
         dropped_fields: Sequence[str] | None = None,
         error_text: str | None = None,
     ) -> None:
-        audit_by_symbol[symbol] = _base._dated_audit_record(
+        audit_by_symbol[symbol] = _dated_audit_record(
             ts_code=symbol,
             order_book_id=order_book_id,
             status=record_status,
@@ -216,31 +267,31 @@ def _mirror_dated_dataset(
         while True:
             label = f"{dataset_name} fetch failed for {', '.join(request_ids)}"
             try:
-                payload, attempts = _base._retry_fetch(
+                payload, attempts = _retry_fetch(
                     label,
                     lambda: fetch_batch(request_ids, active_fields, start_date, end_date),
                     max_attempts=max_attempts,
                     backoff_seconds=backoff_seconds,
                     max_backoff_seconds=max_backoff_seconds,
                 )
-            except _base.MirrorQuotaError as exc:
-                raise _base.MirrorQuotaError(str(exc), attempts=total_attempts + exc.attempts) from exc
-            except _base.MirrorFetchError as exc:
-                invalid_field = _base._extract_invalid_field_name(str(exc))
+            except MirrorQuotaError as exc:
+                raise MirrorQuotaError(str(exc), attempts=total_attempts + exc.attempts) from exc
+            except MirrorFetchError as exc:
+                invalid_field = _extract_invalid_field_name(str(exc))
                 total_attempts += exc.attempts
                 if invalid_field and invalid_field in active_fields and len(active_fields) > 1:
                     active_fields = [field for field in active_fields if field != invalid_field]
                     dropped_fields.append(invalid_field)
                     continue
-                raise _base.MirrorFetchError(str(exc), attempts=total_attempts) from exc
+                raise MirrorFetchError(str(exc), attempts=total_attempts) from exc
             total_attempts += attempts
-            prepared = _base._prepare_dated_asset_frame(
+            prepared = _prepare_dated_asset_frame(
                 _payload_to_frame(payload),
                 symbol_map=symbol_map,
                 date_column=date_column,
                 sort_columns=sort_columns,
             )
-            prepared = _base._ensure_requested_fields(prepared, fields)
+            prepared = _ensure_requested_fields(prepared, fields)
             return prepared, total_attempts, dropped_fields
 
     def _process_batch(batch_symbols: list[str]) -> None:
@@ -255,7 +306,7 @@ def _mirror_dated_dataset(
         ]
         if not batch_request_ids:
             return
-        batch_started_at = _base._timestamp_now()
+        batch_started_at = _timestamp_now()
         dropped_fields: list[str] = []
         try:
             if len(batch_symbols) == 1:
@@ -264,15 +315,15 @@ def _mirror_dated_dataset(
                 )
             else:
                 label = f"{dataset_name} fetch failed for {', '.join(batch_symbols)}"
-                payload, attempts = _base._retry_fetch(
+                payload, attempts = _retry_fetch(
                     label,
                     lambda: fetch_batch(batch_request_ids, fields, start_date, end_date),
                     max_attempts=max_attempts,
                     backoff_seconds=backoff_seconds,
                     max_backoff_seconds=max_backoff_seconds,
                 )
-        except _base.MirrorQuotaError as exc:
-            batch_finished_at = _base._timestamp_now()
+        except MirrorQuotaError as exc:
+            batch_finished_at = _timestamp_now()
             quota_blocked = True
             status = "stopped_quota"
             error = str(exc)
@@ -303,8 +354,8 @@ def _mirror_dated_dataset(
                 }
             )
             return
-        except _base.MirrorFetchError as exc:
-            batch_finished_at = _base._timestamp_now()
+        except MirrorFetchError as exc:
+            batch_finished_at = _timestamp_now()
             if len(batch_symbols) > 1:
                 batches.append(
                     {
@@ -351,14 +402,14 @@ def _mirror_dated_dataset(
             result_code = max(result_code, 1)
             return
 
-        batch_finished_at = _base._timestamp_now()
-        prepared = _base._prepare_dated_asset_frame(
+        batch_finished_at = _timestamp_now()
+        prepared = _prepare_dated_asset_frame(
             _payload_to_frame(payload),
             symbol_map=symbol_map,
             date_column=date_column,
             sort_columns=sort_columns,
         )
-        prepared = _base._ensure_requested_fields(prepared, fields)
+        prepared = _ensure_requested_fields(prepared, fields)
         if prepared.empty:
             for symbol in batch_symbols:
                 _record_non_entry(
@@ -403,7 +454,7 @@ def _mirror_dated_dataset(
                     dropped_fields=dropped_fields,
                 )
                 continue
-            entry = _base._write_dated_symbol_frame(data_dir, symbol_frame, date_column=date_column)
+            entry = _write_dated_symbol_frame(data_dir, symbol_frame, date_column=date_column)
             _record_entry(
                 symbol=symbol,
                 entry=entry,
@@ -429,7 +480,7 @@ def _mirror_dated_dataset(
         )
 
     if resume:
-        _base._validate_dated_resume_inputs(
+        _validate_dated_resume_inputs(
             output_dir=output_dir,
             dataset_name=dataset_name,
             fields=fields,
@@ -438,15 +489,15 @@ def _mirror_dated_dataset(
             end_date=end_date,
         )
 
-    _base._write_text_list(output_dir / "fields.txt", list(fields))
-    _base._write_text_list(output_dir / "symbols.txt", symbols)
+    _write_text_list(output_dir / "fields.txt", list(fields))
+    _write_text_list(output_dir / "symbols.txt", symbols)
 
     pending_symbols = _collect_pending_mirror_items(
         items=symbols,
         data_dir=data_dir,
         skip_existing=skip_existing,
         item_to_symbol=lambda symbol: symbol,
-        load_existing=lambda path: _base._load_existing_dated_entry(
+        load_existing=lambda path: _load_existing_dated_entry(
             path,
             date_column=date_column,
             fields=fields,
@@ -458,7 +509,7 @@ def _mirror_dated_dataset(
         return quota_blocked
 
     def _on_quota_blocked() -> None:
-        quota_finished_at = _base._timestamp_now()
+        quota_finished_at = _timestamp_now()
         for symbol in pending_symbols:
             if symbol in audit_by_symbol:
                 continue
@@ -484,7 +535,7 @@ def _mirror_dated_dataset(
         result_code = max(result_code, 1)
 
     def _on_finalize() -> None:
-        finished_at = _base._timestamp_now()
+        finished_at = _timestamp_now()
         for symbol in symbols:
             if symbol in audit_by_symbol:
                 continue
@@ -498,8 +549,8 @@ def _mirror_dated_dataset(
                 error_text=error or "missing audit status",
             )
         audit_records = [audit_by_symbol[symbol] for symbol in symbols]
-        _base._write_dated_audit_csv(audit_path, audit_records)
-        manifest = _base._build_dated_manifest(
+        _write_dated_audit_csv(audit_path, audit_records)
+        manifest = _build_dated_manifest(
             dataset_name=dataset_name,
             api_name=api_name,
             output_dir=output_dir,
@@ -523,11 +574,11 @@ def _mirror_dated_dataset(
             error=error,
             config_ref=getattr(args, "config", None),
         )
-        _base._write_manifest(output_dir / "manifest.yml", manifest)
+        _package_attr("_write_manifest")(output_dir / "manifest.yml", manifest)
 
     _run_partitioned_mirror_batches(
         pending_items=pending_symbols,
-        batch_size=getattr(args, "batch_size", _base.DEFAULT_BATCH_SIZE),
+        batch_size=getattr(args, "batch_size", DEFAULT_BATCH_SIZE),
         process_batch=_process_batch,
         quota_blocked=_quota_blocked,
         on_quota_blocked=_on_quota_blocked,
@@ -557,17 +608,17 @@ def _mirror_dataset(
     api_name: str,
     fetch_batch,
 ) -> int:
-    fields, field_metadata = _base._resolve_fields(args)
-    symbols, symbol_metadata = _base._resolve_symbols(args)
+    fields, field_metadata = _resolve_fields(args)
+    symbols, symbol_metadata = _resolve_symbols(args)
     resume = bool(getattr(args, "resume", False))
     skip_existing = bool(getattr(args, "skip_existing", False) or resume)
-    max_attempts = max(1, int(getattr(args, "max_attempts", _base.DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
-    backoff_seconds = float(getattr(args, "backoff_seconds", _base.DEFAULT_MIRROR_BACKOFF_SECONDS))
+    max_attempts = max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
+    backoff_seconds = float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS))
     max_backoff_seconds = float(
-        getattr(args, "max_backoff_seconds", _base.DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
     )
-    output_dir = _base._prepare_output_dir(
-        out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+    output_dir = _prepare_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         dataset_name=dataset_name,
         start_quarter=args.start_quarter,
         end_quarter=args.end_quarter,
@@ -579,14 +630,14 @@ def _mirror_dataset(
     data_dir.mkdir(parents=True, exist_ok=True)
     audit_path = output_dir / "audit.csv"
 
-    symbol_map = {_base._to_rqdata_symbol("hk", symbol): symbol for symbol in symbols}
+    symbol_map = {_to_rqdata_symbol("hk", symbol): symbol for symbol in symbols}
     order_book_ids = list(symbol_map.keys())
-    entries_by_symbol: dict[str, _base.MirrorEntry] = {}
-    audit_by_symbol: dict[str, _base.MirrorAuditRecord] = {}
+    entries_by_symbol: dict[str, MirrorEntry] = {}
+    audit_by_symbol: dict[str, MirrorAuditRecord] = {}
     batches: list[dict[str, object]] = []
     columns: list[str] = []
-    field_coverage = _base._field_coverage_template(fields)
-    started_at = _base._timestamp_now()
+    field_coverage = _field_coverage_template(fields)
+    started_at = _timestamp_now()
     status = "completed"
     error: str | None = None
     result_code = 0
@@ -595,7 +646,7 @@ def _mirror_dataset(
     def _record_entry(
         *,
         symbol: str,
-        entry: _base.MirrorEntry,
+        entry: MirrorEntry,
         symbol_frame: pd.DataFrame,
         record_status: str,
         attempts: int,
@@ -608,15 +659,15 @@ def _mirror_dataset(
         entries_by_symbol[symbol] = entry
         if not columns and not symbol_frame.empty:
             columns = symbol_frame.columns.tolist()
-        _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
-        audit_by_symbol[symbol] = _base._audit_record(
+        _update_field_coverage(field_coverage, symbol_frame, fields=fields)
+        audit_by_symbol[symbol] = _audit_record(
             ts_code=symbol,
             order_book_id=entry.order_book_id,
             status=record_status,
             attempts=attempts,
             started_at=started_at_value,
             finished_at=finished_at_value,
-            file_mtime=_base._path_mtime_iso(entry.path),
+            file_mtime=_path_mtime_iso(entry.path),
             dropped_fields=dropped_fields,
             error=error_text,
             entry=entry,
@@ -633,7 +684,7 @@ def _mirror_dataset(
         dropped_fields: Sequence[str] | None = None,
         error_text: str | None = None,
     ) -> None:
-        audit_by_symbol[symbol] = _base._audit_record(
+        audit_by_symbol[symbol] = _audit_record(
             ts_code=symbol,
             order_book_id=order_book_id,
             status=record_status,
@@ -655,7 +706,7 @@ def _mirror_dataset(
         while True:
             label = f"{dataset_name} fetch failed for {order_book_id}"
             try:
-                payload, attempts = _base._retry_fetch(
+                payload, attempts = _retry_fetch(
                     label,
                     lambda: fetch_batch(
                         [order_book_id],
@@ -669,26 +720,26 @@ def _mirror_dataset(
                     backoff_seconds=backoff_seconds,
                     max_backoff_seconds=max_backoff_seconds,
                 )
-            except _base.MirrorQuotaError as exc:
-                raise _base.MirrorQuotaError(str(exc), attempts=total_attempts + exc.attempts) from exc
-            except _base.MirrorFetchError as exc:
-                invalid_field = _base._extract_invalid_field_name(str(exc))
+            except MirrorQuotaError as exc:
+                raise MirrorQuotaError(str(exc), attempts=total_attempts + exc.attempts) from exc
+            except MirrorFetchError as exc:
+                invalid_field = _extract_invalid_field_name(str(exc))
                 total_attempts += exc.attempts
                 if invalid_field and invalid_field in active_fields and len(active_fields) > 1:
                     active_fields = [field for field in active_fields if field != invalid_field]
                     dropped_fields.append(invalid_field)
                     continue
-                raise _base.MirrorFetchError(str(exc), attempts=total_attempts) from exc
+                raise MirrorFetchError(str(exc), attempts=total_attempts) from exc
             total_attempts += attempts
-            prepared = _base._prepare_asset_frame(payload, symbol_map=symbol_map)
-            prepared = _base._ensure_requested_fields(prepared, fields)
+            prepared = _prepare_asset_frame(payload, symbol_map=symbol_map)
+            prepared = _ensure_requested_fields(prepared, fields)
             return prepared, total_attempts, dropped_fields
 
     def _process_batch(batch_order_book_ids: list[str]) -> None:
         nonlocal status, error, result_code, quota_blocked, columns
         if not batch_order_book_ids or quota_blocked:
             return
-        batch_started_at = _base._timestamp_now()
+        batch_started_at = _timestamp_now()
         dropped_fields: list[str] = []
         try:
             if len(batch_order_book_ids) == 1:
@@ -697,7 +748,7 @@ def _mirror_dataset(
                 )
             else:
                 label = f"{dataset_name} fetch failed for {', '.join(batch_order_book_ids)}"
-                payload, attempts = _base._retry_fetch(
+                payload, attempts = _retry_fetch(
                     label,
                     lambda: fetch_batch(
                         batch_order_book_ids,
@@ -711,8 +762,8 @@ def _mirror_dataset(
                     backoff_seconds=backoff_seconds,
                     max_backoff_seconds=max_backoff_seconds,
                 )
-        except _base.MirrorQuotaError as exc:
-            batch_finished_at = _base._timestamp_now()
+        except MirrorQuotaError as exc:
+            batch_finished_at = _timestamp_now()
             quota_blocked = True
             status = "stopped_quota"
             error = str(exc)
@@ -744,8 +795,8 @@ def _mirror_dataset(
                 }
             )
             return
-        except _base.MirrorFetchError as exc:
-            batch_finished_at = _base._timestamp_now()
+        except MirrorFetchError as exc:
+            batch_finished_at = _timestamp_now()
             if len(batch_order_book_ids) > 1:
                 batches.append(
                     {
@@ -793,9 +844,9 @@ def _mirror_dataset(
             result_code = max(result_code, 1)
             return
 
-        batch_finished_at = _base._timestamp_now()
-        prepared = _base._prepare_asset_frame(payload, symbol_map=symbol_map)
-        prepared = _base._ensure_requested_fields(prepared, fields)
+        batch_finished_at = _timestamp_now()
+        prepared = _prepare_asset_frame(payload, symbol_map=symbol_map)
+        prepared = _ensure_requested_fields(prepared, fields)
         if prepared.empty:
             for order_book_id in batch_order_book_ids:
                 symbol = symbol_map[order_book_id]
@@ -842,7 +893,7 @@ def _mirror_dataset(
                     dropped_fields=dropped_fields,
                 )
                 continue
-            entry = _base._write_symbol_frame(data_dir, symbol_frame)
+            entry = _write_symbol_frame(data_dir, symbol_frame)
             _record_entry(
                 symbol=symbol,
                 entry=entry,
@@ -868,7 +919,7 @@ def _mirror_dataset(
         )
 
     if resume:
-        _base._validate_resume_inputs(
+        _validate_resume_inputs(
             output_dir=output_dir,
             dataset_name=dataset_name,
             fields=fields,
@@ -879,15 +930,15 @@ def _mirror_dataset(
             query_date=getattr(args, "date", None),
         )
 
-    _base._write_text_list(output_dir / "fields.txt", fields)
-    _base._write_text_list(output_dir / "symbols.txt", symbols)
+    _write_text_list(output_dir / "fields.txt", fields)
+    _write_text_list(output_dir / "symbols.txt", symbols)
 
     pending_order_book_ids = _collect_pending_mirror_items(
         items=order_book_ids,
         data_dir=data_dir,
         skip_existing=skip_existing,
         item_to_symbol=lambda order_book_id: symbol_map[order_book_id],
-        load_existing=lambda path: _base._load_existing_entry(path, fields=fields),
+        load_existing=lambda path: _load_existing_entry(path, fields=fields),
         record_entry=_record_entry,
     )
 
@@ -895,7 +946,7 @@ def _mirror_dataset(
         return quota_blocked
 
     def _on_quota_blocked() -> None:
-        quota_finished_at = _base._timestamp_now()
+        quota_finished_at = _timestamp_now()
         for order_book_id in pending_order_book_ids:
             symbol = symbol_map[order_book_id]
             if symbol in audit_by_symbol:
@@ -922,7 +973,7 @@ def _mirror_dataset(
         result_code = max(result_code, 1)
 
     def _on_finalize() -> None:
-        finished_at = _base._timestamp_now()
+        finished_at = _timestamp_now()
         for order_book_id in order_book_ids:
             symbol = symbol_map[order_book_id]
             if symbol in audit_by_symbol:
@@ -937,8 +988,8 @@ def _mirror_dataset(
                 error_text=error or "missing audit status",
             )
         audit_records = [audit_by_symbol[symbol] for symbol in symbols]
-        _base._write_audit_csv(audit_path, audit_records)
-        manifest = _base._build_manifest(
+        _write_audit_csv(audit_path, audit_records)
+        manifest = _build_manifest(
             dataset_name=dataset_name,
             api_name=api_name,
             output_dir=output_dir,
@@ -963,11 +1014,11 @@ def _mirror_dataset(
             error=error,
             config_ref=getattr(args, "config", None),
         )
-        _base._write_manifest(output_dir / "manifest.yml", manifest)
+        _package_attr("_write_manifest")(output_dir / "manifest.yml", manifest)
 
     _run_partitioned_mirror_batches(
         pending_items=pending_order_book_ids,
-        batch_size=getattr(args, "batch_size", _base.DEFAULT_BATCH_SIZE),
+        batch_size=getattr(args, "batch_size", DEFAULT_BATCH_SIZE),
         process_batch=_process_batch,
         quota_blocked=_quota_blocked,
         on_quota_blocked=_on_quota_blocked,

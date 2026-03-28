@@ -1,0 +1,575 @@
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
+
+import pandas as pd
+
+from ...data_providers import _to_rqdata_symbol
+from .models import (
+    DailyMirrorAuditRecord,
+    DailyMirrorEntry,
+    DatedMirrorAuditRecord,
+    DatedMirrorEntry,
+    MirrorAuditRecord,
+    MirrorEntry,
+)
+from .shared import (
+    DATE_TEXT_OUTPUT_COLUMNS,
+    _drop_conflicting_index_levels,
+    _normalize_frame_columns,
+    _normalize_hk_symbol,
+)
+
+
+def _chunked(values: Sequence[str], size: int) -> Iterable[list[str]]:
+    if size <= 0:
+        raise SystemExit("--batch-size must be > 0.")
+    for idx in range(0, len(values), size):
+        yield list(values[idx : idx + size])
+
+
+def _reset_frame_index(frame: pd.DataFrame | pd.Series | None) -> pd.DataFrame:
+    if frame is None:
+        return pd.DataFrame()
+    if isinstance(frame, pd.Series):
+        frame = frame.to_frame(name=str(frame.name or "value"))
+    if frame.empty and len(frame.columns) == 0:
+        return frame.copy()
+    normalized = _normalize_frame_columns(frame)
+    normalized = _drop_conflicting_index_levels(normalized)
+    if isinstance(normalized.index, pd.MultiIndex):
+        has_named_levels = any(name is not None for name in normalized.index.names)
+    else:
+        has_named_levels = normalized.index.name is not None
+    if "order_book_id" in normalized.columns and not has_named_levels:
+        return normalized
+    if not has_named_levels:
+        return normalized
+    reset = _normalize_frame_columns(normalized.reset_index())
+    if "order_book_id" not in reset.columns and "index" in reset.columns:
+        reset = reset.rename(columns={"index": "order_book_id"})
+    return reset
+
+
+def _prepare_asset_frame(frame: pd.DataFrame | pd.Series | None, *, symbol_map: Mapping[str, str]) -> pd.DataFrame:
+    if frame is None:
+        return pd.DataFrame()
+    if isinstance(frame, pd.Series):
+        frame = frame.to_frame(name=str(frame.name or "value"))
+    if frame.empty and len(frame.columns) == 0:
+        return frame.copy()
+
+    normalized = _reset_frame_index(frame)
+    if normalized.empty and "order_book_id" not in normalized.columns:
+        return normalized
+    if "order_book_id" not in normalized.columns:
+        if len(symbol_map) == 1:
+            normalized["order_book_id"] = next(iter(symbol_map.keys()))
+        else:
+            raise ValueError("RQData payload is missing order_book_id.")
+    normalized["order_book_id"] = normalized["order_book_id"].astype(str).str.strip()
+    normalized["ts_code"] = normalized["order_book_id"].map(symbol_map)
+    missing_mask = normalized["ts_code"].isna()
+    if missing_mask.any():
+        normalized.loc[missing_mask, "ts_code"] = normalized.loc[missing_mask, "order_book_id"].map(
+            _normalize_hk_symbol
+        )
+    if "quarter" in normalized.columns:
+        normalized["quarter"] = normalized["quarter"].astype(str)
+
+    sort_cols = [
+        col
+        for col in ["ts_code", "quarter", "info_date", "rice_create_tm", "field", "subject"]
+        if col in normalized.columns
+    ]
+    if sort_cols:
+        normalized = normalized.sort_values(sort_cols).reset_index(drop=True)
+    return normalized
+
+
+def _ensure_requested_fields(frame: pd.DataFrame, fields: Sequence[str]) -> pd.DataFrame:
+    requested_fields = _field_columns_for_audit(fields)
+    missing_fields = [field for field in requested_fields if field not in frame.columns]
+    if not missing_fields:
+        return frame.copy()
+    extras = pd.DataFrame({field: pd.Series(pd.NA, index=frame.index) for field in missing_fields})
+    return pd.concat([frame.copy(), extras], axis=1)
+
+
+def _series_bounds_as_date(frame: pd.DataFrame, column: str) -> tuple[str | None, str | None]:
+    if column not in frame.columns:
+        return None, None
+    values = pd.to_datetime(frame[column], errors="coerce").dropna()
+    if values.empty:
+        return None, None
+    return values.min().strftime("%Y-%m-%d"), values.max().strftime("%Y-%m-%d")
+
+
+def _series_bounds_as_text(frame: pd.DataFrame, column: str) -> tuple[str | None, str | None]:
+    if column not in frame.columns:
+        return None, None
+    values = frame[column].dropna().astype(str)
+    if values.empty:
+        return None, None
+    return values.min(), values.max()
+
+
+def _field_columns_for_audit(fields: Sequence[str]) -> list[str]:
+    return [str(field) for field in fields if str(field).strip()]
+
+
+def _entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -> MirrorEntry:
+    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    order_book_id = (
+        str(symbol_frame["order_book_id"].iloc[0])
+        if "order_book_id" in symbol_frame.columns
+        else _to_rqdata_symbol("hk", ts_code)
+    )
+    min_quarter, max_quarter = _series_bounds_as_text(symbol_frame, "quarter")
+    min_info_date, max_info_date = _series_bounds_as_date(symbol_frame, "info_date")
+    return MirrorEntry(
+        ts_code=ts_code,
+        order_book_id=order_book_id,
+        path=out_path,
+        rows=int(len(symbol_frame)),
+        total_bytes=int(out_path.stat().st_size),
+        min_quarter=min_quarter,
+        max_quarter=max_quarter,
+        min_info_date=min_info_date,
+        max_info_date=max_info_date,
+    )
+
+
+def _write_symbol_frame(data_dir: Path, symbol_frame: pd.DataFrame) -> MirrorEntry:
+    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    out_path = data_dir / f"{ts_code}.parquet"
+    symbol_frame.to_parquet(out_path, index=False)
+    return _entry_from_symbol_frame(out_path, symbol_frame)
+
+
+def _load_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
+    columns = ["ts_code", "order_book_id", "quarter", "info_date", *_field_columns_for_audit(fields)]
+    requested: list[str] = []
+    seen: set[str] = set()
+    for column in columns:
+        if column and column not in seen:
+            requested.append(column)
+            seen.add(column)
+    try:
+        frame = pd.read_parquet(path, columns=requested)
+    except Exception:
+        frame = pd.read_parquet(path)
+    return _normalize_frame_columns(frame)
+
+
+def _load_existing_entry(path: Path, *, fields: Sequence[str]) -> tuple[MirrorEntry, pd.DataFrame]:
+    frame = _ensure_requested_fields(_load_symbol_frame(path, fields=fields), fields)
+    if frame.empty:
+        ts_code = path.stem
+        order_book_id = _to_rqdata_symbol("hk", ts_code)
+        entry = MirrorEntry(
+            ts_code=ts_code,
+            order_book_id=order_book_id,
+            path=path,
+            rows=0,
+            total_bytes=int(path.stat().st_size),
+            min_quarter=None,
+            max_quarter=None,
+            min_info_date=None,
+            max_info_date=None,
+        )
+        return entry, frame
+    return _entry_from_symbol_frame(path, frame), frame
+
+
+def _field_coverage_template(fields: Sequence[str]) -> dict[str, dict[str, int | str]]:
+    return {
+        field: {"field": field, "nonnull_rows": 0, "symbols_with_values": 0}
+        for field in _field_columns_for_audit(fields)
+    }
+
+
+def _update_field_coverage(
+    coverage: dict[str, dict[str, int | str]],
+    frame: pd.DataFrame,
+    *,
+    fields: Sequence[str],
+) -> None:
+    for field in _field_columns_for_audit(fields):
+        if field not in coverage:
+            continue
+        if field in frame.columns:
+            nonnull_rows = int(frame[field].notna().sum())
+            if nonnull_rows == 0 and {"field", "amount"}.issubset(frame.columns):
+                mask = frame["field"].astype(str) == str(field)
+                mask = mask & frame["amount"].notna()
+                nonnull_rows = int(mask.sum())
+        elif {"field", "amount"}.issubset(frame.columns):
+            mask = frame["field"].astype(str) == str(field)
+            mask = mask & frame["amount"].notna()
+            nonnull_rows = int(mask.sum())
+        else:
+            continue
+        coverage[field]["nonnull_rows"] = int(coverage[field]["nonnull_rows"]) + nonnull_rows
+        if nonnull_rows > 0:
+            coverage[field]["symbols_with_values"] = int(coverage[field]["symbols_with_values"]) + 1
+
+
+def _audit_record(
+    *,
+    ts_code: str,
+    order_book_id: str,
+    status: str,
+    attempts: int,
+    started_at: str | None,
+    finished_at: str | None,
+    file_mtime: str | None,
+    dropped_fields: Sequence[str] | None = None,
+    error: str | None,
+    entry: MirrorEntry | None = None,
+) -> MirrorAuditRecord:
+    return MirrorAuditRecord(
+        ts_code=ts_code,
+        order_book_id=order_book_id,
+        status=status,
+        attempts=attempts,
+        rows=entry.rows if entry else 0,
+        total_bytes=entry.total_bytes if entry else 0,
+        min_quarter=entry.min_quarter if entry else None,
+        max_quarter=entry.max_quarter if entry else None,
+        min_info_date=entry.min_info_date if entry else None,
+        max_info_date=entry.max_info_date if entry else None,
+        started_at=started_at,
+        finished_at=finished_at,
+        file_mtime=file_mtime,
+        dropped_fields=",".join(str(item) for item in (dropped_fields or []) if str(item).strip()) or None,
+        error=error,
+    )
+
+
+def _write_audit_csv(path: Path, records: Sequence[MirrorAuditRecord]) -> None:
+    rows = [
+        {
+            "ts_code": item.ts_code,
+            "order_book_id": item.order_book_id,
+            "status": item.status,
+            "attempts": item.attempts,
+            "rows": item.rows,
+            "total_bytes": item.total_bytes,
+            "min_quarter": item.min_quarter,
+            "max_quarter": item.max_quarter,
+            "min_info_date": item.min_info_date,
+            "max_info_date": item.max_info_date,
+            "started_at": item.started_at,
+            "finished_at": item.finished_at,
+            "file_mtime": item.file_mtime,
+            "dropped_fields": item.dropped_fields,
+            "error": item.error,
+        }
+        for item in records
+    ]
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def _prepare_daily_asset_frame(
+    frame: pd.DataFrame | pd.Series | None,
+    *,
+    symbol: str,
+    order_book_id: str,
+) -> pd.DataFrame:
+    if frame is None:
+        return pd.DataFrame()
+    if isinstance(frame, pd.Series):
+        frame = frame.to_frame(name=str(frame.name or "value"))
+    if frame.empty and len(frame.columns) == 0:
+        return frame.copy()
+
+    normalized = _normalize_frame_columns(frame)
+    if "trade_date" not in normalized.columns and "date" in normalized.columns:
+        normalized = normalized.rename(columns={"date": "trade_date"})
+    if "trade_date" not in normalized.columns:
+        reset = _normalize_frame_columns(frame.reset_index())
+        if "trade_date" not in reset.columns and "date" in reset.columns:
+            reset = reset.rename(columns={"date": "trade_date"})
+        elif "trade_date" not in reset.columns and "index" in reset.columns:
+            reset = reset.rename(columns={"index": "trade_date"})
+        normalized = reset
+    if "trade_date" not in normalized.columns:
+        raise ValueError("RQData daily payload is missing trade_date.")
+
+    trade_dates = pd.to_datetime(normalized["trade_date"], errors="coerce")
+    valid_trade_date = trade_dates.notna()
+    work = normalized.loc[valid_trade_date].copy()
+    if work.empty:
+        return work
+    work["trade_date"] = trade_dates.loc[valid_trade_date].dt.strftime("%Y%m%d")
+    work["ts_code"] = symbol
+    work["order_book_id"] = order_book_id
+    preferred = ["trade_date", "ts_code", "order_book_id"]
+    remaining = [column for column in work.columns if column not in preferred]
+    work = work.loc[:, preferred + remaining].copy()
+    work = work.drop_duplicates(subset=["trade_date"], keep="last")
+    work = work.sort_values(["trade_date"]).reset_index(drop=True)
+    return work
+
+
+def _daily_entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -> DailyMirrorEntry:
+    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    order_book_id = str(symbol_frame["order_book_id"].iloc[0])
+    min_trade_date, max_trade_date = _series_bounds_as_text(symbol_frame, "trade_date")
+    return DailyMirrorEntry(
+        ts_code=ts_code,
+        order_book_id=order_book_id,
+        path=out_path,
+        rows=int(len(symbol_frame)),
+        total_bytes=int(out_path.stat().st_size),
+        min_trade_date=min_trade_date,
+        max_trade_date=max_trade_date,
+    )
+
+
+def _write_daily_symbol_frame(data_dir: Path, symbol_frame: pd.DataFrame) -> DailyMirrorEntry:
+    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    out_path = data_dir / f"{ts_code}.parquet"
+    symbol_frame.to_parquet(out_path, index=False)
+    return _daily_entry_from_symbol_frame(out_path, symbol_frame)
+
+
+def _load_daily_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
+    columns = ["trade_date", "ts_code", "order_book_id", *_field_columns_for_audit(fields)]
+    requested: list[str] = []
+    seen: set[str] = set()
+    for column in columns:
+        if column and column not in seen:
+            requested.append(column)
+            seen.add(column)
+    try:
+        frame = pd.read_parquet(path, columns=requested)
+    except Exception:
+        frame = pd.read_parquet(path)
+    return _normalize_frame_columns(frame)
+
+
+def _load_existing_daily_entry(path: Path, *, fields: Sequence[str]) -> tuple[DailyMirrorEntry, pd.DataFrame]:
+    frame = _ensure_requested_fields(_load_daily_symbol_frame(path, fields=fields), fields)
+    if frame.empty:
+        ts_code = path.stem
+        order_book_id = _to_rqdata_symbol("hk", ts_code)
+        entry = DailyMirrorEntry(
+            ts_code=ts_code,
+            order_book_id=order_book_id,
+            path=path,
+            rows=0,
+            total_bytes=int(path.stat().st_size),
+            min_trade_date=None,
+            max_trade_date=None,
+        )
+        return entry, frame
+    return _daily_entry_from_symbol_frame(path, frame), frame
+
+
+def _daily_audit_record(
+    *,
+    ts_code: str,
+    order_book_id: str,
+    status: str,
+    attempts: int,
+    started_at: str | None,
+    finished_at: str | None,
+    file_mtime: str | None,
+    error: str | None,
+    entry: DailyMirrorEntry | None = None,
+) -> DailyMirrorAuditRecord:
+    return DailyMirrorAuditRecord(
+        ts_code=ts_code,
+        order_book_id=order_book_id,
+        status=status,
+        attempts=attempts,
+        rows=entry.rows if entry else 0,
+        total_bytes=entry.total_bytes if entry else 0,
+        min_trade_date=entry.min_trade_date if entry else None,
+        max_trade_date=entry.max_trade_date if entry else None,
+        started_at=started_at,
+        finished_at=finished_at,
+        file_mtime=file_mtime,
+        error=error,
+    )
+
+
+def _write_daily_audit_csv(path: Path, records: Sequence[DailyMirrorAuditRecord]) -> None:
+    rows = [
+        {
+            "ts_code": item.ts_code,
+            "order_book_id": item.order_book_id,
+            "status": item.status,
+            "attempts": item.attempts,
+            "rows": item.rows,
+            "total_bytes": item.total_bytes,
+            "min_trade_date": item.min_trade_date,
+            "max_trade_date": item.max_trade_date,
+            "started_at": item.started_at,
+            "finished_at": item.finished_at,
+            "file_mtime": item.file_mtime,
+            "error": item.error,
+        }
+        for item in records
+    ]
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def _prepare_dated_asset_frame(
+    frame: pd.DataFrame | pd.Series | None,
+    *,
+    symbol_map: Mapping[str, str],
+    date_column: str,
+    sort_columns: Sequence[str] = (),
+) -> pd.DataFrame:
+    normalized = _prepare_asset_frame(frame, symbol_map=symbol_map)
+    if normalized.empty:
+        return normalized
+    if date_column not in normalized.columns:
+        raise ValueError(f"RQData payload is missing {date_column}.")
+    parsed_dates = pd.to_datetime(normalized[date_column], errors="coerce")
+    valid_dates = parsed_dates.notna()
+    work = normalized.loc[valid_dates].copy()
+    if work.empty:
+        return work
+    if date_column in DATE_TEXT_OUTPUT_COLUMNS:
+        work[date_column] = parsed_dates.loc[valid_dates].dt.strftime("%Y%m%d")
+    else:
+        work[date_column] = parsed_dates.loc[valid_dates]
+
+    preferred = [column for column in ["ts_code", "order_book_id", date_column] if column in work.columns]
+    remaining = [column for column in work.columns if column not in preferred]
+    work = work.loc[:, preferred + remaining].copy()
+    ordered_sort_cols = [column for column in ["ts_code", date_column, *sort_columns] if column in work.columns]
+    if ordered_sort_cols:
+        work = work.sort_values(ordered_sort_cols).reset_index(drop=True)
+    return work
+
+
+def _dated_entry_from_symbol_frame(
+    out_path: Path,
+    symbol_frame: pd.DataFrame,
+    *,
+    date_column: str,
+) -> DatedMirrorEntry:
+    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    order_book_id = (
+        str(symbol_frame["order_book_id"].iloc[0])
+        if "order_book_id" in symbol_frame.columns
+        else _to_rqdata_symbol("hk", ts_code)
+    )
+    min_date, max_date = _series_bounds_as_date(symbol_frame, date_column)
+    return DatedMirrorEntry(
+        ts_code=ts_code,
+        order_book_id=order_book_id,
+        path=out_path,
+        rows=int(len(symbol_frame)),
+        total_bytes=int(out_path.stat().st_size),
+        min_date=min_date,
+        max_date=max_date,
+    )
+
+
+def _write_dated_symbol_frame(
+    data_dir: Path,
+    symbol_frame: pd.DataFrame,
+    *,
+    date_column: str,
+) -> DatedMirrorEntry:
+    ts_code = str(symbol_frame["ts_code"].iloc[0])
+    out_path = data_dir / f"{ts_code}.parquet"
+    symbol_frame.to_parquet(out_path, index=False)
+    return _dated_entry_from_symbol_frame(out_path, symbol_frame, date_column=date_column)
+
+
+def _load_dated_symbol_frame(path: Path, *, date_column: str, fields: Sequence[str]) -> pd.DataFrame:
+    columns = ["ts_code", "order_book_id", date_column, *_field_columns_for_audit(fields)]
+    requested: list[str] = []
+    seen: set[str] = set()
+    for column in columns:
+        if column and column not in seen:
+            requested.append(column)
+            seen.add(column)
+    try:
+        frame = pd.read_parquet(path, columns=requested)
+    except Exception:
+        frame = pd.read_parquet(path)
+    return _normalize_frame_columns(frame)
+
+
+def _load_existing_dated_entry(
+    path: Path,
+    *,
+    date_column: str,
+    fields: Sequence[str],
+) -> tuple[DatedMirrorEntry, pd.DataFrame]:
+    frame = _ensure_requested_fields(_load_dated_symbol_frame(path, date_column=date_column, fields=fields), fields)
+    if frame.empty:
+        ts_code = path.stem
+        order_book_id = _to_rqdata_symbol("hk", ts_code)
+        entry = DatedMirrorEntry(
+            ts_code=ts_code,
+            order_book_id=order_book_id,
+            path=path,
+            rows=0,
+            total_bytes=int(path.stat().st_size),
+            min_date=None,
+            max_date=None,
+        )
+        return entry, frame
+    return _dated_entry_from_symbol_frame(path, frame, date_column=date_column), frame
+
+
+def _dated_audit_record(
+    *,
+    ts_code: str,
+    order_book_id: str,
+    status: str,
+    attempts: int,
+    started_at: str | None,
+    finished_at: str | None,
+    file_mtime: str | None,
+    dropped_fields: Sequence[str] | None = None,
+    error: str | None,
+    entry: DatedMirrorEntry | None = None,
+) -> DatedMirrorAuditRecord:
+    return DatedMirrorAuditRecord(
+        ts_code=ts_code,
+        order_book_id=order_book_id,
+        status=status,
+        attempts=attempts,
+        rows=entry.rows if entry else 0,
+        total_bytes=entry.total_bytes if entry else 0,
+        min_date=entry.min_date if entry else None,
+        max_date=entry.max_date if entry else None,
+        started_at=started_at,
+        finished_at=finished_at,
+        file_mtime=file_mtime,
+        dropped_fields=",".join(str(item) for item in (dropped_fields or []) if str(item).strip()) or None,
+        error=error,
+    )
+
+
+def _write_dated_audit_csv(path: Path, records: Sequence[DatedMirrorAuditRecord]) -> None:
+    rows = [
+        {
+            "ts_code": item.ts_code,
+            "order_book_id": item.order_book_id,
+            "status": item.status,
+            "attempts": item.attempts,
+            "rows": item.rows,
+            "total_bytes": item.total_bytes,
+            "min_date": item.min_date,
+            "max_date": item.max_date,
+            "started_at": item.started_at,
+            "finished_at": item.finished_at,
+            "file_mtime": item.file_mtime,
+            "dropped_fields": item.dropped_fields,
+            "error": item.error,
+        }
+        for item in records
+    ]
+    pd.DataFrame(rows).to_csv(path, index=False)

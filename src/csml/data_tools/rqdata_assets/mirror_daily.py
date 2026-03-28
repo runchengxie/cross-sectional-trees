@@ -2,14 +2,43 @@ from __future__ import annotations
 
 import pandas as pd
 
-from csml.data_tools import rqdata_assets as _base
+from ...data_providers import _fetch_daily_rqdata, _to_rqdata_symbol
+from .asset_io import (
+    _daily_audit_record,
+    _ensure_requested_fields,
+    _field_coverage_template,
+    _load_existing_daily_entry,
+    _prepare_daily_asset_frame,
+    _update_field_coverage,
+    _write_daily_audit_csv,
+    _write_daily_symbol_frame,
+)
+from .manifest_ops import _build_daily_manifest, _validate_daily_resume_inputs
+from .models import DailyMirrorAuditRecord, DailyMirrorEntry, MirrorFetchError, MirrorQuotaError
+from .package_api import _package_attr
+from .shared import (
+    _normalize_absolute_date,
+    _path_mtime_iso,
+    _prepare_daily_output_dir,
+    _resolve_daily_fields,
+    _timestamp_now,
+    _write_text_list,
+)
+
+
+DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
+DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
+DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
+DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
+_resolve_symbols = _package_attr("_resolve_symbols")
+_retry_fetch = _package_attr("_retry_fetch")
 
 
 def mirror_hk_daily(args, rqdatac) -> int:
-    fields, field_metadata = _base._resolve_daily_fields(args)
-    symbols, symbol_metadata = _base._resolve_symbols(args)
-    start_date = _base._normalize_absolute_date(args.start_date, label="--start-date")
-    end_date = _base._normalize_absolute_date(args.end_date, label="--end-date")
+    fields, field_metadata = _resolve_daily_fields(args)
+    symbols, symbol_metadata = _resolve_symbols(args)
+    start_date = _normalize_absolute_date(args.start_date, label="--start-date")
+    end_date = _normalize_absolute_date(args.end_date, label="--end-date")
     if start_date > end_date:
         raise SystemExit("--start-date must be <= --end-date.")
 
@@ -24,16 +53,16 @@ def mirror_hk_daily(args, rqdatac) -> int:
     skip_existing = bool(getattr(args, "skip_existing", False) or resume)
     max_attempts = max(
         1,
-        int(getattr(args, "max_attempts", _base.DEFAULT_MIRROR_MAX_ATTEMPTS) or 1),
+        int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1),
     )
     backoff_seconds = float(
-        getattr(args, "backoff_seconds", _base.DEFAULT_MIRROR_BACKOFF_SECONDS)
+        getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS)
     )
     max_backoff_seconds = float(
-        getattr(args, "max_backoff_seconds", _base.DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
     )
-    output_dir = _base._prepare_daily_output_dir(
-        out_root=getattr(args, "out_root", _base.DEFAULT_OUT_ROOT),
+    output_dir = _prepare_daily_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         dataset_name="daily",
         start_date=start_date,
         end_date=end_date,
@@ -44,14 +73,14 @@ def mirror_hk_daily(args, rqdatac) -> int:
     data_dir.mkdir(parents=True, exist_ok=True)
     audit_path = output_dir / "audit.csv"
 
-    symbol_map = {_base._to_rqdata_symbol("hk", symbol): symbol for symbol in symbols}
+    symbol_map = {_to_rqdata_symbol("hk", symbol): symbol for symbol in symbols}
     order_book_ids = list(symbol_map.keys())
-    entries_by_symbol: dict[str, _base.DailyMirrorEntry] = {}
-    audit_by_symbol: dict[str, _base.DailyMirrorAuditRecord] = {}
+    entries_by_symbol: dict[str, DailyMirrorEntry] = {}
+    audit_by_symbol: dict[str, DailyMirrorAuditRecord] = {}
     batches: list[dict[str, object]] = []
     columns: list[str] = []
-    field_coverage = _base._field_coverage_template(fields)
-    started_at = _base._timestamp_now()
+    field_coverage = _field_coverage_template(fields)
+    started_at = _timestamp_now()
     status = "completed"
     error: str | None = None
     result_code = 0
@@ -72,7 +101,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
     def _record_entry(
         *,
         symbol: str,
-        entry: _base.DailyMirrorEntry,
+        entry: DailyMirrorEntry,
         symbol_frame: pd.DataFrame,
         record_status: str,
         attempts: int,
@@ -84,15 +113,15 @@ def mirror_hk_daily(args, rqdatac) -> int:
         entries_by_symbol[symbol] = entry
         if not columns and not symbol_frame.empty:
             columns = symbol_frame.columns.tolist()
-        _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
-        audit_by_symbol[symbol] = _base._daily_audit_record(
+        _update_field_coverage(field_coverage, symbol_frame, fields=fields)
+        audit_by_symbol[symbol] = _daily_audit_record(
             ts_code=symbol,
             order_book_id=entry.order_book_id,
             status=record_status,
             attempts=attempts,
             started_at=started_at_value,
             finished_at=finished_at_value,
-            file_mtime=_base._path_mtime_iso(entry.path),
+            file_mtime=_path_mtime_iso(entry.path),
             error=error_text,
             entry=entry,
         )
@@ -107,7 +136,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
         finished_at_value: str | None,
         error_text: str | None = None,
     ) -> None:
-        audit_by_symbol[symbol] = _base._daily_audit_record(
+        audit_by_symbol[symbol] = _daily_audit_record(
             ts_code=symbol,
             order_book_id=order_book_id,
             status=record_status,
@@ -125,11 +154,11 @@ def mirror_hk_daily(args, rqdatac) -> int:
             return
 
         symbol = symbol_map[order_book_id]
-        started = _base._timestamp_now()
+        started = _timestamp_now()
         try:
-            payload, attempts = _base._retry_fetch(
+            payload, attempts = _retry_fetch(
                 f"daily fetch failed for {order_book_id}",
-                lambda: _base._fetch_daily_rqdata(
+                lambda: _fetch_daily_rqdata(
                     "hk",
                     symbol,
                     start_date,
@@ -141,8 +170,8 @@ def mirror_hk_daily(args, rqdatac) -> int:
                 backoff_seconds=backoff_seconds,
                 max_backoff_seconds=max_backoff_seconds,
             )
-        except _base.MirrorQuotaError as exc:
-            finished = _base._timestamp_now()
+        except MirrorQuotaError as exc:
+            finished = _timestamp_now()
             quota_blocked = True
             status = "stopped_quota"
             error = str(exc)
@@ -168,8 +197,8 @@ def mirror_hk_daily(args, rqdatac) -> int:
                 }
             )
             return
-        except _base.MirrorFetchError as exc:
-            finished = _base._timestamp_now()
+        except MirrorFetchError as exc:
+            finished = _timestamp_now()
             _record_non_entry(
                 symbol=symbol,
                 order_book_id=order_book_id,
@@ -195,13 +224,13 @@ def mirror_hk_daily(args, rqdatac) -> int:
             result_code = max(result_code, 1)
             return
 
-        finished = _base._timestamp_now()
-        prepared = _base._prepare_daily_asset_frame(
+        finished = _timestamp_now()
+        prepared = _prepare_daily_asset_frame(
             payload,
             symbol=symbol,
             order_book_id=order_book_id,
         )
-        prepared = _base._ensure_requested_fields(prepared, fields)
+        prepared = _ensure_requested_fields(prepared, fields)
         if prepared.empty:
             _record_non_entry(
                 symbol=symbol,
@@ -225,7 +254,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
 
         if not columns:
             columns = prepared.columns.tolist()
-        entry = _base._write_daily_symbol_frame(data_dir, prepared)
+        entry = _write_daily_symbol_frame(data_dir, prepared)
         _record_entry(
             symbol=symbol,
             entry=entry,
@@ -248,7 +277,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
 
     try:
         if resume:
-            _base._validate_daily_resume_inputs(
+            _validate_daily_resume_inputs(
                 output_dir=output_dir,
                 dataset_name="daily",
                 fields=fields,
@@ -260,8 +289,8 @@ def mirror_hk_daily(args, rqdatac) -> int:
                 skip_suspended=skip_suspended,
             )
 
-        _base._write_text_list(output_dir / "fields.txt", fields)
-        _base._write_text_list(output_dir / "symbols.txt", symbols)
+        _write_text_list(output_dir / "fields.txt", fields)
+        _write_text_list(output_dir / "symbols.txt", symbols)
 
         pending_order_book_ids: list[str] = []
         for order_book_id in order_book_ids:
@@ -269,7 +298,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
             out_path = data_dir / f"{symbol}.parquet"
             if skip_existing and out_path.exists():
                 try:
-                    entry, symbol_frame = _base._load_existing_daily_entry(
+                    entry, symbol_frame = _load_existing_daily_entry(
                         out_path,
                         fields=fields,
                     )
@@ -283,7 +312,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
                     record_status="skipped_existing",
                     attempts=0,
                     started_at_value=None,
-                    finished_at_value=_base._path_mtime_iso(out_path),
+                    finished_at_value=_path_mtime_iso(out_path),
                 )
                 continue
             pending_order_book_ids.append(order_book_id)
@@ -294,7 +323,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
                 break
 
         if quota_blocked:
-            quota_finished_at = _base._timestamp_now()
+            quota_finished_at = _timestamp_now()
             for order_book_id in pending_order_book_ids:
                 symbol = symbol_map[order_book_id]
                 if symbol in audit_by_symbol:
@@ -316,7 +345,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
         result_code = max(result_code, 1)
         raise
     finally:
-        finished_at = _base._timestamp_now()
+        finished_at = _timestamp_now()
         for order_book_id in order_book_ids:
             symbol = symbol_map[order_book_id]
             if symbol in audit_by_symbol:
@@ -331,8 +360,8 @@ def mirror_hk_daily(args, rqdatac) -> int:
                 error_text=error or "missing audit status",
             )
         audit_records = [audit_by_symbol[symbol] for symbol in symbols]
-        _base._write_daily_audit_csv(audit_path, audit_records)
-        manifest = _base._build_daily_manifest(
+        _write_daily_audit_csv(audit_path, audit_records)
+        manifest = _build_daily_manifest(
             dataset_name="daily",
             api_name="rqdatac.get_price",
             output_dir=output_dir,
@@ -364,7 +393,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
             error=error,
             config_ref=getattr(args, "config", None),
         )
-        _base._write_manifest(output_dir / "manifest.yml", manifest)
+        _package_attr("_write_manifest")(output_dir / "manifest.yml", manifest)
 
     totals = {
         "files": len(entries_by_symbol),
