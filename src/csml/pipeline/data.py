@@ -148,6 +148,100 @@ def _build_price_col_diagnostics(
     }
 
 
+def _build_feature_availability_diagnostics(
+    df: pd.DataFrame,
+    *,
+    price_col: str,
+    features: list[str],
+    top_n: int = 5,
+) -> dict[str, Any]:
+    if df.empty or "trade_date" not in df.columns:
+        return {
+            "total_rows": int(len(df)),
+            "total_dates": 0,
+            "complete_rows": 0,
+            "complete_dates": 0,
+            "complete_row_ratio": 0.0,
+            "complete_date_ratio": 0.0,
+            "worst_features": [],
+        }
+
+    total_rows = int(len(df))
+    total_dates = int(df["trade_date"].nunique())
+    required = [price_col] + [feature for feature in features if feature in df.columns]
+    if not required:
+        return {
+            "total_rows": total_rows,
+            "total_dates": total_dates,
+            "complete_rows": total_rows,
+            "complete_dates": total_dates,
+            "complete_row_ratio": 1.0,
+            "complete_date_ratio": 1.0,
+            "worst_features": [],
+        }
+
+    complete_mask = df[required].notna().all(axis=1)
+    complete_rows = int(complete_mask.sum())
+    complete_dates = int(df.loc[complete_mask, "trade_date"].nunique()) if complete_rows else 0
+
+    feature_rows: list[dict[str, Any]] = []
+    for feature in features:
+        if feature not in df.columns:
+            feature_rows.append(
+                {
+                    "feature": feature,
+                    "missing_rows": total_rows,
+                    "missing_pct": 100.0,
+                    "dates_with_values": 0,
+                }
+            )
+            continue
+        missing_rows = int(df[feature].isna().sum())
+        if missing_rows <= 0:
+            continue
+        dates_with_values = int(df.loc[df[feature].notna(), "trade_date"].nunique())
+        feature_rows.append(
+            {
+                "feature": feature,
+                "missing_rows": missing_rows,
+                "missing_pct": round(missing_rows / total_rows * 100.0, 2)
+                if total_rows
+                else 0.0,
+                "dates_with_values": dates_with_values,
+            }
+        )
+
+    feature_rows.sort(
+        key=lambda item: (
+            item["missing_rows"],
+            -item["dates_with_values"],
+            item["feature"],
+        ),
+        reverse=True,
+    )
+    return {
+        "total_rows": total_rows,
+        "total_dates": total_dates,
+        "complete_rows": complete_rows,
+        "complete_dates": complete_dates,
+        "complete_row_ratio": round(complete_rows / total_rows, 4) if total_rows else 0.0,
+        "complete_date_ratio": round(complete_dates / total_dates, 4) if total_dates else 0.0,
+        "worst_features": feature_rows[:top_n],
+    }
+
+
+def _format_feature_availability_rows(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "<none>"
+    return ", ".join(
+        (
+            f"{item['feature']}"
+            f"(missing={item['missing_pct']:.2f}%, dates={item['dates_with_values']})"
+        )
+        for item in items
+    )
+
+
 def _resolve_fundamentals_cache_dir(
     data_cfg: Mapping[str, Any],
     fundamentals_cfg: Mapping[str, Any],
@@ -1023,6 +1117,33 @@ def _prepare_feature_dataset(
             remaining_missing,
         )
 
+    feature_availability_diagnostics = _build_feature_availability_diagnostics(
+        df,
+        price_col=price_col,
+        features=features,
+    )
+    if (
+        feature_availability_diagnostics["total_dates"] >= 20
+        and (
+            feature_availability_diagnostics["complete_dates"] < 20
+            or feature_availability_diagnostics["complete_date_ratio"] < 0.25
+        )
+    ):
+        logger.warning(
+            "Feature availability collapse before complete-case filter: "
+            "complete_dates=%s/%s, complete_rows=%s/%s. "
+            "Worst features after missing fill: %s. "
+            "If this is a quarterly PIT config, run `csml rqdata inspect-hk-pit-coverage --config ...` "
+            "or trim the low-coverage feature block.",
+            feature_availability_diagnostics["complete_dates"],
+            feature_availability_diagnostics["total_dates"],
+            feature_availability_diagnostics["complete_rows"],
+            feature_availability_diagnostics["total_rows"],
+            _format_feature_availability_rows(
+                feature_availability_diagnostics["worst_features"]
+            ),
+        )
+
     required_cols = [price_col] + features
     df_features = df.dropna(subset=required_cols).reset_index(drop=True)
 
@@ -1138,6 +1259,17 @@ def _prepare_feature_dataset(
             int(dropped_date_counts.min()),
             int(dropped_date_counts.max()),
         )
+    if len(all_dates_model_full) < 10:
+        logger.warning(
+            "Only %s model dates remain after feature filtering%s: %s. "
+            "Worst features after missing fill: %s.",
+            len(all_dates_model_full),
+            " and sample-on-rebalance" if sample_on_rebalance_dates else "",
+            [pd.Timestamp(date).strftime("%Y-%m-%d") for date in all_dates_model_full],
+            _format_feature_availability_rows(
+                feature_availability_diagnostics["worst_features"]
+            ),
+        )
 
     return {
         "features": features,
@@ -1162,4 +1294,5 @@ def _prepare_feature_dataset(
         "bucket_cols": bucket_cols,
         "passthrough_cols": passthrough_cols,
         "price_passthrough_cols": price_passthrough_cols,
+        "feature_availability_diagnostics": feature_availability_diagnostics,
     }

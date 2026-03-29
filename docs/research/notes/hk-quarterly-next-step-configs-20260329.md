@@ -92,7 +92,7 @@
 * `net_debt_to_assets`
 * `operating_margin`
 
-但这一步的前提是先确认本地 PIT 原料字段覆盖和缺失处理都够稳定。它不是当前第一优先级。
+但这一步的前提是先确认本地 PIT 原料字段覆盖和缺失处理都够稳定。`2026-03-29` 这轮本地 `pipeline_fundamentals.parquet` 对 `short_term_debt / long_term_loans / total_assets / total_equity / cash_and_equivalents` 的覆盖还不够，完整 debt ratio 版本会把历史压缩到 `2025` 年附近，因此当前 tracked leverage probe 已经先降成 coverage-safe 的 lite 版，只保留 `operating_margin`。
 
 ### 3.4 当前不建议做的特征动作
 
@@ -143,9 +143,9 @@
 ### 5.4 数据加工 / 算法小探针
 
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_leverage.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_leverage.yml)
-  主线加一小组杠杆 / 资产负债表风险特征：`operating_margin`、`debt_to_assets`、`debt_to_equity`、`net_debt_to_assets`
+  主线的 coverage-safe financial-risk-lite 探针；当前只额外加入 `operating_margin`，先避免 debt ratio 覆盖塌缩
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_leverage.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_leverage.yml)
-  challenger 加同一组杠杆 / 资产负债表风险特征，用来判断这组正交财务风险信息是不是更适合 `reg_zscore`
+  challenger 的 coverage-safe financial-risk-lite 探针；当前只额外加入 `operating_margin`，用来判断这类轻量财务风险信息是不是更适合 `reg_zscore`
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_pos.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_pos.yml)
   challenger 固定做多方向，用来判断最近这条副线是不是只是被 `cv_ic` 自动翻向掩盖了问题
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_neg.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_neg.yml)

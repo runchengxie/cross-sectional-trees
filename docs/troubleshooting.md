@@ -83,3 +83,28 @@ csml rqdata quota --pretty
 
 * 先去掉全部 `--exclude-flag-*` 看全量结果
 * 再根据 `summary.json` 里的 `flag_*` 逐步加回过滤条件
+
+## 5. `Not enough dates for a meaningful split.`
+
+常见原因：
+
+* 新加的特征组覆盖率太差，`dropna(subset=required_cols)` 把大部分历史都筛掉了
+* 季度 PIT 路线里，某几个低覆盖字段把可训练季度点压缩到最近很短一段
+* `final_oos` 再切走最后一小段后，in-sample 日期数已经不够 split
+
+先看：
+
+1. `run.log` 里有没有 `Feature availability collapse` 告警
+2. `Applied feature missing fill ... remaining_nans=...` 后面的数量是不是仍然很大
+3. 报错信息里的 `model_dates_before_final_oos` 和 `Recent model dates`
+
+建议：
+
+* 如果是季度 PIT 配置，先跑：
+
+```bash
+csml rqdata inspect-hk-pit-coverage --config <your-config> --mode both
+```
+
+* 优先删掉最拖后腿的特征，而不是先改 `test_size`
+* 对 coverage 很差的资产负债表字段，先做 lite probe，再考虑完整 debt ratio 版本

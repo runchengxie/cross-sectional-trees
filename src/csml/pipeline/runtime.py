@@ -235,7 +235,17 @@ def _prepare_split_context(
         all_date_to_pos,
     ) = _build_trade_date_slices(df_model)
     if len(all_dates) < 10:
-        sys.exit("Not enough dates for a meaningful split.")
+        recent_dates = [pd.Timestamp(date).strftime("%Y-%m-%d") for date in all_dates_model_full[-5:]]
+        sys.exit(
+            "Not enough dates for a meaningful split. "
+            f"in_sample_model_dates={len(all_dates)}, "
+            f"model_dates_before_final_oos={len(all_dates_model_full)}, "
+            f"final_oos_dates={final_oos_len}, "
+            f"sample_on_rebalance_dates={sample_on_rebalance_dates}. "
+            f"Recent model dates={recent_dates}. "
+            "This usually means the selected feature set left too few complete dates; "
+            "check run.log for 'Feature availability collapse' warnings."
+        )
 
     split_idx = int(len(all_dates) * (1 - test_size))
     train_end = split_idx

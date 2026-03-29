@@ -1,6 +1,8 @@
 import copy
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 import yaml
 
@@ -221,6 +223,42 @@ def test_pipeline_train_window_validation(tmp_path, no_client, train_window, mes
     config["model"]["train_window"] = train_window
     config_path = _write_config(tmp_path, config)
     with pytest.raises(SystemExit, match=message):
+        pipeline.run(str(config_path))
+
+
+def test_pipeline_low_coverage_split_error_is_informative(tmp_path, no_client, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=10, freq="B")
+    frames = {}
+    for idx, symbol in enumerate(["AAA", "BBB", "CCC"]):
+        close = 100.0 + np.arange(len(dates), dtype=float) + idx
+        vol = np.full(len(dates), 1000.0 + idx, dtype=float)
+        frames[symbol] = pd.DataFrame(
+            {
+                "trade_date": [date.strftime("%Y%m%d") for date in dates],
+                "symbol": symbol,
+                "close": close,
+                "vol": vol,
+                "amount": close * vol,
+            }
+        )
+
+    monkeypatch.setattr(
+        DataInterface,
+        "fetch_daily",
+        lambda self, symbol, start_date, end_date: frames[symbol].copy(),
+    )
+    monkeypatch.setattr(DataInterface, "load_basic", lambda self, symbols=None: pd.DataFrame())
+
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["data"]["end_date"] = "20200114"
+    config["features"]["list"] = ["sma_20"]
+    config["features"]["params"] = {"sma_windows": [20]}
+    config_path = _write_config(tmp_path, config)
+
+    with pytest.raises(
+        SystemExit,
+        match="selected feature set left too few complete dates",
+    ):
         pipeline.run(str(config_path))
 
 

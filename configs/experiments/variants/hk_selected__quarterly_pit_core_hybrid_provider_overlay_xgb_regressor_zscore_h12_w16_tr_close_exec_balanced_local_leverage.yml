@@ -1,6 +1,7 @@
-## Leverage / balance-sheet risk probe on the quarterly challenger.
-## Keep the same reg_zscore + h12/w16 + tr_close + balanced execution route,
-## then add a small orthogonal financial-risk feature block.
+## Coverage-safe financial-risk-lite probe on the quarterly challenger.
+## The earlier debt ratio block collapsed the local PIT history to 2025-only,
+## so keep the same reg_zscore + h12/w16 + tr_close + balanced execution route
+## and only add operating_margin for now.
 extends:
   - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local.yml
 
@@ -30,9 +31,6 @@ features:
     - operating_margin
     - cfo_margin
     - cfo_to_profit
-    - debt_to_assets
-    - debt_to_equity
-    - net_debt_to_assets
     - days_since_report
     - market_cap
     - pe_ttm
@@ -52,9 +50,6 @@ features:
       - operating_margin
       - cfo_margin
       - cfo_to_profit
-      - debt_to_assets
-      - debt_to_equity
-      - net_debt_to_assets
       - days_since_report
       - market_cap
       - pe_ttm
