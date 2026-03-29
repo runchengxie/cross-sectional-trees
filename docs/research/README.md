@@ -29,15 +29,17 @@
 
 1. `notes/hk-quarterly-current-state-20260329.md`
 2. `notes/hk-quarterly-holdings-analysis-20260329.md`
-3. `notes/hk-quarterly-next-step-configs-20260329.md`
-4. `notes/hk-quarterly-oos-evidence-20260329.md`
-5. 如果你要单开“不用量价指标”的独立路线，再看 `notes/hk-quarterly-pure-fundamentals-20260329.md`
-6. 只有当你要追溯结论出处时，再回去看更早的专题页
+3. `notes/hk-quarterly-construction-grid-20260329.md`
+4. `notes/hk-quarterly-next-step-configs-20260329.md`
+5. `notes/hk-quarterly-oos-evidence-20260329.md`
+6. 如果你要单开“不用量价指标”的独立路线，再看 `notes/hk-quarterly-pure-fundamentals-20260329.md`
+7. 只有当你要追溯结论出处时，再回去看更早的专题页
 
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
 | `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 线的现行口径、哪些旧结论仍保留、哪些已降级成 provenance、以及现在该从哪两条路线继续往前推 | 是，当前应作为 quarterly notes 的总入口 |
 | `notes/hk-quarterly-holdings-analysis-20260329.md` | `raw-scale dedup` 的价值主要在于更低换手和更稳定的测试段持仓，`reg_zscore + tr_close` 的最近 OOS 亮点则更集中、更像少数名字驱动 | 否，当前作为组合层解释页保留 |
+| `notes/hk-quarterly-construction-grid-20260329.md` | 第一轮 fixed-signal construction sweep 已经表明 `buffer_exit` 比 `buffer_entry` 更值得继续扫；下一步更像是固定 `bx = 2` 后比较 `top_k`，而不是继续扩特征 | 否，当前作为组合构造 follow-up 页保留 |
 | `notes/hk-quarterly-next-step-configs-20260329.md` | 当前 quarterly 下一阶段更适合收口到少数几个窗口和特征探针，并统一到 balanced execution 口径下继续比较 | 否，当前作为下一阶段执行建议页保留 |
 | `notes/hk-quarterly-oos-evidence-20260329.md` | 最近 `Final OOS` 很亮不等于模型已验证；当前两条 balanced execution 候选更适合当下一轮前瞻验证对象，而不是已确认赢家 | 否，当前作为“线索 vs 证据”边界说明页保留 |
 | `notes/hk-quarterly-pure-fundamentals-20260329.md` | 纯 PIT 基本面值得作为独立 benchmark / challenger 线，但第一波应先跑 `ridge -> small xgb_regressor -> xgb_ranker`，而不是直接回头救 `elasticnet` | 否，当前作为独立纯基本面路线说明页保留 |
@@ -72,6 +74,7 @@
 
 * `notes/hk-quarterly-current-state-20260329.md`
 * `notes/hk-quarterly-holdings-analysis-20260329.md`
+* `notes/hk-quarterly-construction-grid-20260329.md`
 * `notes/hk-h12-w16-target-transform-review-20260324.md`
 * `notes/hk-quarterly-target-design-and-direction-20260324.md`
 * `notes/hk-quarterly-pit-regime-shift-202603.md`

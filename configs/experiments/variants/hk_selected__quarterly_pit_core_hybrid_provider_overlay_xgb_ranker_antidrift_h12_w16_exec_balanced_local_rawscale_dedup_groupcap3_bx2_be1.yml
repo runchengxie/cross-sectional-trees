@@ -1,0 +1,14 @@
+## Construction-stable structural challenger:
+## keep the raw-scale dedup + groupcap3 signal fixed, then normalize
+## the portfolio layer to the first useful grid setting (bx=2, be=1).
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3.yml
+
+eval:
+  buffer_exit: 2
+  buffer_entry: 1
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1
+
+backtest:
+  buffer_exit: 2
+  buffer_entry: 1

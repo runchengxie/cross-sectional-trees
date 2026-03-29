@@ -1,0 +1,11 @@
+## More concentrated construction follow-up around the stabilized
+## raw-scale dedup + groupcap3 structural challenger.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1.yml
+
+eval:
+  top_k: 15
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk15
+
+backtest:
+  top_k: 15

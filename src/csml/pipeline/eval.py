@@ -636,6 +636,7 @@ def _evaluate_period(
     backtest_exit_fallback_policy = context["backtest_exit_fallback_policy"]
     benchmark_df = context["benchmark_df"]
     price_col = context["price_col"]
+    price_passthrough_cols = context.get("price_passthrough_cols", [])
     passthrough_cols = context["passthrough_cols"]
     bucket_cols = context["bucket_cols"]
     backtest_topk_fn = context.get("backtest_topk_fn", backtest_topk)
@@ -1045,6 +1046,7 @@ def _evaluate_period(
         "signal_eval",
         "signal_backtest",
     ]
+    scored_cols.extend(price_passthrough_cols)
     scored_cols.extend(passthrough_cols)
     scored_cols.extend(bucket_cols)
     scored_cols = list(dict.fromkeys(scored_cols))

@@ -1,0 +1,16 @@
+## Top-k construction follow-up around the stabilized structural challenger.
+## Keep the signal fixed at raw-scale dedup + groupcap3 and keep the first
+## useful buffer setting (bx=2, be=1), then compare only top_k choices.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1.yml
+
+eval:
+  save_scored_artifact: false
+  permutation_test:
+    enabled: false
+  walk_forward:
+    enabled: false
+  final_oos:
+    enabled: true
+    size: 0.2
+  run_name: hk_sel_q_g4_fixed_pit_overlay_rawscale_dedup_groupcap3_topk_grid_base

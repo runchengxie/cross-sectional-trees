@@ -351,6 +351,7 @@ def test_pipeline_backtest_pricing_includes_execution_columns(tmp_path, monkeypa
             "sample_on_rebalance_dates": False,
             "report_train_ic": False,
             "save_artifacts": True,
+            "save_scored_artifact": True,
             "save_dataset": True,
             "output_dir": str(output_dir),
             "run_name": "execution_pricing_cols",
@@ -379,6 +380,7 @@ def test_pipeline_backtest_pricing_includes_execution_columns(tmp_path, monkeypa
 
     run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames)
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    eval_scored = pd.read_parquet(run_dir / "eval_scored.parquet")
     assert summary["backtest"]["execution_source"] == "explicit_execution_config"
     assert summary["backtest"]["execution"]["entry_policy"]["price_col"] == "open"
 
@@ -387,6 +389,7 @@ def test_pipeline_backtest_pricing_includes_execution_columns(tmp_path, monkeypa
     assert "open" in pricing_df.columns
     assert "close" in pricing_df.columns
     assert "amount" in pricing_df.columns
+    assert {"open", "amount"}.issubset(eval_scored.columns)
 
 
 @pytest.mark.slow
@@ -457,6 +460,7 @@ def test_pipeline_backtest_pricing_derives_lagged_adv_execution_columns(tmp_path
             "sample_on_rebalance_dates": False,
             "report_train_ic": False,
             "save_artifacts": True,
+            "save_scored_artifact": True,
             "save_dataset": True,
             "output_dir": str(output_dir),
             "run_name": "execution_adv_pricing_cols",
@@ -483,11 +487,14 @@ def test_pipeline_backtest_pricing_derives_lagged_adv_execution_columns(tmp_path
         },
     }
 
-    _run_pipeline(tmp_path, monkeypatch, config, frames)
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames)
+    eval_scored = pd.read_parquet(run_dir / "eval_scored.parquet")
 
     pricing_df = captured["pricing_data"]
     assert pricing_df is not None
     assert "adv3_amount" in pricing_df.columns
+    assert "open" in eval_scored.columns
+    assert "adv3_amount" in eval_scored.columns
 
     aaa = pricing_df[pricing_df["symbol"] == "AAA"].sort_values("trade_date").reset_index(drop=True)
     assert np.isnan(float(aaa.loc[0, "adv3_amount"]))

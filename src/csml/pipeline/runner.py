@@ -835,6 +835,7 @@ def run(config_ref: str | Path | None = None) -> None:
         "backtest_exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
         "benchmark_df": benchmark_df,
         "price_col": PRICE_COL,
+        "price_passthrough_cols": price_passthrough_cols,
         "passthrough_cols": passthrough_cols,
         "bucket_cols": bucket_cols,
         "backtest_topk_fn": backtest_topk_fn,

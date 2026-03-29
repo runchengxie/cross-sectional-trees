@@ -191,6 +191,12 @@ uv run csml grid \
 * 只比较 `buffer_exit / buffer_entry` 对换手、成本拖累和回测表现的影响
 * 避免为了一个组合层问题重复重训模型
 
+`2026-03-29` 当晚第一轮最小 sweep 已经跑完，结果记在 [`hk-quarterly-construction-grid-20260329.md`](./hk-quarterly-construction-grid-20260329.md)：
+
+* `buffer_entry = 1/2` 当前完全不绑定
+* `buffer_exit = 2` 比 `1` 略好一点，换手和成本都小幅下降
+* 所以下一步更合理的不是继续扫 `be = 1/2`，而是固定 `buffer_exit = 2` 后去看 `top_k = 15 / 20 / 25`
+
 ### 5.4 数据加工 / 算法小探针
 
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_leverage.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_leverage.yml)
@@ -235,7 +241,7 @@ uv run csml grid \
 按 `2026-03-29` 这轮实际进度，方向、lite leverage、`connect-conservative`、窗口探针和 `dedup` 都已经补过了；所以下一步更值得做的是：
 
 1. 先看 [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)，把 `raw-scale dedup + groupcap3` 到底是在“修组合结构”还是“改信号故事”看清楚。
-2. 再用上面的 `construction_grid` 配置固定评分结果，只扫 `buffer_exit / buffer_entry`。
+2. 再用上面的 `construction_grid` 配置固定评分结果，优先扫 `top_k`；`buffer_entry` 当前可以先固定。
 3. 模型侧只补一组最小经营利润探针，不再继续大扩 feature zoo。
 
 如果你想开一条独立于当前 `hybrid` 主线的新路线，而不是继续在现有主副线附近小修小补，当前更合理的是转去看 [`hk-quarterly-pure-fundamentals-20260329.md`](./hk-quarterly-pure-fundamentals-20260329.md)。第一波 `ridge -> small xgb_regressor -> xgb_ranker` 已经跑完，当前收口是：三条都还不够替掉 `hybrid` 主线，但 `xgb_ranker` 在完整测试段相对最稳，`xgb_regressor` 在最近 regime 更亮，`ridge` 保留成 sanity benchmark。
