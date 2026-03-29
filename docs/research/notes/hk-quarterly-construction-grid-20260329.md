@@ -1,9 +1,9 @@
 # HK Quarterly Construction Grid Follow-up（2026-03-29）
 
-本页解决什么：记录 `raw-scale dedup + groupcap3` 这条结构 challenger 的第一轮 `csml grid` 结果，并明确固定信号后下一步最值得扫的组合构造维度。  
+本页解决什么：记录 `raw-scale dedup + groupcap3` 这条结构 challenger 的前两轮 `csml grid` 结果，并明确固定信号后下一步最值得扫的组合构造维度。  
 本页不解决什么：不替代主线/副线的总收口，也不重新讨论模型、`tr_close` 或纯基本面路线。  
 适合谁：已经接受“当前更该看组合构造，不该继续大扫模型参数”的读者。  
-读完你会得到什么：第一轮 buffer sweep 的实际结果、它能支持到什么程度，以及下一轮 construction sweep 最合理该怎么扫。  
+读完你会得到什么：第一轮 buffer sweep、第二轮 `top_k` sweep 的实际结果，它们各自能支持到什么程度，以及当前 construction 线更合理的默认候选。  
 相关页面：`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/research/notes/hk-quarterly-holdings-analysis-20260329.md`、`docs/research/notes/hk-quarterly-next-step-configs-20260329.md`
 
 页面性质：`research-note`  
@@ -19,7 +19,7 @@
 * 它更像组合修形，不像重写信号
 * 所以接下来更合理的不是继续重训模型，而是固定这条信号，直接扫 construction 参数
 
-这一页就是第一轮 construction sweep 的结果记录。
+这一页就是当前 construction sweep 的结果记录。
 
 ## 2. 这轮 sweep 的设定
 
@@ -100,20 +100,69 @@
 * `bx = 2` 已经是全局最优
 * 这条 structural challenger 已经足够强，可以替掉主线
 
-## 6. 下一步最值得扫什么
+## 6. 第二轮结果：固定 `bx = 2`、`be = 1` 后比较 `top_k`
+
+第二轮 sweep 使用：
+
+* [`configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml`](../../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml)
+
+最小网格：
+
+* `top_k = 15 / 20 / 25`
+* `cost_bps = 25`
+* `buffer_exit = 2`
+* `buffer_entry = 1`
+
+结果如下：
+
+| 组合 | `backtest_total_return` | `backtest_sharpe` | `backtest_avg_turnover` | `backtest_avg_cost_drag` |
+| --- | --- | --- | --- | --- |
+| `top_k = 15` | `-3.12%` | `0.054` | `65.42%` | `0.34%` |
+| `top_k = 20` | `+0.01%` | `0.109` | `59.19%` | `0.30%` |
+| `top_k = 25` | `+3.10%` | `0.156` | `55.90%` | `0.28%` |
+
+这轮和第一轮一样，共用同一套评分，所以：
+
+* `eval_ic_mean` 仍然都是 `-0.0076`
+* `eval_long_short` 仍然都是 `-0.0083`
+* 改善完全来自 construction 层，不来自信号本身变强
+
+### 6.1 该怎么读这轮 `top_k` sweep
+
+先说最直接的结论：
+
+* 这条 fixed-signal structural challenger 下，`top_k = 25` 明显好于 `20`，`20` 又明显好于 `15`
+* `top_k` 变宽后，换手和成本拖累一起下降
+* 这更像“增加分散化、降低集中度”的收益，不像信号质量突然改善
+
+也就是说，这轮结果支持的是：
+
+* `raw-scale dedup + groupcap3` 这条结构 challenger 更适合偏宽一点的组合宽度
+* 如果只保留一条当前最像样的 construction 设定，应该优先看 `bx = 2`、`be = 1`、`top_k = 25`
+
+但它还不能支持：
+
+* `top_k = 25` 已经足够把这条线升级成主线
+* 这条 structural challenger 的核心问题已经被 construction 解决
+
+因为这轮 grid 的 `backtest_periods` 仍然只有 `6`，而且评估侧的 `IC / long_short` 仍然没有翻正。
+
+## 7. 下一步最值得扫什么
 
 如果只做一轮最小 follow-up，我会这样排：
 
 1. 固定当前信号：`raw-scale dedup + groupcap3`
 2. 固定 `buffer_exit = 2`
 3. 暂时把 `buffer_entry` 固定在 `1`
-4. 直接扫 `top_k = 15 / 20 / 25`
+4. 先把 `top_k = 25` 当成当前 construction 默认候选
+5. 若还要继续扫，再看 weighting 或更强的 group/sector cap
 
 原因很简单：
 
 * `buffer_entry` 已经证明自己现在不绑定
 * `buffer_exit` 已经有一个轻微但一致的方向
-* 当前更可能带来可解释差异的维度，已经不是 `be`，而是组合宽度
+* `top_k` 这轮已经给出清楚方向：`25 > 20 > 15`
+* 当前更值得继续研究的是“更宽组合为什么更适合这条信号”，而不是再回去微调 `be`
 
 为避免每次都手敲同一组 buffer 参数，这里已经补了两类 tracked 入口：
 
@@ -135,7 +184,7 @@ uv run csml grid \
   --cost-bps 25
 ```
 
-如果 `top_k` 也扫完还没有清楚差异，再考虑：
+如果后面还想继续做 construction 而不是回头改模型，再考虑：
 
 * weighting 方案
 * 更强的 group/sector cap
@@ -143,9 +192,10 @@ uv run csml grid \
 
 而不是立刻回去扩 feature zoo。
 
-## 7. 当前结论
+## 8. 当前结论
 
 一句话收口：
 
 * 第一轮 construction grid 已经验证：这条路是通的，`buffer_exit` 略有帮助，`buffer_entry` 当前不重要
-* 所以下一个最有价值的研究方向，不是新因子，而是固定信号后继续做 `top_k` construction sweep
+* 第二轮 `top_k` grid 进一步表明：在这条 fixed-signal challenger 上，`top_k = 25` 比 `20` 和 `15` 更像样
+* 所以当前最合理的 construction 默认候选，不是新因子，而是 `raw-scale dedup + groupcap3 + bx2_be1 + top_k25`

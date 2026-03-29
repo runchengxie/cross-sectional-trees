@@ -173,6 +173,7 @@
 如果下一步想继续回答“能不能在不改信号的情况下，再压一点换手和成本”，更合理的不是再写一串模型 variant，而是直接固定当前 structural challenger 的评分结果，用 `csml grid` 做组合层 sweep：
 
 * [`configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_construction_grid.yml`](../../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_construction_grid.yml)
+* [`configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml`](../../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml)
 
 建议先从最小网格开始：
 
@@ -195,7 +196,31 @@ uv run csml grid \
 
 * `buffer_entry = 1/2` 当前完全不绑定
 * `buffer_exit = 2` 比 `1` 略好一点，换手和成本都小幅下降
-* 所以下一步更合理的不是继续扫 `be = 1/2`，而是固定 `buffer_exit = 2` 后去看 `top_k = 15 / 20 / 25`
+* 所以下一步更合理的不是继续扫 `be = 1/2`，而是固定 `buffer_exit = 2`、`buffer_entry = 1` 后去看 `top_k = 15 / 20 / 25`
+
+为此，这里又补了三条 tracked construction follow-up：
+
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1.yml)
+  先把当前结构 challenger 固定在 `bx = 2`、`be = 1`
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk15.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk15.yml)
+  集中版 `top_k = 15`
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk25.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk25.yml)
+  宽版 `top_k = 25`
+
+如果想继续用 `csml grid` 做同一评分下的 construction sweep，则优先用：
+
+```bash
+uv run csml grid \
+  --config configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml \
+  --top-k 15,20,25 \
+  --cost-bps 25
+```
+
+这轮 `top_k` sweep 也已经跑完，结果同样记在 [`hk-quarterly-construction-grid-20260329.md`](./hk-quarterly-construction-grid-20260329.md)：
+
+* `top_k = 25` 比 `20` 和 `15` 更像样
+* 改善方向主要体现在更低的换手和成本拖累，不是评估侧 `IC` 突然翻正
+* 所以如果当前只保留一条 construction 候选，优先看 `bx = 2`、`be = 1`、`top_k = 25`
 
 ### 5.4 数据加工 / 算法小探针
 
