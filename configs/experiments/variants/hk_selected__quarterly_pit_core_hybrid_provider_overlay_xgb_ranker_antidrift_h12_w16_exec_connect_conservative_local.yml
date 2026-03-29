@@ -1,0 +1,22 @@
+## Quarterly mainline under the stricter connect-conservative execution
+## profile. Keep the model route unchanged and only tighten liquidity
+## constraints relative to the balanced local baseline.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_exec_connect_conservative_local_base.yml
+  - configs/presets/models/xgb_ranker.yml
+
+data:
+  price_col: close
+  cache_tag: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_connect_conservative_local_v1
+
+model:
+  sample_weight_mode: exp_decay
+  sample_weight_params:
+    halflife: 12
+  train_window:
+    mode: rolling
+    size: 16
+    unit: dates
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_connect_conservative_local

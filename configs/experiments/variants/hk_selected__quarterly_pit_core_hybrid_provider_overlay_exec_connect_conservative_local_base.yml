@@ -1,0 +1,11 @@
+## Shared offline-friendly connect-conservative execution base for the
+## quarterly PIT + valuation-overlay research unit. Keep the balanced local
+## execution setup, but tighten the liquidity floor to the current connect
+## research-pool calibration.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_exec_balanced_local_base.yml
+
+backtest:
+  execution:
+    constraints:
+      min_amount: 20000000

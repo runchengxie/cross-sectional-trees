@@ -132,6 +132,8 @@
   用来回答“窗口是不是该比 `w16` 更短”
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w20_exec_balanced_local.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w20_exec_balanced_local.yml)
   用来回答“窗口再拉长会不会重新吃到旧 regime 污染”
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w20_tr_close_exec_balanced_local.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w20_tr_close_exec_balanced_local.yml)
+  challenger 的 longer-window probe；用来回答连续目标这条线在 `tr_close` 口径下是不是更适合更长记忆
 
 ### 5.3 特征去重探针
 
@@ -150,6 +152,10 @@
   challenger 固定做多方向，用来判断最近这条副线是不是只是被 `cv_ic` 自动翻向掩盖了问题
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_neg.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_neg.yml)
   challenger 固定做空方向，用来对照阶段性方向切换到底有多强
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_connect_conservative_local.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_connect_conservative_local.yml)
+  主线的更保守执行约束探针；保持 balanced execution 的其他参数不变，只把 `min_amount` 提到 `20M`
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_connect_conservative_local.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_connect_conservative_local.yml)
+  challenger 的更保守执行约束探针；用来判断最近这条副线对流动性门槛收紧是否更脆弱
 
 ## 6. 建议怎么跑
 
@@ -163,8 +169,12 @@
 4. 再补两条杠杆 / 资产负债表风险特征探针：
    * mainline leverage
    * challenger leverage
-5. 最后再补更轻的结构探针：
+5. 再补更保守的执行约束探针：
+   * mainline connect-conservative
+   * challenger connect-conservative
+6. 最后再补更轻的结构探针：
    * `w12 / w20`
+   * challenger `w20`
    * `raw-scale / log-scale dedup`
 
 如果这些小探针都没有明显改善，就先别继续扩更多特征和窗口。
