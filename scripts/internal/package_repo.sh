@@ -15,7 +15,7 @@ Usage:
   $(basename "$0") [NAME] [OUT_DIR]
   $(basename "$0") [--name NAME] [--out-dir DIR] [--format tar.gz|zip|tar.zst]
                    [--exclude-from FILE]... [--no-default-excludes]
-                   [--split-size SIZE] [--keep-archive] [--progress]
+                   [--split-size SIZE] [--keep-archive] [--work-dir DIR] [--progress]
 
 Options:
   --name NAME            Archive base name (default: project directory name)
@@ -25,8 +25,12 @@ Options:
   --no-default-excludes  Disable built-in exclude patterns
   --split-size SIZE      Split archive into SIZE chunks (for example: 950m, 1g)
   --keep-archive         Keep the full archive alongside split parts
+  --work-dir DIR         Temporary work directory base (default: OUT_DIR)
   --progress             Show command progress while creating the archive
   -h, --help             Show this help
+
+Environment:
+  PACKAGE_REPO_TMPDIR    Temporary work directory base when --work-dir is omitted
 
 Positional compatibility:
   NAME and OUT_DIR are still accepted as the first two positional arguments.
@@ -358,6 +362,7 @@ PROGRESS=false
 SPLIT_SIZE=""
 SPLIT_SIZE_BYTES=""
 KEEP_ARCHIVE=false
+WORK_DIR_BASE="${PACKAGE_REPO_TMPDIR:-}"
 EXCLUDES=()
 EXCLUDE_FILES=()
 ZIP_EXCLUDE_ARGS=()
@@ -398,6 +403,11 @@ while [[ $# -gt 0 ]]; do
     --keep-archive)
       KEEP_ARCHIVE=true
       shift
+      ;;
+    --work-dir)
+      require_value "$1" "${2-}"
+      WORK_DIR_BASE="$2"
+      shift 2
       ;;
     --progress)
       PROGRESS=true
@@ -457,6 +467,15 @@ mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 [[ -w "$OUT_DIR" ]] || die "Output directory is not writable: $OUT_DIR"
 
+if [[ -z "$WORK_DIR_BASE" ]]; then
+  WORK_DIR_BASE="$OUT_DIR"
+else
+  WORK_DIR_BASE="$(resolve_path_arg "$WORK_DIR_BASE")"
+fi
+mkdir -p "$WORK_DIR_BASE"
+WORK_DIR_BASE="$(cd "$WORK_DIR_BASE" && pwd)"
+[[ -w "$WORK_DIR_BASE" ]] || die "Work directory base is not writable: $WORK_DIR_BASE"
+
 if [[ "$USE_DEFAULT_EXCLUDES" == true ]]; then
   EXCLUDES=("${DEFAULT_EXCLUDES[@]}")
 fi
@@ -470,7 +489,7 @@ fi
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
 ARCHIVE_BASENAME="${NAME}_${STAMP}.${EXTENSION}"
-WORK_DIR="$(mktemp -d)"
+WORK_DIR="$(mktemp -d -p "$WORK_DIR_BASE" "${NAME}.tmp.XXXXXXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 ARCHIVE_PATH="${WORK_DIR}/${ARCHIVE_BASENAME}"

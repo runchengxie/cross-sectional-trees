@@ -101,3 +101,63 @@ def test_package_repo_script_can_split_archive_and_reassemble(tmp_path: Path):
         extracted = tar.extractfile(payload_name)
         assert extracted is not None
         assert extracted.read() == payload
+
+
+def test_package_repo_script_defaults_work_dir_to_out_dir(tmp_path: Path):
+    repo_root, _ = _prepare_demo_repo(tmp_path)
+    out_dir = tmp_path / "out"
+    env = os.environ.copy()
+    env["TMPDIR"] = str(tmp_path / "missing-tmpdir")
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/internal/package_repo.sh",
+            "--name",
+            "demo",
+            "--out-dir",
+            str(out_dir),
+            "--split-size",
+            "1k",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert any(
+        path.is_file() and not path.name.endswith(".sha256")
+        for path in out_dir.glob("demo_*.tar.gz.part-*")
+    )
+
+
+def test_package_repo_script_supports_explicit_work_dir(tmp_path: Path):
+    repo_root, _ = _prepare_demo_repo(tmp_path)
+    out_dir = tmp_path / "out"
+    work_dir = tmp_path / "work"
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/internal/package_repo.sh",
+            "--name",
+            "demo",
+            "--out-dir",
+            str(out_dir),
+            "--work-dir",
+            str(work_dir),
+            "--split-size",
+            "1k",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert work_dir.exists()
+    assert not any(work_dir.iterdir())
