@@ -11,13 +11,14 @@
 权威来源：截至 `2026-03-29` 的 tracked config、已落地 balanced execution run、当前 playbook 收口、以及本页引用的历史研究笔记  
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与更新后的 playbook 或 preset 冲突，以更晚的 playbook / preset 为准
 
-## 1. 先记住 10 句
+## 1. 先记住 11 句
 
 * 旧 notes 不该再被当成平行的“当前真相”入口；它们更适合当 provenance。
 * 当前 quarterly 线真正还值得继续推进的主线，仍然是 `ranker h12_w16 + close`。
 * 当前最值得继续盯的 challenger，仍然是 `reg_zscore h12_w16 + tr_close`。
 * `tr_close` 不是所有路线都该默认打开的真理；它更适合当前 regressor challenger，而不是直接替掉 ranker 主线默认口径。
 * balanced execution 比早期 flat cost 更合理；所以更早那些“简陋成本口径下很亮”的结果，现在只能当背景，不该直接拿来定现行主线。
+* 当前 quarterly 执行口径默认按 `portfolio_value=1_000_000` 的小资金研究来理解；在这个量级下，`base_bps` 和 `min_amount` 通常比 participation 冲击更主导结果。
 * 最近一段 `Final OOS` 很亮，不等于模型已经验证通过；这段样本已经被消费过。
 * 当前最大的矛盾仍然是 regime shift、方向切换和前瞻证据不足，而不是“模型名字还不够多”。
 * `elasticnet` 目前不值得回到 quarterly 主线，保留成低优先级稀疏线性探针就够了。
@@ -130,8 +131,16 @@
 ### 5.4 特征动作
 
 * 先不大扩 feature zoo
-* 先做 `market_cap / log_mcap`、`vol / log_vol` 的去重探针
+* `market_cap / log_mcap`、`vol / log_vol` 的去重探针已经补过；`raw-scale dedup` 值得保留成低优先级结构 challenger，`log-scale dedup` 可以降级
 * 如果还要加，优先补一小组杠杆 / 资产负债表风险特征
+
+### 5.5 执行口径
+
+* 当前 quarterly 本地研究默认沿用 `balanced execution + portfolio_value=1_000_000`。
+* 在 `top_k=20` 的设定下，这更接近“小资金、低 participation”的研究口径，而不是容量边界测试。
+* 所以接下来的默认回测，优先继续沿用这套 `1M` 资金假设；只有在显式做容量 / 交易冲击敏感性测试时，才单独改 `portfolio_value` 或更激进地改 execution 参数。
+* 如果要先做贴近你这类资金规模的微调，优先看 `min_amount` 和直接费率，不要先把 `impact_bps` 当成主要矛盾。
+* 更细的 execution 解释和 `1m` 口径说明，统一参考 `docs/playbooks/hk-intraday-assets.md`，本页不重复展开公式。
 
 ## 6. 当前不建议做什么
 
@@ -147,6 +156,8 @@
 3. 只补少量窗口探针和特征去重探针。
 4. 如果还要做特征扩充，先补一小组杠杆 / 资产负债表风险特征。
 5. 等新的前瞻样本，再决定谁配得上升级。
+
+如果按 `2026-03-29` 这轮已完成的探针继续往下走，下一步更值得做的是解释 `raw-scale dedup` 为什么能把换手和成本拖累压下去，而不是继续在已消费的这组 dedup 结果上来回调参。
 
 ## 8. 现在旧 notes 应该怎么读
 

@@ -11,7 +11,7 @@
 权威来源：当前 quarterly notes、已落地 balanced execution run、以及本页引用的 tracked config
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与当前 playbook 或 preset 冲突，以 playbook / preset 的最新收口为准
 
-## 1. 先记住 8 句
+## 1. 先记住 9 句
 
 * 当前最像主线的仍然是 `ranker h12_w16 + close + balanced execution`。
 * 当前最值得继续盯的 challenger 仍然是 `reg_zscore h12_w16 + tr_close + balanced execution`。
@@ -20,6 +20,7 @@
 * 当前 `final_oos` 这段最近样本已经看过了，所以接下来不该继续围着它大扩参数网格。
 * 特征上现在不该继续堆 feature zoo；先做小幅去重，比盲目扩充更值。
 * 当前最值得先试的去重是两对单调变换对：`market_cap / log_mcap` 和 `vol / log_vol`。
+* 当前 quarterly execution 默认按 `portfolio_value=1_000_000` 的小资金研究口径延续；除非显式做容量敏感性，不要频繁改大交易冲击假设。
 * 如果后面真要扩特征，也更该优先补一小组杠杆 / 资产负债表风险特征，而不是继续堆技术指标。
 
 ## 2. 训练窗和测试窗怎么想
@@ -115,6 +116,8 @@
 
 * 这组 local balanced execution 配置是为了研究近似更合理、同时尽量离线复现
 * 它们仍然是 daily 级 execution approximation，不是 `5m` 逐 bar 成交仿真
+* 当前默认沿用 `portfolio_value=1_000_000`；在 `top_k=20` 的设定下，这更像小资金研究口径，通常先由 `base_bps` 和 `min_amount` 主导
+* 所以如果只是贴近当前资金规模的微调，先看 `min_amount` / 直接费率敏感性，不要先大扫 `impact_bps`
 * 如果本地 daily 资产不包含 `02800.HK`，benchmark/active 摘要可能不会完整生成；这时先看绝对收益、Sharpe、turnover 和 cost drag 更稳妥
 
 ## 5. 这次新增的 config
@@ -141,6 +144,14 @@
   保留 `market_cap` / `vol`，删 `log_mcap` / `log_vol`
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_logscale_dedup.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_logscale_dedup.yml)
   保留 `log_mcap` / `log_vol`，删 `market_cap` / `vol`
+
+这组探针在 `2026-03-29` 已经补完，当前更实用的收口是：
+
+* `raw-scale dedup` 有保留价值，但只够当低优先级结构 challenger，不够替掉主线。
+* 它相对 `w16 balanced` 主线把完整测试段 `total_return` 从 `-19.65%` 拉到 `-19.10%`，`eval IC` 从 `-0.0237` 拉到 `-0.0076`，同时把 `avg_turnover` 从 `55.68%` 压到 `41.53%`、`avg_cost_drag` 从 `0.31%` 压到 `0.22%`。
+* 但它没有把最近已消费的 `Final OOS` 明显做强，`Sharpe` 反而从 `2.04` 降到 `1.80`；所以现阶段更像“更省换手的结构版本”，不是“收益更强的新默认”。
+* `log-scale dedup` 不值得继续追。它把最近 OOS 亮点大致保住了，但完整测试段明显更差，`total_return` 掉到 `-31.79%`、`Sharpe` 掉到 `-0.20`，这正是当前最该警惕的模式。
+* 从持仓样本看，`raw-scale dedup` 并不是 cosmetic 变化：它和基线平均每期名称重合约 `62.6%`。更常换入的包括 `友邦保险 / 腾讯控股 / 小米集团-W / 招商银行 / 龙湖集团`，更常换出的包括 `舜宇光学科技 / 新奥能源 / 康希诺生物 / 京东健康 / 中国太保`。这说明去掉 `log_mcap / log_vol` 确实改到了组合结构，而不是只改了树模型的表面分裂路径。
 
 ### 5.4 数据加工 / 算法小探针
 
@@ -178,6 +189,8 @@
    * `raw-scale / log-scale dedup`
 
 如果这些小探针都没有明显改善，就先别继续扩更多特征和窗口。
+
+按 `2026-03-29` 这轮实际进度，方向、lite leverage、`connect-conservative`、窗口探针和 `dedup` 都已经补过了；所以下一步更值得做的是解释 `raw-scale dedup` 降换手的机制，或者直接等新的前瞻样本，而不是继续围着这组已消费结果扩小参数。
 
 一句话收口：
 
