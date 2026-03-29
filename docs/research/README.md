@@ -24,14 +24,23 @@
 
 ### 研究笔记与结论沉淀
 
+如果你现在要重新进入 HK quarterly 研究，不建议直接从旧的 follow-up 页面往回翻。  
+当前更合理的阅读顺序是：
+
+1. `notes/hk-quarterly-current-state-20260329.md`
+2. `notes/hk-quarterly-next-step-configs-20260329.md`
+3. `notes/hk-quarterly-oos-evidence-20260329.md`
+4. 只有当你要追溯结论出处时，再回去看更早的专题页
+
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
+| `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 线的现行口径、哪些旧结论仍保留、哪些已降级成 provenance、以及现在该从哪两条路线继续往前推 | 是，当前应作为 quarterly notes 的总入口 |
+| `notes/hk-quarterly-next-step-configs-20260329.md` | 当前 quarterly 下一阶段更适合收口到少数几个窗口和特征探针，并统一到 balanced execution 口径下继续比较 | 否，当前作为下一阶段执行建议页保留 |
+| `notes/hk-quarterly-oos-evidence-20260329.md` | 最近 `Final OOS` 很亮不等于模型已验证；当前两条 balanced execution 候选更适合当下一轮前瞻验证对象，而不是已确认赢家 | 否，当前作为“线索 vs 证据”边界说明页保留 |
 | `notes/hk-quarterly-pit-regime-shift-202603.md` | 旧 quarterly overlay 基线失效，`ranker h12_w16` 抗漂移版本仍是当前更稳的基线 | 是，已反映到 `docs/playbooks/hk-selected.md` 和相关配置口径 |
 | `notes/hk-h12-w16-target-transform-review-20260324.md` | `zscore target` 是当前更值得跟踪的 regressor challenger，但还不能替代 ranker 主基线 | 部分沉淀，摘要已被后续总结页吸收 |
 | `notes/hk-quarterly-target-design-and-direction-20260324.md` | 相对化 label 已升级成正式研究副线，但方向切换问题仍需单独验证 | 是，当前是这组 follow-up 的汇总结论页 |
 | `notes/hk-quarterly-price-col-ab-20260325.md` | `tr_close` 不足以让 ranker 主线改默认，但对 `reg_zscore` challenger 是正向加成 | 部分沉淀，当前作为价格口径 A/B 的独立汇总页保留 |
-| `notes/hk-quarterly-oos-evidence-20260329.md` | 最近 `Final OOS` 很亮不等于模型已验证；当前两条 balanced execution 候选更适合当下一轮前瞻验证对象，而不是已确认赢家 | 否，当前作为“线索 vs 证据”边界说明页保留 |
-| `notes/hk-quarterly-next-step-configs-20260329.md` | 当前 quarterly 下一阶段更适合收口到少数几个窗口和特征探针，并统一到 balanced execution 口径下继续比较 | 否，当前作为下一阶段执行建议页保留 |
 
 ## 时点型页面头部模板
 
@@ -57,6 +66,7 @@
 
 研究笔记：
 
+* `notes/hk-quarterly-current-state-20260329.md`
 * `notes/hk-h12-w16-target-transform-review-20260324.md`
 * `notes/hk-quarterly-target-design-and-direction-20260324.md`
 * `notes/hk-quarterly-pit-regime-shift-202603.md`
