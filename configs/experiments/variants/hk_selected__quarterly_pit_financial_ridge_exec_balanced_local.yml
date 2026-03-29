@@ -1,0 +1,22 @@
+## Quarterly PIT-only financial benchmark:
+## ridge + h12/w16 + close + balanced execution + local mirrored assets.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_financial_exec_balanced_local_base.yml
+  - configs/presets/models/ridge.yml
+
+data:
+  cache_tag: hk_sel_q_pit_financial_ridge_exec_balanced_local_v1
+
+model:
+  params:
+    alpha: 10.0
+  sample_weight_mode: exp_decay
+  sample_weight_params:
+    halflife: 12
+  train_window:
+    mode: rolling
+    size: 16
+    unit: dates
+
+eval:
+  run_name: hk_sel_q_pit_financial_ridge_exec_balanced_local

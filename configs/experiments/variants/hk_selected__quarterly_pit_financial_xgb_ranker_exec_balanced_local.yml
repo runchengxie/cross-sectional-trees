@@ -1,0 +1,28 @@
+## Quarterly PIT-only financial ranking challenger:
+## small XGB ranker + h12/w16 + close + balanced execution + local assets.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_financial_exec_balanced_local_base.yml
+  - configs/presets/models/xgb_ranker.yml
+
+data:
+  cache_tag: hk_sel_q_pit_financial_xgb_rank_exec_balanced_local_v1
+
+model:
+  params:
+    n_estimators: 300
+    learning_rate: 0.03
+    max_depth: 3
+    subsample: 0.8
+    colsample_bytree: 0.7
+    reg_alpha: 0.0
+    reg_lambda: 1.0
+  sample_weight_mode: exp_decay
+  sample_weight_params:
+    halflife: 12
+  train_window:
+    mode: rolling
+    size: 16
+    unit: dates
+
+eval:
+  run_name: hk_sel_q_pit_financial_xgb_rank_exec_balanced_local

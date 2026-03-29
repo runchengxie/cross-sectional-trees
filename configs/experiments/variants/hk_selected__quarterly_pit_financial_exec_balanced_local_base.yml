@@ -1,0 +1,58 @@
+## Shared offline-friendly balanced-execution base for the quarterly
+## PIT-only financial route. Keep universe/eval/backtest close to the
+## current quarterly mainline, but remove price-volume and valuation-overlay
+## features so this unit answers whether fundamentals alone carry signal.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_exec_balanced_local_base.yml
+
+data:
+  price_col: close
+  cache_tag: hk_sel_q_pit_financial_exec_balanced_local_base_v1
+
+fundamentals:
+  file: artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+  features:
+    - revenue
+    - operating_revenue
+    - operating_profit
+    - net_profit
+    - basic_earnings_per_share
+    - cash_flow_from_operating_activities
+  allow_missing_features: true
+  log_market_cap: false
+  provider_overlay:
+    enabled: false
+
+features:
+  list:
+    - sales
+    - growth_sales
+    - operating_profit
+    - growth_operating_profit
+    - basic_earnings_per_share
+    - growth_basic_earnings_per_share
+    - net_profit
+    - growth_net_profit
+    - cash_flow_from_operating_activities
+    - growth_cash_flow_from_operating_activities
+    - profit_margin
+    - cfo_margin
+    - cfo_to_profit
+    - days_since_report
+  missing:
+    add_indicators: false
+    features:
+      - sales
+      - growth_sales
+      - operating_profit
+      - growth_operating_profit
+      - basic_earnings_per_share
+      - growth_basic_earnings_per_share
+      - net_profit
+      - growth_net_profit
+      - cash_flow_from_operating_activities
+      - growth_cash_flow_from_operating_activities
+      - profit_margin
+      - cfo_margin
+      - cfo_to_profit
+      - days_since_report

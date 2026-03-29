@@ -1,0 +1,48 @@
+## Pure-PIT follow-up:
+## keep the current small XGB regressor route unchanged, then add only
+## operating_margin to test whether the profitability ratio adds anything on
+## top of the existing operating-profit family.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_financial_xgb_regressor_exec_balanced_local.yml
+
+data:
+  cache_tag: hk_sel_q_pit_financial_xgb_reg_exec_balanced_local_operating_margin_v1
+
+features:
+  list:
+    - sales
+    - growth_sales
+    - operating_profit
+    - growth_operating_profit
+    - operating_margin
+    - basic_earnings_per_share
+    - growth_basic_earnings_per_share
+    - net_profit
+    - growth_net_profit
+    - cash_flow_from_operating_activities
+    - growth_cash_flow_from_operating_activities
+    - profit_margin
+    - cfo_margin
+    - cfo_to_profit
+    - days_since_report
+  missing:
+    add_indicators: false
+    features:
+      - sales
+      - growth_sales
+      - operating_profit
+      - growth_operating_profit
+      - operating_margin
+      - basic_earnings_per_share
+      - growth_basic_earnings_per_share
+      - net_profit
+      - growth_net_profit
+      - cash_flow_from_operating_activities
+      - growth_cash_flow_from_operating_activities
+      - profit_margin
+      - cfo_margin
+      - cfo_to_profit
+      - days_since_report
+
+eval:
+  run_name: hk_sel_q_pit_financial_xgb_reg_exec_balanced_local_operating_margin

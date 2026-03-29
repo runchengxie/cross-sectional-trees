@@ -1,0 +1,12 @@
+## Raw-scale dedup structural challenger with a minimal industry-aware cap:
+## keep the lower-turnover dedup route unchanged, then cap holdings to
+## at most 3 names per first-level industry group.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup.yml
+
+backtest:
+  group_col: first_industry_name
+  max_names_per_group: 3
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3

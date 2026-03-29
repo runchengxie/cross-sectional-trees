@@ -153,6 +153,44 @@
 * `log-scale dedup` 不值得继续追。它把最近 OOS 亮点大致保住了，但完整测试段明显更差，`total_return` 掉到 `-31.79%`、`Sharpe` 掉到 `-0.20`，这正是当前最该警惕的模式。
 * 从持仓样本看，`raw-scale dedup` 并不是 cosmetic 变化：它和基线平均每期名称重合约 `62.6%`。更常换入的包括 `友邦保险 / 腾讯控股 / 小米集团-W / 招商银行 / 龙湖集团`，更常换出的包括 `舜宇光学科技 / 新奥能源 / 康希诺生物 / 京东健康 / 中国太保`。这说明去掉 `log_mcap / log_vol` 确实改到了组合结构，而不是只改了树模型的表面分裂路径。
 
+### 5.3A 组合约束探针
+
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_groupcap3.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_groupcap3.yml)
+  主线的最小组合约束 probe；把 `first_industry_name` 的单组最多持仓数压到 `3`
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3.yml)
+  `raw-scale dedup` 的最小组合约束 probe；同样把单组最多持仓数压到 `3`
+
+`2026-03-29` 这轮结果表明：
+
+* `groupcap3` 不是虚设；主线的每期第一行业最大持仓数从平均约 `4.17` 压到 `2.83`，`raw-scale dedup` 从 `3.75` 压到 `2.92`
+* 主线直接加 `groupcap3` 只能算小幅改善完整测试段，最近 `Final OOS` 反而略弱
+* `raw-scale dedup + groupcap3` 则是当前更有意思的 construction challenger：完整测试段从 `-19.10%` 改到 `-13.38%`，最近 `Final OOS` 也从 `81.64% / Sharpe 1.80` 提到 `84.72% / Sharpe 1.89`
+* 但它的 `walk_forward` 仍然是 `0/6` 个正窗口，所以现阶段仍然只能算结构 challenger，不足以替掉主线
+* 再往下看，它和不带 `groupcap3` 的 `raw-scale dedup` full sample 平均持仓重合度约 `0.93`；最近 OOS `7` 个 entry-date 里只有第一期换了一只名字，所以这条约束更像组合修形，不是重写信号
+
+### 5.3B 组合层 buffer grid
+
+如果下一步想继续回答“能不能在不改信号的情况下，再压一点换手和成本”，更合理的不是再写一串模型 variant，而是直接固定当前 structural challenger 的评分结果，用 `csml grid` 做组合层 sweep：
+
+* [`configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_construction_grid.yml`](../../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_construction_grid.yml)
+
+建议先从最小网格开始：
+
+```bash
+uv run csml grid \
+  --config configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_construction_grid.yml \
+  --top-k 20 \
+  --cost-bps 25 \
+  --buffer-exit 1,2 \
+  --buffer-entry 1,2
+```
+
+这条线的意义是：
+
+* 固定当前 `raw-scale dedup + groupcap3` 信号
+* 只比较 `buffer_exit / buffer_entry` 对换手、成本拖累和回测表现的影响
+* 避免为了一个组合层问题重复重训模型
+
 ### 5.4 数据加工 / 算法小探针
 
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_leverage.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_leverage.yml)
@@ -167,6 +205,10 @@
   主线的更保守执行约束探针；保持 balanced execution 的其他参数不变，只把 `min_amount` 提到 `20M`
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_connect_conservative_local.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_connect_conservative_local.yml)
   challenger 的更保守执行约束探针；用来判断最近这条副线对流动性门槛收紧是否更脆弱
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_operating_profit.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_operating_profit.yml)
+  主线的经营利润小探针；在现有 hybrid 主线上只额外加入 `operating_profit / growth_operating_profit / operating_margin`
+* [`configs/experiments/variants/hk_selected__quarterly_pit_financial_xgb_regressor_exec_balanced_local_operating_margin.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_financial_xgb_regressor_exec_balanced_local_operating_margin.yml)
+  纯基本面 sidecar 的最小 follow-up；在现有纯 PIT `xgb_regressor` 上只额外加入 `operating_margin`
 
 ## 6. 建议怎么跑
 
@@ -190,7 +232,13 @@
 
 如果这些小探针都没有明显改善，就先别继续扩更多特征和窗口。
 
-按 `2026-03-29` 这轮实际进度，方向、lite leverage、`connect-conservative`、窗口探针和 `dedup` 都已经补过了；所以下一步更值得做的是解释 `raw-scale dedup` 降换手的机制，或者直接等新的前瞻样本，而不是继续围着这组已消费结果扩小参数。
+按 `2026-03-29` 这轮实际进度，方向、lite leverage、`connect-conservative`、窗口探针和 `dedup` 都已经补过了；所以下一步更值得做的是：
+
+1. 先看 [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)，把 `raw-scale dedup + groupcap3` 到底是在“修组合结构”还是“改信号故事”看清楚。
+2. 再用上面的 `construction_grid` 配置固定评分结果，只扫 `buffer_exit / buffer_entry`。
+3. 模型侧只补一组最小经营利润探针，不再继续大扩 feature zoo。
+
+如果你想开一条独立于当前 `hybrid` 主线的新路线，而不是继续在现有主副线附近小修小补，当前更合理的是转去看 [`hk-quarterly-pure-fundamentals-20260329.md`](./hk-quarterly-pure-fundamentals-20260329.md)。第一波 `ridge -> small xgb_regressor -> xgb_ranker` 已经跑完，当前收口是：三条都还不够替掉 `hybrid` 主线，但 `xgb_ranker` 在完整测试段相对最稳，`xgb_regressor` 在最近 regime 更亮，`ridge` 保留成 sanity benchmark。
 
 一句话收口：
 

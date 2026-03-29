@@ -4,7 +4,7 @@
 本页不解决什么：不替代单次 run 的 `summary.json` / `config.used.yml`，也不把历史中间实验全部重写一遍。  
 适合谁：已经看过几轮 quarterly notes，开始怀疑“旧笔记太多、口径太杂”，想知道现在到底该信什么的人。  
 读完你会得到什么：一套更干净的现行口径、一份“哪些信息保留、哪些降级”的清单，以及当前真正该继续推进的研究顺序。  
-相关页面：`docs/playbooks/hk-selected.md`、`docs/research/notes/hk-quarterly-next-step-configs-20260329.md`、`docs/research/notes/hk-quarterly-oos-evidence-20260329.md`、`docs/concepts/model-landscape.md`
+相关页面：`docs/playbooks/hk-selected.md`、`docs/research/notes/hk-quarterly-holdings-analysis-20260329.md`、`docs/research/notes/hk-quarterly-next-step-configs-20260329.md`、`docs/research/notes/hk-quarterly-oos-evidence-20260329.md`、`docs/concepts/model-landscape.md`
 
 页面性质：`current-state`  
 最后核对时间：`2026-03-29`  
@@ -22,7 +22,9 @@
 * 最近一段 `Final OOS` 很亮，不等于模型已经验证通过；这段样本已经被消费过。
 * 当前最大的矛盾仍然是 regime shift、方向切换和前瞻证据不足，而不是“模型名字还不够多”。
 * `elasticnet` 目前不值得回到 quarterly 主线，保留成低优先级稀疏线性探针就够了。
-* 特征现在不该继续扩成 zoo；先做小幅去重和一小组杠杆/资产负债表风险特征更合理。
+* 特征现在不该继续扩成 zoo；先做小幅去重和一小组经营利润/盈利质量特征更合理，重型资产负债表因子放后。
+* 当前最像样的组合结构 probe，不是“主线直接加约束”，而是 `raw-scale dedup + groupcap3` 这条 construction challenger。
+* 如果要开新的独立路线，纯 PIT 基本面值得做，但更适合当 benchmark / challenger 线，不适合直接替掉当前 hybrid 主线。
 * 这条线仍值得做，但目标应该是“低频、可复现、逐步走向 paper/shadow/canary 的 HK 研究线”，不是现在就把它包装成已经足够重仓上线的单模型。
 
 ## 2. 为什么要重置阅读入口
@@ -132,7 +134,8 @@
 
 * 先不大扩 feature zoo
 * `market_cap / log_mcap`、`vol / log_vol` 的去重探针已经补过；`raw-scale dedup` 值得保留成低优先级结构 challenger，`log-scale dedup` 可以降级
-* 如果还要加，优先补一小组杠杆 / 资产负债表风险特征
+* 如果只保留一条组合结构 follow-up，当前更值得追的是 `raw-scale dedup + groupcap3`，而不是“主线直接加 group cap”
+* 如果还要加，优先补 `operating_profit / growth_operating_profit / operating_margin` 这一小组经营利润特征，再看更重的资产负债表因子
 
 ### 5.5 执行口径
 
@@ -154,8 +157,11 @@
 1. 冻结主线和 challenger 的规格，不再继续大扩网格。
 2. 在 challenger 上做离线 `signal_direction` 规则回放。
 3. 只补少量窗口探针和特征去重探针。
-4. 如果还要做特征扩充，先补一小组杠杆 / 资产负债表风险特征。
-5. 等新的前瞻样本，再决定谁配得上升级。
+4. 先看 [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)，把主线、`reg_zscore challenger` 和 `raw-scale dedup` 的组合差异看清楚。
+5. 再看 `groupcap3` 的 follow-up：当前更有继续价值的是 `raw-scale dedup + groupcap3`，不是主线直接加 group cap。
+6. 并行维护纯 PIT 基本面 sidecar 线，但只把它当 benchmark / challenger；第一波结果里 `xgb_ranker` 完整测试段相对最稳，`xgb_regressor` 最近 regime 更亮，三条都还不足以替掉 hybrid 主线。
+7. 如果还要做特征扩充，先补一小组经营利润特征；资产负债表重型因子放到更后面。
+8. 等新的前瞻样本，再决定谁配得上升级。
 
 如果按 `2026-03-29` 这轮已完成的探针继续往下走，下一步更值得做的是解释 `raw-scale dedup` 为什么能把换手和成本拖累压下去，而不是继续在已消费的这组 dedup 结果上来回调参。
 
@@ -182,9 +188,10 @@
 如果你今天才重新进入 quarterly 研究，建议按下面顺序读：
 
 1. 本页：先把现行口径和边界看对。
-2. [`hk-quarterly-next-step-configs-20260329.md`](./hk-quarterly-next-step-configs-20260329.md)：看下一步具体跑什么。
-3. [`hk-quarterly-oos-evidence-20260329.md`](./hk-quarterly-oos-evidence-20260329.md)：看为什么最近 OOS 亮点不能直接当证据。
-4. 需要追溯时，再回去翻更早的专题页。
+2. [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)：看现在为什么更该先做组合层解释，而不是继续盲扫 config。
+3. [`hk-quarterly-next-step-configs-20260329.md`](./hk-quarterly-next-step-configs-20260329.md)：看下一步具体跑什么。
+4. [`hk-quarterly-oos-evidence-20260329.md`](./hk-quarterly-oos-evidence-20260329.md)：看为什么最近 OOS 亮点不能直接当证据。
+5. 需要追溯时，再回去翻更早的专题页。
 
 ## 10. 一句话结论
 
