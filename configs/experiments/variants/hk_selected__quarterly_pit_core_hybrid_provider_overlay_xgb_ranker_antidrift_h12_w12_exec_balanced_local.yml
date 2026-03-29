@@ -1,0 +1,13 @@
+## Shorter-window probe around the promoted quarterly mainline.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local.yml
+
+data:
+  cache_tag: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w12_exec_balanced_local_v1
+
+model:
+  train_window:
+    size: 12
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w12_exec_balanced_local

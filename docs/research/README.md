@@ -31,6 +31,7 @@
 | `notes/hk-quarterly-target-design-and-direction-20260324.md` | 相对化 label 已升级成正式研究副线，但方向切换问题仍需单独验证 | 是，当前是这组 follow-up 的汇总结论页 |
 | `notes/hk-quarterly-price-col-ab-20260325.md` | `tr_close` 不足以让 ranker 主线改默认，但对 `reg_zscore` challenger 是正向加成 | 部分沉淀，当前作为价格口径 A/B 的独立汇总页保留 |
 | `notes/hk-quarterly-oos-evidence-20260329.md` | 最近 `Final OOS` 很亮不等于模型已验证；当前两条 balanced execution 候选更适合当下一轮前瞻验证对象，而不是已确认赢家 | 否，当前作为“线索 vs 证据”边界说明页保留 |
+| `notes/hk-quarterly-next-step-configs-20260329.md` | 当前 quarterly 下一阶段更适合收口到少数几个窗口和特征探针，并统一到 balanced execution 口径下继续比较 | 否，当前作为下一阶段执行建议页保留 |
 
 ## 时点型页面头部模板
 
@@ -61,3 +62,4 @@
 * `notes/hk-quarterly-pit-regime-shift-202603.md`
 * `notes/hk-quarterly-price-col-ab-20260325.md`
 * `notes/hk-quarterly-oos-evidence-20260329.md`
+* `notes/hk-quarterly-next-step-configs-20260329.md`

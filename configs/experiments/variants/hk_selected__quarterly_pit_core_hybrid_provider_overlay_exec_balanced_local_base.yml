@@ -1,0 +1,47 @@
+## Shared offline-friendly balanced-execution base for the quarterly
+## PIT + valuation-overlay research unit. Keep the dense validation route and
+## feature family unchanged, but read daily/assets/fundamentals from local
+## mirrors and replace flat transaction costs with explicit execution costs.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_validate_dense_wf_base.yml
+
+data:
+  rqdata:
+    daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
+    instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
+    ex_factors_dir: artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest
+
+fundamentals:
+  source: file
+  file: artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals_with_provider_valuation_asof.parquet
+  column_map: {}
+  required: true
+  market_cap_col: market_cap
+  log_market_cap_col: log_mcap
+  provider_overlay:
+    enabled: false
+
+backtest:
+  execution:
+    entry_policy:
+      price_col: open
+    exit_policy:
+      price: delay
+      fallback: ffill
+      price_col: close
+    cost_model:
+      name: side_bps
+      buy_bps: 25
+      sell_bps: 25
+    slippage_model:
+      name: participation
+      amount_col: adv20_amount
+      base_bps: 4
+      impact_bps: 50
+      portfolio_value: 1000000
+      power: 0.5
+      max_participation: 0.05
+    constraints:
+      min_price: 5
+      min_amount: 10000000
+      amount_col: adv20_amount

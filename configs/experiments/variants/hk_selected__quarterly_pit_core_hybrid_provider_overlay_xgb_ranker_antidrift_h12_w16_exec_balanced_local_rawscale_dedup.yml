@@ -1,0 +1,53 @@
+## Feature dedup probe:
+## keep raw-scale market-cap and volume columns, drop their log transforms.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local.yml
+
+data:
+  cache_tag: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_v1
+
+features:
+  list:
+    - ret_60
+    - ret_120
+    - ret_240
+    - rv_60
+    - rv_120
+    - volume_sma20_ratio
+    - volume_sma60_ratio
+    - vol
+    - sales
+    - growth_sales
+    - basic_earnings_per_share
+    - growth_basic_earnings_per_share
+    - net_profit
+    - growth_net_profit
+    - cash_flow_from_operating_activities
+    - growth_cash_flow_from_operating_activities
+    - profit_margin
+    - cfo_margin
+    - cfo_to_profit
+    - days_since_report
+    - market_cap
+    - pe_ttm
+    - pb
+  missing:
+    features:
+      - sales
+      - growth_sales
+      - basic_earnings_per_share
+      - growth_basic_earnings_per_share
+      - net_profit
+      - growth_net_profit
+      - cash_flow_from_operating_activities
+      - growth_cash_flow_from_operating_activities
+      - profit_margin
+      - cfo_margin
+      - cfo_to_profit
+      - days_since_report
+      - market_cap
+      - pe_ttm
+      - pb
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_balanced_local_rawscale_dedup

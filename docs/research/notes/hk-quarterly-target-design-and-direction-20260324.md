@@ -4,7 +4,7 @@
 本页不解决什么：不展开 CLI、配置字段细节，也不替代逐次 run 的原始实验记录。
 适合谁：已经看过部分实验，但想快速知道“现在到底该怎么理解、怎么用”的读者。
 读完你会得到什么：一套当前阶段可执行的研究口径，以及下一步优先级。
-相关页面：`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`、`docs/research/notes/hk-h12-w16-target-transform-review-20260324.md`、`docs/research/notes/hk-quarterly-oos-evidence-20260329.md`、`docs/concepts/model-selection.md`、`docs/concepts/benchmark-protocol.md`
+相关页面：`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`、`docs/research/notes/hk-h12-w16-target-transform-review-20260324.md`、`docs/research/notes/hk-quarterly-oos-evidence-20260329.md`、`docs/research/notes/hk-quarterly-next-step-configs-20260329.md`、`docs/concepts/model-selection.md`、`docs/concepts/benchmark-protocol.md`
 
 页面性质：`research-note`
 最后核对时间：`2026-03-25`
