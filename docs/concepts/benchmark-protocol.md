@@ -6,9 +6,7 @@
 读完你会得到什么：一套可直接执行的 benchmark 阶梯与对应配置入口。
 相关页面：`docs/playbooks/hk-selected.md`、`docs/concepts/model-selection.md`、`docs/metrics.md`、`docs/outputs.md`
 
-这个项目不是“没有 benchmark”，而是已经有 benchmark 能力，但过去更像散落在配置、输出和 playbook 里的隐含约定。
-
-更准确地说，这里至少有三层 benchmark：
+目前该项目最多允许三层 benchmark 的设置：
 
 1. 市场 benchmark：`backtest.benchmark_symbol`
 2. 特征 benchmark：固定同一研究单元，跑 `price-only -> PIT-only -> hybrid`
@@ -27,8 +25,6 @@ HK 研究默认用：
 * `backtest_benchmark.csv`
 * `backtest_active.csv`
 
-所以这个项目的“市场 benchmark”并不是额外要补的能力，代码已经支持。
-
 ## 2. HK selected 默认 benchmark 阶梯
 
 当前仓库把 HK selected 的 benchmark protocol 定成下面这套：
@@ -43,7 +39,7 @@ HK 研究默认用：
 | Challenger | 同一 hybrid 单元上的排序模型 | `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml` |
 | Challenger | 同一 hybrid 单元上的稀疏线性模型 | `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml` |
 
-这套协议的重点不是“谁赢了”，而是先把问题拆开：
+这套协议是先把问题拆开：
 
 1. alpha 是不是先出现在纯量价里
 2. 加 core PIT 后有没有稳定增量
@@ -72,12 +68,12 @@ HK 研究默认用：
 
 ### `xgb_ranker` / `elasticnet` 是 challenger
 
-这两个都适合做专项挑战，但不适合一开始就定义基线：
+这两个都适合做专项挑战，观察是否能超越我们定义的基线：
 
 * `xgb_ranker` 更偏排序目标
 * `elasticnet` 更偏线性收缩/稀疏化
 
-它们应该回答“同一研究单元里，换目标函数或线性归纳偏好后会不会更好”，而不是替代 benchmark protocol 本身。
+它们应该回答“同一研究单元里，换目标函数或线性归纳偏好后会不会更好”。
 
 ## 4. 跑 benchmark 时什么必须固定
 
@@ -167,4 +163,4 @@ csml summarize \
 * 不同 `ffill` / exit policy
 * 不同 universe
 
-那就从这套 benchmark 配置继续派生到 `configs/local/`，不要回到“没有统一 benchmark”的状态。
+那就从这套 benchmark 配置继续派生到 `configs/local/`。

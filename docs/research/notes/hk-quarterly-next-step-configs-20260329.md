@@ -100,6 +100,7 @@
 * 不因为 `tr_close` 在 challenger 上有效，就顺手把所有特征路线都重刷一轮
 * 不重新打开 `features.missing.add_indicators`
 * 不把 `valuation_age_days` 当成当前的重点研究列
+* 暂时不把 `southbound` 直接升成研究特征；它当前更像高价值资产层 / 审计层，不是现成的标准化 feature merge 入口
 
 ## 4. 其他更值得调整的思路
 
@@ -139,13 +140,30 @@
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_logscale_dedup.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_logscale_dedup.yml)
   保留 `log_mcap` / `log_vol`，删 `market_cap` / `vol`
 
+### 5.4 数据加工 / 算法小探针
+
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_leverage.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_leverage.yml)
+  主线加一小组杠杆 / 资产负债表风险特征：`operating_margin`、`debt_to_assets`、`debt_to_equity`、`net_debt_to_assets`
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_leverage.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_leverage.yml)
+  challenger 加同一组杠杆 / 资产负债表风险特征，用来判断这组正交财务风险信息是不是更适合 `reg_zscore`
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_pos.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_pos.yml)
+  challenger 固定做多方向，用来判断最近这条副线是不是只是被 `cv_ic` 自动翻向掩盖了问题
+* [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_neg.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local_fixed_neg.yml)
+  challenger 固定做空方向，用来对照阶段性方向切换到底有多强
+
 ## 6. 建议怎么跑
 
 如果只跑一轮最小复验，顺序建议是：
 
 1. 先跑主线 config，确认 `ranker h12_w16 + balanced execution` 在当前本地资产下仍然站得住。
 2. 再跑 challenger config，确认 `reg_zscore h12_w16 + tr_close + balanced execution` 是否继续保留最近 regime 优势。
-3. 然后只补两类小探针：
+3. 然后优先补 challenger 的两条固定方向探针：
+   * `fixed_pos`
+   * `fixed_neg`
+4. 再补两条杠杆 / 资产负债表风险特征探针：
+   * mainline leverage
+   * challenger leverage
+5. 最后再补更轻的结构探针：
    * `w12 / w20`
    * `raw-scale / log-scale dedup`
 

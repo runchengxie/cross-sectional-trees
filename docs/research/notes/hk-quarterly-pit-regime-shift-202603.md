@@ -1,5 +1,7 @@
 # HK 季度 PIT Overlay 失效与抗漂移修正记录（2026-03）
 
+> 状态提示：本页保留为 historical provenance，用于追溯 quarterly overlay 线为什么走向 anti-drift。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 本页记录这条 HK 季度 `PIT core + provider valuation overlay` 研究线的最新结论。
 
 截至 `2026-03-25`，本文已经纳入 `2026-03-22` 的抗漂移参数网格结果、`2026-03-24` 的 `label transform / signal direction` follow-up，以及 `2026-03-25` 的 `close / tr_close` 价格口径 A/B。后续如果再跑出新实验，应先更新这页，再让其他文档引用它。

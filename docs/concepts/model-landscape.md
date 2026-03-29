@@ -11,7 +11,7 @@
 
 先说结论：
 
-* `docs/concepts/universe-modes.md` 讲的是股票池模式，不适合承载模型版图。
+* `docs/concepts/universe-modes.md` 讲的是股票池模式。
 * 当前仓库代码真正支持的模型类型只有 `xgb_regressor`、`xgb_ranker`、`ridge`、`elasticnet`，见 `src/csml/modeling.py`。
 * 当前任务结构决定了最值得先回答的只有四个问题：线性是否够用、稀疏线性是否更优、非线性是否值得、排序目标是否更贴投资动作。
 * 当前 HK quarterly PIT + overlay 主线里，最稳的基线仍然是 `xgb_ranker + h12_w16`；最值得继续追的 challenger 是 `xgb_regressor + zscore target`。

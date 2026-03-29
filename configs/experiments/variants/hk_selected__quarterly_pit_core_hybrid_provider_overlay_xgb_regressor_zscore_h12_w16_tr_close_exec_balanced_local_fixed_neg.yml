@@ -1,0 +1,12 @@
+## Direction-stability probe for the promoted quarterly challenger.
+## Force the evaluation and backtest signal to stay negative.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_regressor_zscore_h12_w16_tr_close_exec_balanced_local.yml
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_reg_zscore_h12_w16_tr_close_exec_balanced_local_fixed_neg
+  signal_direction_mode: fixed
+  signal_direction: -1
+
+backtest:
+  signal_direction: -1

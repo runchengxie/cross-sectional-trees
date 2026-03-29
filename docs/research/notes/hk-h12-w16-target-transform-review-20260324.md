@@ -1,5 +1,7 @@
 # HK H12 W16 Target Transform Review 2026-03-24
 
+> 状态提示：本页保留为 historical provenance，用于追溯 `h12_w16` 下 `target transform` 的中间对照过程。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 相关页面：`docs/research/notes/hk-quarterly-target-design-and-direction-20260324.md`、`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`
 
 本文件记录 `hk_sel_q_g4_fixed_pit_overlay` 研究单元在 `halflife=12`、`rolling train_window=16` 下的一次对照实验。

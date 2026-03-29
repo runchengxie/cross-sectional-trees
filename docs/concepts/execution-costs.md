@@ -13,7 +13,7 @@
 1. 默认研究线常用 `transaction_cost_bps`，这是单一平面成本近似。
 2. `backtest.execution` 提供更细的 execution 结构：买卖分边费用、固定滑点、participation 滑点、开平仓价列和最小流动性约束。
 
-这已经比简易回测更进一步，但它仍不是成交后 TCA。目前缺失的包括：
+这已经比简易回测更进一步，相较最完整的机构级别的TCA，目前缺失的包括：
 
 * 用真实成交回报去校准参数。
 * 在需要时引入更细市场数据。
@@ -53,7 +53,7 @@
 
 它们表示按 symbol 计算、排除当日后的过去 `20` 个交易日平均或中位成交额。对日线级回测，这是比同日 `amount` 更稳妥的默认值。
 
-## `tr_close` 是什么，不是什么
+## `tr_close` 是什么
 
 `tr_close` 在仓库里表示总回报价格代理。
 
@@ -79,7 +79,7 @@
 * 如果你的目标是低频研究、比较信号强弱、避免分红导致价格跳空污染收益标签，那么 `tr_close` 是合理的。
 * 如果你的目标是重建真实现金分红到账、再投资时点、税率、到账日差异，那么 `tr_close` 不够。
 
-## 现金分红为什么不是同一件事
+## 目前距离最严谨的考虑现金分红影响的回测还缺了什么
 
 现金分红账本至少还差这些维度：
 
@@ -89,7 +89,7 @@
 * 分红现金是否再投资、何时再投资
 * 多市场税率和券商处理差异
 
-仓库现有 `dividends` 资产更适合做核对或后续扩展，不代表当前回测已经把这些会计细节入账。
+仓库现有 `dividends` 资产更适合做核对或后续扩展。
 
 ## 当前实现的适用边界
 
@@ -118,7 +118,7 @@
 
 这能让现有缓存继续用于经验校准，但要明确：
 
-* 它是可复用的研究 proxy，不是 tick 级真实 VWAP
+* 它是可复用的研究 proxy，距离tick 级真实 VWAP仍有距离
 * 它当前用于离线校准 execution 参数，不是直接进入日线 backtest 的逐 bar 撮合输入
 * 如果后面要做更严肃的盘中执行研究，优先考虑重新下载 `adjust_type=none` 的分钟线，或直接引入更细成交数据
 
@@ -129,8 +129,8 @@
 1. 固定 `ex_factors / dividends / shares` 这组轻量原料层。
 2. 用真实成交回报校准 `buy_bps / sell_bps / base_bps / impact_bps`。
 3. 回测层优先用 `adv20_amount` 或 `medadv20_amount`，避免 `open + same-day amount`。
-4. 若只是先把研究线做对，优先从上面这些 execution variants 里挑一条，而不是继续用 flat `transaction_cost_bps`。
-   如果你同时想把价格口径切到 total return，可直接从 `hk_selected__tr_close_execution_balanced_local.yml` 开始。
+4. 若只是先把研究线做对，优先从上面这些 execution variants 里挑一条，单一的 `transaction_cost_bps` 已经不再适用。
+   如果同时想把价格口径切到 total return，可直接从 `hk_selected__tr_close_execution_balanced_local.yml` 开始。
 5. 如果误差主要来自执行假设，再补精选池或全市场的 `5m` 数据做经验滑点校准。
 6. 只有在策略明显进入容量或盘中执行问题时，才考虑更细的 `1m`、tick 或盘口数据。
 

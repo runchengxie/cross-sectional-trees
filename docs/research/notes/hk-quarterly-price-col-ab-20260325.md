@@ -1,5 +1,7 @@
 # HK Quarterly PIT Price Column A/B Summary（2026-03-25）
 
+> 状态提示：本页保留为 historical provenance，用于追溯 `close / tr_close` 这组专题 A/B 的原始结论。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 本页解决什么：把这轮 HK quarterly PIT + overlay 研究单元里的 `close / tr_close` 六臂 A/B 结果压成一页，方便后续继续追加。
 本页不解决什么：不替代主结论页，也不展开 CLI、配置字段或每次 run 的完整流水账。
 适合谁：已经知道 `ranker / regressor / zscore` 主线关系，但想快速回答“价格口径默认该怎么选”的读者。

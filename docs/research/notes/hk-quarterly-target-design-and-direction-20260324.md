@@ -1,5 +1,7 @@
 # HK Quarterly PIT 目标设计与方向切换总结（2026-03-24）
 
+> 状态提示：本页保留为 historical provenance，用于追溯 `ranker` 与 `reg_zscore` 主副线是怎么收敛出来的。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 本页解决什么：把这轮 HK quarterly PIT + overlay 研究里关于 `label`、模型目标、方向切换和当前基线判断的结论收成一页。
 本页不解决什么：不展开 CLI、配置字段细节，也不替代逐次 run 的原始实验记录。
 适合谁：已经看过部分实验，但想快速知道“现在到底该怎么理解、怎么用”的读者。

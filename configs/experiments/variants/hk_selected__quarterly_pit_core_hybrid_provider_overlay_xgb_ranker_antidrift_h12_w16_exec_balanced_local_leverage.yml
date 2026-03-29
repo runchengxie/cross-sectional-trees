@@ -1,0 +1,65 @@
+## Leverage / balance-sheet risk probe on the quarterly mainline.
+## Keep the same ranker + h12/w16 + close + balanced execution route,
+## then add a small orthogonal financial-risk feature block.
+extends:
+  - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local.yml
+
+data:
+  cache_tag: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_balanced_local_leverage_v1
+
+features:
+  list:
+    - ret_60
+    - ret_120
+    - ret_240
+    - rv_60
+    - rv_120
+    - volume_sma20_ratio
+    - volume_sma60_ratio
+    - log_vol
+    - vol
+    - sales
+    - growth_sales
+    - basic_earnings_per_share
+    - growth_basic_earnings_per_share
+    - net_profit
+    - growth_net_profit
+    - cash_flow_from_operating_activities
+    - growth_cash_flow_from_operating_activities
+    - profit_margin
+    - operating_margin
+    - cfo_margin
+    - cfo_to_profit
+    - debt_to_assets
+    - debt_to_equity
+    - net_debt_to_assets
+    - days_since_report
+    - market_cap
+    - pe_ttm
+    - pb
+    - log_mcap
+  missing:
+    features:
+      - sales
+      - growth_sales
+      - basic_earnings_per_share
+      - growth_basic_earnings_per_share
+      - net_profit
+      - growth_net_profit
+      - cash_flow_from_operating_activities
+      - growth_cash_flow_from_operating_activities
+      - profit_margin
+      - operating_margin
+      - cfo_margin
+      - cfo_to_profit
+      - debt_to_assets
+      - debt_to_equity
+      - net_debt_to_assets
+      - days_since_report
+      - market_cap
+      - pe_ttm
+      - pb
+      - log_mcap
+
+eval:
+  run_name: hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_balanced_local_leverage
