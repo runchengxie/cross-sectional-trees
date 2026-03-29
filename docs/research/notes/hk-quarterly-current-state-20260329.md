@@ -11,7 +11,7 @@
 权威来源：截至 `2026-03-29` 的 tracked config、已落地 balanced execution run、当前 playbook 收口、以及本页引用的历史研究笔记  
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与更新后的 playbook 或 preset 冲突，以更晚的 playbook / preset 为准
 
-## 1. 先记住 11 句
+## 1. 先记住这些
 
 * 旧 notes 不该再被当成平行的“当前真相”入口；它们更适合当 provenance。
 * 当前 quarterly 线真正还值得继续推进的主线，仍然是 `ranker h12_w16 + close`。
@@ -24,7 +24,8 @@
 * `elasticnet` 目前不值得回到 quarterly 主线，保留成低优先级稀疏线性探针就够了。
 * 特征现在不该继续扩成 zoo；先做小幅去重和一小组经营利润/盈利质量特征更合理，重型资产负债表因子放后。
 * 当前最像样的组合结构 probe，不是“主线直接加约束”，而是 `raw-scale dedup + groupcap3` 这条 construction challenger。
-* fixed-signal construction grid 已经跑到第二轮；第一轮表明 `buffer_exit` 比 `buffer_entry` 更值得保留，第二轮则表明 `top_k = 25` 比 `20 / 15` 更像样，所以当前更该固定 `bx = 2`、`be = 1`、`top_k = 25` 去看组合结构，而不是继续加新因子。
+* fixed-signal construction grid 已经跑到第二轮；它能说明 construction 值得做，也能给出 shortlist，但独立 full run 没有确认 `bx = 2`、`be = 1` 或 `top_k = 25` 能优于 `raw-scale dedup + groupcap3` 本身。
+* 如果要保留一条纯 PIT 基本面 sidecar，当前更像样的是 `xgb_regressor + operating_margin`，而不是纯基本面整条线整体升级。
 * 如果要开新的独立路线，纯 PIT 基本面值得做，但更适合当 benchmark / challenger 线，不适合直接替掉当前 hybrid 主线。
 * 这条线仍值得做，但目标应该是“低频、可复现、逐步走向 paper/shadow/canary 的 HK 研究线”，不是现在就把它包装成已经足够重仓上线的单模型。
 
@@ -158,7 +159,7 @@
 1. 冻结主线、结构 challenger 和纯基本面 sidecar 的规格，不再继续大扩模型网格。
 2. 先看 [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)，把 `raw-scale dedup + groupcap3` 到底是在修组合结构还是改信号故事看清楚。
 3. 再看 [`hk-quarterly-construction-grid-20260329.md`](./hk-quarterly-construction-grid-20260329.md)，接受“固定信号后继续做组合构造”的顺序。
-4. 固定 `raw-scale dedup + groupcap3` 信号；当前两轮 grid 已经表明 `buffer_exit` 略有帮助、`buffer_entry` 当前不绑定，而且 `top_k = 25` 比 `20 / 15` 更像样，所以当前更合理的 construction 候选是 `bx = 2`、`be = 1`、`top_k = 25`。
+4. 固定 `raw-scale dedup + groupcap3` 信号；当前两轮 grid 已经说明 construction 值得做，但独立 full run 没有确认 `bx = 2`、`be = 1`、`top_k = 25` 能升级默认，所以这轮先不要再继续围着 construction 小参数打转。
 5. 并行维护纯 PIT 基本面 sidecar 线，但只把它当 benchmark / challenger；当前更像样的是 `xgb_regressor + operating_margin`，不是把纯基本面整体升成主线。
 6. 如果还要做特征扩充，先补一小组经营利润特征；资产负债表重型因子放到更后面。
 7. 等新的前瞻样本，再决定谁配得上升级。
@@ -167,8 +168,9 @@
 
 1. 先读 [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)，把结构 challenger 的组合故事看清楚。
 2. 再读 [`hk-quarterly-construction-grid-20260329.md`](./hk-quarterly-construction-grid-20260329.md)，接受“固定信号后继续做组合构造”的研究顺序。
-3. 然后沿着 `raw-scale dedup + groupcap3` 这条结构 challenger，先把 `bx = 2`、`be = 1`、`top_k = 25` 当成当前 construction 候选，再决定要不要继续扫 weighting 或更强的组约束，而不是继续扩 model zoo。
-4. 纯基本面 sidecar 继续保留，但放在 construction 之后。
+3. 然后沿着 `raw-scale dedup + groupcap3` 这条结构 challenger，把 `construction-grid` 理解成 shortlist 证据，而不是升级证据；现阶段先冻结它，不再继续扫 `bx2_be1/top_k25` 这类小参数。
+4. 纯基本面 sidecar 继续保留，而且当前更值得保留的是 `xgb_regressor + operating_margin`。
+5. 这轮如果不再新增研究问题，就先停手，等下一段没看过的新季度样本。
 
 ## 8. 现在旧 notes 应该怎么读
 

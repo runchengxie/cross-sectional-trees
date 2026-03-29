@@ -218,9 +218,10 @@ uv run csml grid \
 
 这轮 `top_k` sweep 也已经跑完，结果同样记在 [`hk-quarterly-construction-grid-20260329.md`](./hk-quarterly-construction-grid-20260329.md)：
 
-* `top_k = 25` 比 `20` 和 `15` 更像样
+* `top_k = 25` 在 grid 上比 `20` 和 `15` 更像样
 * 改善方向主要体现在更低的换手和成本拖累，不是评估侧 `IC` 突然翻正
-* 所以如果当前只保留一条 construction 候选，优先看 `bx = 2`、`be = 1`、`top_k = 25`
+* 但后续独立 full run 没有确认 `bx = 2`、`be = 1`、`top_k = 25` 能优于 `raw-scale dedup + groupcap3`
+* 所以现在更合理的结论不是“把 `top_k25` 升成默认”，而是“保留这轮 grid 作为 construction shortlist 证据”
 
 ### 5.4 数据加工 / 算法小探针
 
@@ -263,11 +264,12 @@ uv run csml grid \
 
 如果这些小探针都没有明显改善，就先别继续扩更多特征和窗口。
 
-按 `2026-03-29` 这轮实际进度，方向、lite leverage、`connect-conservative`、窗口探针和 `dedup` 都已经补过了；所以下一步更值得做的是：
+按 `2026-03-29` 这轮实际进度，方向、lite leverage、`connect-conservative`、窗口探针、`dedup` 和 construction shortlist 都已经补过了；所以下一步更值得做的是：
 
 1. 先看 [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)，把 `raw-scale dedup + groupcap3` 到底是在“修组合结构”还是“改信号故事”看清楚。
-2. 再用上面的 `construction_grid` 配置固定评分结果，优先扫 `top_k`；`buffer_entry` 当前可以先固定。
-3. 模型侧只补一组最小经营利润探针，不再继续大扩 feature zoo。
+2. 再看 [`hk-quarterly-construction-grid-20260329.md`](./hk-quarterly-construction-grid-20260329.md)，接受“grid 只提供 shortlist，独立 full run 没有确认 `bx2_be1/top_k25`”这个边界。
+3. 现阶段冻结 `raw-scale dedup + groupcap3` 这条结构 challenger，不再继续围着 `bx2_be1/top_k25` 扫 construction 小参数。
+4. 并行保留纯 PIT `xgb_regressor + operating_margin` sidecar；它现在比继续扩 hybrid feature zoo 更值得跟踪。
 
 如果你想开一条独立于当前 `hybrid` 主线的新路线，而不是继续在现有主副线附近小修小补，当前更合理的是转去看 [`hk-quarterly-pure-fundamentals-20260329.md`](./hk-quarterly-pure-fundamentals-20260329.md)。第一波 `ridge -> small xgb_regressor -> xgb_ranker` 已经跑完，当前收口是：三条都还不够替掉 `hybrid` 主线，但 `xgb_ranker` 在完整测试段相对最稳，`xgb_regressor` 在最近 regime 更亮，`ridge` 保留成 sanity benchmark。
 

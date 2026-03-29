@@ -3,7 +3,7 @@
 本页解决什么：记录 `raw-scale dedup + groupcap3` 这条结构 challenger 的前两轮 `csml grid` 结果，并明确固定信号后下一步最值得扫的组合构造维度。  
 本页不解决什么：不替代主线/副线的总收口，也不重新讨论模型、`tr_close` 或纯基本面路线。  
 适合谁：已经接受“当前更该看组合构造，不该继续大扫模型参数”的读者。  
-读完你会得到什么：第一轮 buffer sweep、第二轮 `top_k` sweep 的实际结果，它们各自能支持到什么程度，以及当前 construction 线更合理的默认候选。  
+读完你会得到什么：第一轮 buffer sweep、第二轮 `top_k` sweep 的实际结果，它们各自能支持到什么程度，以及为什么这些 grid 结果现在只能当 shortlist，而不能直接升级成新默认。  
 相关页面：`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/research/notes/hk-quarterly-holdings-analysis-20260329.md`、`docs/research/notes/hk-quarterly-next-step-configs-20260329.md`
 
 页面性质：`research-note`  
@@ -137,8 +137,8 @@
 
 也就是说，这轮结果支持的是：
 
-* `raw-scale dedup + groupcap3` 这条结构 challenger 更适合偏宽一点的组合宽度
-* 如果只保留一条当前最像样的 construction 设定，应该优先看 `bx = 2`、`be = 1`、`top_k = 25`
+* `raw-scale dedup + groupcap3` 这条结构 challenger 值得先把 `top_k = 25` 放进 shortlist
+* 但它仍然只是同一份评分上的 construction shortlist，不是已经确认的新默认
 
 但它还不能支持：
 
@@ -147,31 +147,56 @@
 
 因为这轮 grid 的 `backtest_periods` 仍然只有 `6`，而且评估侧的 `IC / long_short` 仍然没有翻正。
 
-## 7. 下一步最值得扫什么
+## 7. 关键补充：独立 full run 没有确认 `bx2_be1` 和 `top_k25`
 
-如果只做一轮最小 follow-up，我会这样排：
+`csml grid` 的作用是固定同一份评分，只比较 construction。  
+所以它适合做 shortlist，不适合直接决定“当前默认候选已经换成谁”。
 
-1. 固定当前信号：`raw-scale dedup + groupcap3`
-2. 固定 `buffer_exit = 2`
-3. 暂时把 `buffer_entry` 固定在 `1`
-4. 先把 `top_k = 25` 当成当前 construction 默认候选
-5. 若还要继续扫，再看 weighting 或更强的 group/sector cap
+`2026-03-29` 当晚这轮独立 full run 复验，把这件事讲清楚了：
 
-原因很简单：
+| 方案 | 完整测试段 `total_return` | 完整测试段 `Sharpe` | Final OOS `total_return` | Final OOS `Sharpe` |
+| --- | --- | --- | --- | --- |
+| `raw-scale dedup + groupcap3` | `-13.38%` | `0.005` | `84.72%` | `1.894` |
+| `raw-scale dedup + groupcap3 + bx2_be1` | `-14.58%` | `-0.001` | `80.64%` | `1.834` |
+| `raw-scale dedup + groupcap3 + bx2_be1 + top_k25` | `-15.47%` | `-0.016` | `66.29%` | `1.589` |
 
-* `buffer_entry` 已经证明自己现在不绑定
-* `buffer_exit` 已经有一个轻微但一致的方向
-* `top_k` 这轮已经给出清楚方向：`25 > 20 > 15`
-* 当前更值得继续研究的是“更宽组合为什么更适合这条信号”，而不是再回去微调 `be`
+这张表的含义很直接：
 
-为避免每次都手敲同一组 buffer 参数，这里已经补了两类 tracked 入口：
+* 第一轮和第二轮 grid 给出的 `bx2_be1`、`top_k25` 更像是 construction shortlist
+* 但一旦拉回完整 `csml run` 口径，它们都没有把 `raw-scale dedup + groupcap3` 本身做强
+* 所以现在不能把 `bx = 2`、`be = 1`、`top_k = 25` 升成新的 construction 默认
+
+更准确地说：
+
+* `buffer_exit = 2` 有过“轻微正向 hint”，但没有通过端到端复验
+* `top_k = 25` 在 grid 上更像样，但也没有通过独立 full run 复验
+* 当前真正站得住的，仍然是 `raw-scale dedup + groupcap3`
+
+## 8. 这页现在真正支持的结论
+
+到这一步，这页能支持的结论应当收得更克制：
+
+1. `construction` 仍然是对的研究方向，因为 grid 明确说明同一份信号下，组合层参数会改结果。
+2. 但 grid 只能提供 shortlist，不足以直接升级默认配置。
+3. 当前最该保留的结构 challenger 仍然是 `raw-scale dedup + groupcap3`。
+4. `bx2_be1` 和 `top_k25` 暂时都应降级成“做过、但未被 full run 确认”的 follow-up。
+
+## 9. 下一步该怎么用这页
+如果今天还要继续用这页做决策，更合理的读法是：
+
+1. 接受“grid 负责 shortlist，full run 才负责晋级”这条边界。
+2. 当前冻结的结构 challenger 仍然是 `raw-scale dedup + groupcap3`。
+3. `bx2_be1` 和 `top_k25` 先保留为历史 follow-up，不继续当现行候选往前推进。
+4. 如果后面还要重新开 construction 线，优先从 weighting 或更强 group cap 这种真正新维度开始，而不是继续围着 `bx2_be1/top_k25` 打转。
+
+为避免每次都手敲同一组 construction 参数，这里保留相关 tracked 入口：
 
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1.yml)
-  把当前最像样的结构 challenger 固定到 `buffer_exit = 2`、`buffer_entry = 1`
+  `buffer` follow-up 的独立 full run 入口；已跑过，但暂未确认优于 `raw-scale dedup + groupcap3`
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk15.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk15.yml)
   `top_k = 15` 的集中版
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk25.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk25.yml)
-  `top_k = 25` 的宽版
+  `top_k = 25` 的宽版；grid 上较好，但独立 full run 未确认
 * [`configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml`](../../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml)
   固定 `bx = 2`、`be = 1` 后只扫 `top_k`
 
@@ -192,10 +217,11 @@ uv run csml grid \
 
 而不是立刻回去扩 feature zoo。
 
-## 8. 当前结论
+## 10. 当前结论
 
 一句话收口：
 
 * 第一轮 construction grid 已经验证：这条路是通的，`buffer_exit` 略有帮助，`buffer_entry` 当前不重要
-* 第二轮 `top_k` grid 进一步表明：在这条 fixed-signal challenger 上，`top_k = 25` 比 `20` 和 `15` 更像样
-* 所以当前最合理的 construction 默认候选，不是新因子，而是 `raw-scale dedup + groupcap3 + bx2_be1 + top_k25`
+* 第二轮 `top_k` grid 进一步表明：在这条 fixed-signal challenger 上，`top_k = 25` 值得进 shortlist
+* 但独立 full run 没有确认 `bx2_be1` 或 `top_k25` 能优于 `raw-scale dedup + groupcap3`
+* 所以当前最合理的结构 challenger，仍然是 `raw-scale dedup + groupcap3`；grid 结果只保留为 construction shortlist 证据
