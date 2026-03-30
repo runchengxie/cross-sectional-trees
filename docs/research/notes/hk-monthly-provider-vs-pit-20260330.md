@@ -259,6 +259,30 @@ OOS 平均暴露：
 * 也不是可以被一句“只是 value/trend”打发掉
 * 当前更像 `small-cap + 短结构 + 个股选择` 的混合结果
 
+## 8. 第一批 provider 拆解配置
+
+为了先回答“provider 的强 OOS 到底主要来自哪里”，本地先固定一批最小拆解，不直接上大而全 hybrid。
+
+当前这批配置包括：
+
+* baseline：`configs/local/hk_selected__m_provider_mainline_rebalance_only_tr_close_exec_balanced.yml`
+* no-size：`configs/local/hk_selected__m_provider_mainline_rebalance_only_no_size_tr_close_exec_balanced.yml`
+* tech-only：`configs/local/hk_selected__m_provider_mainline_rebalance_only_tech_only_tr_close_exec_balanced.yml`
+* valuation-only：`configs/local/hk_selected__m_provider_mainline_rebalance_only_valuation_only_tr_close_exec_balanced.yml`
+
+每条在回答什么：
+
+* baseline：保留当前 `provider rebalance-only` 全量口径，作为对照组
+* no-size：保留 `pe_ttm + pb + tech`，去掉 `market_cap / log_mcap`，先看 provider 曲线是否主要靠 size 暴露
+* tech-only：只保留 `sma / rsi / macd / volume` 这组量价，回答 provider 更像技术策略还是估值策略
+* valuation-only：只保留 `market_cap / pe_ttm / pb / log_mcap`，看日频 asof 估值块单独能不能站住
+
+为什么这一批先不直接加 `size-neutral`：
+
+* `size-neutral` 更像组合约束 / 排序中和探针，不只是删字段
+* 它值得做，但不适合和字段消融一起上
+* 先跑完这批，再决定 `size-neutral` 是走组合层约束还是排序层处理，会更干净
+
 ## 8. 这对下一步意味着什么
 
 ### 8.1 现在怎么用这两条线
