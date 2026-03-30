@@ -21,7 +21,8 @@
 * provider 那条强 OOS 曲线，当前更像 `small-cap + 短周期价格结构 + 个股选择` 的混合结果，而不是纯财报 alpha、纯 value 或纯中期 momentum。
 * 这轮 `size-neutral` / `soft size control` 探针已经说明：继续救 provider 的 size 问题，边际信息开始下降，不该再当第一优先方向。
 * 最新一轮 `M-PIT + 轻量 valuation overlay` probe 已经跑完，但在 `asof_20260327 + 24m final OOS` 上没有验证出干净增量；`pe_only` 最多保留为实现 comparator。
-* 当前最值得继续做的，不是继续扩 `pb / pe / size` overlay 组合，而是解释为什么 `M-PIT` 基线在新窗口上明显转弱。
+* `M-PIT` 的 `R0-R4` 稳定性拆解也已经跑完：`2025-12-31` cutoff 下的 recut 仍然是正 `IC`，`2026-03-27` cutoff 下的 recut 已经转成负 `IC`。
+* 所以当前最值得继续做的，不是继续扩 `pb / pe / size` overlay 组合，也不是继续怀疑 split 本身，而是解释最近新增月份为什么把 `M-PIT` 基线推弱。
 * 这条 monthly 线已经够资格准备 `shadow / paper`，但还不够资格包装成“已能放心重仓上线的成熟实盘策略”。
 
 ## 2. 当前应该盯哪几条 run
@@ -51,19 +52,19 @@
 定位：
 
 * 月频研究主线
-* 当前最像“结构 alpha”而不是风格顺风
+* 当前最值得继续做稳定性拆解的主信号
+* 不是因为 latest 窗口还很强，而是因为它在 frozen cutoff 下仍然最像“结构 alpha”，但在 latest 窗口上已明显转弱
 
 原因：
 
-* test `IC = 4.32% (p = 0.016)`
-* final OOS `IC = 4.88% (p = 0.093)`
-* final OOS long-only `ann = 24.3%`, `sharpe = 0.78`
-* walk-forward mean `ann = 11.2%`, `sharpe = 0.509`
-* 稳定 top features 以 `growth_sales`、`growth_cash_flow_from_operating_activities`、`cfo_to_profit`、`profit_margin`、`growth_net_profit` 为主
+* 历史 frozen reference 的 test `IC = 4.32% (p = 0.016)`、final OOS `IC = 4.88% (p = 0.093)`，说明旧窗口里它更像干净排序器
+* `R1 / R2` 这两条 `2025-12-31` cutoff recut 仍然是正 `IC`，说明 split 变化本身不是把它翻坏的主因
+* `R3 / R4` 这两条 `2026-03-27` cutoff recut 都已转成负 `IC`，说明当前真正该解释的是 recent regime / latest months
+* 稳定 top features 仍以 `growth_sales`、`growth_cash_flow_from_operating_activities`、`cfo_to_profit`、`profit_margin`、`growth_net_profit` 为主，信号故事没有直接塌成纯量价或纯 size
 
 一句话解释：
 
-* 它不是最炸裂的 OOS 组合，但它更像“排序逻辑本身在工作”。
+* 它不是当前账面最强的 latest 组合，但它仍然是最值得解释“为什么最近变弱”的那条研究主线。
 
 ### 3.2 `M-provider rebalance-only`
 
@@ -188,8 +189,14 @@
 
 所以现在真正该解释的问题，已经不是“为什么还没把数据往后拉”，而是：
 
-* 为什么更新到更晚样本并修复 split 之后，`M-PIT` 基线自己转弱了
+* 为什么更新到更晚样本之后，`M-PIT` 基线自己转弱了
 * 这种转弱到底来自新月份、split 口径还是 universe / PIT 资产刷新
+
+`R0-R4` 首轮实跑已经把这个问题压缩了一大半：
+
+* `R1 / R2`：`2025-12-31` cutoff 下，无论是 old ratio split 还是 fixed `24m final OOS`，`M-PIT` 都仍然是正 `IC`
+* `R3 / R4`：`2026-03-27` cutoff 下，无论是 old ratio split 还是 fixed `24m final OOS`，`M-PIT` 都已经转成负 `IC`
+* 所以这轮 monthly 转弱的主要矛盾更像 recent months / latest regime，而不是 split 设计本身
 
 ## 6. 距离实盘还有多远
 
@@ -222,21 +229,23 @@
 
 ### 7.1 第一优先
 
-* 做 `M-PIT` 基线的 `frozen vs latest` 稳定性拆解
+* 做 latest 窗口的逐月 `IC` / 持仓 / 行业 / size 漂移拆解
 
 更具体地说：
 
+* 以已经跑完的 `R0-R4` 为边界条件
 * 固定 `M-PIT` 主配置
-* 把截至 `2025-12-31` 的 frozen snapshot 和 `asof_20260327 + 24m final OOS` 的最新 sidecar 并排比较
-* 把差异拆成：
-  * 新增最近月份
-  * split 口径变化
-  * universe / PIT / execution 资产刷新
+* 直接去看 latest 这几个月的逐月 `IC`、行业分布、size bucket、持仓重合度和个股集中变化
+* 把问题收口成：
+  * 最近哪几个月开始拖累
+  * 是行业主导变化还是 size / holdings 漂移
+  * `M-PIT` 的 recent weakness 更像短期 regime 还是结构失效
 
 原因：
 
+* `R0-R4` 已经说明 split 不是第一嫌疑人
 * 在基线自己转弱的情况下，继续叠更多 overlay 组合，信息比很低
-* 先解释“为什么变弱”，比继续问“能不能靠多一个估值列救回来”更值钱
+* 先解释“为什么最近变弱”，比继续问“能不能靠多一个估值列救回来”更值钱
 
 ### 7.2 第二优先
 
@@ -317,7 +326,7 @@
 1. 本页：先把主线、候选、实盘距离和下一步看对。
 2. [`hk-monthly-time-window-design-20260330.md`](./hk-monthly-time-window-design-20260330.md)：先把当前 `asof` 边界和 `24m final OOS` 设计看清。
 3. [`hk-monthly-pit-valuation-overlay-probes-20260330.md`](./hk-monthly-pit-valuation-overlay-probes-20260330.md)：再看为什么这轮轻量估值 overlay 没有过线。
-4. [`hk-monthly-pit-frozen-vs-latest-design-20260330.md`](./hk-monthly-pit-frozen-vs-latest-design-20260330.md)：然后直接看下一轮 `R0-R4` 稳定性拆解应该怎么跑。
+4. [`hk-monthly-pit-frozen-vs-latest-design-20260330.md`](./hk-monthly-pit-frozen-vs-latest-design-20260330.md)：然后直接看 `R0-R4` 已经跑出了什么，以及为什么当前主要矛盾更像 recent months / latest regime。
 5. [`hk-monthly-provider-vs-pit-20260330.md`](./hk-monthly-provider-vs-pit-20260330.md)：再回头看 provider 和 PIT 到底差在哪里。
 6. [`hk-monthly-provider-factor-probes-20260330.md`](./hk-monthly-provider-factor-probes-20260330.md)：如果你要继续追 provider 线为什么强、为什么又不够干净，再看这一页。
 7. 核心 run 目录下的 `summary.json` / `config.used.yml`：最后再下手复现或继续派生配置。
@@ -329,4 +338,5 @@
 * `M-PIT` 作为研究主线继续推进
 * `M-provider rebalance-only` 作为正式月频 comparator / 实现候选保留
 * 最新 `M-PIT + 轻量 valuation overlay` probe 没有验证出干净增量，`pe_only` 最多只保留为实现 comparator
-* 下一步优先做 `M-PIT` 基线的 `frozen vs latest` 稳定性拆解，而不是继续扩 overlay 组合
+* `R0-R4` 已经说明 monthly 这轮转弱的主要矛盾更像 recent months / latest regime，而不是 split 设计
+* 下一步优先做 latest 窗口的逐月漂移拆解，而不是继续扩 overlay 组合

@@ -1,20 +1,14 @@
-标题：HK Monthly `M-PIT` Frozen vs Latest 稳定性拆解设计  
+标题：HK Monthly `M-PIT` Frozen vs Latest 稳定性拆解与首轮结果  
 日期：`2026-03-30`  
-状态：`active design`，这页只回答“下一轮该怎么拆解 `M-PIT` 从 frozen 到 latest 的变化”，不替代 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)
+状态：`active deep-dive`，这页同时回答“该怎么拆解 `M-PIT` 从 frozen 到 latest 的变化”以及“`R0-R4` 首轮实跑到底说明了什么”，不替代 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)
 
 ## 一句话结论
 
-这轮最值得做的，不是继续扩 `pb / pe / size` overlay 组合，而是把 `M-PIT` 基线拆成：
+`R0-R4` 首轮实跑已经把方向压得很清楚：
 
-* 历史 frozen reference
-* `2025-12-31` cutoff 的 current-assets recut
-* `2026-03-27` cutoff 的 latest recut
-
-然后分别看：
-
-* 资产刷新有没有先把旧结论改写
-* split 口径有没有显著影响
-* 新增最近几个月样本有没有把基线推弱
+* `2025-12-31` cutoff 下，无论用 old ratio split 还是 fixed `24m` final OOS，`M-PIT` 都仍然是正 `IC`
+* 一旦窗口推进到 `asof_20260327`，无论用 old ratio split 还是 fixed `24m` final OOS，`M-PIT` 都转成负 `IC`
+* 所以这轮 monthly 的主要矛盾不是 split 口径本身，而更像最近新增月份对应的 regime / sample-window 变化
 
 ## 这页回答什么
 
@@ -110,6 +104,73 @@
 | `R3` | `hk_selected__m_pit_core_hybrid_sidecar_diag_latest_ratio_tr_close_exec_balanced.yml` | `2026-03-27` | `0.6 + 0.2比例式 final OOS` | 在最新 cutoff 下反查 old split 敏感度 |
 | `R4` | 已有 latest anchor | `2026-03-27` | `0.5 + 24m final OOS` | 当前主锚点 |
 
+## `R0-R4` 首轮实跑结果
+
+### 结果表
+
+| 组别 | run | cutoff / split | final OOS | `IC` | 年化 / Sharpe |
+| --- | --- | --- | --- | ---: | ---: |
+| `R0` | [`hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79) | `20251231` / `0.6 + 0.2 ratio` | `2023-11-30 -> 2025-11-27` | `+4.88%` | `24.3% / 0.78` |
+| `R1` | [`hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_ratio_tr_close_exec_balanced_20260330_163548_17a6965f`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_ratio_tr_close_exec_balanced_20260330_163548_17a6965f) | `20251231` / `0.6 + 0.2 ratio` | `2023-10-31 -> 2025-10-31` | `+6.74%` | `25.4% / 0.92` |
+| `R2` | [`hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_fixed24_tr_close_exec_balanced_20260330_163624_48065e04`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_fixed24_tr_close_exec_balanced_20260330_163624_48065e04) | `20251231` / `0.5 + 24m fixed` | `2023-11-30 -> 2025-10-31` | `+6.14%` | `30.2% / 1.07` |
+| `R3` | [`hk_sel_m_pit_core_hybrid_sidecar_diag_latest_ratio_tr_close_exec_balanced_20260330_163712_c6b44b72`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_latest_ratio_tr_close_exec_balanced_20260330_163712_c6b44b72) | `20260327` / `0.6 + 0.2 ratio` | `2024-01-31 -> 2026-01-30` | `-6.94%` | `35.1% / 1.05` |
+| `R4` | [`hk_sel_m_pit_core_hybrid_sidecar_diag_tr_close_exec_balanced_20260330_155212_d2b52da6`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_tr_close_exec_balanced_20260330_155212_d2b52da6) | `20260327` / `0.5 + 24m fixed` | `2024-02-29 -> 2026-01-30` | `-7.30%` | `26.0% / 0.84` |
+
+### 这张表最该怎么读
+
+#### 1. split 不是主因
+
+`R1` 和 `R2` 都仍然是正 `IC`，`R3` 和 `R4` 都已经转成负 `IC`。  
+这说明：
+
+* 在 frozen cutoff 下，old ratio split 和 fixed `24m` split 都站得住
+* 在 latest cutoff 下，old ratio split 和 fixed `24m` split 都站不住
+* 所以不能把这次 monthly 转弱主要怪给 split 设计
+
+#### 2. 主要压力更像最近新增月份 / recent regime
+
+这组里最有信息量的比较是：
+
+* `R2` vs `R4`
+
+因为它们共用：
+
+* current assets
+* fixed `24m` final OOS
+* 同一套模型 / 特征 / execution
+
+唯一显著变化基本就是：
+
+* cutoff 从 `2025-12-31` 推到 `2026-03-27`
+
+而这一步足以让 `final OOS IC` 从 `+6.14%` 翻到 `-7.30%`。  
+所以当前最该解释的，不是 split，而是：
+
+* 最近新增月份到底改写了什么
+* 这是不是一段新的 regime / 行业主导结构 / 风格切换
+
+#### 3. asset refresh 不是把旧结论打坏的主因
+
+`R0` vs `R1` 的方向不是“旧 frozen reference 很强，但 current-assets recut 已经坏掉”，反而是：
+
+* `R0 = +4.88%`
+* `R1 = +6.74%`
+
+这说明：
+
+* universe / PIT / 本地 daily 资产刷新当然会改数值
+* 但它不是把 `M-PIT` 从正 `IC` 翻成负 `IC` 的主导解释
+
+#### 4. 最新窗口的问题更像“排序纯度下降”，不只是“组合赚不赚钱”
+
+即便 `R3 / R4` 的 long-only 回测年化和 Sharpe 还不算难看，`final OOS IC` 还是已经翻负。  
+这更像：
+
+* 实现层还有收益
+* 但横截面排序逻辑本身在 latest 窗口里已经变脏
+
+这也是为什么这轮不该继续靠加 `pb / pe / size` overlay 去救表观收益。
+
 ## 每一组比较到底在回答什么
 
 ### `R0` vs `R1`
@@ -198,6 +259,14 @@
 * `final_oos.bucket_ic`
 * 最终持仓的 `size_bucket_q4 / size_rank_pct`
 
+## 如果只压一句当前判断
+
+首轮 `R0-R4` 已经足够把 monthly 下一步优先级收口成：
+
+1. 不再把 split 当第一嫌疑人
+2. 不继续扩 `pb / pe / size` overlay 组合
+3. 直接去拆 latest 这几个月的逐月 `IC`、行业结构、size 暴露和持仓漂移
+
 ## 我会怎么读结果
 
 如果结果呈现下面这些模式，对应解释会很直接：
@@ -237,10 +306,25 @@
 
 * 最新窗口对 split 很敏感，不能轻易把单一切法当最终口径
 
+## 本次首轮实跑实际落点
+
+这轮首轮结果最接近：
+
+* 强模式 C
+* 明显不是模式 B
+* 也不支持“模式 A 才是主因”
+
+更直白一点说：
+
+* split 不是主要矛盾
+* recent months / latest regime 更像主要矛盾
+* asset refresh 会改数值，但不是把方向翻掉的核心原因
+
 ## 这轮之后再做什么
 
-只有把上面这层拆清之后，下面这些动作才值得继续排优先级：
+现在 `R0-R4` 已经跑过一轮，下面这些动作才值得继续排优先级：
 
+* latest 窗口的逐月 `IC` / 持仓 / 行业 / size 漂移拆解
 * `pe_only` comparator 的 construction 优化
 * `30m final OOS` stress sidecar
 * `2017+` modern-only sidecar
