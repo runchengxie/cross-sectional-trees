@@ -266,6 +266,61 @@ def normalize_eval_settings(
     report_train_ic = bool(eval_cfg.get("report_train_ic", True))
     sample_on_rebalance_dates = bool(eval_cfg.get("sample_on_rebalance_dates", False))
 
+    score_postprocess_cfg = eval_cfg.get("score_postprocess")
+    score_postprocess_enabled = False
+    score_postprocess_method = "none"
+    score_postprocess_columns: list[str] = []
+    score_postprocess_strength = 1.0
+    score_postprocess_min_obs: int | None = None
+    if score_postprocess_cfg is not None:
+        if not isinstance(score_postprocess_cfg, Mapping):
+            raise SystemExit("eval.score_postprocess must be a mapping when provided.")
+        score_postprocess_method = str(
+            score_postprocess_cfg.get("method", "none")
+        ).strip().lower()
+        score_postprocess_columns = normalize_symbol_list(
+            score_postprocess_cfg.get("columns")
+        )
+        score_postprocess_strength = float(
+            score_postprocess_cfg.get("strength", 1.0)
+        )
+        score_postprocess_min_obs_raw = score_postprocess_cfg.get("min_obs")
+        if score_postprocess_min_obs_raw is not None:
+            score_postprocess_min_obs = int(score_postprocess_min_obs_raw)
+        enabled_raw = score_postprocess_cfg.get("enabled")
+        score_postprocess_enabled = (
+            bool(enabled_raw)
+            if enabled_raw is not None
+            else score_postprocess_method != "none"
+        )
+        if score_postprocess_method not in {"none", "neutralize"}:
+            raise SystemExit(
+                "eval.score_postprocess.method must be one of: none, neutralize."
+            )
+        if score_postprocess_strength < 0 or score_postprocess_strength > 1:
+            raise SystemExit("eval.score_postprocess.strength must be between 0 and 1.")
+        if score_postprocess_min_obs is not None and score_postprocess_min_obs < 2:
+            raise SystemExit("eval.score_postprocess.min_obs must be >= 2.")
+        if score_postprocess_enabled and score_postprocess_method == "neutralize":
+            if not score_postprocess_columns:
+                raise SystemExit(
+                    "eval.score_postprocess.columns is required when method=neutralize."
+                )
+            required_min_obs = len(score_postprocess_columns) + 1
+            if (
+                score_postprocess_min_obs is not None
+                and score_postprocess_min_obs < required_min_obs
+            ):
+                raise SystemExit(
+                    "eval.score_postprocess.min_obs must be >= len(columns) + 1."
+                )
+        else:
+            score_postprocess_method = "none"
+            score_postprocess_columns = []
+            score_postprocess_min_obs = None
+    if score_postprocess_enabled and score_postprocess_min_obs is None:
+        score_postprocess_min_obs = max(5, len(score_postprocess_columns) + 1)
+
     rolling_cfg = eval_cfg.get("rolling") if isinstance(eval_cfg, Mapping) else None
     if isinstance(rolling_cfg, Mapping):
         rolling_enabled = bool(rolling_cfg.get("enabled", True))
@@ -392,6 +447,11 @@ def normalize_eval_settings(
         "EFFECTIVE_GAP_STEPS": None,
         "REPORT_TRAIN_IC": report_train_ic,
         "SAMPLE_ON_REBALANCE_DATES": sample_on_rebalance_dates,
+        "SCORE_POSTPROCESS_ENABLED": score_postprocess_enabled,
+        "SCORE_POSTPROCESS_METHOD": score_postprocess_method,
+        "SCORE_POSTPROCESS_COLUMNS": score_postprocess_columns,
+        "SCORE_POSTPROCESS_STRENGTH": score_postprocess_strength,
+        "SCORE_POSTPROCESS_MIN_OBS": score_postprocess_min_obs,
         "ROLLING_WINDOWS_MONTHS": rolling_windows_months,
         "BUCKET_IC_ENABLED": bucket_ic_enabled,
         "BUCKET_IC_METHOD": bucket_ic_method,

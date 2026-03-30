@@ -8,6 +8,7 @@ from sklearn.model_selection import TimeSeriesSplit
 
 from .metrics import daily_ic_series
 from .modeling import build_model, fit_model, resolve_model_spec
+from .transform import apply_score_postprocess
 
 
 def build_sample_weight(
@@ -144,6 +145,10 @@ def time_series_cv_ic(
     train_window_unit: str = "dates",
     fit_target_col: str | None = None,
     eval_target_col: str | None = None,
+    score_postprocess_method: str = "none",
+    score_postprocess_columns: list[str] | None = None,
+    score_postprocess_strength: float = 1.0,
+    score_postprocess_min_obs: int | None = None,
 ):
     if model_cfg is not None and model_params is not None:
         raise ValueError("Provide either model_cfg or model_params, not both.")
@@ -219,6 +224,14 @@ def time_series_cv_ic(
             date_col=date_col,
         )
         va_df["pred"] = model.predict(va_df[features])
+        va_df["pred"] = apply_score_postprocess(
+            va_df,
+            "pred",
+            method=score_postprocess_method,
+            columns=score_postprocess_columns or [],
+            strength=score_postprocess_strength,
+            min_obs=score_postprocess_min_obs,
+        )
         if signal_direction != 1.0:
             va_df["pred"] = va_df["pred"] * signal_direction
 

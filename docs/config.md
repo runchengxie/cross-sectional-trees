@@ -135,6 +135,11 @@ model:
 eval:
   top_k: 20
   transaction_cost_bps: 15
+  score_postprocess:
+    method: neutralize
+    columns: [log_mcap]
+    strength: 0.5
+    min_obs: 20
   save_artifacts: true
   save_scored_artifact: false
 
@@ -285,9 +290,19 @@ logging:
 |---|------|--------|
 | `top_k` | 选股数量 | `10`, `20`, `30` |
 | `transaction_cost_bps` | 交易成本(bps) | `15`, `25` |
+| `score_postprocess.method` | 预测分数后处理 | `none` / `neutralize` |
+| `score_postprocess.columns` | 后处理依赖列 | `["log_mcap"]` |
+| `score_postprocess.strength` | 中和强度 | `0.5`, `1.0` |
 | `save_artifacts` | 保存产物 | `true` / `false` |
 | `save_scored_artifact` | 单独保存 `eval_scored.parquet` | 默认 `false` |
 | `purge_days` | 泄漏防护天数 | 默认 `horizon_days + shift_days` |
+
+说明：
+
+* `eval.score_postprocess` 发生在模型打分之后、`IC`/分位统计/回测之前，不会改训练样本，也不等于特征中性化。
+* 当前 `method=neutralize` 会按 `trade_date` 对预测分数做截面线性去相关；`columns` 支持一个或多个控制列。
+* `strength=1.0` 表示全量去掉该截面的线性暴露，`0.5` 表示只去掉一半；它适合做 “soft size control” 一类 probe。
+* `min_obs` 至少要满足 `len(columns) + 1`；不满足时，该日期会回退为原始分数，不强行中和。
 
 ### `eval.walk_forward`
 

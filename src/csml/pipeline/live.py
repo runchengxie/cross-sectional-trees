@@ -8,6 +8,7 @@ import pandas as pd
 
 from ..date_utils import resolve_date_token as _resolve_date_token
 from ..modeling import build_model, fit_model
+from ..transform import apply_score_postprocess
 from .dates import _build_trade_date_slices, _slice_with_train_window
 from ..portfolio import build_positions_by_rebalance
 from ..rebalance import get_rebalance_dates
@@ -96,6 +97,14 @@ def _prepare_live_snapshot(
         return live_state
 
     df_live["pred"] = live_model.predict(df_live[context["features"]])
+    df_live["pred"] = apply_score_postprocess(
+        df_live,
+        "pred",
+        method=context["score_postprocess_method"],
+        columns=context["score_postprocess_columns"],
+        strength=context["score_postprocess_strength"],
+        min_obs=context["score_postprocess_min_obs"],
+    )
     live_pred_col = "pred"
     signal_direction = context["signal_direction"]
     if signal_direction != 1.0:

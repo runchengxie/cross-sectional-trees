@@ -21,6 +21,7 @@ from ..metrics import (
     topk_positive_ratio,
 )
 from ..modeling import build_model, feature_importance_frame, fit_model
+from ..transform import apply_score_postprocess
 from .dates import (
     _apply_model_train_window,
     _build_trade_date_slices,
@@ -32,6 +33,27 @@ from ..split import build_sample_weight, time_series_cv_ic
 
 
 logger = logging.getLogger("csml")
+
+
+def _postprocess_pred_column(
+    frame: pd.DataFrame,
+    pred_col: str,
+    *,
+    method: str,
+    columns: list[str],
+    strength: float,
+    min_obs: Optional[int],
+) -> None:
+    if method == "none":
+        return
+    frame[pred_col] = apply_score_postprocess(
+        frame,
+        pred_col,
+        method=method,
+        columns=columns,
+        strength=strength,
+        min_obs=min_obs,
+    )
 
 
 def _warn_if_delay_exit_lag(
@@ -136,6 +158,10 @@ def _permutation_test_ic(
     sample_weight_mode: str,
     sample_weight_params: Mapping[str, Any],
     eval_dates: Optional[list[pd.Timestamp]] = None,
+    score_postprocess_method: str = "none",
+    score_postprocess_columns: Optional[list[str]] = None,
+    score_postprocess_strength: float = 1.0,
+    score_postprocess_min_obs: Optional[int] = None,
 ) -> list[float]:
     scores = []
     eval_date_values = sorted(set(pd.to_datetime(eval_dates))) if eval_dates else None
@@ -178,6 +204,14 @@ def _permutation_test_ic(
 
         perm_test = eval_test_data.copy()
         perm_test["pred"] = perm_model.predict(perm_test[features])
+        _postprocess_pred_column(
+            perm_test,
+            "pred",
+            method=score_postprocess_method,
+            columns=score_postprocess_columns or [],
+            strength=score_postprocess_strength,
+            min_obs=score_postprocess_min_obs,
+        )
         if signal_direction != 1.0:
             perm_test["pred"] = perm_test["pred"] * signal_direction
 
@@ -248,6 +282,10 @@ def _evaluate_walk_forward_window(
     sample_on_rebalance_dates = context["sample_on_rebalance_dates"]
     rebalance_frequency = context["rebalance_frequency"]
     valid_dates_set = context["valid_dates_set"]
+    score_postprocess_method = context["score_postprocess_method"]
+    score_postprocess_columns = context["score_postprocess_columns"]
+    score_postprocess_strength = context["score_postprocess_strength"]
+    score_postprocess_min_obs = context["score_postprocess_min_obs"]
     wf_perm_test_enabled = context["wf_perm_test_enabled"]
     wf_perm_test_runs = context["wf_perm_test_runs"]
     wf_perm_test_seed = context["wf_perm_test_seed"]
@@ -383,6 +421,14 @@ def _evaluate_walk_forward_window(
 
     train_eval = train_df_w.copy()
     train_eval["pred"] = model_w.predict(train_eval[features])
+    _postprocess_pred_column(
+        train_eval,
+        "pred",
+        method=score_postprocess_method,
+        columns=score_postprocess_columns,
+        strength=score_postprocess_strength,
+        min_obs=score_postprocess_min_obs,
+    )
     train_ic_raw_stats = None
     if signal_direction_mode == "train_ic":
         train_ic_raw = daily_ic_series(train_eval, target, "pred")
@@ -404,6 +450,14 @@ def _evaluate_walk_forward_window(
 
     test_eval = test_df_w.copy()
     test_eval["pred"] = model_w.predict(test_eval[features])
+    _postprocess_pred_column(
+        test_eval,
+        "pred",
+        method=score_postprocess_method,
+        columns=score_postprocess_columns,
+        strength=score_postprocess_strength,
+        min_obs=score_postprocess_min_obs,
+    )
     test_eval["signal_eval"] = test_eval["pred"] * direction
     eval_allowed_dates_w = test_dates if sample_on_rebalance_dates else None
     eval_df_w, rebalance_dates_w = _sample_rebalance_frame(
@@ -437,6 +491,10 @@ def _evaluate_walk_forward_window(
             sample_weight_mode=sample_weight_mode,
             sample_weight_params=sample_weight_params,
             eval_dates=rebalance_dates_w,
+            score_postprocess_method=score_postprocess_method,
+            score_postprocess_columns=score_postprocess_columns,
+            score_postprocess_strength=score_postprocess_strength,
+            score_postprocess_min_obs=score_postprocess_min_obs,
         )
         if perm_scores:
             perm_stats_w = {
@@ -487,6 +545,14 @@ def _evaluate_walk_forward_window(
             bt_result_w = None
         else:
             test_full_w["pred"] = model_w.predict(test_full_w[features])
+            _postprocess_pred_column(
+                test_full_w,
+                "pred",
+                method=score_postprocess_method,
+                columns=score_postprocess_columns,
+                strength=score_postprocess_strength,
+                min_obs=score_postprocess_min_obs,
+            )
             if bt_direction != 1.0:
                 test_full_w["signal_bt"] = test_full_w["pred"] * bt_direction
                 bt_pred_col = "signal_bt"
@@ -601,6 +667,10 @@ def _evaluate_period(
     train_target = context["train_target"]
     sample_weight_mode = context["sample_weight_mode"]
     sample_weight_params = context["sample_weight_params"]
+    score_postprocess_method = context["score_postprocess_method"]
+    score_postprocess_columns = context["score_postprocess_columns"]
+    score_postprocess_strength = context["score_postprocess_strength"]
+    score_postprocess_min_obs = context["score_postprocess_min_obs"]
     label_horizon_mode = context["label_horizon_mode"]
     label_horizon_effective = context["label_horizon_effective"]
     n_quantiles = context["n_quantiles"]
@@ -678,6 +748,14 @@ def _evaluate_period(
 
     eval_df_full = test_df_full.copy()
     eval_df_full["pred"] = model_eval.predict(eval_df_full[features])
+    _postprocess_pred_column(
+        eval_df_full,
+        "pred",
+        method=score_postprocess_method,
+        columns=score_postprocess_columns,
+        strength=score_postprocess_strength,
+        min_obs=score_postprocess_min_obs,
+    )
     eval_df_full["signal_eval"] = eval_df_full["pred"] * signal_direction
     eval_df_full["signal_backtest"] = eval_df_full["pred"] * backtest_signal_direction
     if signal_direction != 1.0:
@@ -763,6 +841,10 @@ def _evaluate_period(
             sample_weight_mode=sample_weight_mode,
             sample_weight_params=sample_weight_params,
             eval_dates=rebalance_dates_eval,
+            score_postprocess_method=score_postprocess_method,
+            score_postprocess_columns=score_postprocess_columns,
+            score_postprocess_strength=score_postprocess_strength,
+            score_postprocess_min_obs=score_postprocess_min_obs,
         )
         if perm_scores:
             perm_mean = np.nanmean(perm_scores)

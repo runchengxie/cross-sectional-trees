@@ -405,3 +405,112 @@ valuation-only：
 * spread return 用的是 `entry_date -> next_entry_date` 的计划持有期 gross return
 * 不是 backtest 的净收益归因
 * 所以它适合回答“方向像什么”，不适合回答“精确贡献是多少”
+
+## 12. size-neutral provider 探针
+
+### 12.1 这次具体做了什么
+
+这次没有改框架代码，也没有上严格回归中性化，而是先做一个近似 probe：
+
+* 派生配置：`hk_selected__m_provider_mainline_rebalance_only_size_bucket_q4_cap5_tr_close_exec_balanced`
+* 对应 run：`artifacts/runs/hk_sel_m_provider_mainline_rebalance_only_size_bucket_q4_cap5_tr_close_exec_balanced_20260330_094935_f8c9e35b/`
+* 本地 join 标签：`artifacts/assets/style/hk_selected_size_bucket_q4_mcap_m_20260330.parquet`
+
+做法：
+
+* 用当前 `hk_selected` PIT universe 的月频网格
+* 从本地 valuation snapshot 取 `hk_total_market_val`
+* 每个 rebalance date 内按市值切四档：
+  * `Q1_small`
+  * `Q2_mid_small`
+  * `Q3_mid_large`
+  * `Q4_large`
+* 回测层加：
+  * `backtest.group_col = size_bucket_q4`
+  * `backtest.max_names_per_group = 5`
+
+所以这条线的语义不是“完全 size-neutral”，而是：
+
+* 不允许 top-20 组合在某一个 size bucket 里无限堆名字
+* 先看 provider 曲线在被强行削弱小盘集中度以后，还能剩下多少
+
+### 12.2 结果怎么变了
+
+和原始 baseline 对比：
+
+baseline：
+
+* test `IC = 2.12%`
+* test backtest `ann = 13.6%`, `sharpe = 0.653`
+* final OOS `IC = -2.00%`
+* final OOS backtest `ann = 62.7%`, `sharpe = 1.73`
+* walk-forward mean `ann = 11.2%`, `sharpe = 0.552`
+
+size-bucket cap probe：
+
+* test `IC = 2.13%`
+* test backtest `ann = 15.1%`, `sharpe = 0.650`
+* final OOS `IC = -2.05%`
+* final OOS backtest `ann = 54.9%`, `sharpe = 1.54`
+* walk-forward mean `ann = 6.9%`, `sharpe = 0.375`
+
+这组数字最值得看的不是 test 段，而是：
+
+* final OOS 曲线明显变弱
+* walk-forward 均值掉得更明显
+* `IC` 并没有因为加了 size cap 就变干净
+
+所以这条 probe 给出的结论很直接：
+
+* provider 的强 OOS，不只是“碰巧带一点小盘暴露”
+* 把小盘集中度压掉以后，它的实现层优势会明显收缩
+* 但压掉以后，排序证据也没有因此变得更漂亮
+
+### 12.3 这个 cap 到底有没有真的生效
+
+有，而且是明确生效了。
+
+OOS 持仓层面：
+
+* baseline 平均每期持仓约 `12.8`
+* probe 平均每期持仓约 `10.8`
+* probe 在所有 OOS 月份都满足“单一 size bucket 不超过 5 只”
+
+平均 bucket 分布：
+
+baseline：
+
+* `Q1_small = 6.17`
+* `Q2_mid_small = 3.58`
+* `Q3_mid_large = 0.71`
+* `Q4_large = 2.33`
+* 平均 `small share = 49.5%`
+* 平均 `size_rank_pct = 0.366`
+
+probe：
+
+* `Q1_small = 4.50`
+* `Q2_mid_small = 3.21`
+* `Q3_mid_large = 0.88`
+* `Q4_large = 2.25`
+* 平均 `small share = 44.4%`
+* 平均 `size_rank_pct = 0.404`
+
+解释：
+
+* 这个 cap 确实把组合往更大的 size bucket 拉了一点
+* 但它没有把组合变成 `5 / 5 / 5 / 5` 的完全均衡篮子
+* 原因也很清楚：这是上限约束，不是配额约束；当前 provider 排序在中大盘桶里并没有足够强的候选去把空位自然补满
+
+### 12.4 这条 probe 说明了什么
+
+这一轮之后，关于 provider 可以更明确地说：
+
+* 它的强 OOS 确实部分依赖小盘集中度
+* 但简单加一个硬 group cap，不会把它自动洗成更干净的结构 alpha
+* 这条线仍然更像“实现候选”，不是更强研究主线
+
+所以更合理的下一步不是直接宣布 provider 已经 size-neutral，而是：
+
+1. 如果还想继续救 provider，优先试更软的 size 控制，而不是更硬的卡桶。
+2. 如果目标是更干净的主线判断，`M-PIT` 的研究主线地位没有被这条 probe 动摇。

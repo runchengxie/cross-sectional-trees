@@ -33,6 +33,7 @@ from ..metrics import (
 from ..split import build_sample_weight, time_series_cv_ic
 from ..modeling import build_model, fit_model, feature_importance_frame
 from ..backtest import backtest_topk
+from ..transform import apply_score_postprocess
 from .config import (
     load_run_config,
     normalize_eval_settings,
@@ -171,6 +172,11 @@ def run(config_ref: str | Path | None = None) -> None:
     EFFECTIVE_GAP_STEPS = eval_settings["EFFECTIVE_GAP_STEPS"]
     REPORT_TRAIN_IC = eval_settings["REPORT_TRAIN_IC"]
     SAMPLE_ON_REBALANCE_DATES = eval_settings["SAMPLE_ON_REBALANCE_DATES"]
+    SCORE_POSTPROCESS_ENABLED = eval_settings["SCORE_POSTPROCESS_ENABLED"]
+    SCORE_POSTPROCESS_METHOD = eval_settings["SCORE_POSTPROCESS_METHOD"]
+    SCORE_POSTPROCESS_COLUMNS = eval_settings["SCORE_POSTPROCESS_COLUMNS"]
+    SCORE_POSTPROCESS_STRENGTH = eval_settings["SCORE_POSTPROCESS_STRENGTH"]
+    SCORE_POSTPROCESS_MIN_OBS = eval_settings["SCORE_POSTPROCESS_MIN_OBS"]
     ROLLING_WINDOWS_MONTHS = eval_settings["ROLLING_WINDOWS_MONTHS"]
     BUCKET_IC_ENABLED = eval_settings["BUCKET_IC_ENABLED"]
     BUCKET_IC_METHOD = eval_settings["BUCKET_IC_METHOD"]
@@ -623,6 +629,10 @@ def run(config_ref: str | Path | None = None) -> None:
         train_window_size=TRAIN_WINDOW_SIZE,
         train_window_unit=TRAIN_WINDOW_UNIT,
         fit_target_col=TRAIN_TARGET,
+        score_postprocess_method=SCORE_POSTPROCESS_METHOD,
+        score_postprocess_columns=SCORE_POSTPROCESS_COLUMNS,
+        score_postprocess_strength=SCORE_POSTPROCESS_STRENGTH,
+        score_postprocess_min_obs=SCORE_POSTPROCESS_MIN_OBS,
     )
     if cv_scores_raw:
         logger.info(
@@ -679,6 +689,14 @@ def run(config_ref: str | Path | None = None) -> None:
 
     train_eval_df = train_df.copy()
     train_eval_df["pred"] = model.predict(train_eval_df[FEATURES])
+    train_eval_df["pred"] = apply_score_postprocess(
+        train_eval_df,
+        "pred",
+        method=SCORE_POSTPROCESS_METHOD,
+        columns=SCORE_POSTPROCESS_COLUMNS,
+        strength=SCORE_POSTPROCESS_STRENGTH,
+        min_obs=SCORE_POSTPROCESS_MIN_OBS,
+    )
     train_ic_raw_stats = {}
     if SIGNAL_DIRECTION_MODE == "train_ic":
         train_ic_raw_series = daily_ic_series(train_eval_df, TARGET, "pred")
@@ -755,6 +773,10 @@ def run(config_ref: str | Path | None = None) -> None:
             "train_target": TRAIN_TARGET,
             "features": FEATURES,
             "signal_direction": SIGNAL_DIRECTION,
+            "score_postprocess_method": SCORE_POSTPROCESS_METHOD,
+            "score_postprocess_columns": SCORE_POSTPROCESS_COLUMNS,
+            "score_postprocess_strength": SCORE_POSTPROCESS_STRENGTH,
+            "score_postprocess_min_obs": SCORE_POSTPROCESS_MIN_OBS,
             "backtest_rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,
             "min_symbols_per_date": MIN_SYMBOLS_PER_DATE,
             "price_col": PRICE_COL,
@@ -791,6 +813,10 @@ def run(config_ref: str | Path | None = None) -> None:
         "signal_direction": SIGNAL_DIRECTION,
         "backtest_signal_direction": BACKTEST_SIGNAL_DIRECTION,
         "sample_on_rebalance_dates": SAMPLE_ON_REBALANCE_DATES,
+        "score_postprocess_method": SCORE_POSTPROCESS_METHOD,
+        "score_postprocess_columns": SCORE_POSTPROCESS_COLUMNS,
+        "score_postprocess_strength": SCORE_POSTPROCESS_STRENGTH,
+        "score_postprocess_min_obs": SCORE_POSTPROCESS_MIN_OBS,
         "rebalance_frequency": REBALANCE_FREQUENCY,
         "valid_dates_set": valid_dates_set,
         "perm_test_runs": PERM_TEST_RUNS,
@@ -952,6 +978,10 @@ def run(config_ref: str | Path | None = None) -> None:
             "model_params": MODEL_PARAMS,
             "report_train_ic": REPORT_TRAIN_IC,
             "sample_on_rebalance_dates": SAMPLE_ON_REBALANCE_DATES,
+            "score_postprocess_method": SCORE_POSTPROCESS_METHOD,
+            "score_postprocess_columns": SCORE_POSTPROCESS_COLUMNS,
+            "score_postprocess_strength": SCORE_POSTPROCESS_STRENGTH,
+            "score_postprocess_min_obs": SCORE_POSTPROCESS_MIN_OBS,
             "rebalance_frequency": REBALANCE_FREQUENCY,
             "valid_dates_set": valid_dates_set,
             "wf_perm_test_enabled": WF_PERM_TEST_ENABLED,

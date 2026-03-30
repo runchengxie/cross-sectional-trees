@@ -9,6 +9,7 @@ import yaml
 from csml import pipeline
 from csml.config_utils import resolve_pipeline_config
 from csml.data_interface import DataInterface
+from csml.pipeline.config import normalize_eval_settings
 from csml.pipeline.stats import _ensure_execution_daily_fields
 
 
@@ -316,3 +317,38 @@ def test_hk_benchmark_protocol_configs_align_research_unit():
     assert ranker_cfg["model"]["type"] == "xgb_ranker"
     assert ranker_cfg["model"]["params"]["objective"] == "rank:pairwise"
     assert elasticnet_cfg["model"]["type"] == "elasticnet"
+
+
+def test_normalize_eval_settings_accepts_score_postprocess_mapping():
+    settings = normalize_eval_settings(
+        {
+            "score_postprocess": {
+                "method": "neutralize",
+                "columns": ["log_mcap"],
+                "strength": 0.5,
+                "min_obs": 7,
+            }
+        }
+    )
+
+    assert settings["SCORE_POSTPROCESS_ENABLED"] is True
+    assert settings["SCORE_POSTPROCESS_METHOD"] == "neutralize"
+    assert settings["SCORE_POSTPROCESS_COLUMNS"] == ["log_mcap"]
+    assert settings["SCORE_POSTPROCESS_STRENGTH"] == pytest.approx(0.5)
+    assert settings["SCORE_POSTPROCESS_MIN_OBS"] == 7
+
+
+def test_normalize_eval_settings_rejects_invalid_score_postprocess_strength():
+    with pytest.raises(
+        SystemExit,
+        match="eval.score_postprocess.strength must be between 0 and 1.",
+    ):
+        normalize_eval_settings(
+            {
+                "score_postprocess": {
+                    "method": "neutralize",
+                    "columns": ["log_mcap"],
+                    "strength": 1.5,
+                }
+            }
+        )
