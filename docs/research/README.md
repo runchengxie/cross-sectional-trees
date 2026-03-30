@@ -24,6 +24,19 @@
 
 ### 研究笔记与结论沉淀
 
+建议把 `notes/` 里的页面按下面三层来理解，而不是把它们都当成平行的“当前真相”：
+
+* `current-state`：现行口径和默认入口，重新接手时先看这里
+* `active deep-dive`：当前仍有信息价值的专题分析或 probe 汇总
+* `historical provenance`：保留追溯路径，但不再充当默认入口
+
+如果你现在要重新进入 HK monthly 研究，更合理的阅读顺序是：
+
+1. `notes/hk-monthly-current-state-20260330.md`
+2. `notes/hk-monthly-provider-vs-pit-20260330.md`
+3. `notes/hk-monthly-provider-factor-probes-20260330.md`
+4. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
+
 如果你现在要重新进入 HK quarterly 研究，不建议直接从旧的 follow-up 页面往回翻。  
 当前更合理的阅读顺序是：
 
@@ -35,15 +48,29 @@
 6. 如果你要单开“不用量价指标”的独立路线，再看 `notes/hk-quarterly-pure-fundamentals-20260329.md`
 7. 只有当你要追溯结论出处时，再回去看更早的专题页
 
+#### Current-State
+
+| 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
+| --- | --- | --- |
+| `notes/hk-monthly-current-state-20260330.md` | 当前 monthly 线最合理的分工仍然是 `M-PIT` 当研究主线、`M-provider rebalance-only` 当正式月频 comparator / 实现候选；下一步最值得做的是 `M-PIT + 少量 provider valuation overlay`，并把截至 `2025-12-31` 的 run 视作冻结 snapshot | 否，当前应作为 monthly notes 的总入口 |
+| `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 线的现行口径、哪些旧结论仍保留、哪些已降级成 provenance、以及现在该从哪两条路线继续往前推 | 是，当前应作为 quarterly notes 的总入口 |
+
+#### Active Deep-Dive
+
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
 | `notes/hk-monthly-provider-vs-pit-20260330.md` | `M-PIT` 更适合当月频研究主线，`M-provider rebalance-only` 更适合当正式月频 comparator / 实现候选；provider 的强 OOS 更像 `small-cap + 短周期价格结构` 在发力，而不是纯 value 或纯中期 momentum | 否，当前作为 monthly 线路解释页保留 |
-| `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 线的现行口径、哪些旧结论仍保留、哪些已降级成 provenance、以及现在该从哪两条路线继续往前推 | 是，当前应作为 quarterly notes 的总入口 |
+| `notes/hk-monthly-provider-factor-probes-20260330.md` | provider baseline 的强 OOS 明显依赖 size 倾斜；`no-size`、`hard-cap` 和 `soft size control` 都没有把它洗成更干净的排序器，所以这条线当前更适合当实现 comparator，而不是研究主线 | 否，当前作为 monthly provider probe 汇总页保留 |
 | `notes/hk-quarterly-holdings-analysis-20260329.md` | `raw-scale dedup` 的价值主要在于更低换手和更稳定的测试段持仓，`reg_zscore + tr_close` 的最近 OOS 亮点则更集中、更像少数名字驱动 | 否，当前作为组合层解释页保留 |
 | `notes/hk-quarterly-construction-grid-20260329.md` | 第一轮 fixed-signal construction sweep 已经表明 `buffer_exit` 比 `buffer_entry` 更值得继续扫；下一步更像是固定 `bx = 2` 后比较 `top_k`，而不是继续扩特征 | 否，当前作为组合构造 follow-up 页保留 |
 | `notes/hk-quarterly-next-step-configs-20260329.md` | 当前 quarterly 下一阶段更适合收口到少数几个窗口和特征探针，并统一到 balanced execution 口径下继续比较 | 否，当前作为下一阶段执行建议页保留 |
 | `notes/hk-quarterly-oos-evidence-20260329.md` | 最近 `Final OOS` 很亮不等于模型已验证；当前两条 balanced execution 候选更适合当下一轮前瞻验证对象，而不是已确认赢家 | 否，当前作为“线索 vs 证据”边界说明页保留 |
 | `notes/hk-quarterly-pure-fundamentals-20260329.md` | 纯 PIT 基本面值得作为独立 benchmark / challenger 线，但第一波应先跑 `ridge -> small xgb_regressor -> xgb_ranker`，而不是直接回头救 `elasticnet` | 否，当前作为独立纯基本面路线说明页保留 |
+
+#### Historical Provenance
+
+| 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
+| --- | --- | --- |
 | `notes/hk-quarterly-pit-regime-shift-202603.md` | 旧 quarterly overlay 基线失效，`ranker h12_w16` 抗漂移版本仍是当前更稳的基线 | 是，已反映到 `docs/playbooks/hk-selected.md` 和相关配置口径 |
 | `notes/hk-h12-w16-target-transform-review-20260324.md` | `zscore target` 是当前更值得跟踪的 regressor challenger，但还不能替代 ranker 主基线 | 部分沉淀，摘要已被后续总结页吸收 |
 | `notes/hk-quarterly-target-design-and-direction-20260324.md` | 相对化 label 已升级成正式研究副线，但方向切换问题仍需单独验证 | 是，当前是这组 follow-up 的汇总结论页 |
@@ -73,7 +100,9 @@
 
 研究笔记：
 
+* `notes/hk-monthly-current-state-20260330.md`
 * `notes/hk-monthly-provider-vs-pit-20260330.md`
+* `notes/hk-monthly-provider-factor-probes-20260330.md`
 * `notes/hk-quarterly-current-state-20260329.md`
 * `notes/hk-quarterly-holdings-analysis-20260329.md`
 * `notes/hk-quarterly-construction-grid-20260329.md`

@@ -4,7 +4,7 @@
 本页不解决什么：不把这轮 OOS 当成最终验证，也不把风格相关性包装成严格因果归因。  
 适合谁：已经看过三线框架，准备决定“月频正式主线”和“月频实现候选”该怎么分工的人。  
 读完你会得到什么：两条月频线的语义区别、当前证据边界、持仓差异，以及 provider 曲线更像是不是 `size / valuation / trend` 在发力。  
-相关页面：`docs/playbooks/hk-selected.md`、`docs/research/README.md`
+相关页面：`docs/research/notes/hk-monthly-provider-factor-probes-20260330.md`、`docs/playbooks/hk-selected.md`、`docs/research/README.md`
 
 页面性质：`research-note`  
 最后核对时间：`2026-03-30`  
@@ -12,6 +12,8 @@
 冲突优先级：如果与具体 run 产物冲突，以 run 目录下的 `summary.json` / `config.used.yml` 为准；如果与更晚样本冲突，以更晚样本为准
 
 > 注：本页涉及的月频派生配置当时保存在作者本地 `configs/local/`，默认不纳入版本控制。为避免把个人文件误当成仓库入口，下文只保留派生配置名；最终仍以各 run 目录里的 `config.used.yml` 为准。
+
+> 结构说明：本页现在只保留 `provider vs PIT` 的语义解释、head-to-head 结果和风格归因。provider 拆解、`size-neutral` probe 和 `soft size control` probe 已单独整理到 [`hk-monthly-provider-factor-probes-20260330.md`](./hk-monthly-provider-factor-probes-20260330.md)。
 
 ## 1. 分析对象
 
@@ -261,140 +263,29 @@ OOS 平均暴露：
 * 也不是可以被一句“只是 value/trend”打发掉
 * 当前更像 `small-cap + 短结构 + 个股选择` 的混合结果
 
-## 8. 第一批 provider 拆解配置
+## 8. 这对下一步意味着什么
 
-为了先回答“provider 的强 OOS 到底主要来自哪里”，本地先固定一批最小拆解，不直接上大而全 hybrid。
-
-当前这批配置包括：
-
-* baseline：`hk_selected__m_provider_mainline_rebalance_only_tr_close_exec_balanced`
-* no-size：`hk_selected__m_provider_mainline_rebalance_only_no_size_tr_close_exec_balanced`
-* tech-only：`hk_selected__m_provider_mainline_rebalance_only_tech_only_tr_close_exec_balanced`
-* valuation-only：`hk_selected__m_provider_mainline_rebalance_only_valuation_only_tr_close_exec_balanced`
-
-每条在回答什么：
-
-* baseline：保留当前 `provider rebalance-only` 全量口径，作为对照组
-* no-size：保留 `pe_ttm + pb + tech`，去掉 `market_cap / log_mcap`，先看 provider 曲线是否主要靠 size 暴露
-* tech-only：只保留 `sma / rsi / macd / volume` 这组量价，回答 provider 更像技术策略还是估值策略
-* valuation-only：只保留 `market_cap / pe_ttm / pb / log_mcap`，看日频 asof 估值块单独能不能站住
-
-为什么这一批先不直接加 `size-neutral`：
-
-* `size-neutral` 更像组合约束 / 排序中和探针，不只是删字段
-* 它值得做，但不适合和字段消融一起上
-* 先跑完这批，再决定 `size-neutral` 是走组合层约束还是排序层处理，会更干净
-
-## 9. 第一批 provider 拆解结果
-
-对应 run：
-
-* baseline：`artifacts/runs/hk_sel_m_provider_mainline_rebalance_only_tr_close_exec_balanced_20260330_002336_c12762fc/`
-* no-size：`artifacts/runs/hk_sel_m_provider_mainline_rebalance_only_no_size_tr_close_exec_balanced_20260330_092944_d135d140/`
-* tech-only：`artifacts/runs/hk_sel_m_provider_mainline_rebalance_only_tech_only_tr_close_exec_balanced_20260330_093056_d17aff35/`
-* valuation-only：`artifacts/runs/hk_sel_m_provider_mainline_rebalance_only_valuation_only_tr_close_exec_balanced_20260330_093153_68415c81/`
-
-先看最短结论：
-
-* baseline 的强 final OOS 不是单一模块单独就能复现
-* 去掉 size 之后，provider 这条线掉得最明显
-* tech-only 和 valuation-only 都还能跑出能看的 long-only 曲线
-* 但这两条单模块线都没有表现出足够干净的横截面排序证据
-
-### 9.1 baseline vs no-size
-
-baseline：
-
-* test `IC = 2.12% (p = 0.190)`
-* final OOS `IC = -2.00% (p = 0.281)`
-* final OOS `ann = 62.7%`, `sharpe = 1.73`
-
-no-size：
-
-* test `IC = 0.72% (p = 0.619)`
-* final OOS `IC = 0.24% (p = 0.891)`
-* final OOS `ann = 26.2%`, `sharpe = 0.89`
-
-这组对比最重要的信息不是“去掉 size 以后收益仍然为正”，而是：
-
-* test 段已经明显变差，成本后年化转负
-* final OOS 曲线也被腰斩
-* OOS 平均换手从 `66.3%` 升到 `78.8%`
-
-所以当前最稳的判断是：
-
-* baseline 那条更强的实现曲线，size 暴露确实是重要组成部分
-* provider 的强 OOS 不能解释成“就算没有 size 也差不多”
-
-### 9.2 tech-only vs valuation-only
-
-tech-only：
-
-* test `IC = -1.29% (p = 0.318)`
-* final OOS `IC = -0.24% (p = 0.913)`
-* final OOS `ann = 31.6%`, `sharpe = 1.10`
-* final OOS `avg_turnover = 84.1%`
-
-valuation-only：
-
-* test `IC = 0.64% (p = 0.660)`
-* final OOS `IC = -1.06% (p = 0.601)`
-* final OOS `ann = 24.5%`, `sharpe = 0.74`
-* final OOS `avg_turnover = 39.7%`
-
-解释：
-
-* tech-only 的 long-only 曲线比 valuation-only 更强，但排序证据更脏，换手也显著更高
-* valuation-only 的 long-only 曲线稍弱，但更低换手、更像一个温和的估值底座
-* 这说明 provider 线不是纯粹靠某一个 valuation 字段吃饭，也不是 tech 模块单独就能解释全部优势
-
-### 9.3 walk-forward 怎么看
-
-四窗均值：
-
-* baseline：`ann = 11.2%`, `sharpe = 0.552`
-* no-size：`ann = -0.1%`, `sharpe = 0.114`
-* tech-only：`ann = 17.8%`, `sharpe = 0.603`
-* valuation-only：`ann = 13.4%`, `sharpe = 0.677`
-
-这里要注意两件事：
-
-* tech-only 的 final OOS 比 baseline 弱很多，但 walk-forward 均值不差，说明它更像“有实现价值，但不是干净排序器”
-* valuation-only 的 walk-forward 也不差，而且换手更低，所以它更像 provider 组合里的稳定底座，而不是最近这段强 OOS 的唯一来源
-
-### 9.4 这批拆解之后该怎么定性
-
-这一轮最值得保留的结论是：
-
-* provider 这条强 OOS，确实和 size 有明显关系
-* 去掉 size 之后，provider 不能维持原来的实现强度
-* tech 模块更像收益推动器，但证据不干净、换手偏高
-* valuation 模块更像稳定器，单独拿出来不够强，但也不是没用
-
-所以如果下一步只做一件事，优先级最高的仍然是：
-
-* 做 `size-neutral provider` 探针，而不是直接跳去大而全 `provider + PIT` hybrid
-
-## 10. 这对下一步意味着什么
-
-### 10.1 现在怎么用这两条线
+### 8.1 现在怎么用这两条线
 
 最合理的记账方式：
 
 * `M-PIT` 继续当研究主线，因为它的 IC 证据更像横截面排序
 * `M-provider rebalance-only` 当月频正式 comparator / 实现候选，因为 long-only 曲线更强
 
-### 10.2 如果你想继续追问 provider 曲线
+### 8.2 如果你想继续追问 provider 曲线
 
-更值得写的 follow-up，不是继续加更多 provider 特征，而是：
+接下来更适合看的，不是本页后面再塞更多流水账，而是单独看 provider probe 汇总页：
 
-1. 做一个 `size-neutral` 或 `log_mcap` 受限版本，看 provider 曲线还能剩多少。
-2. 做一个去掉最强技术列的 probe，例如压掉 `macd_hist / sma_*_diff`。
-3. 对 `provider-only` 高频名字做行业和流动性归类，看是不是某几类股票在主导。
+* [`hk-monthly-provider-factor-probes-20260330.md`](./hk-monthly-provider-factor-probes-20260330.md)
 
-如果这些约束一加，provider 曲线明显塌，而 PIT 相对稳定，那就能更明确地把 provider 的 OOS 亮点解释成风格驱动而不是更稳的结构 alpha。
+那一页集中记录了：
 
-## 11. 方法边界
+* baseline / no-size / tech-only / valuation-only 拆解
+* `size-bucket hard-cap` probe
+* `soft size control` probe
+* 为什么这些 probe 没有动摇 `M-PIT` 的研究主线地位
+
+## 9. 方法边界
 
 这里的持仓与风格分析有几个边界要记住：
 
@@ -405,112 +296,3 @@ valuation-only：
 * spread return 用的是 `entry_date -> next_entry_date` 的计划持有期 gross return
 * 不是 backtest 的净收益归因
 * 所以它适合回答“方向像什么”，不适合回答“精确贡献是多少”
-
-## 12. size-neutral provider 探针
-
-### 12.1 这次具体做了什么
-
-这次没有改框架代码，也没有上严格回归中性化，而是先做一个近似 probe：
-
-* 派生配置：`hk_selected__m_provider_mainline_rebalance_only_size_bucket_q4_cap5_tr_close_exec_balanced`
-* 对应 run：`artifacts/runs/hk_sel_m_provider_mainline_rebalance_only_size_bucket_q4_cap5_tr_close_exec_balanced_20260330_094935_f8c9e35b/`
-* 本地 join 标签：`artifacts/assets/style/hk_selected_size_bucket_q4_mcap_m_20260330.parquet`
-
-做法：
-
-* 用当前 `hk_selected` PIT universe 的月频网格
-* 从本地 valuation snapshot 取 `hk_total_market_val`
-* 每个 rebalance date 内按市值切四档：
-  * `Q1_small`
-  * `Q2_mid_small`
-  * `Q3_mid_large`
-  * `Q4_large`
-* 回测层加：
-  * `backtest.group_col = size_bucket_q4`
-  * `backtest.max_names_per_group = 5`
-
-所以这条线的语义不是“完全 size-neutral”，而是：
-
-* 不允许 top-20 组合在某一个 size bucket 里无限堆名字
-* 先看 provider 曲线在被强行削弱小盘集中度以后，还能剩下多少
-
-### 12.2 结果怎么变了
-
-和原始 baseline 对比：
-
-baseline：
-
-* test `IC = 2.12%`
-* test backtest `ann = 13.6%`, `sharpe = 0.653`
-* final OOS `IC = -2.00%`
-* final OOS backtest `ann = 62.7%`, `sharpe = 1.73`
-* walk-forward mean `ann = 11.2%`, `sharpe = 0.552`
-
-size-bucket cap probe：
-
-* test `IC = 2.13%`
-* test backtest `ann = 15.1%`, `sharpe = 0.650`
-* final OOS `IC = -2.05%`
-* final OOS backtest `ann = 54.9%`, `sharpe = 1.54`
-* walk-forward mean `ann = 6.9%`, `sharpe = 0.375`
-
-这组数字最值得看的不是 test 段，而是：
-
-* final OOS 曲线明显变弱
-* walk-forward 均值掉得更明显
-* `IC` 并没有因为加了 size cap 就变干净
-
-所以这条 probe 给出的结论很直接：
-
-* provider 的强 OOS，不只是“碰巧带一点小盘暴露”
-* 把小盘集中度压掉以后，它的实现层优势会明显收缩
-* 但压掉以后，排序证据也没有因此变得更漂亮
-
-### 12.3 这个 cap 到底有没有真的生效
-
-有，而且是明确生效了。
-
-OOS 持仓层面：
-
-* baseline 平均每期持仓约 `12.8`
-* probe 平均每期持仓约 `10.8`
-* probe 在所有 OOS 月份都满足“单一 size bucket 不超过 5 只”
-
-平均 bucket 分布：
-
-baseline：
-
-* `Q1_small = 6.17`
-* `Q2_mid_small = 3.58`
-* `Q3_mid_large = 0.71`
-* `Q4_large = 2.33`
-* 平均 `small share = 49.5%`
-* 平均 `size_rank_pct = 0.366`
-
-probe：
-
-* `Q1_small = 4.50`
-* `Q2_mid_small = 3.21`
-* `Q3_mid_large = 0.88`
-* `Q4_large = 2.25`
-* 平均 `small share = 44.4%`
-* 平均 `size_rank_pct = 0.404`
-
-解释：
-
-* 这个 cap 确实把组合往更大的 size bucket 拉了一点
-* 但它没有把组合变成 `5 / 5 / 5 / 5` 的完全均衡篮子
-* 原因也很清楚：这是上限约束，不是配额约束；当前 provider 排序在中大盘桶里并没有足够强的候选去把空位自然补满
-
-### 12.4 这条 probe 说明了什么
-
-这一轮之后，关于 provider 可以更明确地说：
-
-* 它的强 OOS 确实部分依赖小盘集中度
-* 但简单加一个硬 group cap，不会把它自动洗成更干净的结构 alpha
-* 这条线仍然更像“实现候选”，不是更强研究主线
-
-所以更合理的下一步不是直接宣布 provider 已经 size-neutral，而是：
-
-1. 如果还想继续救 provider，优先试更软的 size 控制，而不是更硬的卡桶。
-2. 如果目标是更干净的主线判断，`M-PIT` 的研究主线地位没有被这条 probe 动摇。
