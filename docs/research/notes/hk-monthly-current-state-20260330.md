@@ -4,7 +4,7 @@
 本页不解决什么：不替代单次 run 的 `summary.json` / `config.used.yml`，也不把所有 monthly follow-up 细节重写一遍。  
 适合谁：已经看过几轮 monthly 对比，想知道“现在到底哪条最有前景、该继续做什么、能不能开始实盘准备”的人。  
 读完你会得到什么：当前最有前景的 monthly run、它们各自好在哪里、还存在哪些问题、距离实盘的阶段判断，以及下一位 Codex 继续接手时最该看的信息。  
-相关页面：`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`、`docs/research/notes/hk-monthly-provider-vs-pit-20260330.md`、`docs/research/notes/hk-monthly-provider-factor-probes-20260330.md`、`docs/playbooks/hk-selected.md`、`docs/research/README.md`
+相关页面：`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`、`docs/research/notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`、`docs/research/notes/hk-monthly-pit-no-ret-follow-up-20260330.md`、`docs/research/notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`、`docs/research/notes/hk-monthly-provider-vs-pit-20260330.md`、`docs/research/notes/hk-monthly-provider-factor-probes-20260330.md`、`docs/playbooks/hk-selected.md`、`docs/research/README.md`
 
 页面性质：`current-state`  
 最后核对时间：`2026-03-30`  
@@ -15,14 +15,16 @@
 
 ## 1. 先记住这些
 
-* 现在 monthly 线最合理的分工仍然是：`M-PIT` 当研究主线，`M-provider rebalance-only` 当正式月频 comparator / 实现候选，`Q-PIT` 只保留 benchmark 角色。
+* 现在 monthly 线最合理的分工应理解成：`M-PIT baseline` 当研究锚点，`M-PIT + no_ret + bx20 / be10` 当当前 monthly PIT candidate，`M-provider rebalance-only` 当正式月频 comparator / 实现候选，`Q-PIT` 只保留 benchmark 角色。
 * `M-provider` 当前账面 OOS 最强，但 `final OOS IC` 仍为负，所以它更像实现候选，不像最干净的排序器。
-* `M-PIT` 当前 long-only 账面不如 `provider` 亮，但测试段和 final OOS 的 `IC` 都为正，更像真的有横截面排序证据。
+* old `M-PIT baseline` 在 frozen 口径下更像真的有横截面排序证据，而当前 `no_ret + bx20 / be10` 则是在更晚窗口里把 `IC` 和 long-only 实现一起重新拉回正区间的候选版本。
 * provider 那条强 OOS 曲线，当前更像 `small-cap + 短周期价格结构 + 个股选择` 的混合结果，而不是纯财报 alpha、纯 value 或纯中期 momentum。
 * 这轮 `size-neutral` / `soft size control` 探针已经说明：继续救 provider 的 size 问题，边际信息开始下降，不该再当第一优先方向。
 * 最新一轮 `M-PIT + 轻量 valuation overlay` probe 已经跑完，但在 `asof_20260327 + 24m final OOS` 上没有验证出干净增量；`pe_only` 最多保留为实现 comparator。
 * `M-PIT` 的 `R0-R4` 稳定性拆解也已经跑完：`2025-12-31` cutoff 下的 recut 仍然是正 `IC`，`2026-03-27` cutoff 下的 recut 已经转成负 `IC`。
-* 所以当前最值得继续做的，不是继续扩 `pb / pe / size` overlay 组合，也不是继续怀疑 split 本身，而是解释最近新增月份为什么把 `M-PIT` 基线推弱。
+* 如果目标是更贴近“季度看看、平时少动”的主观投资风格，当前更高信息比的做法不是退回季度主线，而是在 `M-PIT` 月频骨架上做 slow-sleeve construction；首轮 probe 里 `bx20 / be10` 是最平衡的慢执行模板。
+* 在 `slow_bx20 / be10` 的基础上再去掉直接 trailing-return 特征后，`no_ret` 已经在 latest fixed-`24m`、latest ratio 和 frozen fixed-`24m` 三条口径下同时验证出正 `IC`，因此它现在比原版 `bx20 / be10` 更像当前 monthly PIT candidate。
+* 所以当前最值得继续做的，不是继续扩 `pb / pe / size` overlay 组合，也不是继续怀疑 split 本身，而是把 `no_ret + bx20 / be10` 作为当前候选继续推进，并保留 baseline 去解释最近新增月份为什么会把旧版 `M-PIT` 推弱。
 * 这条 monthly 线已经够资格准备 `shadow / paper`，但还不够资格包装成“已能放心重仓上线的成熟实盘策略”。
 
 ## 2. 当前应该盯哪几条 run
@@ -33,11 +35,15 @@
   * run：`artifacts/runs/hk_sel_m_provider_mainline_rebalance_only_tr_close_exec_balanced_20260330_002336_c12762fc/`
   * summary：`artifacts/runs/hk_sel_m_provider_mainline_rebalance_only_tr_close_exec_balanced_20260330_002336_c12762fc/summary.json`
 
-### 2.2 月频研究主线
+### 2.2 月频 PIT 研究锚点与候选
 
-* `M-PIT sidecar`
+* `M-PIT baseline / research anchor`
   * run：`artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79/`
   * summary：`artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79/summary.json`
+
+* `M-PIT + no_ret + bx20 / be10`
+  * run：`artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_slow_bx20_be10_no_ret_latest_ratio_tr_close_exec_balanced_20260330_220645_f2f6d129/`
+  * summary：`artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_slow_bx20_be10_no_ret_latest_ratio_tr_close_exec_balanced_20260330_220645_f2f6d129/summary.json`
 
 ### 2.3 低频 benchmark
 
@@ -47,12 +53,12 @@
 
 ## 3. 当前最合理的分工
 
-### 3.1 `M-PIT`
+### 3.1 `M-PIT baseline`
 
 定位：
 
-* 月频研究主线
-* 当前最值得继续做稳定性拆解的主信号
+* 月频研究锚点
+* 当前最值得继续做稳定性拆解的基线信号
 * 不是因为 latest 窗口还很强，而是因为它在 frozen cutoff 下仍然最像“结构 alpha”，但在 latest 窗口上已明显转弱
 
 原因：
@@ -66,7 +72,26 @@
 
 * 它不是当前账面最强的 latest 组合，但它仍然是最值得解释“为什么最近变弱”的那条研究主线。
 
-### 3.2 `M-provider rebalance-only`
+### 3.2 `M-PIT + no_ret + bx20 / be10`
+
+定位：
+
+* 当前 monthly PIT candidate
+* 更贴近“基本面主导 + 慢执行 + 不直接追动量”的执行版本
+
+原因：
+
+* 它只删掉了 `ret_20 / ret_60 / ret_120`，保留了 `PIT` 财报主轴和 `rv_* / volume_sma_ratio / log_vol / vol` 这组波动/流动性 sidecar
+* latest fixed-`24m` 下，`final OOS IC = 7.79%`，long-only `ann = 42.6%`, `sharpe = 1.47`
+* latest ratio 下，`test IC = 3.67%`、`final OOS IC = 7.97%`，long-only `ann = 38.2%`, `sharpe = 1.29`
+* frozen fixed-`24m` 下，`test IC = 2.21%`、`final OOS IC = 8.92%`，long-only `ann = 37.1%`, `sharpe = 1.29`
+* feature importance 也重新回到非常明确的 `PIT` 财报主导，量价块更像 sidecar，不再像直接 trailing-return 动量在牵引模型
+
+一句话解释：
+
+* 它现在是这条 monthly PIT 线上最像“既更符合你的投资直觉、又有跨口径 robustness”的当前候选版本。
+
+### 3.3 `M-provider rebalance-only`
 
 定位：
 
@@ -85,7 +110,7 @@
 
 * 它更像“最近这段样本里很能打的组合实现”，但不够像“已经证明自己是干净排序器”的主研究线。
 
-### 3.3 `Q-PIT`
+### 3.4 `Q-PIT`
 
 定位：
 
@@ -112,13 +137,20 @@
 * 财报字段主导 feature importance，说明这条线不是被快频量价完全偷走了信号故事。
 * 最近 `12m` rolling OOS `IC` 仍为正，说明它不是只靠早期窗口托住均值。
 
-### 4.2 `M-provider` 的优点
+### 4.2 `M-PIT + no_ret + bx20 / be10` 的优点
+
+* 它把“基本面主导、不直接追 trailing-return 动量”的信号故事重新讲顺了。
+* latest fixed-`24m`、latest ratio 和 frozen fixed-`24m` 三条口径下，测试段和 final OOS 的 `IC` 都回到了正区间。
+* feature importance 前排重新回到 `cfo_to_profit`、`cfo_margin`、现金流增长、利润率、净利润这些 `PIT` 财报字段，量价块更像 sidecar。
+* 它比 old baseline 更像“当前可以继续观察、继续微调实现边界”的 monthly PIT candidate。
+
+### 4.3 `M-provider` 的优点
 
 * final OOS long-only 曲线最强，且回撤很浅。
 * 作为 `20` 只等权、带显式 execution cost 的月频组合，它已经有“可以拿来做 shadow portfolio”的吸引力。
 * walk-forward 均值不差，说明它不只是 final OOS 一段完全孤立的奇迹。
 
-### 4.3 `Q-PIT` 的优点
+### 4.4 `Q-PIT` 的优点
 
 * 作为低频财报 benchmark，语义最清楚。
 * 它能提醒 monthly 线不要误把“实现漂亮”当成“财报研究已经被验证”。
@@ -127,10 +159,10 @@
 
 ### 5.1 final OOS 还不够长
 
-当前两条月频线的 final OOS 都是：
+当前这批 monthly 核心参考口径的 final OOS 大致都还只有约 `2` 年：
 
-* `25` 个 OOS 月度截面
-* 大致从 `2023-11-30` 到 `2025-11-27`
+* frozen reference / provider 这类旧窗口大致是 `25` 个 OOS 月度截面，约 `2023-11-30 -> 2025-11-27`
+* latest fixed-`24m` 这批 `M-PIT` sidecar / `no_ret` 候选则是 `24` 个 OOS 月度截面，约 `2024-02-29 -> 2026-01-30`
 
 这对月频来说已经够做第一轮候选筛选，但还不够长到把“结构 alpha”和“一段顺风 regime”彻底分开。
 
@@ -152,20 +184,23 @@
 * 它是实现候选
 * 不是最干净的研究主线
 
-### 5.3 `M-PIT` 的实现层还不够顺
+### 5.3 old `M-PIT baseline` 的实现层还不够顺
 
 它现在的问题不是有没有信号，而是：
 
-* final OOS long-only 年化和 Sharpe 明显弱于 `provider`
+* old baseline 的 final OOS long-only 年化和 Sharpe 明显弱于 `provider`
 * 回撤更深
 * 还没把“排序证据”稳定转成“更好看的实盘实现”
 
+但这条问题描述已经不该直接套到 `no_ret + bx20 / be10` 上，因为后者当前已经在 multiple windows 下把 `IC` 和 long-only 实现一起拉回正区间。
+
 ### 5.4 换手和成本仍然值得认真对待
 
-这两条月频线当前大致都在：
+当前这批月频参考线的换手大致分成两档：
 
-* 月度平均换手 `55%-65%`
-* 每期平均成本拖累约 `0.37%-0.39%`
+* `M-provider` 更高，大约在月度平均换手 `55%-65%`
+* `M-PIT + no_ret + bx20 / be10` 这条当前候选更低，大致在 `35%-46%`
+* 每期平均成本拖累仍大多在 `0.3%-0.4%` 这一档
 
 对你这种 `1,000,000` 资金量级来说，这通常不是流动性致命问题，因为：
 
@@ -205,7 +240,8 @@
 当前已经可以：
 
 * 把 `M-provider` 作为 shadow / paper 组合候选
-* 把 `M-PIT` 作为研究主线继续维护
+* 把 `M-PIT baseline` 作为研究锚点继续维护
+* 把 `M-PIT + no_ret + bx20 / be10` 作为当前 monthly PIT candidate 持续跟踪
 * 在不扩大资金的前提下，开始准备一套月度实盘观察流程
 
 ### 6.2 现在还不该做什么
@@ -229,25 +265,53 @@
 
 ### 7.1 第一优先
 
-* 做 latest 窗口的逐月 `IC` / 持仓 / 行业 / size 漂移拆解
+* 把 `M-PIT + no_ret + bx20 / be10` 固定为当前 monthly PIT candidate
+
+优先考虑：
+
+* 保持 `top_k = 20`
+* 保持 `buffer_exit = 20`
+* 保持 `buffer_entry = 10`
+* 暂时不再把 `ret_*` 加回去
+
+原因：
+
+* 这轮 `no_ret` follow-up 已经在 latest fixed-`24m`、latest ratio 和 frozen fixed-`24m` 三条口径下同时站住
+* 改善的不只是 long-only 曲线，`IC` 也一起翻正
+* 这条线当前更像“值得继续收窄验证”的 candidate，不像“还在大范围摸索的想法”
+
+### 7.2 第二优先
+
+* 围绕 `no_ret` 做 very local 的 construction 微调
+
+优先考虑：
+
+* `top_k = 15`
+* `bx20 / be12`
+* 或其他窄范围 buffer 微调
+
+原因：
+
+* 当前更有信息比的是确认这条候选的实现边界
+* 不是重新回到大范围 feature / overlay 扩张
+
+### 7.3 第三优先
+
+* 保留 baseline 的 latest 漂移拆解，把它当成解释性工作而不是当前候选
 
 更具体地说：
 
 * 以已经跑完的 `R0-R4` 为边界条件
-* 固定 `M-PIT` 主配置
-* 直接去看 latest 这几个月的逐月 `IC`、行业分布、size bucket、持仓重合度和个股集中变化
-* 把问题收口成：
-  * 最近哪几个月开始拖累
-  * 是行业主导变化还是 size / holdings 漂移
-  * `M-PIT` 的 recent weakness 更像短期 regime 还是结构失效
+* 固定 old `M-PIT` baseline 配置
+* 去看 latest 这几个月的逐月 `IC`、行业分布、size bucket、持仓重合度和个股集中变化
 
 原因：
 
 * `R0-R4` 已经说明 split 不是第一嫌疑人
-* 在基线自己转弱的情况下，继续叠更多 overlay 组合，信息比很低
-* 先解释“为什么最近变弱”，比继续问“能不能靠多一个估值列救回来”更值钱
+* 现在 baseline 的主要价值是解释“旧版为什么被 recent months 推弱”
+* 这件事仍有研究价值，但不该再盖过当前 candidate 的推进优先级
 
-### 7.2 第二优先
+### 7.4 第四优先
 
 * 如果只关心实现，保留 `pe_only` 做 comparator，再做换手优化
 
@@ -261,7 +325,7 @@
 * 这轮 overlay 里只有 `pe_only` 在实现层还有继续观察价值
 * 但它不该被包装成“研究主线升级”
 
-### 7.3 第三优先
+### 7.5 第五优先
 
 * 补一个 `30m final OOS` 的 stress sidecar
 
@@ -289,26 +353,30 @@
 
 1. 本页
 2. `docs/research/notes/hk-monthly-time-window-design-20260330.md`
-3. `docs/research/notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
-4. `docs/research/notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`
-5. `docs/research/notes/hk-monthly-provider-vs-pit-20260330.md`
-6. `docs/research/notes/hk-monthly-provider-factor-probes-20260330.md`
-7. 各核心 run 目录下的 `summary.json`
-8. 各核心 run 目录下的 `config.used.yml`
+3. `docs/research/notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`
+4. `docs/research/notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`
+5. `docs/research/notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
+6. `docs/research/notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
+7. `docs/research/notes/hk-monthly-provider-vs-pit-20260330.md`
+8. `docs/research/notes/hk-monthly-provider-factor-probes-20260330.md`
+9. 各核心 run 目录下的 `summary.json`
+10. 各核心 run 目录下的 `config.used.yml`
 
 ### 9.2 当前最该信什么
 
 * `config.used.yml` 比本地 `configs/local/` 更权威
 * `summary.json` 比口头复述更权威
 * 当前 monthly 分工应理解为：
-  * `M-PIT`：研究主线
+  * `M-PIT baseline`：研究锚点
+  * `M-PIT + no_ret + bx20 / be10`：当前 monthly PIT candidate
   * `M-provider`：实现 comparator / 候选
   * `Q-PIT`：低频 benchmark
 
 ### 9.3 当前最重要的 open questions
 
-* 为什么旧 frozen snapshot 里的 `M-PIT` 更像正 IC 研究主线，而更新到 `asof_20260327 + 24m final OOS` 后已经明显转弱
-* 这种差异主要来自新增月份、split 口径变化，还是 universe / PIT 资产刷新
+* 为什么旧 frozen snapshot 里的 `M-PIT` 更像正 IC 研究主线，而 old baseline 更新到 `asof_20260327 + 24m final OOS` 后明显转弱
+* `no_ret + bx20 / be10` 这条候选在后续新样本里，能不能持续守住正 `IC` 和可接受的实现质量
+* 这种差异主要来自新增月份、split 口径变化，还是 old baseline 里的 `ret_*` 直接 trailing-return 输入
 * 如果只把 `pe_only` 当实现 comparator，它在做了更保守的 turnover 优化后，能不能改善 long-only 实现而不误导研究主线判断
 
 ### 9.4 继续往后扩样本时要记住什么
@@ -325,18 +393,21 @@
 
 1. 本页：先把主线、候选、实盘距离和下一步看对。
 2. [`hk-monthly-time-window-design-20260330.md`](./hk-monthly-time-window-design-20260330.md)：先把当前 `asof` 边界和 `24m final OOS` 设计看清。
-3. [`hk-monthly-pit-valuation-overlay-probes-20260330.md`](./hk-monthly-pit-valuation-overlay-probes-20260330.md)：再看为什么这轮轻量估值 overlay 没有过线。
-4. [`hk-monthly-pit-frozen-vs-latest-design-20260330.md`](./hk-monthly-pit-frozen-vs-latest-design-20260330.md)：然后直接看 `R0-R4` 已经跑出了什么，以及为什么当前主要矛盾更像 recent months / latest regime。
-5. [`hk-monthly-provider-vs-pit-20260330.md`](./hk-monthly-provider-vs-pit-20260330.md)：再回头看 provider 和 PIT 到底差在哪里。
-6. [`hk-monthly-provider-factor-probes-20260330.md`](./hk-monthly-provider-factor-probes-20260330.md)：如果你要继续追 provider 线为什么强、为什么又不够干净，再看这一页。
-7. 核心 run 目录下的 `summary.json` / `config.used.yml`：最后再下手复现或继续派生配置。
+3. [`hk-monthly-pit-frozen-vs-latest-design-20260330.md`](./hk-monthly-pit-frozen-vs-latest-design-20260330.md)：先看 `R0-R4` 已经跑出了什么，以及为什么当前主要矛盾更像 recent months / latest regime。
+4. [`hk-monthly-pit-slow-sleeve-probes-20260330.md`](./hk-monthly-pit-slow-sleeve-probes-20260330.md)：如果你想把 `M-PIT` 做得更像“季度看看、平时少动”的慢执行模板，先看这页。
+5. [`hk-monthly-pit-no-ret-follow-up-20260330.md`](./hk-monthly-pit-no-ret-follow-up-20260330.md)：再看为什么当前最值得继续押的是“删掉直接 trailing-return 动量”的候选版本。
+6. [`hk-monthly-pit-valuation-overlay-probes-20260330.md`](./hk-monthly-pit-valuation-overlay-probes-20260330.md)：然后再看为什么这轮轻量估值 overlay 没有过线。
+7. [`hk-monthly-provider-vs-pit-20260330.md`](./hk-monthly-provider-vs-pit-20260330.md)：再回头看 provider 和 PIT 到底差在哪里。
+8. [`hk-monthly-provider-factor-probes-20260330.md`](./hk-monthly-provider-factor-probes-20260330.md)：如果你要继续追 provider 线为什么强、为什么又不够干净，再看这一页。
+9. 核心 run 目录下的 `summary.json` / `config.used.yml`：最后再下手复现或继续派生配置。
 
 ## 11. 一句话结论
 
 截至 `2026-03-30`，HK monthly 最合理的现行口径仍然是：
 
-* `M-PIT` 作为研究主线继续推进
+* `M-PIT baseline` 继续作为研究锚点保留
+* `M-PIT + no_ret + bx20 / be10` 升成当前 monthly PIT candidate
 * `M-provider rebalance-only` 作为正式月频 comparator / 实现候选保留
 * 最新 `M-PIT + 轻量 valuation overlay` probe 没有验证出干净增量，`pe_only` 最多只保留为实现 comparator
-* `R0-R4` 已经说明 monthly 这轮转弱的主要矛盾更像 recent months / latest regime，而不是 split 设计
-* 下一步优先做 latest 窗口的逐月漂移拆解，而不是继续扩 overlay 组合
+* `R0-R4` 已经说明 old baseline 这轮转弱的主要矛盾更像 recent months / latest regime，而不是 split 设计
+* 下一步优先围绕 `no_ret` 做小范围确认，而不是继续扩 overlay 组合
