@@ -1100,6 +1100,8 @@ def _prepare_feature_dataset(
     cols = list(dict.fromkeys(cols))
     df = df[cols].copy()
 
+    reference_trade_dates = np.sort(pd.to_datetime(df["trade_date"].unique()).to_numpy())
+
     if universe_by_date is not None:
         before_rows = len(df)
         df = apply_universe_by_date(df, universe_by_date)
@@ -1285,6 +1287,7 @@ def _prepare_feature_dataset(
         "df_features": df_features,
         "df_full": df_full,
         "df_full_sorted": df_full_sorted,
+        "reference_trade_dates": reference_trade_dates,
         "all_dates_full": all_dates_full,
         "full_date_start_rows": full_date_start_rows,
         "full_date_end_rows": full_date_end_rows,

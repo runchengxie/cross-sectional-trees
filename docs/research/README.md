@@ -33,9 +33,12 @@
 如果你现在要重新进入 HK monthly 研究，更合理的阅读顺序是：
 
 1. `notes/hk-monthly-current-state-20260330.md`
-2. `notes/hk-monthly-provider-vs-pit-20260330.md`
-3. `notes/hk-monthly-provider-factor-probes-20260330.md`
-4. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
+2. `notes/hk-monthly-time-window-design-20260330.md`
+3. `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
+4. `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`
+5. `notes/hk-monthly-provider-vs-pit-20260330.md`
+6. `notes/hk-monthly-provider-factor-probes-20260330.md`
+7. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
 
 如果你现在要重新进入 HK quarterly 研究，不建议直接从旧的 follow-up 页面往回翻。  
 当前更合理的阅读顺序是：
@@ -52,14 +55,16 @@
 
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
-| `notes/hk-monthly-current-state-20260330.md` | 当前 monthly 线最合理的分工仍然是 `M-PIT` 当研究主线、`M-provider rebalance-only` 当正式月频 comparator / 实现候选；下一步最值得做的是 `M-PIT + 少量 provider valuation overlay`，并把截至 `2025-12-31` 的 run 视作冻结 snapshot | 否，当前应作为 monthly notes 的总入口 |
+| `notes/hk-monthly-current-state-20260330.md` | 当前 monthly 线最合理的分工仍然是 `M-PIT` 当研究主线、`M-provider rebalance-only` 当正式月频 comparator / 实现候选；最新 `asof_20260327 + 24m final OOS` 的 valuation overlay probe 没有验证出干净增量，因此下一步更值得做的是 `M-PIT` 基线的 `frozen vs latest` 稳定性拆解 | 否，当前应作为 monthly notes 的总入口 |
 | `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 线的现行口径、哪些旧结论仍保留、哪些已降级成 provenance、以及现在该从哪两条路线继续往前推 | 是，当前应作为 quarterly notes 的总入口 |
 
 #### Active Deep-Dive
 
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
-| `notes/hk-monthly-time-window-design-20260330.md` | 当前 monthly 线应把 `asof` 边界、完整 labeled 月点、effective model dates 和 `train/test/final_oos` 切分明确拆开；对这批 overlay probe，更合理的默认口径是 `data.end_date=20260326`、`eval.test_size=0.5`、`eval.final_oos.size=24` | 否，当前作为 monthly 时间设计说明页保留 |
+| `notes/hk-monthly-time-window-design-20260330.md` | 当前 monthly 线应把 `asof` 边界、完整 labeled 月点、effective model dates 和 `train/test/final_oos` 切分明确拆开；对这批 overlay probe，更合理的默认口径是 `data.end_date=20260327`、`eval.test_size=0.5`、`eval.final_oos.size=24` | 否，当前作为 monthly 时间设计说明页保留 |
+| `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md` | 修复 overlay 和 split 之后，`M-PIT + 轻量 valuation overlay` 并没有在 `asof_20260327 + 24m final OOS` 上给出干净增量；`pe_only` 最多保留为实现 comparator，下一步更值得做的是 `M-PIT` 的 `frozen vs latest` 稳定性拆解 | 否，当前作为 monthly overlay probe 汇总页保留 |
+| `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md` | 给 `M-PIT` 的下一轮研究提供最小而有信息量的 `R0-R4` 对照矩阵，把“资产刷新 / split 变化 / 最近新增月份”三类影响拆开，而不是继续盲目扩 overlay 组合 | 否，当前作为 monthly 下一轮实验设计页保留 |
 | `notes/hk-monthly-provider-vs-pit-20260330.md` | `M-PIT` 更适合当月频研究主线，`M-provider rebalance-only` 更适合当正式月频 comparator / 实现候选；provider 的强 OOS 更像 `small-cap + 短周期价格结构` 在发力，而不是纯 value 或纯中期 momentum | 否，当前作为 monthly 线路解释页保留 |
 | `notes/hk-monthly-provider-factor-probes-20260330.md` | provider baseline 的强 OOS 明显依赖 size 倾斜；`no-size`、`hard-cap` 和 `soft size control` 都没有把它洗成更干净的排序器，所以这条线当前更适合当实现 comparator，而不是研究主线 | 否，当前作为 monthly provider probe 汇总页保留 |
 | `notes/hk-quarterly-holdings-analysis-20260329.md` | `raw-scale dedup` 的价值主要在于更低换手和更稳定的测试段持仓，`reg_zscore + tr_close` 的最近 OOS 亮点则更集中、更像少数名字驱动 | 否，当前作为组合层解释页保留 |
@@ -109,6 +114,7 @@
 
 * `notes/hk-monthly-current-state-20260330.md`
 * `notes/hk-monthly-time-window-design-20260330.md`
+* `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
 * `notes/hk-monthly-provider-vs-pit-20260330.md`
 * `notes/hk-monthly-provider-factor-probes-20260330.md`
 * `notes/hk-quarterly-current-state-20260329.md`

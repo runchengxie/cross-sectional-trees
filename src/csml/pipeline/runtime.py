@@ -121,6 +121,7 @@ def _prepare_split_context(
     model_date_start_rows: np.ndarray,
     model_date_end_rows: np.ndarray,
     model_date_to_pos: dict[pd.Timestamp, int],
+    reference_trade_dates: np.ndarray,
     sample_on_rebalance_dates: bool,
     df_model_all: pd.DataFrame,
     all_dates_full: np.ndarray,
@@ -141,7 +142,10 @@ def _prepare_split_context(
     if sample_on_rebalance_dates:
         sample_dates = sorted(df_model_all["trade_date"].unique())
         if len(sample_dates) >= 2:
-            rebalance_gap_days = estimate_rebalance_gap(all_dates_full, sample_dates)
+            trade_dates_for_gap = reference_trade_dates
+            if len(trade_dates_for_gap) < 2:
+                trade_dates_for_gap = all_dates_full
+            rebalance_gap_days = estimate_rebalance_gap(trade_dates_for_gap, sample_dates)
             if np.isfinite(rebalance_gap_days):
                 logger.info(
                     "Sample-on-rebalance enabled: median gap %.1f trade days.",
