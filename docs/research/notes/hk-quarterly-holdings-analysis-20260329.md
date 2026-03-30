@@ -1,5 +1,7 @@
 # HK Quarterly 持仓与归因分析（2026-03-29）
 
+> 状态提示：本页属于 active deep-dive，用于展开 quarterly 线在持仓稳定性、收益集中度和组合差异上的解释。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 本页解决什么：把当前三条最相关季度 run 的持仓稳定性、组合差异和最近 OOS 收益集中度收成一页，回答“现在更该继续调 config，还是先看持仓机制”。  
 本页不解决什么：不重新评价模型显著性，也不把最近 OOS 包装成新证据。  
 适合谁：已经看过 `current-state` 和 `next-step-configs`，开始怀疑“是不是再扫 config 的边际已经不高”的读者。  

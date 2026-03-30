@@ -1,5 +1,7 @@
 # HK Quarterly Construction Grid Follow-up（2026-03-29）
 
+> 状态提示：本页属于 active deep-dive，用于记录 quarterly 线固定信号后的组合构造 follow-up。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 本页解决什么：记录 `raw-scale dedup + groupcap3` 这条结构 challenger 的前两轮 `csml grid` 结果，并明确固定信号后下一步最值得扫的组合构造维度。  
 本页不解决什么：不替代主线/副线的总收口，也不重新讨论模型、`tr_close` 或纯基本面路线。  
 适合谁：已经接受“当前更该看组合构造，不该继续大扫模型参数”的读者。  

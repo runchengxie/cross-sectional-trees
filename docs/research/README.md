@@ -85,6 +85,12 @@
 * 权威来源：实验 run、当前配置、外部论文或资产目录
 * 冲突优先级：和哪一页或哪个产物冲突时，以谁为准
 
+如果页面不是 `current-state`，建议在标题下再加一行状态提示：
+
+* 说明自己属于 `active deep-dive` 还是 `historical provenance`
+* 明确这页不该作为默认入口
+* 直接指向对应的 `current-state` 页面
+
 复现具体历史 run 时，优先级始终高于研究笔记的是：
 
 * `config.used.yml`

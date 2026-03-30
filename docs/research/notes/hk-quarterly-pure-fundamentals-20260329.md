@@ -1,5 +1,7 @@
 # HK Quarterly 纯基本面路线（2026-03-29）
 
+> 状态提示：本页属于 active deep-dive，用于单独展开 quarterly 线里的纯 PIT 基本面 sidecar 路线。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 本页解决什么：把“不用量价指标、只看 PIT 基本面”的 HK quarterly 研究路线单独收成一页，并给出第一波更合理的配置。  
 本页不解决什么：不宣称这条线已经优于当前主线，也不把它包装成已验证可上线策略。  
 适合谁：已经看过当前 quarterly 主线/副线，想回答“纯基本面到底值不值得单开一条线、该先用什么模型”的读者。  

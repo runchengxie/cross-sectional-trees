@@ -1,5 +1,7 @@
 # HK Quarterly 下一阶段收口与配置建议（2026-03-29）
 
+> 状态提示：本页属于 active deep-dive，用于展开 quarterly 线当前“下一步该保留什么、该跑什么”的收口建议。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 本页解决什么：把当前 HK quarterly PIT + overlay 这条线在训练窗、测试窗、特征和下一步配置上的建议收成一页，并给出可直接复用的 config 入口。
 本页不解决什么：不替代具体 run 的 `config.used.yml` / `summary.json`，也不把“最近 Final OOS 很亮”包装成已经验证通过。
 适合谁：已经看过最近几轮 quarterly notes，想知道“现在到底该保留什么、下一步该跑什么”的读者。

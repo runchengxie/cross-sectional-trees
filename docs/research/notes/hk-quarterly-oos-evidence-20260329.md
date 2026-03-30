@@ -1,5 +1,7 @@
 # HK Quarterly OOS 亮眼结果与证据边界（2026-03-29）
 
+> 状态提示：本页属于 active deep-dive，用于说明 quarterly 线里“最近 OOS 很亮”和“已经得到证据”之间的边界。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+
 本页解决什么：把这轮 HK quarterly PIT + balanced execution 下两条候选 run 的结论压成一页，明确哪些只能算研究线索，哪些才够资格叫证据。
 本页不解决什么：不替代配置说明、输出字段说明，也不替代单次 run 的原始 `summary.json`。
 适合谁：已经看到 `Final OOS` 很亮，但不确定这是不是已经足够支持模型选择的人。
