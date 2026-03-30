@@ -438,6 +438,8 @@ fundamentals:
 - 研究主链路内部以 `symbol` 为 canonical 标的列；旧配置里的 `column_map.ts_code` 仍然兼容。
 - 主 `fundamentals.file` 仍按原逻辑做按 `symbol` 的 `ffill`，适合 PIT 财报。
 - `provider_overlay` 按 `trade_date + symbol` 精确并到 daily panel，不做额外 `ffill`。
+- 如果你同时配置了本地 daily / instruments 资产，pipeline 仍可在 overlay cache miss 时 lazy init `rqdatac` 去补拉估值。
+- 当 `provider_overlay.required=true` 且本轮 run 一条 overlay 数据都没载入时，pipeline 会直接失败，不再静默降级成“空 overlay”。
 - 如果 overlay 数据里没有 `valuation_trade_date`，pipeline 会把 provider 行本身的 `trade_date` 记为 `valuation_trade_date`，并在需要时计算 `valuation_age_days`。
 - `log_market_cap` 仍由顶层 `fundamentals.log_market_cap` 控制；只要 panel 里出现了 `market_cap`，就可以派生 `log_mcap`。
 

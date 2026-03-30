@@ -1678,6 +1678,132 @@ def test_pipeline_hk_file_fundamentals_provider_overlay_stays_daily(
 
 
 @pytest.mark.slow
+def test_pipeline_hk_file_fundamentals_provider_overlay_required_fails_when_empty(
+    tmp_path, monkeypatch
+):
+    dates = pd.date_range("2025-03-10", periods=35, freq="B")
+    symbols = ["00005.HK", "00011.HK"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    basic_df = pd.DataFrame(
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+    )
+
+    fundamentals_path = tmp_path / "pit_fundamentals.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                ["2025-03-20", "2025-04-10", "2025-03-20", "2025-04-10"]
+            ),
+            "symbol": ["00005.HK", "00005.HK", "00011.HK", "00011.HK"],
+            "net_profit": [10.0, 13.0, 20.0, 22.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    def fake_fetch_fundamentals(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        fundamentals_cfg,
+        *,
+        cache_dir=None,
+        log_retry_failures=True,
+        log_retry_traceback=True,
+    ):
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "fetch_fundamentals", fake_fetch_fundamentals)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20250310",
+            "end_date": "20250430",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 2,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "file",
+            "file": str(fundamentals_path),
+            "column_map": {},
+            "features": ["net_profit"],
+            "auto_add_features": False,
+            "allow_missing_features": False,
+            "ffill": True,
+            "required": True,
+            "provider_overlay": {
+                "enabled": True,
+                "source": "provider",
+                "endpoint": "get_factor",
+                "features": ["pb"],
+                "auto_add_features": False,
+                "provider": "rqdata",
+                "required": True,
+                "column_map": {
+                    "trade_date": "trade_date",
+                    "symbol": "symbol",
+                    "pb": "pb",
+                },
+            },
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["net_profit"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "hk-file-fundamentals-provider-overlay-required-empty",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    with pytest.raises(SystemExit, match="Provider overlay enabled but no overlay data was loaded."):
+        _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
+
+
+@pytest.mark.slow
 def test_pipeline_hk_file_fundamentals_supports_growth_and_structure_ratios(
     tmp_path, monkeypatch
 ):

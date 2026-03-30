@@ -33,7 +33,8 @@ export RQDATA_PASSWORD=your_password
 2. 环境变量 `RQDATA_USERNAME` / `RQDATA_PASSWORD`
 3. 用户名别名 `RQDATA_USER`
 
-如果配置了本地 HK 资产，pipeline 会跳过 `rqdatac.init`，直接读本地文件。
+如果配置了本地 HK 资产，pipeline 默认会跳过在线日线/基础信息初始化，直接读本地文件。
+但如果你同时启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，运行时在遇到 fundamentals cache miss 时仍会按同一套 `data.rqdata.init` / 环境变量口径补做 `rqdatac.init`。
 
 ## 日期 token
 
@@ -116,6 +117,7 @@ data:
 说明：
 
 * `daily_asset_dir` 与 `instruments_file` 同时存在时，`rqdatac.init` 会被跳过
+* 这条“跳过”只针对本地 daily / instruments 读取；如果后续还要在线拉 fundamentals / provider overlay，cache miss 时仍会 lazy init `rqdatac`
 * 如果提供 `ex_factors_dir`，pipeline 可以自动派生 `tr_close`
 * `backtest.benchmark_symbol` 只额外拉价格，不再参与 fundamentals / industry / load_basic 这类非价格加载
 

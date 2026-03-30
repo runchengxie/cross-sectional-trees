@@ -448,6 +448,8 @@ def _load_research_panel(
     label_horizon_mode: str,
     label_rebalance_frequency: str,
 ) -> dict[str, Any]:
+    fundamentals_required = bool(fundamentals_cfg.get("required", False))
+    provider_overlay_required = bool(provider_overlay_cfg.get("required", False))
     benchmark_symbol = str(benchmark_symbol).strip() if benchmark_symbol else None
     symbols_for_data = symbols[:]
     if benchmark_symbol and benchmark_symbol not in symbols_for_data:
@@ -625,7 +627,10 @@ def _load_research_panel(
                 len(fundamentals_cols),
             )
         else:
-            logger.warning("Fundamentals enabled but no data was loaded.")
+            message = "Fundamentals enabled but no data was loaded."
+            if fundamentals_required:
+                sys.exit(message)
+            logger.warning(message)
 
         if provider_overlay_enabled:
             overlay_frames, provider_overlay_cache_dir = _load_fundamentals_frames(
@@ -669,7 +674,10 @@ def _load_research_panel(
                     len(overlay_cols),
                 )
             else:
-                logger.warning("Provider overlay enabled but no overlay data was loaded.")
+                message = "Provider overlay enabled but no overlay data was loaded."
+                if provider_overlay_required:
+                    sys.exit(message)
+                logger.warning(message)
 
         if "days_since_report" in features and "report_trade_date" in df.columns:
             report_trade_date = pd.to_datetime(df["report_trade_date"], errors="coerce")

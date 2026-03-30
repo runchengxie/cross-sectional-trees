@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
@@ -129,6 +130,37 @@ def _prepare_rqdata_fundamentals_frame(df: pd.DataFrame, symbol: str) -> pd.Data
         context="RQData fundamentals frame",
         priority=PROVIDER_SYMBOL_PRIORITY,
     )
+
+
+def _resolve_rqdatac_init_kwargs(data_cfg: Mapping | None) -> dict[str, object]:
+    init_kwargs: dict[str, object] = {}
+    rq_cfg = data_cfg.get("rqdata") if isinstance(data_cfg, Mapping) else None
+    if isinstance(rq_cfg, Mapping) and isinstance(rq_cfg.get("init"), Mapping):
+        for key, value in rq_cfg.get("init", {}).items():
+            if value is None:
+                continue
+            init_kwargs[str(key)] = value
+    env_username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
+    env_password = os.getenv("RQDATA_PASSWORD")
+    if env_username and "username" not in init_kwargs:
+        init_kwargs["username"] = env_username
+    if env_password and "password" not in init_kwargs:
+        init_kwargs["password"] = env_password
+    return init_kwargs
+
+
+def _ensure_rqdatac_ready(data_cfg: Mapping | None):
+    try:
+        import rqdatac
+    except ImportError as exc:
+        raise RuntimeError(f"rqdatac is required for provider='rqdata' ({exc}).") from exc
+
+    init_kwargs = _resolve_rqdatac_init_kwargs(data_cfg)
+    try:
+        rqdatac.init(**init_kwargs)
+    except Exception as exc:
+        raise RuntimeError(f"rqdatac.init failed: {exc}") from exc
+    return rqdatac
 
 
 def _rqdata_default_fields(rq_cfg: Optional[Mapping]) -> Optional[list[str]]:
@@ -1114,7 +1146,10 @@ def fetch_fundamentals(
             "Fundamentals provider not supported. Use fundamentals.source=file or provider='rqdata'."
         )
     if client is None:
-        import rqdatac as client
+        try:
+            import rqdatac as client
+        except ImportError as exc:
+            raise RuntimeError(f"rqdatac is required for provider='rqdata' ({exc}).") from exc
 
     endpoint_name = str(fundamentals_cfg.get("endpoint") or "get_factor").strip()
     if endpoint_name != "get_factor":
@@ -1131,7 +1166,13 @@ def fetch_fundamentals(
     params = dict(fundamentals_cfg.get("params") or {})
     params["market"] = rq_market
     rq_symbol = _to_rqdata_symbol(rq_market, symbol)
-    df = client.get_factor(rq_symbol, factor_fields, start_date, end_date, **params)
+    try:
+        df = client.get_factor(rq_symbol, factor_fields, start_date, end_date, **params)
+    except Exception as exc:
+        if "not initialized" not in str(exc).lower():
+            raise
+        client = _ensure_rqdatac_ready(data_cfg)
+        df = client.get_factor(rq_symbol, factor_fields, start_date, end_date, **params)
     if df is None or df.empty:
         return df
 

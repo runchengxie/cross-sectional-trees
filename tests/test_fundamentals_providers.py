@@ -1,3 +1,6 @@
+import sys
+import types
+
 import pandas as pd
 import pytest
 
@@ -27,6 +30,23 @@ def _hk_factor_frame() -> pd.DataFrame:
         },
         index=index,
     )
+
+
+class _FakeRQDataModule(types.ModuleType):
+    def __init__(self, frame: pd.DataFrame):
+        super().__init__("rqdatac")
+        self.frame = frame
+        self.init_calls: list[dict[str, object]] = []
+        self.factor_calls: list[tuple] = []
+
+    def init(self, **kwargs):
+        self.init_calls.append(dict(kwargs))
+
+    def get_factor(self, order_book_id, factors, start_date, end_date, **kwargs):
+        self.factor_calls.append((order_book_id, tuple(factors), start_date, end_date, kwargs))
+        if not self.init_calls:
+            raise RuntimeError("rqdatac is not initialized.")
+        return self.frame.copy()
 
 
 def test_fetch_fundamentals_rqdata_hk_provider_standardizes_and_caches(tmp_path):
@@ -85,6 +105,50 @@ def test_fetch_fundamentals_rqdata_hk_provider_standardizes_and_caches(tmp_path)
     assert "ts_code" not in first.columns
     assert {"market_cap", "pe_ttm", "pb"}.issubset(first.columns)
     assert len(list(cache_dir.glob("hk_rqdata_fundamentals_*.parquet"))) == 1
+
+
+def test_fetch_fundamentals_rqdata_hk_provider_lazy_inits_when_client_missing(
+    tmp_path, monkeypatch
+):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    fake_rqdatac = _FakeRQDataModule(_hk_factor_frame())
+    monkeypatch.setitem(sys.modules, "rqdatac", fake_rqdatac)
+    data_cfg = {
+        "provider": "rqdata",
+        "rqdata": {
+            "market": "hk",
+            "init": {"username": "demo_user", "password": "demo_pass"},
+        },
+    }
+    fundamentals_cfg = {
+        "endpoint": "get_factor",
+        "fields": ["hk_total_market_val", "pe_ratio_ttm", "pb_ratio_ttm"],
+        "column_map": {
+            "trade_date": "trade_date",
+            "symbol": "symbol",
+            "market_cap": "hk_total_market_val",
+            "pe_ttm": "pe_ratio_ttm",
+            "pb": "pb_ratio_ttm",
+        },
+    }
+
+    result = data_providers.fetch_fundamentals(
+        "hk",
+        "00005.HK",
+        "20250102",
+        "20250103",
+        cache_dir,
+        None,
+        data_cfg,
+        fundamentals_cfg,
+    )
+
+    assert fake_rqdatac.init_calls == [{"username": "demo_user", "password": "demo_pass"}]
+    assert len(fake_rqdatac.factor_calls) == 2
+    assert result["trade_date"].tolist() == ["20250102", "20250103"]
+    assert result["symbol"].tolist() == ["00005.HK", "00005.HK"]
+    assert {"market_cap", "pe_ttm", "pb"}.issubset(result.columns)
 
 
 def test_fetch_fundamentals_cache_key_tracks_field_config(tmp_path):
