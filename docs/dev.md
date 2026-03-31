@@ -235,7 +235,7 @@ scripts/dev/run_tests.sh all \
 | CLI / 参数解析 / wrapper 转发 | `tests/test_cli_core.py`、`tests/test_cli_rqdata.py`、`tests/test_cli_research.py`、`tests/test_cli_liveops.py` | `scripts/dev/run_tests.sh fast` |
 | 文档 / `README.md` / `docs/` / workflow 说明 | `tests/test_docs_contracts.py`、`tests/test_repo_path_references.py`、`tests/test_run_tests_script.py` | `scripts/dev/run_tests.sh fast` |
 | `scripts/dev/run_tests.sh` / CI 测试入口 | `tests/test_run_tests_script.py`、`tests/test_docs_contracts.py` | 对应复现一遍 `fast` / `slow` / `integration` 或相关 smoke |
-| `release_tools` 打包 / Release staging | `tests/test_asset_release_scripts.py`、`tests/test_run_release_scripts.py` | `tests/test_export_repo_source.py` |
+| `release_tools` 打包 / Release staging | `tests/test_asset_release_scripts.py`、`tests/test_run_release_scripts.py` | 对应脚本最小打包烟雾检查 |
 | `csml data query` / metadata catalog / standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py` | 本地补一个 `csml data query --sql "select 1 as value"` |
 | `alloc-hk` / `liveops-hk` / xlsx 输出 | `tests/test_alloc_hk.py`、`tests/test_cli_liveops.py` | `uv sync --extra dev --extra liveops-hk` 后补最小 xlsx smoke |
 | HK + RQData provider / PIT fundamentals / universe | `tests/test_pipeline_validation.py`、`tests/test_pipeline_filters.py`、`tests/test_fundamentals_providers.py`、`tests/test_rqdata_assets.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
