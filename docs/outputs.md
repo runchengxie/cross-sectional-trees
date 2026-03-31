@@ -445,7 +445,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | `turnover_eval.csv` | 默认 | 评估侧换手序列 |
 | `backtest_net.csv` / `backtest_gross.csv` | `backtest.enabled=true` 且回测成功 | 净/毛收益序列 |
 | `backtest_turnover.csv` / `backtest_periods.csv` | `backtest.enabled=true` 且回测成功 | 回测换手与周期收益 |
-| `backtest_benchmark.csv` / `backtest_active.csv` | 配置了 `backtest.benchmark_symbol` 且数据可用 | 基准与主动收益 |
+| `backtest_benchmark.csv` / `backtest_active.csv` | 配置了 `backtest.benchmark_symbol` 或 `backtest.benchmark_returns_file`，且数据可用 | 基准与主动收益 |
 | `positions_by_rebalance*.csv` / `positions_current*.csv` | 生成了持仓结果时 | 下游持仓消费/执行衔接 |
 | `rebalance_diff*.csv` | 对应 `positions_current*.csv` 存在至少两期时 | 最新一期调仓差异 |
 | `latest.json` | `live.enabled=true` 且 live 成功输出时 | 指向最新 live run 目录 |

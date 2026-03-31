@@ -105,7 +105,38 @@ def build_benchmark_series(
     entry_price_col: str,
     exit_price_col: str,
     period_info: list[dict],
+    benchmark_return_series: Optional[pd.Series] = None,
 ) -> tuple[pd.Series, list[dict]]:
+    if benchmark_return_series is not None and not benchmark_return_series.empty:
+        bench_returns = []
+        bench_index = []
+        bench_periods: list[dict] = []
+        aligned_returns = benchmark_return_series.copy()
+        aligned_returns.index = pd.to_datetime(aligned_returns.index, errors="coerce")
+        aligned_returns = aligned_returns[aligned_returns.index.notna()]
+        aligned_returns = aligned_returns.sort_index()
+        for info in period_info:
+            exit_date = pd.to_datetime(info["exit_date"], errors="coerce")
+            if pd.isna(exit_date) or exit_date not in aligned_returns.index:
+                continue
+            value = aligned_returns.loc[exit_date]
+            if isinstance(value, pd.Series):
+                value = value.iloc[-1]
+            try:
+                bench_value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(bench_value):
+                continue
+            bench_returns.append(bench_value)
+            bench_index.append(exit_date)
+            bench_periods.append(info)
+        if bench_returns:
+            return pd.Series(
+                bench_returns,
+                index=bench_index,
+                name="benchmark_return",
+            ), bench_periods
     if benchmark_df is None or benchmark_df.empty:
         return pd.Series(dtype=float, name="benchmark_return"), []
     if entry_price_col not in benchmark_df.columns or exit_price_col not in benchmark_df.columns:
@@ -315,6 +346,7 @@ def _evaluate_walk_forward_window(
     execution_model = context["execution_model"]
     backtest_pricing_df = context["backtest_pricing_df"]
     benchmark_df = context["benchmark_df"]
+    benchmark_return_series = context["benchmark_return_series"]
     backtest_top_k = context["backtest_top_k"]
     wf_feature_top_k = context["wf_feature_top_k"]
     backtest_topk_fn = context.get("backtest_topk_fn", backtest_topk)
@@ -597,6 +629,7 @@ def _evaluate_walk_forward_window(
                     execution_model.entry_policy.price_col,
                     execution_model.exit_policy.price_col,
                     bt_periods_w,
+                    benchmark_return_series=benchmark_return_series,
                 )
                 if not bench_series_w.empty:
                     bt_benchmark_stats_w = summarize_period_returns(
@@ -705,6 +738,7 @@ def _evaluate_period(
     backtest_exit_price_policy = context["backtest_exit_price_policy"]
     backtest_exit_fallback_policy = context["backtest_exit_fallback_policy"]
     benchmark_df = context["benchmark_df"]
+    benchmark_return_series = context["benchmark_return_series"]
     price_col = context["price_col"]
     price_passthrough_cols = context.get("price_passthrough_cols", [])
     passthrough_cols = context["passthrough_cols"]
@@ -1080,6 +1114,7 @@ def _evaluate_period(
                     execution_model.entry_policy.price_col,
                     execution_model.exit_policy.price_col,
                     period_info,
+                    benchmark_return_series=benchmark_return_series,
                 )
                 if not bench_series.empty:
                     result["bt_benchmark_series"] = bench_series

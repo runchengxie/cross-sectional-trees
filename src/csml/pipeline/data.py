@@ -497,6 +497,11 @@ def _load_research_panel(
             logger.info("Benchmark symbol %s removed from modeling universe.", benchmark_symbol)
         benchmark_df = df[df["symbol"] == benchmark_symbol].copy()
         df = df[df["symbol"] != benchmark_symbol].copy()
+        if benchmark_df.empty:
+            logger.warning(
+                "Benchmark symbol %s returned no daily data; benchmark and active-return outputs will be skipped.",
+                benchmark_symbol,
+            )
     symbols_for_non_price = [
         symbol for symbol in symbols_for_data if not benchmark_symbol or symbol != benchmark_symbol
     ]

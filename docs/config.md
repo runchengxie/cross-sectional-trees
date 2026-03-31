@@ -330,6 +330,8 @@ logging:
 | `rebalance_frequency` | 再平衡频率 | `M` / `Q` / `Y` |
 | `group_col` | 组合层分组列（例如行业列） | `first_industry_name` |
 | `max_names_per_group` | 单组最多持仓数 | `2`, `3`, `5` |
+| `benchmark_symbol` | 单一证券 benchmark | `02800.HK` |
+| `benchmark_returns_file` | 外部 benchmark 收益文件；列名至少含日期列和收益列 | `artifacts/benchmarks/hk_connect_capw.csv` |
 | `execution` | 执行 realism 扩展：入场价、退出价列、费用模型、滑点、流动性约束 | 见下文 |
 
 说明：
@@ -339,6 +341,8 @@ logging:
 * `backtest.group_col + max_names_per_group` 是组合构造阶段的最小版暴露约束，不会改变模型打分，也不等于完整行业中性化。
 * `backtest.execution` 会在 `transaction_cost_bps`、`exit_price_policy` 和 `data.price_col` 之上做更细的 execution 建模；不配时仍沿用原有默认行为。
 * `execution.entry_policy.price_col` / `execution.exit_policy.price_col` 只影响回测与持仓构造，不会改变标签、基准或价格类特征的 `data.price_col` 口径。
+* `backtest.benchmark_symbol` 和 `backtest.benchmark_returns_file` 二选一；前者适合 ETF / 指数代理，后者适合自建 universe benchmark。
+* `backtest.benchmark_returns_file` 目前支持 `csv` / `parquet`；日期列可叫 `trade_date` / `date` / `exit_date` / `rebalance_date`，收益列可叫 `benchmark_return` / `return` / `net_return`。
 * 成本、滑点、`tr_close` 与现金分红账本的关系，单独见 `docs/concepts/execution-costs.md`。
 
 ### `backtest.execution`

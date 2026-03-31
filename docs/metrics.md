@@ -360,7 +360,7 @@
 
 ### 基准与主动收益
 
-当配置了 `benchmark_symbol` 时，还会写：
+当配置了 `benchmark_symbol` 或 `benchmark_returns_file` 时，还会写：
 
 * `summary.json -> backtest.benchmark`
 * `summary.json -> backtest.active`

@@ -122,6 +122,20 @@ def test_pipeline_backtest_validation(tmp_path, no_client, key, value, message):
         pipeline.run(str(config_path))
 
 
+def test_pipeline_backtest_rejects_multiple_benchmark_sources(tmp_path, no_client):
+    config = copy.deepcopy(_base_config(tmp_path))
+    benchmark_file = tmp_path / "benchmark.csv"
+    benchmark_file.write_text("trade_date,benchmark_return\n20200103,0.01\n", encoding="utf-8")
+    config["backtest"]["benchmark_symbol"] = "02800.HK"
+    config["backtest"]["benchmark_returns_file"] = str(benchmark_file)
+    config_path = _write_config(tmp_path, config)
+    with pytest.raises(
+        SystemExit,
+        match="backtest.benchmark_symbol and backtest.benchmark_returns_file are mutually exclusive.",
+    ):
+        pipeline.run(str(config_path))
+
+
 def test_pipeline_live_train_mode_validation(tmp_path, no_client):
     config = copy.deepcopy(_base_config(tmp_path))
     config["live"] = {"enabled": False, "train_mode": "bad"}

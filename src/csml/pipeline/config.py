@@ -796,6 +796,17 @@ def resolve_runtime_settings(
         backtest_cfg.get("trading_days_per_year", 252)
     )
     backtest_benchmark = backtest_cfg.get("benchmark_symbol")
+    if backtest_benchmark is not None:
+        backtest_benchmark = str(backtest_benchmark).strip() or None
+    backtest_benchmark_returns_file = backtest_cfg.get("benchmark_returns_file")
+    if backtest_benchmark_returns_file is not None:
+        backtest_benchmark_returns_file = (
+            str(backtest_benchmark_returns_file).strip() or None
+        )
+    if backtest_benchmark and backtest_benchmark_returns_file:
+        raise SystemExit(
+            "backtest.benchmark_symbol and backtest.benchmark_returns_file are mutually exclusive."
+        )
     backtest_long_only = bool(backtest_cfg.get("long_only", True))
     backtest_buffer_exit = int(backtest_cfg.get("buffer_exit", 0))
     backtest_buffer_entry = int(backtest_cfg.get("buffer_entry", 0))
@@ -938,6 +949,7 @@ def resolve_runtime_settings(
         "BACKTEST_COST_BPS": backtest_cost_bps,
         "BACKTEST_TRADING_DAYS_PER_YEAR": backtest_trading_days_per_year,
         "BACKTEST_BENCHMARK": backtest_benchmark,
+        "BACKTEST_BENCHMARK_RETURNS_FILE": backtest_benchmark_returns_file,
         "BACKTEST_LONG_ONLY": backtest_long_only,
         "BACKTEST_BUFFER_EXIT": backtest_buffer_exit,
         "BACKTEST_BUFFER_ENTRY": backtest_buffer_entry,

@@ -77,6 +77,61 @@ warnings.filterwarnings("ignore")
 logger = logging.getLogger("csml")
 
 
+def _load_benchmark_return_series(path: Path) -> pd.Series:
+    if not path.exists():
+        raise SystemExit(f"Benchmark returns file not found: {path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".parquet":
+        frame = pd.read_parquet(path)
+    else:
+        frame = pd.read_csv(path)
+    if frame is None or frame.empty:
+        raise SystemExit(f"Benchmark returns file is empty: {path}")
+
+    date_col = next(
+        (
+            candidate
+            for candidate in ("trade_date", "date", "exit_date", "rebalance_date")
+            if candidate in frame.columns
+        ),
+        None,
+    )
+    if date_col is None:
+        raise SystemExit(
+            "Benchmark returns file must include one of: trade_date, date, exit_date, rebalance_date."
+        )
+
+    value_col = next(
+        (
+            candidate
+            for candidate in ("benchmark_return", "return", "net_return", "active_benchmark_return")
+            if candidate in frame.columns
+        ),
+        None,
+    )
+    if value_col is None:
+        raise SystemExit(
+            "Benchmark returns file must include one of: benchmark_return, return, net_return."
+        )
+
+    work = frame[[date_col, value_col]].copy()
+    work["trade_date"] = pd.to_datetime(work[date_col], errors="coerce").dt.normalize()
+    work["benchmark_return"] = pd.to_numeric(work[value_col], errors="coerce")
+    work = work.dropna(subset=["trade_date", "benchmark_return"])
+    if work.empty:
+        raise SystemExit(f"Benchmark returns file has no valid rows: {path}")
+
+    series = (
+        work.sort_values("trade_date")
+        .drop_duplicates(subset=["trade_date"], keep="last")
+        .set_index("trade_date")["benchmark_return"]
+        .astype(float)
+    )
+    series.name = "benchmark_return"
+    return series
+
+
 def run(config_ref: str | Path | None = None) -> None:
     package_api = sys.modules.get(__package__)
     backtest_topk_fn = (
@@ -306,6 +361,9 @@ def run(config_ref: str | Path | None = None) -> None:
         "BACKTEST_TRADING_DAYS_PER_YEAR"
     ]
     BACKTEST_BENCHMARK = runtime_settings["BACKTEST_BENCHMARK"]
+    BACKTEST_BENCHMARK_RETURNS_FILE = runtime_settings[
+        "BACKTEST_BENCHMARK_RETURNS_FILE"
+    ]
     BACKTEST_LONG_ONLY = runtime_settings["BACKTEST_LONG_ONLY"]
     BACKTEST_BUFFER_EXIT = runtime_settings["BACKTEST_BUFFER_EXIT"]
     BACKTEST_BUFFER_ENTRY = runtime_settings["BACKTEST_BUFFER_ENTRY"]
@@ -437,6 +495,16 @@ def run(config_ref: str | Path | None = None) -> None:
     # 2. Data download
     # -----------------------------------------------------------------------------
     benchmark_symbol = str(BACKTEST_BENCHMARK).strip() if BACKTEST_BENCHMARK else None
+    benchmark_returns_file_path = (
+        resolve_repo_path(BACKTEST_BENCHMARK_RETURNS_FILE)
+        if BACKTEST_BENCHMARK_RETURNS_FILE
+        else None
+    )
+    benchmark_return_series = (
+        _load_benchmark_return_series(benchmark_returns_file_path)
+        if benchmark_returns_file_path is not None
+        else pd.Series(dtype=float, name="benchmark_return")
+    )
     panel_state = _load_research_panel(
         data_interface=data_interface,
         symbols=symbols,
@@ -862,6 +930,7 @@ def run(config_ref: str | Path | None = None) -> None:
         "backtest_exit_price_policy": BACKTEST_EXIT_PRICE_POLICY,
         "backtest_exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
         "benchmark_df": benchmark_df,
+        "benchmark_return_series": benchmark_return_series,
         "price_col": PRICE_COL,
         "price_passthrough_cols": price_passthrough_cols,
         "passthrough_cols": passthrough_cols,
@@ -1015,6 +1084,7 @@ def run(config_ref: str | Path | None = None) -> None:
             "execution_model": execution_model,
             "backtest_pricing_df": backtest_pricing_df,
             "benchmark_df": benchmark_df,
+            "benchmark_return_series": benchmark_return_series,
             "backtest_top_k": BACKTEST_TOP_K,
             "wf_feature_top_k": WF_FEATURE_TOP_K,
             "backtest_topk_fn": backtest_topk_fn,

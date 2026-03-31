@@ -8,7 +8,7 @@
 
 目前该项目最多允许三层 benchmark 的设置：
 
-1. 市场 benchmark：`backtest.benchmark_symbol`
+1. 市场 benchmark：`backtest.benchmark_symbol` 或 `backtest.benchmark_returns_file`
 2. 特征 benchmark：固定同一研究单元，跑 `price-only -> PIT-only -> hybrid`
 3. 模型 benchmark：固定同一 hybrid 研究单元，只换 `ridge -> xgb_regressor -> xgb_ranker / elasticnet`
 
@@ -17,6 +17,13 @@
 HK 研究默认用：
 
 * `backtest.benchmark_symbol: 02800.HK`
+
+如果你要评估“相对港股通可投 universe 的 alpha”，更贴近的做法是自建一个
+`港股通 by-date universe cap-weight benchmark`，然后通过：
+
+* `backtest.benchmark_returns_file: artifacts/benchmarks/hk_connect_capw.csv`
+
+接入同一条回测，而不是强行用单一 ETF 近似。
 
 配置后，run 会额外输出：
 

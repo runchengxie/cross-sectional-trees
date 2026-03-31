@@ -182,6 +182,11 @@ def build_run_summary(
             "tradable_col": ctx["BACKTEST_TRADABLE_COL"],
             "signal_direction": ctx["BACKTEST_SIGNAL_DIRECTION"],
             "benchmark_symbol": ctx["benchmark_symbol"],
+            "benchmark_returns_file": (
+                str(ctx["benchmark_returns_file_path"])
+                if ctx.get("benchmark_returns_file_path") is not None
+                else None
+            ),
             "transaction_cost_bps": ctx["BACKTEST_COST_BPS_REPORT"],
             "execution_source": ctx["BACKTEST_EXECUTION_SOURCE"],
             "execution": describe_execution_model(ctx["execution_model"]),

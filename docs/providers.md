@@ -120,6 +120,7 @@ data:
 * 这条“跳过”只针对本地 daily / instruments 读取；如果后续还要在线拉 fundamentals / provider overlay，cache miss 时仍会 lazy init `rqdatac`
 * 如果提供 `ex_factors_dir`，pipeline 可以自动派生 `tr_close`
 * `backtest.benchmark_symbol` 只额外拉价格，不再参与 fundamentals / industry / load_basic 这类非价格加载
+* `backtest.benchmark_returns_file` 走本地收益序列对齐，不会触发额外 provider 拉数
 
 详细流程见 `docs/playbooks/hk-data-assets.md`。
 

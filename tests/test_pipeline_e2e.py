@@ -951,6 +951,124 @@ def test_pipeline_walk_forward_backtest_benchmark_summary(tmp_path, monkeypatch)
     )
 
 
+def test_pipeline_backtest_accepts_external_benchmark_returns_file(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=90, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    frames = _build_daily_frames(symbols, dates)
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return frames[symbol].copy()
+
+    def fake_load_basic(self, symbols=None) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", fake_load_basic)
+
+    output_dir = tmp_path / "runs"
+    benchmark_file = tmp_path / "benchmark_returns.csv"
+    pd.DataFrame(
+        {
+            "trade_date": dates.strftime("%Y-%m-%d"),
+            "benchmark_return": np.linspace(-0.01, 0.02, len(dates)),
+        }
+    ).to_csv(benchmark_file, index=False)
+
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20200101",
+            "end_date": "20200530",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "next_rebalance",
+            "rebalance_frequency": "W",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5", "ret_5"],
+            "params": {"sma_windows": [5], "ret_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": False,
+            "output_dir": str(output_dir),
+            "run_name": "e2e_external_benchmark",
+            "walk_forward": {
+                "enabled": False,
+            },
+        },
+        "backtest": {
+            "enabled": True,
+            "top_k": 2,
+            "rebalance_frequency": "W",
+            "transaction_cost_bps": 0,
+            "long_only": True,
+            "exit_mode": "rebalance",
+            "benchmark_returns_file": str(benchmark_file),
+        },
+    }
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    pipeline.run(str(config_path))
+
+    run_dirs = list(Path(output_dir).glob("e2e_external_benchmark_*"))
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["backtest"]["benchmark_symbol"] is None
+    assert summary["backtest"]["benchmark_returns_file"] == str(benchmark_file.resolve())
+    assert summary["backtest"]["benchmark"] is not None
+    assert summary["backtest"]["active"] is not None
+    assert (run_dir / "backtest_benchmark.csv").exists()
+    assert (run_dir / "backtest_active.csv").exists()
+
+
 @pytest.mark.integration
 def test_pipeline_records_exp_decay_and_train_window_summary(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=80, freq="B")
