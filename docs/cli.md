@@ -271,8 +271,13 @@ csml rqdata export-hk-instruments --instrument-type ETF --out artifacts/assets/r
 拉取港股日线数据。
 
 ```bash
-csml rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20000101 --end-date 20260311 --name hk_connect_full_2000_20260311_daily_latest
+csml rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20000101 --end-date 20260311 --batch-size 50 --name hk_connect_full_2000_20260311_daily_latest
 ```
+
+补充：
+
+* `--batch-size` 默认是 `20`，表示每次 `rqdatac.get_price` 请求里包含多少个 `order_book_id`。
+* 批量请求失败时，命令会自动拆回单 symbol 重试，便于继续完成大多数产物。
 
 ### csml rqdata mirror-hk-pit-financials
 

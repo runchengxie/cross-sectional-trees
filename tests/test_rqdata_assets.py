@@ -239,6 +239,30 @@ class _FakeRQDailyMirrorClient:
             "00011.XHKG": "2004-06-16",
             "00012.XHKG": "2026-01-15",
         }
+        self._payloads = {
+            "00005.XHKG": pd.DataFrame(
+                {
+                    "open": [10.0, 11.0],
+                    "high": [11.0, 12.0],
+                    "low": [9.5, 10.5],
+                    "close": [10.5, 11.5],
+                    "volume": [1000.0, 1200.0],
+                    "total_turnover": [10000.0, 12000.0],
+                },
+                index=pd.to_datetime(["2025-01-02", "2025-01-03"]),
+            ),
+            "00011.XHKG": pd.DataFrame(
+                {
+                    "open": [20.0],
+                    "high": [21.0],
+                    "low": [19.5],
+                    "close": [20.5],
+                    "volume": [2000.0],
+                    "total_turnover": [30000.0],
+                },
+                index=pd.to_datetime(["2025-01-03"]),
+            ),
+        }
 
     def instruments(self, order_book_id, market=None):
         return _FakeRQDailyInstrument(self._listed_dates.get(order_book_id, "2000-01-03"))
@@ -253,30 +277,24 @@ class _FakeRQDailyMirrorClient:
                 "kwargs": dict(kwargs),
             }
         )
-        if order_book_id == "00005.XHKG":
-            return pd.DataFrame(
-                {
-                    "open": [10.0, 11.0],
-                    "high": [11.0, 12.0],
-                    "low": [9.5, 10.5],
-                    "close": [10.5, 11.5],
-                    "volume": [1000.0, 1200.0],
-                    "total_turnover": [10000.0, 12000.0],
-                },
-                index=pd.to_datetime(["2025-01-02", "2025-01-03"]),
-            )
-        if order_book_id == "00011.XHKG":
-            return pd.DataFrame(
-                {
-                    "open": [20.0],
-                    "high": [21.0],
-                    "low": [19.5],
-                    "close": [20.5],
-                    "volume": [2000.0],
-                    "total_turnover": [30000.0],
-                },
-                index=pd.to_datetime(["2025-01-03"]),
-            )
+        if isinstance(order_book_id, list):
+            frames: list[pd.DataFrame] = []
+            for item in order_book_id:
+                payload = self._payloads.get(item)
+                if payload is None or payload.empty:
+                    continue
+                current = payload.copy()
+                current.index = pd.MultiIndex.from_arrays(
+                    [[item] * len(current.index), current.index],
+                    names=["order_book_id", "trade_date"],
+                )
+                frames.append(current)
+            if not frames:
+                return pd.DataFrame()
+            return pd.concat(frames)
+        payload = self._payloads.get(order_book_id)
+        if payload is not None:
+            return payload.copy()
         return pd.DataFrame()
 
 
@@ -810,6 +828,22 @@ class _QuotaRQDailyMirrorClient(_FakeRQDailyMirrorClient):
         return super().get_price(order_book_id, start_date, end_date, frequency, **kwargs)
 
 
+class _SplitBatchRQDailyMirrorClient(_FakeRQDailyMirrorClient):
+    def get_price(self, order_book_id, start_date, end_date, frequency, **kwargs):
+        if isinstance(order_book_id, list) and len(order_book_id) > 1:
+            self.price_calls.append(
+                {
+                    "order_book_id": order_book_id,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "frequency": frequency,
+                    "kwargs": dict(kwargs),
+                }
+            )
+            raise RuntimeError("temporary batch failure")
+        return super().get_price(order_book_id, start_date, end_date, frequency, **kwargs)
+
+
 class _FieldFallbackRQPitClient:
     def __init__(self):
         self.calls: list[dict] = []
@@ -961,6 +995,7 @@ def test_mirror_hk_daily_writes_manifest_and_assets(tmp_path, monkeypatch):
         symbols_file=None,
         by_date_file=None,
         limit=None,
+        batch_size=20,
         adjust_type=None,
         skip_suspended=None,
         out_root="artifacts/assets/rqdata",
@@ -976,18 +1011,7 @@ def test_mirror_hk_daily_writes_manifest_and_assets(tmp_path, monkeypatch):
 
     assert client.price_calls == [
         {
-            "order_book_id": "00005.XHKG",
-            "start_date": "20250101",
-            "end_date": "20250103",
-            "frequency": "1d",
-            "kwargs": {
-                "fields": list(rqdata_assets.DEFAULT_HK_DAILY_FIELDS),
-                "skip_suspended": True,
-                "market": "hk",
-            },
-        },
-        {
-            "order_book_id": "00011.XHKG",
+            "order_book_id": ["00005.XHKG", "00011.XHKG"],
             "start_date": "20250101",
             "end_date": "20250103",
             "frequency": "1d",
@@ -2881,6 +2905,7 @@ def test_mirror_hk_daily_resume_accepts_legacy_ts_code_storage_and_writes_audit(
         symbols_file=None,
         by_date_file=None,
         limit=None,
+        batch_size=20,
         adjust_type=None,
         skip_suspended=None,
         out_root="artifacts/assets/rqdata",
@@ -2979,6 +3004,7 @@ def test_mirror_hk_daily_stops_on_quota_and_marks_remaining_symbols(tmp_path, mo
         symbols_file=None,
         by_date_file=None,
         limit=None,
+        batch_size=1,
         adjust_type=None,
         skip_suspended=None,
         out_root="artifacts/assets/rqdata",
@@ -3006,6 +3032,81 @@ def test_mirror_hk_daily_stops_on_quota_and_marks_remaining_symbols(tmp_path, mo
     assert manifest["totals"]["symbols_written"] == 1
     assert manifest["totals"]["symbols_quota_blocked"] == 2
     assert manifest["quota_blocked_symbols"] == ["00011.HK", "00012.HK"]
+
+
+def test_mirror_hk_daily_splits_batch_after_error_and_still_writes_assets(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _SplitBatchRQDailyMirrorClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20250103",
+        field=[],
+        fields_file=[],
+        symbol=["00005.HK", "00011.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=20,
+        adjust_type=None,
+        skip_suspended=None,
+        out_root="artifacts/assets/rqdata",
+        name="daily_split_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_daily(args, client) == 0
+
+    assert client.price_calls == [
+        {
+            "order_book_id": ["00005.XHKG", "00011.XHKG"],
+            "start_date": "20250101",
+            "end_date": "20250103",
+            "frequency": "1d",
+            "kwargs": {
+                "fields": list(rqdata_assets.DEFAULT_HK_DAILY_FIELDS),
+                "skip_suspended": True,
+                "market": "hk",
+            },
+        },
+        {
+            "order_book_id": "00005.XHKG",
+            "start_date": "20250101",
+            "end_date": "20250103",
+            "frequency": "1d",
+            "kwargs": {
+                "fields": list(rqdata_assets.DEFAULT_HK_DAILY_FIELDS),
+                "skip_suspended": True,
+                "market": "hk",
+            },
+        },
+        {
+            "order_book_id": "00011.XHKG",
+            "start_date": "20250101",
+            "end_date": "20250103",
+            "frequency": "1d",
+            "kwargs": {
+                "fields": list(rqdata_assets.DEFAULT_HK_DAILY_FIELDS),
+                "skip_suspended": True,
+                "market": "hk",
+            },
+        },
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_split_demo"
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["status"] == "completed"
+    assert manifest["totals"]["symbols_written"] == 2
+    assert manifest["batches"][0]["status"] == "split_after_error"
 
 
 def test_mirror_hk_pit_financials_stops_on_quota_and_marks_remaining_symbols(tmp_path, monkeypatch):

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import pandas as pd
 
-from ...data_providers import _fetch_daily_rqdata, _to_rqdata_symbol
+from ...data_providers import _to_rqdata_symbol
 from .asset_io import (
+    _chunked,
     _daily_audit_record,
     _ensure_requested_fields,
     _field_coverage_template,
     _load_existing_daily_entry,
-    _prepare_daily_asset_frame,
+    _prepare_daily_batch_asset_frame,
     _update_field_coverage,
     _write_daily_audit_csv,
     _write_daily_symbol_frame,
@@ -32,6 +33,7 @@ from .shared import (
 DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
 DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
+DEFAULT_BATCH_SIZE = _package_attr("DEFAULT_BATCH_SIZE")
 DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
 
 
@@ -52,6 +54,7 @@ def mirror_hk_daily(args, rqdatac) -> int:
 
     resume = bool(getattr(args, "resume", False))
     skip_existing = bool(getattr(args, "skip_existing", False) or resume)
+    batch_size = int(getattr(args, "batch_size", DEFAULT_BATCH_SIZE) or DEFAULT_BATCH_SIZE)
     max_attempts = max(
         1,
         int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1),
@@ -86,18 +89,6 @@ def mirror_hk_daily(args, rqdatac) -> int:
     error: str | None = None
     result_code = 0
     quota_blocked = False
-
-    data_cfg = {
-        "provider": "rqdata",
-        "rqdata": {
-            "market": "hk",
-            "frequency": frequency,
-            "fields": list(fields),
-            "skip_suspended": skip_suspended,
-        },
-    }
-    if adjust_type:
-        data_cfg["rqdata"]["adjust_type"] = adjust_type
 
     def _record_entry(
         *,
@@ -149,49 +140,64 @@ def mirror_hk_daily(args, rqdatac) -> int:
             entry=None,
         )
 
-    def _process_symbol(order_book_id: str) -> None:
+    def _fetch_batch_payload(batch_order_book_ids: list[str]):
+        request_target: str | list[str]
+        if len(batch_order_book_ids) == 1:
+            request_target = batch_order_book_ids[0]
+        else:
+            request_target = list(batch_order_book_ids)
+        kwargs = {
+            "fields": list(fields),
+            "skip_suspended": skip_suspended,
+            "market": "hk",
+        }
+        if adjust_type:
+            kwargs["adjust_type"] = adjust_type
+        return rqdatac.get_price(
+            request_target,
+            start_date,
+            end_date,
+            frequency,
+            **kwargs,
+        )
+
+    def _process_batch(batch_order_book_ids: list[str]) -> None:
         nonlocal status, error, result_code, quota_blocked, columns
-        if quota_blocked:
+        if not batch_order_book_ids or quota_blocked:
             return
 
-        symbol = symbol_map[order_book_id]
-        started = _timestamp_now()
+        batch_started_at = _timestamp_now()
         try:
             payload, attempts = _retry_fetch(
-                f"daily fetch failed for {order_book_id}",
-                lambda: _fetch_daily_rqdata(
-                    "hk",
-                    symbol,
-                    start_date,
-                    end_date,
-                    rqdatac,
-                    data_cfg,
-                ),
+                f"daily fetch failed for {', '.join(batch_order_book_ids)}",
+                lambda: _fetch_batch_payload(batch_order_book_ids),
                 max_attempts=max_attempts,
                 backoff_seconds=backoff_seconds,
                 max_backoff_seconds=max_backoff_seconds,
             )
         except MirrorQuotaError as exc:
-            finished = _timestamp_now()
+            batch_finished_at = _timestamp_now()
             quota_blocked = True
             status = "stopped_quota"
             error = str(exc)
             result_code = max(result_code, 2)
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                record_status="quota_blocked",
-                attempts=exc.attempts,
-                started_at_value=started,
-                finished_at_value=finished,
-                error_text=str(exc),
-            )
+            for order_book_id in batch_order_book_ids:
+                symbol = symbol_map[order_book_id]
+                _record_non_entry(
+                    symbol=symbol,
+                    order_book_id=order_book_id,
+                    record_status="quota_blocked",
+                    attempts=exc.attempts,
+                    started_at_value=batch_started_at,
+                    finished_at_value=batch_finished_at,
+                    error_text=str(exc),
+                )
             batches.append(
                 {
-                    "order_book_ids": 1,
+                    "order_book_ids": len(batch_order_book_ids),
                     "rows": 0,
                     "symbols_written": 0,
-                    "symbols_missing_remote": 0,
+                    "symbols_missing_remote": len(batch_order_book_ids),
                     "status": "quota_blocked",
                     "attempts": exc.attempts,
                     "error": str(exc),
@@ -199,14 +205,34 @@ def mirror_hk_daily(args, rqdatac) -> int:
             )
             return
         except MirrorFetchError as exc:
-            finished = _timestamp_now()
+            batch_finished_at = _timestamp_now()
+            if len(batch_order_book_ids) > 1:
+                batches.append(
+                    {
+                        "order_book_ids": len(batch_order_book_ids),
+                        "rows": 0,
+                        "symbols_written": 0,
+                        "symbols_missing_remote": 0,
+                        "status": "split_after_error",
+                        "attempts": exc.attempts,
+                        "error": str(exc),
+                    }
+                )
+                for order_book_id in batch_order_book_ids:
+                    _process_batch([order_book_id])
+                    if quota_blocked:
+                        break
+                return
+
+            order_book_id = batch_order_book_ids[0]
+            symbol = symbol_map[order_book_id]
             _record_non_entry(
                 symbol=symbol,
                 order_book_id=order_book_id,
                 record_status="failed",
                 attempts=exc.attempts,
-                started_at_value=started,
-                finished_at_value=finished,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
                 error_text=str(exc),
             )
             batches.append(
@@ -225,28 +251,29 @@ def mirror_hk_daily(args, rqdatac) -> int:
             result_code = max(result_code, 1)
             return
 
-        finished = _timestamp_now()
-        prepared = _prepare_daily_asset_frame(
+        batch_finished_at = _timestamp_now()
+        prepared = _prepare_daily_batch_asset_frame(
             payload,
-            symbol=symbol,
-            order_book_id=order_book_id,
+            symbol_map={order_book_id: symbol_map[order_book_id] for order_book_id in batch_order_book_ids},
         )
         prepared = _ensure_requested_fields(prepared, fields)
         if prepared.empty:
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                record_status="missing_remote",
-                attempts=attempts,
-                started_at_value=started,
-                finished_at_value=finished,
-            )
+            for order_book_id in batch_order_book_ids:
+                symbol = symbol_map[order_book_id]
+                _record_non_entry(
+                    symbol=symbol,
+                    order_book_id=order_book_id,
+                    record_status="missing_remote",
+                    attempts=attempts,
+                    started_at_value=batch_started_at,
+                    finished_at_value=batch_finished_at,
+                )
             batches.append(
                 {
-                    "order_book_ids": 1,
+                    "order_book_ids": len(batch_order_book_ids),
                     "rows": 0,
                     "symbols_written": 0,
-                    "symbols_missing_remote": 1,
+                    "symbols_missing_remote": len(batch_order_book_ids),
                     "status": "empty",
                     "attempts": attempts,
                 }
@@ -255,22 +282,40 @@ def mirror_hk_daily(args, rqdatac) -> int:
 
         if not columns:
             columns = prepared.columns.tolist()
-        entry = _write_daily_symbol_frame(data_dir, prepared)
-        _record_entry(
-            symbol=symbol,
-            entry=entry,
-            symbol_frame=prepared,
-            record_status="written",
-            attempts=attempts,
-            started_at_value=started,
-            finished_at_value=finished,
-        )
+        batch_rows = int(len(prepared))
+        batch_symbols_written = 0
+        batch_symbols_missing = 0
+        for order_book_id in batch_order_book_ids:
+            symbol = symbol_map[order_book_id]
+            symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
+            if symbol_frame.empty:
+                batch_symbols_missing += 1
+                _record_non_entry(
+                    symbol=symbol,
+                    order_book_id=order_book_id,
+                    record_status="missing_remote",
+                    attempts=attempts,
+                    started_at_value=batch_started_at,
+                    finished_at_value=batch_finished_at,
+                )
+                continue
+            entry = _write_daily_symbol_frame(data_dir, symbol_frame)
+            _record_entry(
+                symbol=symbol,
+                entry=entry,
+                symbol_frame=symbol_frame,
+                record_status="written",
+                attempts=attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+            )
+            batch_symbols_written += 1
         batches.append(
             {
-                "order_book_ids": 1,
-                "rows": int(len(prepared)),
-                "symbols_written": 1,
-                "symbols_missing_remote": 0,
+                "order_book_ids": len(batch_order_book_ids),
+                "rows": batch_rows,
+                "symbols_written": batch_symbols_written,
+                "symbols_missing_remote": batch_symbols_missing,
                 "status": "completed",
                 "attempts": attempts,
             }
@@ -318,8 +363,8 @@ def mirror_hk_daily(args, rqdatac) -> int:
                 continue
             pending_order_book_ids.append(order_book_id)
 
-        for order_book_id in pending_order_book_ids:
-            _process_symbol(order_book_id)
+        for batch_order_book_ids in _chunked(pending_order_book_ids, batch_size):
+            _process_batch(batch_order_book_ids)
             if quota_blocked:
                 break
 

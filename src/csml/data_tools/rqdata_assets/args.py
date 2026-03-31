@@ -171,6 +171,7 @@ def add_hk_instruments_export_args(
 def add_hk_daily_mirror_args(
     parser: argparse.ArgumentParser,
     *,
+    default_batch_size: int,
     default_out_root: str,
     max_attempts_default: int,
     backoff_seconds_default: float,
@@ -217,6 +218,12 @@ def add_hk_daily_mirror_args(
         help="Include suspended rows instead of using the HK default skip behavior.",
     )
     parser.set_defaults(skip_suspended=None)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=default_batch_size,
+        help=f"Number of order_book_ids per RQData request. Default: {default_batch_size}.",
+    )
     _add_mirror_output_args(parser, default_out_root=default_out_root)
     _add_resume_args(
         parser,
@@ -227,7 +234,7 @@ def add_hk_daily_mirror_args(
         max_attempts_default=max_attempts_default,
         backoff_seconds_default=backoff_seconds_default,
         max_backoff_seconds_default=max_backoff_seconds_default,
-        attempts_help="Retry attempts per symbol request.",
+        attempts_help="Retry attempts per request batch.",
     )
 
 

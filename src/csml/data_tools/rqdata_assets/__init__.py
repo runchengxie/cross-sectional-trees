@@ -227,6 +227,7 @@ def add_hk_instruments_export_args(parser: argparse.ArgumentParser) -> None:
 def add_hk_daily_mirror_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_daily_mirror_args(
         parser,
+        default_batch_size=DEFAULT_BATCH_SIZE,
         default_out_root=DEFAULT_OUT_ROOT,
         max_attempts_default=DEFAULT_MIRROR_MAX_ATTEMPTS,
         backoff_seconds_default=DEFAULT_MIRROR_BACKOFF_SECONDS,

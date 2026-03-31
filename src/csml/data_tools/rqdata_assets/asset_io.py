@@ -368,6 +368,73 @@ def _prepare_daily_asset_frame(
     return work
 
 
+def _prepare_daily_batch_asset_frame(
+    frame: pd.DataFrame | pd.Series | None,
+    *,
+    symbol_map: Mapping[str, str],
+) -> pd.DataFrame:
+    if frame is None:
+        return pd.DataFrame()
+    if isinstance(frame, pd.Series):
+        frame = frame.to_frame(name=str(frame.name or "value"))
+    if frame.empty and len(frame.columns) == 0:
+        return frame.copy()
+
+    normalized = _reset_frame_index(frame)
+    if normalized.empty and "order_book_id" not in normalized.columns:
+        return normalized
+
+    rename_map: dict[str, str] = {}
+    if "order_book_id" not in normalized.columns:
+        if "level_0" in normalized.columns:
+            rename_map["level_0"] = "order_book_id"
+        elif isinstance(frame.index, pd.MultiIndex):
+            normalized = normalized.copy()
+            normalized["order_book_id"] = frame.index.get_level_values(0).tolist()
+        elif len(symbol_map) == 1:
+            normalized = normalized.copy()
+            normalized["order_book_id"] = next(iter(symbol_map.keys()))
+        else:
+            raise ValueError("RQData daily payload is missing order_book_id.")
+    if "trade_date" not in normalized.columns:
+        for candidate in ("date", "datetime", "level_1", "index"):
+            if candidate in normalized.columns:
+                rename_map[candidate] = "trade_date"
+                break
+    if rename_map:
+        normalized = normalized.rename(columns=rename_map)
+    if "trade_date" not in normalized.columns:
+        normalized = normalized.copy()
+        if isinstance(frame.index, pd.MultiIndex):
+            normalized["trade_date"] = frame.index.get_level_values(-1).tolist()
+        elif not isinstance(frame.index, pd.RangeIndex):
+            normalized["trade_date"] = frame.index.tolist()
+        else:
+            raise ValueError("RQData daily payload is missing trade_date.")
+
+    normalized = normalized.copy()
+    normalized["order_book_id"] = normalized["order_book_id"].astype(str).str.strip()
+    normalized["symbol"] = normalized["order_book_id"].map(symbol_map)
+    missing_symbol = normalized["symbol"].isna()
+    if missing_symbol.any():
+        normalized.loc[missing_symbol, "symbol"] = normalized.loc[missing_symbol, "order_book_id"].map(
+            _normalize_hk_symbol
+        )
+
+    trade_dates = pd.to_datetime(normalized["trade_date"], errors="coerce")
+    valid_trade_date = trade_dates.notna()
+    work = normalized.loc[valid_trade_date].copy()
+    if work.empty:
+        return work
+    work["trade_date"] = trade_dates.loc[valid_trade_date].dt.strftime("%Y%m%d")
+    preferred = ["trade_date", "symbol", "order_book_id"]
+    remaining = [column for column in work.columns if column not in preferred]
+    work = work.loc[:, preferred + remaining].copy()
+    work = work.drop_duplicates(subset=["symbol", "trade_date"], keep="last")
+    work = work.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
+    return work
+
+
 def _daily_entry_from_symbol_frame(out_path: Path, symbol_frame: pd.DataFrame) -> DailyMirrorEntry:
     symbol = str(symbol_frame["symbol"].iloc[0])
     order_book_id = str(symbol_frame["order_book_id"].iloc[0])

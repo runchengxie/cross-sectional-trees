@@ -90,6 +90,8 @@ def test_cli_parses_rqdata_asset_commands():
             "20260311",
             "--field",
             "vwap",
+            "--batch-size",
+            "50",
             "--resume",
             "--include-suspended",
             "--name",
@@ -102,6 +104,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert daily.start_date == "20000101"
     assert daily.end_date == "20260311"
     assert daily.field == ["vwap"]
+    assert daily.batch_size == 50
     assert daily.resume is True
     assert daily.skip_suspended is False
     assert daily.name == "daily_demo"
