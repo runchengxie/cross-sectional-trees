@@ -10,6 +10,7 @@ from csml import pipeline
 from csml.config_utils import resolve_pipeline_config
 from csml.data_interface import DataInterface
 from csml.pipeline.config import normalize_eval_settings
+from csml.pipeline.runner import _load_benchmark_return_series
 from csml.pipeline.stats import _ensure_execution_daily_fields
 
 
@@ -134,6 +135,22 @@ def test_pipeline_backtest_rejects_multiple_benchmark_sources(tmp_path, no_clien
         match="backtest.benchmark_symbol and backtest.benchmark_returns_file are mutually exclusive.",
     ):
         pipeline.run(str(config_path))
+
+
+def test_load_benchmark_return_series_accepts_yyyymmdd_csv(tmp_path):
+    benchmark_file = tmp_path / "benchmark.csv"
+    benchmark_file.write_text(
+        "trade_date,benchmark_return\n20200103,0.01\n20200106,-0.02\n",
+        encoding="utf-8",
+    )
+
+    series = _load_benchmark_return_series(benchmark_file)
+
+    assert series.index.tolist() == [
+        pd.Timestamp("2020-01-03"),
+        pd.Timestamp("2020-01-06"),
+    ]
+    assert series.tolist() == pytest.approx([0.01, -0.02])
 
 
 def test_pipeline_live_train_mode_validation(tmp_path, no_client):

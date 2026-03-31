@@ -295,8 +295,8 @@
 * 日期范围是 `2000-01-04` 到 `2026-03-26`。
 * `hk_connect` 的独立日线 snapshot 也还在本地，但已经不是默认入口。
 * `hk_connect_full_by_date.csv` 已在 `2026-03-18` 生成到最近完整 rebalance date `2026-03-17`。
-* `hk_connect_full_research_by_date.csv` 当前覆盖 `904` 个带本地 PIT flat fundamentals 的 symbol。
-* `hk_selected_pit_research_by_date.csv` 当前覆盖 `222` 个 symbol，给 `hk_selected` 系列配置使用。
+* `hk_connect_full_research_by_date.csv` 按当前文件现算覆盖 `329` 个 symbol。
+* `hk_selected_pit_research_by_date.csv` 按当前文件现算覆盖 `218` 个 symbol，给 `hk_selected` 系列配置使用。
 
 ### 财务
 

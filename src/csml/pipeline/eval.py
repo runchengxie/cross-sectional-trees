@@ -623,24 +623,23 @@ def _evaluate_walk_forward_window(
                 bt_result_w = None
         if bt_result_w is not None:
             bt_stats_w, bt_net_w, _, _, bt_periods_w = bt_result_w
-            if benchmark_df is not None and not benchmark_df.empty:
-                bench_series_w, bench_periods_w = build_benchmark_series(
-                    benchmark_df,
-                    execution_model.entry_policy.price_col,
-                    execution_model.exit_policy.price_col,
-                    bt_periods_w,
-                    benchmark_return_series=benchmark_return_series,
+            bench_series_w, bench_periods_w = build_benchmark_series(
+                benchmark_df,
+                execution_model.entry_policy.price_col,
+                execution_model.exit_policy.price_col,
+                bt_periods_w,
+                benchmark_return_series=benchmark_return_series,
+            )
+            if not bench_series_w.empty:
+                bt_benchmark_stats_w = summarize_period_returns(
+                    bench_series_w,
+                    bench_periods_w,
+                    backtest_trading_days_per_year,
                 )
-                if not bench_series_w.empty:
-                    bt_benchmark_stats_w = summarize_period_returns(
-                        bench_series_w,
-                        bench_periods_w,
-                        backtest_trading_days_per_year,
-                    )
-                    periods_per_year = bt_stats_w.get("periods_per_year", np.nan)
-                    bt_active_stats_w, _ = summarize_active_returns(
-                        bt_net_w, bench_series_w, periods_per_year
-                    )
+                periods_per_year = bt_stats_w.get("periods_per_year", np.nan)
+                bt_active_stats_w, _ = summarize_active_returns(
+                    bt_net_w, bench_series_w, periods_per_year
+                )
 
     result.update(
         {
@@ -1108,51 +1107,50 @@ def _evaluate_period(
                 stats=stats,
             )
 
-            if benchmark_df is not None and not benchmark_df.empty:
-                bench_series, bench_periods = build_benchmark_series(
-                    benchmark_df,
-                    execution_model.entry_policy.price_col,
-                    execution_model.exit_policy.price_col,
-                    period_info,
-                    benchmark_return_series=benchmark_return_series,
+            bench_series, bench_periods = build_benchmark_series(
+                benchmark_df,
+                execution_model.entry_policy.price_col,
+                execution_model.exit_policy.price_col,
+                period_info,
+                benchmark_return_series=benchmark_return_series,
+            )
+            if not bench_series.empty:
+                result["bt_benchmark_series"] = bench_series
+                bt_benchmark_stats = summarize_period_returns(
+                    bench_series, bench_periods, backtest_trading_days_per_year
                 )
-                if not bench_series.empty:
-                    result["bt_benchmark_series"] = bench_series
-                    bt_benchmark_stats = summarize_period_returns(
-                        bench_series, bench_periods, backtest_trading_days_per_year
-                    )
-                    result["bt_benchmark_stats"] = bt_benchmark_stats
+                result["bt_benchmark_stats"] = bt_benchmark_stats
+                logger.info(
+                    "%s  benchmark total return: %.2f%%",
+                    label_prefix,
+                    bt_benchmark_stats["total_return"] * 100,
+                )
+                periods_per_year = stats.get("periods_per_year", np.nan)
+                bt_active_stats, bt_active_series = summarize_active_returns(
+                    net_series, bench_series, periods_per_year
+                )
+                result["bt_active_stats"] = bt_active_stats
+                result["bt_active_series"] = bt_active_series
+                if bt_active_stats and bt_active_stats.get("n", 0) > 0:
                     logger.info(
-                        "%s  benchmark total return: %.2f%%",
+                        "%s  active total return: %.2f%%",
                         label_prefix,
-                        bt_benchmark_stats["total_return"] * 100,
+                        bt_active_stats["active_total_return"] * 100,
                     )
-                    periods_per_year = stats.get("periods_per_year", np.nan)
-                    bt_active_stats, bt_active_series = summarize_active_returns(
-                        net_series, bench_series, periods_per_year
-                    )
-                    result["bt_active_stats"] = bt_active_stats
-                    result["bt_active_series"] = bt_active_series
-                    if bt_active_stats and bt_active_stats.get("n", 0) > 0:
+                    if np.isfinite(bt_active_stats.get("information_ratio", np.nan)):
                         logger.info(
-                            "%s  active total return: %.2f%%",
+                            "%s  information ratio: %.2f",
                             label_prefix,
-                            bt_active_stats["active_total_return"] * 100,
+                            bt_active_stats["information_ratio"],
                         )
-                        if np.isfinite(bt_active_stats.get("information_ratio", np.nan)):
-                            logger.info(
-                                "%s  information ratio: %.2f",
-                                label_prefix,
-                                bt_active_stats["information_ratio"],
-                            )
-                        if np.isfinite(bt_active_stats.get("beta", np.nan)):
-                            logger.info("%s  beta: %.2f", label_prefix, bt_active_stats["beta"])
-                        if np.isfinite(bt_active_stats.get("alpha", np.nan)):
-                            logger.info(
-                                "%s  alpha (ann): %.2f%%",
-                                label_prefix,
-                                bt_active_stats["alpha"] * 100,
-                            )
+                    if np.isfinite(bt_active_stats.get("beta", np.nan)):
+                        logger.info("%s  beta: %.2f", label_prefix, bt_active_stats["beta"])
+                    if np.isfinite(bt_active_stats.get("alpha", np.nan)):
+                        logger.info(
+                            "%s  alpha (ann): %.2f%%",
+                            label_prefix,
+                            bt_active_stats["alpha"] * 100,
+                        )
 
     scored_cols = [
         "trade_date",

@@ -116,7 +116,16 @@ def _load_benchmark_return_series(path: Path) -> pd.Series:
         )
 
     work = frame[[date_col, value_col]].copy()
-    work["trade_date"] = pd.to_datetime(work[date_col], errors="coerce").dt.normalize()
+    raw_dates = work[date_col]
+    date_strings = raw_dates.astype(str).str.strip()
+    parsed_dates = pd.to_datetime(date_strings, format="%Y%m%d", errors="coerce")
+    missing_dates = parsed_dates.isna()
+    if missing_dates.any():
+        parsed_dates.loc[missing_dates] = pd.to_datetime(
+            date_strings.loc[missing_dates],
+            errors="coerce",
+        )
+    work["trade_date"] = parsed_dates.dt.normalize()
     work["benchmark_return"] = pd.to_numeric(work[value_col], errors="coerce")
     work = work.dropna(subset=["trade_date", "benchmark_return"])
     if work.empty:
