@@ -69,12 +69,17 @@ def list_hk_financial_fields(args) -> int:
 def export_hk_instruments(args, rqdatac) -> int:
     _ensure_rqdatac_hk_plugin()
     symbol_filter, symbol_metadata = _resolve_instrument_symbol_filter(args)
+    instrument_type = str(getattr(args, "instrument_type", "CS") or "CS").strip().upper()
+    if not instrument_type:
+        raise SystemExit("--instrument-type must not be empty.")
     try:
-        frame = rqdatac.all_instruments("CS", market="hk")
+        frame = rqdatac.all_instruments(instrument_type, market="hk")
     except TypeError:
-        frame = rqdatac.all_instruments("CS")
+        frame = rqdatac.all_instruments(instrument_type)
     if frame is None or frame.empty:
-        raise SystemExit("rqdatac.all_instruments returned no HK instruments.")
+        raise SystemExit(
+            f"rqdatac.all_instruments returned no HK instruments for instrument_type={instrument_type!r}."
+        )
 
     instruments = _normalize_frame_columns(frame.copy())
     if "order_book_id" not in instruments.columns:
@@ -143,6 +148,7 @@ def export_hk_instruments(args, rqdatac) -> int:
         "dataset": "hk_instruments",
         "api": "rqdatac.all_instruments",
         "market": "hk",
+        "instrument_type": instrument_type,
         "config_ref": getattr(args, "config", None),
         "output_file": str(out_path),
         "format": out_path.suffix.lstrip(".").lower(),
@@ -159,7 +165,8 @@ def export_hk_instruments(args, rqdatac) -> int:
     }
     _write_manifest(manifest_path, manifest)
     print(
-        f"Wrote {len(instruments)} HK instruments to {out_path} "
+        f"Wrote {len(instruments)} HK instruments "
+        f"(instrument_type={instrument_type}) to {out_path} "
         f"(manifest: {manifest_path})"
     )
     return 0

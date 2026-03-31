@@ -137,6 +137,14 @@ def add_hk_instruments_export_args(
         action="store_true",
         help="Filter to the universe resolved from --config instead of exporting the full HK instrument list.",
     )
+    parser.add_argument(
+        "--instrument-type",
+        default="CS",
+        help=(
+            "RQData instrument_type passed to all_instruments, for example CS or ETF. "
+            "Default: CS."
+        ),
+    )
     _add_hk_symbol_selection_args(
         parser,
         symbol_help="HK symbol to keep, for example 00005.HK. Repeatable.",

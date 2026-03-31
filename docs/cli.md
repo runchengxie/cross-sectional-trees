@@ -258,7 +258,13 @@ csml rqdata list-hk-financial-fields --contains profit
 
 ```bash
 csml rqdata export-hk-instruments --out artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
+csml rqdata export-hk-instruments --instrument-type ETF --out artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet
 ```
+
+补充：
+
+* `--instrument-type` 默认是 `CS`，也就是当前股票口径。
+* 需要单独导出 ETF universe 时，可显式传 `--instrument-type ETF`。
 
 ### csml rqdata mirror-hk-daily
 

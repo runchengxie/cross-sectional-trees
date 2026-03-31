@@ -58,6 +58,8 @@ def test_cli_parses_rqdata_asset_commands():
             "export-hk-instruments",
             "--config",
             "configs/presets/hk.yml",
+            "--instrument-type",
+            "ETF",
             "--use-config-universe",
             "--limit",
             "100",
@@ -69,6 +71,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert export_instruments.command == "rqdata"
     assert export_instruments.rq_command == "export-hk-instruments"
     assert export_instruments.config == "configs/presets/hk.yml"
+    assert export_instruments.instrument_type == "ETF"
     assert export_instruments.use_config_universe is True
     assert export_instruments.limit == 100
     assert export_instruments.out == "artifacts/assets/rqdata/hk/instruments/demo.parquet"

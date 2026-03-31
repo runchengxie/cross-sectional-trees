@@ -885,6 +885,7 @@ def test_export_hk_instruments_writes_filtered_asset_and_manifest(tmp_path, monk
             username=None,
             password=None,
             use_config_universe=False,
+            instrument_type="CS",
             symbol=["00005.HK"],
             symbols_file=None,
             by_date_file=None,
@@ -903,9 +904,42 @@ def test_export_hk_instruments_writes_filtered_asset_and_manifest(tmp_path, monk
 
     manifest = yaml.safe_load(Path(f"{out_path}.manifest.yml").read_text(encoding="utf-8"))
     assert manifest["dataset"] == "hk_instruments"
+    assert manifest["instrument_type"] == "CS"
     assert manifest["totals"]["symbols"] == 1
     assert manifest["symbol_source"]["mode"] == "explicit"
     assert "Wrote 1 HK instruments" in capsys.readouterr().out
+
+
+def test_export_hk_instruments_passes_through_instrument_type(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+    monkeypatch.setattr(rqdata_assets, "_ensure_rqdatac_hk_plugin", lambda: None)
+    client = _FakeRQInstrumentsClient()
+    out_path = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instruments" / "etf.parquet"
+
+    result = rqdata_assets.export_hk_instruments(
+        SimpleNamespace(
+            config=None,
+            username=None,
+            password=None,
+            use_config_universe=False,
+            instrument_type="etf",
+            symbol=[],
+            symbols_file=None,
+            by_date_file=None,
+            limit=1,
+            out=str(out_path),
+            force=False,
+        ),
+        client,
+    )
+
+    assert result == 0
+    assert client.calls == [{"instrument_type": "ETF", "market": "hk"}]
+
+    manifest = yaml.safe_load(Path(f"{out_path}.manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["instrument_type"] == "ETF"
 
 
 def test_mirror_hk_daily_writes_manifest_and_assets(tmp_path, monkeypatch):
