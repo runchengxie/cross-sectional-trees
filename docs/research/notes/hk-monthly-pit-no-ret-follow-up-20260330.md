@@ -133,6 +133,14 @@
 * `no_ret frozen fixed24`
   * run：`artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_slow_bx20_be10_no_ret_frozen_fixed24_tr_close_exec_balanced_20260330_220840_58168495/`
 
+### 4.3 `no_ret` 第一轮 construction 微调
+
+* `no_ret top15 + bx20 / be10`
+  * run：`artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_slow_bx20_be10_no_ret_topk15_tr_close_exec_balanced_20260330_233710_4834676a/`
+
+* `no_ret bx20 / be12`
+  * run：`artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_slow_bx20_be12_no_ret_tr_close_exec_balanced_20260330_233751_1ababaf7/`
+
 ## 5. 结果
 
 ### 5.1 核心对比
@@ -170,6 +178,23 @@
 * `PIT` 财报特征重新回到非常明确的主导地位
 * `rv_* / vol / volume_sma_ratio` 还在，但更像 sidecar
 * 这比原版带 `ret_*` 的版本更贴近“基本面主导”的信号故事
+
+### 5.4 第一轮 construction 微调怎么读
+
+| 版本 | 测试段年化 / Sharpe | 测试段换手 | 最新测试 rolling Sharpe `12m / 24m / 36m` | Final OOS IC | Final OOS 年化 / Sharpe | Final OOS 换手 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `no_ret + bx20 / be10` | `-2.6% / 0.04` | `36.6%` | `-1.72 / -0.46 / -0.47` | `+7.79%` | `42.6% / 1.47` | `46.2%` |
+| `no_ret + top15 + bx20 / be10` | `-4.0% / -0.01` | `39.0%` | `-1.86 / -0.62 / -0.57` | `+7.79%` | `47.8% / 1.50` | `50.2%` |
+| `no_ret + bx20 / be12` | `-2.6% / 0.04` | `36.6%` | `-1.72 / -0.46 / -0.47` | `+7.79%` | `42.6% / 1.47` | `46.2%` |
+
+这张表最值得记住的不是谁账面更高，而是：
+
+* `top15` 的作用更像“把当前候选再往激进一点推”，最近 `Final OOS` 账面更亮，但测试段更差、rolling 更差、换手也更高。
+* 它因此更适合保留成 aggressive sidecar / comparator，不适合直接替换当前默认候选。
+* `bx20 / be12` 在当前样本里几乎是纯 no-op：
+  * `config.used.yml` 确实记录了 `buffer_entry = 12`
+  * 但 `backtest_net.csv` 和 `positions_current_oos.csv` 与 `bx20 / be10` 基线逐字节一致
+* 这说明在当前窗口里，把 entry buffer 从 `10` 放到 `12` 没有改变任何实际调仓决策，因此它暂时不值得继续单独推进。
 
 ## 6. 怎么读这组结果
 
@@ -239,19 +264,18 @@
 * 继续堆更多 valuation overlay 变体
 * 直接退回季度主线
 
-### 8.2 更合理的是小范围 construction 微调
+### 8.2 小范围 construction 微调已经拿到第一轮答案
 
-如果继续沿这条线往前推，我更推荐的下一步是：
+这轮最值得保留的结论是：
 
-* `top_k = 15` sidecar
-* `bx20 / be12`
-* 或者其他 very local 的 buffer 微调
+* `top15` 值得保留，但定位应是 aggressive sidecar / comparator
+* `bx20 / be12` 当前窗口没有改变任何 realized path，可以先停
 
-原因：
+所以如果还要继续做 construction follow-up，更合理的方向是：
 
-* 当前信号故事已经比以前干净很多
-* 下一步更像“确认当前候选的实现边界”
-* 不像“重新回到大范围探索期”
+* 先把 `no_ret + bx20 / be10` 固定为默认候选
+* 只把 `top15` 留作“更集中、更高换手”的对照
+* 暂时不要继续围绕 `be12` 扩小网格
 
 ### 8.3 仍然要继续看 future samples
 
@@ -272,3 +296,4 @@
 * 更符合“基本面主导、不直接追动量”的信号故事
 * 在 latest 和 frozen 两组口径下都站住了
 * `IC` 和 long-only 实现一起改善
+* 第一轮 local construction probe 也没有把它挤下去；`top15` 只是更激进的 sidecar，`be12` 在当前窗口基本没有新信息

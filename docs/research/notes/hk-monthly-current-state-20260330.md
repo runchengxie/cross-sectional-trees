@@ -24,6 +24,7 @@
 * `M-PIT` 的 `R0-R4` 稳定性拆解也已经跑完：`2025-12-31` cutoff 下的 recut 仍然是正 `IC`，`2026-03-27` cutoff 下的 recut 已经转成负 `IC`。
 * 如果目标是更贴近“季度看看、平时少动”的主观投资风格，当前更高信息比的做法不是退回季度主线，而是在 `M-PIT` 月频骨架上做 slow-sleeve construction；首轮 probe 里 `bx20 / be10` 是最平衡的慢执行模板。
 * 在 `slow_bx20 / be10` 的基础上再去掉直接 trailing-return 特征后，`no_ret` 已经在 latest fixed-`24m`、latest ratio 和 frozen fixed-`24m` 三条口径下同时验证出正 `IC`，因此它现在比原版 `bx20 / be10` 更像当前 monthly PIT candidate。
+* `no_ret` 第一轮 local construction probe 也已经跑完：`top15` 只把这条线推向更激进、更高换手的 sidecar；`bx20 / be12` 在当前窗口没有改变任何 realized path。
 * 所以当前最值得继续做的，不是继续扩 `pb / pe / size` overlay 组合，也不是继续怀疑 split 本身，而是把 `no_ret + bx20 / be10` 作为当前候选继续推进，并保留 baseline 去解释最近新增月份为什么会把旧版 `M-PIT` 推弱。
 * 这条 monthly 线已经够资格准备 `shadow / paper`，但还不够资格包装成“已能放心重仓上线的成熟实盘策略”。
 
@@ -86,6 +87,7 @@
 * latest ratio 下，`test IC = 3.67%`、`final OOS IC = 7.97%`，long-only `ann = 38.2%`, `sharpe = 1.29`
 * frozen fixed-`24m` 下，`test IC = 2.21%`、`final OOS IC = 8.92%`，long-only `ann = 37.1%`, `sharpe = 1.29`
 * feature importance 也重新回到非常明确的 `PIT` 财报主导，量价块更像 sidecar，不再像直接 trailing-return 动量在牵引模型
+* 第一轮 construction follow-up 已经说明：`top15` 虽然能把 latest OOS 账面再往上推一点，但测试段更差、rolling 更差、换手更高；`bx20 / be12` 则在当前窗口基本是 no-op，所以它们都还不足以替换当前默认候选
 
 一句话解释：
 
@@ -282,18 +284,23 @@
 
 ### 7.2 第二优先
 
-* 围绕 `no_ret` 做 very local 的 construction 微调
+* 围绕 `no_ret` 继续做 very local 的 construction 微调，但要更收窄
 
-优先考虑：
+已经知道：
 
-* `top_k = 15`
-* `bx20 / be12`
-* 或其他窄范围 buffer 微调
+* `top_k = 15` 可以保留为 aggressive comparator
+* `bx20 / be12` 在当前窗口没有新信息，先停
+
+如果还要继续，只建议：
+
+* 围绕 `top15` 再做最多一条 very local 派生
+* 或者直接把研究预算让回 future samples
 
 原因：
 
 * 当前更有信息比的是确认这条候选的实现边界
-* 不是重新回到大范围 feature / overlay 扩张
+* 但这轮已经说明，不是每个小 buffer 变体都会带来可解释的新结果
+* 所以不该重新回到小网格横扫
 
 ### 7.3 第三优先
 
@@ -369,6 +376,7 @@
 * 当前 monthly 分工应理解为：
   * `M-PIT baseline`：研究锚点
   * `M-PIT + no_ret + bx20 / be10`：当前 monthly PIT candidate
+  * `M-PIT + no_ret + top15 + bx20 / be10`：激进 sidecar / comparator
   * `M-provider`：实现 comparator / 候选
   * `Q-PIT`：低频 benchmark
 
