@@ -4,14 +4,14 @@
 本页不解决什么：不展开参数定义、资产整备细节或专题研究流水账。  
 适合谁：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。  
 读完你会得到什么：一条按当前仓库模板和最新研究结论整理过的可执行路线图。  
-相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/cli.md`、`docs/config.md`
+相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/cli.md`、`docs/config.md`
 
 页面性质：`current-state`  
-最后核对时间：`2026-03-28`  
+最后核对时间：`2026-03-31`  
 权威来源：当前 `configs/` 模板、相关研究笔记和 benchmark protocol  
 冲突优先级：如果与具体 run 的 `config.used.yml` 冲突，以 run 产物为准；如果与当前 benchmark protocol 冲突，以协议页为准
 
-本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-28` 的仓库内研究结论整理。  
+本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-31` 的仓库内研究结论整理。  
 历史 run 里仍然保留了旧口径；复现旧结果时，请先看 `config.used.yml`。
 
 任务摘要：先选频率，再选数据路线；`fundamentals.source=file` 的 PIT 路线先做覆盖率体检；季度正式 benchmark 按 `price-only -> pit-core -> pit-core-hybrid` 递进；模型比较只在同一个研究单元里进行。
@@ -106,6 +106,50 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 * `configs/experiments/baseline/hk_selected.yml`：历史 benchmark 锚点，也是低依赖的回退入口。
 
 如果你现在的目标只是“先把四种模型都跑一遍看看差距”，月度 `M` + provider 基本面仍然是最顺手的入口；但那更接近模型 PK 入口，不再是默认研究口径入口。
+
+### 4.1 Monthly Time-Split Policy
+
+这节只定义当前 monthly 主线的正式时间口径。  
+完整推导、资产边界核对和 probe 历史，继续看 `docs/research/notes/hk-monthly-time-window-design-20260330.md` 与 `docs/research/notes/hk-monthly-current-state-20260330.md`。
+
+先分清楚三件事：
+
+* monthly 研究边界优先由 `universe.by_date_file` 决定，不是 raw daily 或 PIT 文件的最早日期。
+* 在当前港股通 PIT monthly 研究池里，可用 rebalance dates 是 `2015-01-30 -> 2026-03-27`，共 `135` 个。
+* 在 `label.horizon_mode=next_rebalance + shift_days=1` 下，最新完整可标注的 monthly 点是 `2026-01-30`，不是 `2026-03-27`。
+
+当前现行 monthly 主线口径写成：
+
+* `data.end_date=20260327`
+* `eval.test_size=0.5`
+* `eval.final_oos.size=24`
+
+按当前这套口径解读 latest monthly PIT mainline 时，应优先认下面这组窗口：
+
+* `50` 个 `main train` dates
+* `52` 个 `main test` dates
+* `24` 个 `final OOS` dates
+
+它对应的是当前 latest fixed-window monthly 研究入口，而不是所有历史 run 的统一事实。  
+如果某次具体 run 的 `summary.json` / `config.used.yml` 与这里冲突，以 run 产物为准。
+
+这三段各自回答的问题不同：
+
+* `main train`：主训练段，用来拟合模型。
+* `main test`：主比较段，用来比较模型、特征 recipe 和构造变体；它是 in-sample 里的尾段，不是最终 holdout。
+* `final_oos`：最后 `24` 个 monthly dates 的保留 holdout；pipeline 会先用全部剩余 in-sample 重训 final model，再评估这段 holdout。
+* `walk_forward`：稳定性检查，不替代 `main test`，也不替代 `final_oos`。
+
+当前默认判断也一并固定下来：
+
+* `2015` 起的完整 monthly 样本池仍是默认主线。
+* `30m final OOS` 更适合当 stress sidecar。
+* `2016-12-05` / `2017+` modern-only 窗口更适合当 robustness sidecar，不适合直接替换默认主线。
+* 对月频来说，约 `2` 年 `final_oos` 够做候选筛选，不够当“长期稳健性已充分验证”的最终证据。
+
+为避免混淆，再单独记一条：
+
+* `configs/experiments/baseline/hk_selected.yml` 仍保留历史月频 baseline 口径，用于低依赖对照和旧 run 复现；它不是当前这套 monthly time-split policy 的权威来源。
 
 最直接的起跑方式是：
 

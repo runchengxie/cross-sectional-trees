@@ -64,7 +64,7 @@
 
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
-| `notes/hk-monthly-time-window-design-20260330.md` | 当前 monthly 线应把 `asof` 边界、完整 labeled 月点、effective model dates 和 `train/test/final_oos` 切分明确拆开；对这批 overlay probe，更合理的默认口径是 `data.end_date=20260327`、`eval.test_size=0.5`、`eval.final_oos.size=24` | 否，当前作为 monthly 时间设计说明页保留 |
+| `notes/hk-monthly-time-window-design-20260330.md` | 当前 monthly 线应把 `asof` 边界、完整 labeled 月点、effective model dates 和 `train/test/final_oos` 切分明确拆开；对这批 overlay probe，更合理的默认口径是 `data.end_date=20260327`、`eval.test_size=0.5`、`eval.final_oos.size=24` | 部分沉淀，当前 monthly time-split policy 摘要已进入 `docs/playbooks/hk-selected.md`，推导细节仍保留在本页 |
 | `notes/hk-monthly-pit-slow-sleeve-probes-20260330.md` | 如果想把 `M-PIT` 做得更像“季度看看、平时少动”的主观投资模板，当前更高信息比的做法是保留月频评分，再用更强的 `buffer` 降低换手；首轮 probe 里 `bx20 / be10` 是最平衡的 slow-sleeve 候选 | 否，当前作为 monthly 慢执行 probe 汇总页保留 |
 | `notes/hk-monthly-pit-no-ret-follow-up-20260330.md` | 在 `slow_bx20 / be10` 的基础上去掉直接 trailing-return 特征后，`no_ret` 已经在 latest fixed-`24m`、latest ratio 和 frozen fixed-`24m` 三条口径下同时验证出正 `IC`；后续 local construction probe 说明 `top15` 更适合当激进 sidecar，`bx20 / be12` 在当前窗口基本无新信息 | 否，当前作为 monthly `no_ret` follow-up 汇总页保留 |
 | `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md` | 修复 overlay 和 split 之后，`M-PIT + 轻量 valuation overlay` 并没有在 `asof_20260327 + 24m final OOS` 上给出干净增量；`pe_only` 最多保留为实现 comparator，下一步更值得做的是 `M-PIT` 的 `frozen vs latest` 稳定性拆解 | 否，当前作为 monthly overlay probe 汇总页保留 |

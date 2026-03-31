@@ -60,7 +60,7 @@ cp .env.example .env
 
 ## 跑完先看什么
 
-优先看 `summary.json`、`config.used.yml` 和 `positions_current.csv`。最短跑通步骤和产物检查清单放在 `docs/get-started.md`，这里不再重复展开。
+优先看 `summary.json`、`config.used.yml` 和 `positions_current.csv`。最短跑通步骤和产物检查清单放在 `docs/get-started.md`。
 
 ## 后续按什么路径读文档
 
