@@ -7,28 +7,26 @@
 相关页面：`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`、`docs/research/notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`、`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/config.md`
 
 页面性质：`research-note`  
-状态：`active deep-dive`，不是 monthly 默认入口；默认入口仍是 `hk-monthly-current-state-20260330.md`  
+状态：`active deep-dive`（目前monthly 默认入口仍是 `hk-monthly-current-state-20260330.md` ） 
 最后核对时间：`2026-03-30`  
 权威来源：本页列出的 run 目录下 `summary.json` / `config.used.yml` / `feature_importance.csv`  
 冲突优先级：如果与具体 run 的 `summary.json` / `config.used.yml` 冲突，以 run 产物为准
 
 ## 1. 先说结论
 
-这轮 follow-up 到目前为止给出的信号很明确：
+这轮 follow-up 到目前为止给出的信号：
 
-* 如果你不喜欢直接追 trailing-return 动量，当前 monthly 线上最值得继续押的方向，不是退回季度，也不是继续救 `provider`，而是：
+* 相比以往的run，移除了 trailing-return 的动量特征：
   * 保留 `M-PIT`
   * 保留 `bx20 / be10` 这条慢执行模板
   * 去掉 `ret_20 / ret_60 / ret_120`
   * 只保留 `rv_*`、成交量比率、`log_vol / vol` 作为波动/流动性 sidecar
-* 这条 `no_ret + bx20 / be10` 不是只在一个 lucky 窗口里好看：
+* 这条 `no_ret + bx20 / be10` 在多个时间窗口都表现更好：
   * latest fixed-`24m`
   * latest ratio split
   * frozen fixed-`24m`
   这三条口径下，测试段和 final OOS 的 `IC` 都已经翻正。
-* 因此它现在更像：
-  * `M-PIT` 的当前月频候选版本
-  * 而不是又一个只在实现层好看的 comparator
+* 因此它现在更像 `M-PIT` 的当前月频候选版本
 
 一句话收口：
 
@@ -36,7 +34,7 @@
 
 ## 2. 这轮到底改了什么
 
-这轮 follow-up 只改了一刀，而且改得很干净：
+这轮 follow-up 移除了动量的考虑：
 
 * 从原来的 `slow_bx20_be10` 里删掉：
   * `ret_20`
@@ -57,7 +55,7 @@
 配置约定：
 
 * 这轮 follow-up 实际是同一个 `no_ret + bx20 / be10` 家族下的 `base / frozen fixed-24m / latest ratio` 三个派生版本。
-* 由于作者本地 `configs/local/` 默认不纳入版本控制，未来复现时应优先看各 run 目录里的 `config.used.yml`，不要把本地派生文件名当成唯一权威入口。
+* 由于该项目本地 `configs/local/` 默认不纳入版本控制，未来复现时应优先看各 run 目录里的 `config.used.yml`，不要把本地派生文件名当成唯一权威入口。
 
 ## 3. 经济含义上，这条线现在在学什么
 
@@ -75,7 +73,7 @@
 
 * 公司最近业务有没有变大
 * 盈利和经营现金流有没有在改善
-* 财报里的“增长”到底有没有落到利润和现金流上
+* 财报里的增长到底有没有落到利润和现金流上
 
 ### 3.2 盈利质量
 
@@ -87,7 +85,7 @@
 
 * 利润率高不高
 * 现金流利润率高不高
-* 利润是不是更像真金白银，而不是只停在会计利润里
+* 利润是不是更像真金白银
 
 ### 3.3 信息新鲜度
 
@@ -110,7 +108,7 @@
 * 最近成交是不是相对自己平时突然放大
 * 这只股票本来就热不热、流不流
 
-这组 sidecar 的作用，不再是“告诉模型谁最近涨得多”，而是：
+这组 sidecar 的作用：
 
 * 给财报主轴补一个风险状态和流动性状态的上下文
 * 避免模型在完全不看市场状态的情况下，机械地押纯财报分数
@@ -154,13 +152,13 @@
 
 ### 5.2 模型方向感也一起变了
 
-这轮最值钱的不只是收益和 Sharpe 提高，而是：
+这轮最值钱的是：
 
 * 原版 `bx20 / be10` 的 `cv_ic` 是正的，但这条线在 latest fixed-`24m` 下最终 test / OOS `IC` 都已经翻负，signal direction 也带有明显 recent-window 压力。
 * `no_ret` 三条口径下，测试段 `IC` 和 final OOS `IC` 都回到了正值。
-* 这说明删掉 `ret_*` 之后，改善的不是单纯的组合实现，排序纯度也一起改善了。
+* 这说明删掉 `ret_*` 之后，排序纯度也一起改善了。
 
-### 5.3 特征重要性更像“基本面主导”
+### 5.3 特征重要性更像基本面主导
 
 `no_ret` 三条 run 的前排 feature importance 都高度一致，最前面基本都是：
 
@@ -177,7 +175,7 @@
 
 * `PIT` 财报特征重新回到非常明确的主导地位
 * `rv_* / vol / volume_sma_ratio` 还在，但更像 sidecar
-* 这比原版带 `ret_*` 的版本更贴近“基本面主导”的信号故事
+* 这比原版带 `ret_*` 的版本更贴近基本面主导的信号
 
 ### 5.4 第一轮 construction 微调怎么读
 
@@ -187,9 +185,9 @@
 | `no_ret + top15 + bx20 / be10` | `-4.0% / -0.01` | `39.0%` | `-1.86 / -0.62 / -0.57` | `+7.79%` | `47.8% / 1.50` | `50.2%` |
 | `no_ret + bx20 / be12` | `-2.6% / 0.04` | `36.6%` | `-1.72 / -0.46 / -0.47` | `+7.79%` | `42.6% / 1.47` | `46.2%` |
 
-这张表最值得记住的不是谁账面更高，而是：
+这张表最值得记住的：
 
-* `top15` 的作用更像“把当前候选再往激进一点推”，最近 `Final OOS` 账面更亮，但测试段更差、rolling 更差、换手也更高。
+* `top15` 的作用更像把当前候选再往激进一点推，最近 `Final OOS` 账面更亮，但测试段更差、rolling 更差、换手也更高。
 * 它因此更适合保留成 aggressive sidecar / comparator，不适合直接替换当前默认候选。
 * `bx20 / be12` 在当前样本里几乎是纯 no-op：
   * `config.used.yml` 确实记录了 `buffer_entry = 12`
@@ -198,22 +196,18 @@
 
 ## 6. 怎么读这组结果
 
-### 6.1 这次不像单窗 luck
+### 6.1 这次不像单窗运气
 
-如果只有 `latest fixed24` 一条好看，那还可能只是 recent-window 巧合。  
+如果只有 `latest fixed24` 一条好看，那还可能只是近期巧合。  
 但现在：
 
 * `latest fixed24` 站住了
 * `latest ratio` 也站住了
 * `frozen fixed24` 也站住了
 
-所以这轮结果更像：
+所以这轮结果更像是 `ret_*` 这组直接 trailing-return 输入，确实在之前那条 `M-PIT` 慢执行线上制造了噪音或冲突
 
-* 不是 split 设计带来的错觉
-* 也不只是 latest 一段 lucky window
-* 而是 `ret_*` 这组直接 trailing-return 输入，确实在之前那条 `M-PIT` 慢执行线上制造了噪音或冲突
-
-### 6.2 代价不是零
+### 6.2 提高了一定的换手率作为代价
 
 这条线也不是完全没有 trade-off：
 
@@ -223,7 +217,7 @@
 更实际的理解是：
 
 * 这轮不是“免费午餐”
-* 但大部分增益并不是靠极端提换手硬换出来的
+* 但至少目前大部分增益并不是靠极端提换手硬换出来的
 
 ### 6.3 这轮比轻量 valuation overlay 更像真增量
 
@@ -236,7 +230,7 @@
 
 ## 7. 当前定位
 
-截至这轮 follow-up，更合理的 monthly 分工应该理解成：
+截至这轮探索，更合理的月频策略分工应该理解成：
 
 * `M-PIT baseline`
   * 仍是研究锚点
