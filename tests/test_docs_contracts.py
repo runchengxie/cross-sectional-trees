@@ -1,5 +1,6 @@
 import argparse
 import re
+import subprocess
 from pathlib import Path
 
 from csml import cli
@@ -101,6 +102,27 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _tracked_repo_paths(repo_root: Path) -> set[str]:
+    if not (repo_root / ".git").exists():
+        return {
+            path.relative_to(repo_root).as_posix()
+            for path in repo_root.rglob("*")
+            if path.is_file()
+        }
+
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "ls-files", "-z"],
+        check=True,
+        capture_output=True,
+        text=False,
+    )
+    return {
+        path
+        for path in result.stdout.decode("utf-8").split("\0")
+        if path
+    }
+
+
 def _doc_targets(repo_root: Path) -> list[Path]:
     return [
         repo_root / "README.md",
@@ -121,6 +143,19 @@ def _is_external_link(target: str) -> bool:
         or value.startswith("#")
         or re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", value) is not None
     )
+
+
+def _is_tracked_repo_target(repo_root: Path, resolved: Path, tracked_paths: set[str]) -> bool:
+    try:
+        relative_path = resolved.relative_to(repo_root).as_posix()
+    except ValueError:
+        return False
+
+    if resolved.is_dir():
+        prefix = f"{relative_path.rstrip('/')}/"
+        return any(path == relative_path or path.startswith(prefix) for path in tracked_paths)
+
+    return relative_path in tracked_paths
 
 
 def _looks_like_inline_repo_ref(value: str) -> bool:
@@ -195,6 +230,7 @@ def _extract_run_tests_modes(text: str) -> set[str]:
 
 def test_markdown_relative_links_exist():
     repo_root = _repo_root()
+    tracked_paths = _tracked_repo_paths(repo_root)
     missing: dict[str, list[str]] = {}
 
     for path in _doc_targets(repo_root):
@@ -207,7 +243,7 @@ def test_markdown_relative_links_exist():
             if not target_path:
                 continue
             resolved = (path.parent / target_path).resolve()
-            if not resolved.exists():
+            if not _is_tracked_repo_target(repo_root, resolved, tracked_paths):
                 refs.append(target)
         if refs:
             missing[path.relative_to(repo_root).as_posix()] = sorted(set(refs))

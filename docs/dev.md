@@ -91,6 +91,27 @@ scripts/dev/run_tests.sh coverage
 CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
 ```
 
+## 本地 Git Hooks
+
+如果你希望在 `commit` / `push` 前先跑一层本地检查，可以安装仓库内置 hooks：
+
+```bash
+./scripts/dev/install_git_hooks.sh
+```
+
+安装后默认行为：
+
+| hook | 命令 | 作用 |
+| --- | --- | --- |
+| `pre-commit` | `uv run pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q` | 提前拦住文档 / 路径 / 测试入口契约问题 |
+| `pre-push` | `scripts/dev/run_tests.sh fast` | 在 push 前先跑一遍离线快回归 |
+
+补充：
+
+* 本地 hook 是提前发现问题，不替代 CI。
+* 如需跳过一次，使用 `git commit --no-verify` 或 `git push --no-verify`。
+* `tests/test_docs_contracts.py` 现在只接受指向仓库里受版本控制目标的 Markdown 相对链接；研究笔记里引用本地 `artifacts/...` 运行产物时，用代码文本记录，不要写成可点击相对链接。
+
 说明：
 
 * `scripts/dev/run_tests.sh integration` 跑的是 `@pytest.mark.integration` 的跨模块流程，默认仍以离线跨模块集成为主。

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${CSML_SKIP_GIT_HOOKS:-0}" == "1" ]]; then
+  exit 0
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "pre-push requires 'uv' on PATH" >&2
+  exit 1
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "[pre-push] running fast offline regression"
+exec ./scripts/dev/run_tests.sh fast

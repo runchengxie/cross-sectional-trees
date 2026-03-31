@@ -3,7 +3,7 @@
 页面性质：`research-note`  
 状态：`active deep-dive`，这页解释 monthly 时间边界和切分设计，不替代 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)  
 最后核对时间：`2026-03-30`  
-权威来源：本地资产 manifest、[`hk_selected_pit_research_by_date.csv`](../../../artifacts/assets/universe/hk_selected_pit_research_by_date.csv)、当前月频 PIT anchor run、[`runtime.py`](../../../src/csml/pipeline/runtime.py) 的切分逻辑  
+权威来源：本地资产 manifest、`hk_selected_pit_research_by_date.csv`、当前月频 PIT anchor run、[`runtime.py`](../../../src/csml/pipeline/runtime.py) 的切分逻辑  
 冲突优先级：如果和具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果和未来新 snapshot 的资产边界冲突，以新 asset manifest 为准
 
 ## 结论先写在前面

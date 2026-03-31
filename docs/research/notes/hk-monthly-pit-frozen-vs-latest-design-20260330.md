@@ -64,7 +64,7 @@
 
 历史 reference 就用仓库里已经存在的这条：
 
-* [`hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79)
+* `hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79`
 
 关键口径：
 
@@ -80,7 +80,7 @@
 
 当前最新锚点就用这条：
 
-* [`hk_sel_m_pit_core_hybrid_sidecar_diag_tr_close_exec_balanced_20260330_155212_d2b52da6`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_tr_close_exec_balanced_20260330_155212_d2b52da6)
+* `hk_sel_m_pit_core_hybrid_sidecar_diag_tr_close_exec_balanced_20260330_155212_d2b52da6`
 
 关键口径：
 
@@ -110,11 +110,11 @@
 
 | 组别 | run | cutoff / split | final OOS | `IC` | 年化 / Sharpe |
 | --- | --- | --- | --- | ---: | ---: |
-| `R0` | [`hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79) | `20251231` / `0.6 + 0.2 ratio` | `2023-11-30 -> 2025-11-27` | `+4.88%` | `24.3% / 0.78` |
-| `R1` | [`hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_ratio_tr_close_exec_balanced_20260330_163548_17a6965f`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_ratio_tr_close_exec_balanced_20260330_163548_17a6965f) | `20251231` / `0.6 + 0.2 ratio` | `2023-10-31 -> 2025-10-31` | `+6.74%` | `25.4% / 0.92` |
-| `R2` | [`hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_fixed24_tr_close_exec_balanced_20260330_163624_48065e04`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_fixed24_tr_close_exec_balanced_20260330_163624_48065e04) | `20251231` / `0.5 + 24m fixed` | `2023-11-30 -> 2025-10-31` | `+6.14%` | `30.2% / 1.07` |
-| `R3` | [`hk_sel_m_pit_core_hybrid_sidecar_diag_latest_ratio_tr_close_exec_balanced_20260330_163712_c6b44b72`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_latest_ratio_tr_close_exec_balanced_20260330_163712_c6b44b72) | `20260327` / `0.6 + 0.2 ratio` | `2024-01-31 -> 2026-01-30` | `-6.94%` | `35.1% / 1.05` |
-| `R4` | [`hk_sel_m_pit_core_hybrid_sidecar_diag_tr_close_exec_balanced_20260330_155212_d2b52da6`](../../../artifacts/runs/hk_sel_m_pit_core_hybrid_sidecar_diag_tr_close_exec_balanced_20260330_155212_d2b52da6) | `20260327` / `0.5 + 24m fixed` | `2024-02-29 -> 2026-01-30` | `-7.30%` | `26.0% / 0.84` |
+| `R0` | `hk_sel_m_pit_core_hybrid_sidecar_tr_close_exec_balanced_20260330_001434_eb10ec79` | `20251231` / `0.6 + 0.2 ratio` | `2023-11-30 -> 2025-11-27` | `+4.88%` | `24.3% / 0.78` |
+| `R1` | `hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_ratio_tr_close_exec_balanced_20260330_163548_17a6965f` | `20251231` / `0.6 + 0.2 ratio` | `2023-10-31 -> 2025-10-31` | `+6.74%` | `25.4% / 0.92` |
+| `R2` | `hk_sel_m_pit_core_hybrid_sidecar_diag_frozen_fixed24_tr_close_exec_balanced_20260330_163624_48065e04` | `20251231` / `0.5 + 24m fixed` | `2023-11-30 -> 2025-10-31` | `+6.14%` | `30.2% / 1.07` |
+| `R3` | `hk_sel_m_pit_core_hybrid_sidecar_diag_latest_ratio_tr_close_exec_balanced_20260330_163712_c6b44b72` | `20260327` / `0.6 + 0.2 ratio` | `2024-01-31 -> 2026-01-30` | `-6.94%` | `35.1% / 1.05` |
+| `R4` | `hk_sel_m_pit_core_hybrid_sidecar_diag_tr_close_exec_balanced_20260330_155212_d2b52da6` | `20260327` / `0.5 + 24m fixed` | `2024-02-29 -> 2026-01-30` | `-7.30%` | `26.0% / 0.84` |
 
 ### 这张表最该怎么读
 

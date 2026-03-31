@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${CSML_SKIP_GIT_HOOKS:-0}" == "1" ]]; then
+  exit 0
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "pre-commit requires 'uv' on PATH" >&2
+  exit 1
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "[pre-commit] running docs/path contract checks"
+exec uv run pytest \
+  tests/test_docs_contracts.py \
+  tests/test_repo_path_references.py \
+  tests/test_run_tests_script.py \
+  -q

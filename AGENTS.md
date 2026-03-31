@@ -47,6 +47,7 @@ uv sync --extra dev --extra rqdata
 * `docs/config.md` 维护配置说明，不在排障文档里复制大段配置解释。
 * `docs/outputs.md` 维护产物和字段约定。
 * `docs/troubleshooting.md` 只保留问题现象、原因和处理步骤。
+* Markdown 相对链接只指向受版本控制的仓库文件；本地 `artifacts/` 运行产物用代码文本记录，不要写成可点击相对链接。
 
 如果你改了下面这些内容，请同步更新对应文档：
 
@@ -88,6 +89,7 @@ uv sync --extra dev --extra rqdata
 * 优先做小范围改动，避免顺手重写无关文件。
 * 不要提交 `artifacts/`、旧 `out/`、缓存文件或临时实验产物，除非任务明确要求。
 * 文档改动至少检查交叉引用和路径是否仍然有效。
+* 如需在本地提前拦住文档 / 路径 / 快回归问题，可安装仓库内置 git hooks：`./scripts/dev/install_git_hooks.sh`。
 * 代码改动后，运行与改动范围匹配的测试。
 * HK + RQData 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/test_pipeline_filters.py`、`tests/test_fundamentals_providers.py`、`tests/test_data_providers_cache.py`。
 
