@@ -210,6 +210,7 @@ from .coverage import (
     _resolve_trainable_pit_settings,
     inspect_hk_pit_coverage,
 )
+from .asset_health import inspect_hk_asset_health
 
 
 def add_list_hk_financial_fields_args(parser: argparse.ArgumentParser) -> None:
@@ -385,6 +386,10 @@ def add_hk_pit_coverage_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_pit_coverage_args(parser)
 
 
+def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_asset_health_args(parser)
+
+
 __all__ = [
     "DEFAULT_BATCH_SIZE",
     "DEFAULT_HK_DAILY_FIELDS",
@@ -414,6 +419,7 @@ __all__ = [
     "add_hk_industry_labels_build_args",
     "add_hk_instrument_industry_mirror_args",
     "add_hk_instruments_export_args",
+    "add_hk_asset_health_args",
     "add_hk_pit_coverage_args",
     "add_hk_pit_fundamentals_build_args",
     "add_hk_shares_mirror_args",
@@ -423,6 +429,7 @@ __all__ = [
     "build_hk_industry_labels_file",
     "build_hk_pit_fundamentals_file",
     "export_hk_instruments",
+    "inspect_hk_asset_health",
     "inspect_hk_pit_coverage",
     "list_hk_financial_fields",
     "mirror_hk_announcement",

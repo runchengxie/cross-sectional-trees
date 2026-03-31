@@ -471,6 +471,39 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit_coverage.out == "artifacts/reports/hk_pit_coverage.json"
     assert callable(pit_coverage.func)
 
+    asset_health = parser.parse_args(
+        [
+            "rqdata",
+            "inspect-hk-asset-health",
+            "--asset-dir",
+            "artifacts/assets/rqdata/hk/valuation/demo",
+            "--field",
+            "pe_ratio_ttm",
+            "--field",
+            "pb_ratio_ttm",
+            "--target-date",
+            "20260331",
+            "--sample-limit",
+            "8",
+            "--top-latest-dates",
+            "3",
+            "--format",
+            "json",
+            "--out",
+            "artifacts/reports/hk_asset_health.json",
+        ]
+    )
+    assert asset_health.command == "rqdata"
+    assert asset_health.rq_command == "inspect-hk-asset-health"
+    assert asset_health.asset_dir == "artifacts/assets/rqdata/hk/valuation/demo"
+    assert asset_health.field == ["pe_ratio_ttm", "pb_ratio_ttm"]
+    assert asset_health.target_date == "20260331"
+    assert asset_health.sample_limit == 8
+    assert asset_health.top_latest_dates == 3
+    assert asset_health.format == "json"
+    assert asset_health.out == "artifacts/reports/hk_asset_health.json"
+    assert callable(asset_health.func)
+
 
 def test_cli_main_rqdata_info_prints_client_info(monkeypatch, capsys):
     class _FakeClient:

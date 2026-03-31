@@ -2688,6 +2688,254 @@ def test_inspect_hk_pit_coverage_trainable_mode_estimates_fill_recovered_sample(
     ]
 
 
+def test_inspect_hk_asset_health_reports_stale_symbols_and_ffill_candidates(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "valuation",
+                "query": {
+                    "start_date": "20260301",
+                    "end_date": "20260331",
+                    "fields": [
+                        "hk_total_market_val",
+                        "pe_ratio_ttm",
+                        "pb_ratio_ttm",
+                    ],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260330", "20260331"],
+            "hk_total_market_val": [100.0, 101.0],
+            "pe_ratio_ttm": [10.0, None],
+            "pb_ratio_ttm": [1.0, None],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "trade_date": ["20260329", "20260331"],
+            "hk_total_market_val": [200.0, 201.0],
+            "pe_ratio_ttm": [20.0, 21.0],
+            "pb_ratio_ttm": [None, None],
+        }
+    ).to_parquet(data_dir / "00011.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "trade_date": ["20260327"],
+            "hk_total_market_val": [300.0],
+            "pe_ratio_ttm": [30.0],
+            "pb_ratio_ttm": [3.0],
+        }
+    ).to_parquet(data_dir / "00700.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+            },
+            {
+                "symbol": "00011.HK",
+                "order_book_id": "00011.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+            },
+            {
+                "symbol": "00700.HK",
+                "order_book_id": "00700.XHKG",
+                "status": "linked_base",
+                "max_date": "2026-03-27",
+            },
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "asset_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        field=[],
+        date_column=None,
+        target_date=None,
+        sample_limit=5,
+        top_latest_dates=5,
+        format="json",
+        out=str(out_path),
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    summary = payload["summary"]
+    assert summary["dataset"] == "valuation"
+    assert summary["target_date"] == "2026-03-31"
+    assert summary["target_date_source"] == "audit_latest_date"
+    assert summary["selection_source"] == "default_valuation_fields"
+    assert summary["selected_fields"] == [
+        "hk_total_market_val",
+        "pe_ratio_ttm",
+        "pb_ratio_ttm",
+    ]
+    assert summary["manifest_query_date"] == "2026-03-31"
+    assert summary["symbols_scanned"] == 3
+    assert summary["symbols_with_target_date_row"] == 2
+    assert summary["symbols_without_target_date_row"] == 1
+    assert summary["target_date_coverage_pct"] == 66.67
+    assert summary["latest_date_min"] == "2026-03-27"
+    assert summary["latest_date_max"] == "2026-03-31"
+    assert summary["audit_status_counts"] == {"linked_base": 1, "merged_patch": 2}
+
+    assert payload["latest_date_distribution"] == [
+        {"latest_date": "2026-03-31", "symbols": 2},
+        {"latest_date": "2026-03-27", "symbols": 1},
+    ]
+    assert payload["sample_stale_symbols"] == [
+        {
+            "symbol": "00700.HK",
+            "latest_date": "2026-03-27",
+            "status": "linked_base",
+        }
+    ]
+
+    field_map = {item["field"]: item for item in payload["field_coverage"]}
+    assert field_map["hk_total_market_val"]["nonnull_on_target_date"] == 2
+    assert field_map["hk_total_market_val"]["missing_on_target_date"] == 0
+    assert field_map["pe_ratio_ttm"]["nonnull_on_target_date"] == 1
+    assert field_map["pe_ratio_ttm"]["missing_on_target_date"] == 1
+    assert field_map["pe_ratio_ttm"]["missing_but_prior_nonnull"] == 1
+    assert field_map["pe_ratio_ttm"]["missing_and_never_nonnull"] == 0
+    assert field_map["pe_ratio_ttm"]["sample_missing_symbols"] == ["00005.HK"]
+    assert field_map["pe_ratio_ttm"]["sample_prior_nonnull_symbols"] == ["00005.HK"]
+    assert field_map["pb_ratio_ttm"]["nonnull_on_target_date"] == 0
+    assert field_map["pb_ratio_ttm"]["missing_on_target_date"] == 2
+    assert field_map["pb_ratio_ttm"]["missing_but_prior_nonnull"] == 1
+    assert field_map["pb_ratio_ttm"]["missing_and_never_nonnull"] == 1
+    assert field_map["pb_ratio_ttm"]["sample_missing_symbols"] == ["00005.HK", "00011.HK"]
+    assert field_map["pb_ratio_ttm"]["sample_prior_nonnull_symbols"] == ["00005.HK"]
+
+
+def test_inspect_hk_asset_health_parses_compact_audit_dates_written_as_floats(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily",
+                "query": {
+                    "start_date": "20260301",
+                    "end_date": "20260331",
+                    "fields": ["open", "high", "low", "close", "volume", "total_turnover"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    base_rows = {
+        "open": [10.0, 11.0],
+        "high": [10.5, 11.5],
+        "low": [9.5, 10.5],
+        "close": [10.2, 11.2],
+        "volume": [1000, 1100],
+        "total_turnover": [10000.0, 11000.0],
+    }
+    pd.DataFrame({"trade_date": ["20260330", "20260331"], **base_rows}).to_parquet(
+        data_dir / "00005.HK.parquet",
+        index=False,
+    )
+    pd.DataFrame({"trade_date": ["20260328", "20260331"], **base_rows}).to_parquet(
+        data_dir / "00011.HK.parquet",
+        index=False,
+    )
+    pd.DataFrame(
+        {
+            "trade_date": ["20260327"],
+            "open": [30.0],
+            "high": [31.0],
+            "low": [29.0],
+            "close": [30.5],
+            "volume": [900],
+            "total_turnover": [9000.0],
+        }
+    ).to_parquet(data_dir / "00700.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_trade_date": 20260331.0,
+            },
+            {
+                "symbol": "00011.HK",
+                "order_book_id": "00011.XHKG",
+                "status": "merged_patch",
+                "max_trade_date": 20260331.0,
+            },
+            {
+                "symbol": "00700.HK",
+                "order_book_id": "00700.XHKG",
+                "status": "linked_base",
+                "max_trade_date": 20260327.0,
+            },
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "daily_asset_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        field=[],
+        date_column=None,
+        target_date="20260331",
+        sample_limit=5,
+        top_latest_dates=5,
+        format="json",
+        out=str(out_path),
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["selected_fields"] == [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "total_turnover",
+    ]
+    assert payload["latest_date_distribution"] == [
+        {"latest_date": "2026-03-31", "symbols": 2},
+        {"latest_date": "2026-03-27", "symbols": 1},
+    ]
+    assert payload["sample_stale_symbols"] == [
+        {
+            "symbol": "00700.HK",
+            "latest_date": "2026-03-27",
+            "status": "linked_base",
+        }
+    ]
+
+
 def test_assess_trainable_fill_dependence_marks_healthier_pit_only_route_green():
     assessment = rqdata_assets._assess_trainable_fill_dependence(
         trainable_estimate={

@@ -401,6 +401,21 @@ csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_sel
 
 详见 `docs/concepts/pit-coverage.md`。
 
+### csml rqdata inspect-hk-asset-health
+
+检查本地 HK 资产快照的最新日期覆盖率，以及目标交易日上字段是否为空、是否只能依赖前值补齐。
+
+```bash
+csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest
+csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --field pe_ratio_ttm --field pb_ratio_ttm --target-date 20260331 --format json --out artifacts/reports/hk_valuation_health_20260331.json
+```
+
+说明：
+
+* 默认优先用 `audit.csv` 的最新日期作为目标日；没有 `audit.csv` 时回退到 `manifest.yml` 里的查询日期，再回退到 parquet 扫描得到的最大日期。
+* `missing_but_prior_nonnull` 表示目标日为空、但更早日期有值，通常意味着这列只能靠 `ffill` 才能继续进 pipeline。
+* `sample_stale_symbols` 会列出没有覆盖到目标日的样本 symbol，适合快速判断是原始数据没补齐，还是个别 symbol 落后。
+
 ## 股票池命令
 
 ### csml universe hk-connect

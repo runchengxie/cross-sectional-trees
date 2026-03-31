@@ -835,3 +835,53 @@ def add_hk_pit_coverage_args(parser: argparse.ArgumentParser) -> None:
         "--out",
         help="Optional output path. Default: print to stdout.",
     )
+
+
+def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--asset-dir",
+        required=True,
+        help="Path to a local HK asset snapshot directory containing data/.",
+    )
+    parser.add_argument(
+        "--field",
+        action="append",
+        default=[],
+        help=(
+            "Value column to audit on the target date. Repeatable. "
+            "Default: dataset-aware fields such as daily OHLCV or valuation ratios."
+        ),
+    )
+    parser.add_argument(
+        "--date-column",
+        help="Override the date column name. Default: auto-detect trade_date/date/info_date.",
+    )
+    parser.add_argument(
+        "--target-date",
+        help=(
+            "Optional target date in YYYYMMDD. Default: latest date from audit.csv when available, "
+            "else manifest query date, else parquet scan max date."
+        ),
+    )
+    parser.add_argument(
+        "--sample-limit",
+        type=int,
+        default=5,
+        help="Number of sample stale or missing symbols shown. Default: 5.",
+    )
+    parser.add_argument(
+        "--top-latest-dates",
+        type=int,
+        default=5,
+        help="Number of latest-date buckets shown in the summary. Default: 5.",
+    )
+    parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format. Default: text.",
+    )
+    parser.add_argument(
+        "--out",
+        help="Optional output path. Default: print to stdout.",
+    )
