@@ -24,6 +24,8 @@ HK 研究默认用：
 * `backtest.benchmark_returns_file: artifacts/benchmarks/hk_connect_capw.csv`
 
 接入同一条回测，而不是强行用单一 ETF 近似。
+当前仓库可用 `python -m csml.research.hk_connect_cap_weight_benchmark ...` 从
+`by_date universe + backtest_periods + local daily/valuation assets` 生成这类收益文件。
 
 配置后，run 会额外输出：
 
