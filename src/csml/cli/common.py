@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 
 from dotenv import load_dotenv
 
 from ..config_utils import resolve_pipeline_config
+from ..data_interface import _patch_rqdatac_adjust_price_readonly
 
 
 def format_bytes(value: float) -> str:
@@ -208,4 +210,5 @@ def init_rqdatac(args) -> object:
         rqdatac.init(**init_kwargs)
     except Exception as exc:
         raise SystemExit(f"rqdatac.init failed: {exc}") from exc
+    _patch_rqdatac_adjust_price_readonly(logging.getLogger("csml.cli.rqdata"))
     return rqdatac

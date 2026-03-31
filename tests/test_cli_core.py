@@ -1,3 +1,6 @@
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 from csml import cli
@@ -81,6 +84,31 @@ def test_append_passthrough_strips_leading_separator():
     argv: list[str] = []
     cli_common.append_passthrough(argv, ["--", "--start-date", "20250101"])
     assert argv == ["--start-date", "20250101"]
+
+
+def test_init_rqdatac_applies_adjust_price_patch(monkeypatch):
+    init_calls: list[dict] = []
+    patch_calls: list[str] = []
+
+    class _FakeRQDatac:
+        def init(self, **kwargs):
+            init_calls.append(dict(kwargs))
+
+    fake_rqdatac = _FakeRQDatac()
+    monkeypatch.setitem(sys.modules, "rqdatac", fake_rqdatac)
+    monkeypatch.setattr(cli_common, "load_dotenv", lambda: None)
+    monkeypatch.setattr(cli_common, "load_config", lambda path: {})
+    monkeypatch.setattr(
+        cli_common,
+        "_patch_rqdatac_adjust_price_readonly",
+        lambda logger: patch_calls.append(logger.name),
+    )
+
+    result = cli_common.init_rqdatac(SimpleNamespace(config=None, username=None, password=None))
+
+    assert result is fake_rqdatac
+    assert init_calls == [{}]
+    assert patch_calls == ["csml.cli.rqdata"]
 
 
 def test_cli_parses_init_config_and_universe():
