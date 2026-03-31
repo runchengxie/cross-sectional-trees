@@ -13,10 +13,12 @@ from typing import List, Optional, Set
 
 # --- CONFIGURATION ---
 def _find_project_root(start: Path) -> Path:
-    for parent in [start, *start.parents]:
-        if (parent / "pyproject.toml").exists():
+    current = start if start.is_dir() else start.parent
+
+    for parent in [current, *current.parents]:
+        if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
             return parent
-    return start
+    return current
 
 
 try:
@@ -60,6 +62,9 @@ EXCLUDE_DIRS_ROOT_ONLY: Set[str] = {
     ".git/",
     "__pycache__/",
     "artifacts",
+    "configs",
+    ".github",
+    ".githooks",
 }
 
 # Directory name patterns to exclude (e.g., any directory ending with .egg-info).

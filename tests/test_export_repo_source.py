@@ -31,6 +31,31 @@ def test_export_repo_source_collects_configs_tree():
     assert "configs/presets/default.yml" in relative_paths
 
 
+def test_find_project_root_normalizes_file_paths_and_accepts_pyproject(tmp_path: Path):
+    export_module = _load_export_module()
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "pyproject.toml").write_text("[project]\nname = 'demo'\n")
+    nested_file = repo_root / "src" / "pkg" / "module.py"
+    nested_file.parent.mkdir(parents=True)
+    nested_file.write_text("print('demo')\n")
+
+    assert export_module._find_project_root(nested_file) == repo_root
+
+
+def test_find_project_root_accepts_git_directory_marker(tmp_path: Path):
+    export_module = _load_export_module()
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / ".git").mkdir()
+    nested_dir = repo_root / "scripts" / "internal"
+    nested_dir.mkdir(parents=True)
+
+    assert export_module._find_project_root(nested_dir) == repo_root
+
+
 def test_export_repo_source_tree_marks_excludes_without_expanding_children(
     tmp_path: Path,
 ):
