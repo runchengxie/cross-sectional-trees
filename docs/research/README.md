@@ -1,12 +1,10 @@
 # 研究笔记
 
-本页解决什么：研究笔记目录索引，以及“哪些结论已经沉淀到主线”的状态说明。
+本页解决什么：研究笔记目录索引，以及“哪些结论已经沉淀到主线”的状态说明。 
 本页不解决什么：不承载 CLI、配置或输出契约说明。
 适合谁：需要阅读研究笔记或论文摘要的人。
 读完你会得到什么：研究笔记入口、当前结论状态和时点型页面写法。
 相关页面：`docs/README.md`、`docs/playbooks/README.md`、`docs/config.md`
-
-这个目录放论文精读和研究型笔记，不承载 CLI、配置或输出契约说明。
 
 ## 当前内容分组
 
@@ -24,11 +22,11 @@
 
 ### 研究笔记与结论沉淀
 
-建议把 `notes/` 里的页面按下面三层来理解，而不是把它们都当成平行的“当前真相”：
+建议把 `notes/` 里的页面按下面三层来理解：
 
 * `current-state`：现行口径和默认入口，重新接手时先看这里
 * `active deep-dive`：当前仍有信息价值的专题分析或 probe 汇总
-* `historical provenance`：保留追溯路径，但不再充当默认入口
+* `historical provenance`：保留追溯路径
 
 如果你现在要重新进入 HK monthly 研究，更合理的阅读顺序是：
 
@@ -42,8 +40,7 @@
 8. `notes/hk-monthly-provider-factor-probes-20260330.md`
 9. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
 
-如果你现在要重新进入 HK quarterly 研究，不建议直接从旧的 follow-up 页面往回翻。  
-当前更合理的阅读顺序是：
+如果你现在要重新进入 HK quarterly 研究，当前更合理的阅读顺序是：
 
 1. `notes/hk-quarterly-current-state-20260329.md`
 2. `notes/hk-quarterly-holdings-analysis-20260329.md`

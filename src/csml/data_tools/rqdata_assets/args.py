@@ -844,6 +844,17 @@ def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
         help="Path to a local HK asset snapshot directory containing data/.",
     )
     parser.add_argument(
+        "--symbols-file",
+        help="Optional text file with one HK symbol per line. Limits inspection to those symbols.",
+    )
+    parser.add_argument(
+        "--by-date-file",
+        help=(
+            "Optional universe-by-date CSV. Limits inspection to symbols selected on --target-date "
+            "(or the resolved target date when omitted)."
+        ),
+    )
+    parser.add_argument(
         "--field",
         action="append",
         default=[],

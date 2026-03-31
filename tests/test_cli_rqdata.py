@@ -477,6 +477,10 @@ def test_cli_parses_rqdata_asset_commands():
             "inspect-hk-asset-health",
             "--asset-dir",
             "artifacts/assets/rqdata/hk/valuation/demo",
+            "--symbols-file",
+            "artifacts/assets/rqdata/hk/valuation/demo_symbols.txt",
+            "--by-date-file",
+            "artifacts/assets/universe/demo_by_date.csv",
             "--field",
             "pe_ratio_ttm",
             "--field",
@@ -496,6 +500,8 @@ def test_cli_parses_rqdata_asset_commands():
     assert asset_health.command == "rqdata"
     assert asset_health.rq_command == "inspect-hk-asset-health"
     assert asset_health.asset_dir == "artifacts/assets/rqdata/hk/valuation/demo"
+    assert asset_health.symbols_file == "artifacts/assets/rqdata/hk/valuation/demo_symbols.txt"
+    assert asset_health.by_date_file == "artifacts/assets/universe/demo_by_date.csv"
     assert asset_health.field == ["pe_ratio_ttm", "pb_ratio_ttm"]
     assert asset_health.target_date == "20260331"
     assert asset_health.sample_limit == 8

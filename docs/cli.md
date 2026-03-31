@@ -408,12 +408,16 @@ csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_sel
 ```bash
 csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest
 csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --field pe_ratio_ttm --field pb_ratio_ttm --target-date 20260331 --format json --out artifacts/reports/hk_valuation_health_20260331.json
+csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --by-date-file artifacts/assets/universe/hk_selected_pit_research_by_date.csv --target-date 20260331
 ```
 
 说明：
 
 * 默认优先用 `audit.csv` 的最新日期作为目标日；没有 `audit.csv` 时回退到 `manifest.yml` 里的查询日期，再回退到 parquet 扫描得到的最大日期。
-* `missing_but_prior_nonnull` 表示目标日为空、但更早日期有值，通常意味着这列只能靠 `ffill` 才能继续进 pipeline。
+* `--by-date-file` 会按目标日过滤研究 universe，只检查这一天实际会进入策略判断的 symbol；`--symbols-file` 则适合传入自定义观察名单。
+* `missing_but_prior_nonnull` 表示目标日原始值为空、但更早日期有值；`unusable_but_prior_clean` 和 `ffill_age_days_*` 会进一步统计占位符 / `inf` / 非法值在回退后离目标日有多远。
+* `placeholder_on_target_date`、`nonfinite_on_target_date`、`zero_on_target_date` 和 `is_constant_across_clean_values_on_target_date` 用来补齐仅看 non-null 时抓不到的脏值、退化值和横截面常数问题。
+* 对 `daily` 资产，命令还会额外检查 `high/low/open/close` 的价格逻辑关系，以及负成交量 / 负成交额。
 * `sample_stale_symbols` 会列出没有覆盖到目标日的样本 symbol，适合快速判断是原始数据没补齐，还是个别 symbol 落后。
 
 ## 股票池命令

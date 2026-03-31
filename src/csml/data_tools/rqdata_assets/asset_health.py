@@ -5,16 +5,21 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from .shared import (
     DEFAULT_HK_DAILY_FIELDS,
     DEFAULT_HK_VALUATION_FIELDS,
+    _coerce_bool,
+    _dedupe_preserve_order,
     _load_manifest,
+    _load_text_list,
     _normalize_absolute_date,
     _normalize_frame_columns,
     _normalize_hk_symbol,
     _resolve_path,
+    _resolve_universe_by_date_columns,
 )
 
 DATE_COLUMN_CANDIDATES = ("trade_date", "date", "info_date")
@@ -35,6 +40,19 @@ KEY_COLUMNS = {
     "if_adjusted",
     "index",
 }
+PLACEHOLDER_TOKENS = {
+    "",
+    "-",
+    "--",
+    "n/a",
+    "na",
+    "nan",
+    "nat",
+    "n.a.",
+    "null",
+    "none",
+    "#n/a",
+}
 
 
 def _parse_compact_date(value: object, *, label: str) -> pd.Timestamp:
@@ -50,6 +68,34 @@ def _format_date(value: object) -> str | None:
     if pd.isna(timestamp):
         return None
     return timestamp.normalize().strftime("%Y-%m-%d")
+
+
+def _serialize_scalar(value: object) -> int | float | str | bool | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, (pd.Timestamp, np.datetime64)):
+        return _format_date(value)
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        value_float = float(value)
+        if not np.isfinite(value_float):
+            return str(value_float)
+        if value_float.is_integer():
+            return int(value_float)
+        return round(value_float, 8)
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed_numeric = pd.to_numeric(pd.Series([text]), errors="coerce").iloc[0]
+    if pd.notna(parsed_numeric) and np.isfinite(parsed_numeric):
+        parsed_float = float(parsed_numeric)
+        if parsed_float.is_integer():
+            return int(parsed_float)
+        return round(parsed_float, 8)
+    return text
 
 
 def _resolve_manifest_query_date(manifest: Mapping[str, object] | None) -> str | None:
@@ -214,9 +260,102 @@ def _build_latest_date_counts(audit: pd.DataFrame | None, data_files: Sequence[P
     return latest_counts, status_counts
 
 
+def _normalize_symbol_list(values: Sequence[object]) -> list[str]:
+    normalized = [_normalize_hk_symbol(value) for value in values]
+    return _dedupe_preserve_order([symbol for symbol in normalized if symbol], strip=True)
+
+
+def _load_symbols_from_text(path_text: str | Path) -> list[str]:
+    return _normalize_symbol_list(_load_text_list(path_text, label="Symbols file"))
+
+
+def _load_symbols_from_by_date_target_date(path_text: str | Path, *, target_date: pd.Timestamp) -> list[str]:
+    path = _resolve_path(path_text)
+    if not path.exists():
+        raise SystemExit(f"Universe-by-date file not found: {path}")
+    df = pd.read_csv(path)
+    if df.empty:
+        raise SystemExit(f"Universe-by-date file is empty: {path}")
+
+    columns = {str(col).lower(): str(col) for col in df.columns}
+    date_col, symbol_col = _resolve_universe_by_date_columns(df)
+
+    selected_col = (
+        columns.get("selected")
+        or columns.get("selected_bool")
+        or columns.get("selected_flag")
+        or columns.get("is_selected")
+    )
+    if selected_col and selected_col in df.columns:
+        df = df[df[selected_col].map(_coerce_bool)].copy()
+
+    df = df.rename(columns={date_col: "trade_date", symbol_col: "symbol"})
+    trade_date_text = df["trade_date"].astype(str).str.strip().str.replace(r"\.0+$", "", regex=True)
+    digits_mask = trade_date_text.str.fullmatch(r"\d{8}")
+    parsed = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    if digits_mask.any():
+        parsed.loc[digits_mask] = pd.to_datetime(
+            trade_date_text.loc[digits_mask],
+            format="%Y%m%d",
+            errors="coerce",
+        )
+    if (~digits_mask).any():
+        parsed.loc[~digits_mask] = pd.to_datetime(
+            trade_date_text.loc[~digits_mask],
+            errors="coerce",
+        )
+    df["trade_date"] = parsed.dt.normalize()
+    df = df[df["trade_date"] == target_date].copy()
+    if df.empty:
+        return []
+    return _normalize_symbol_list(df["symbol"].tolist())
+
+
+def _resolve_symbol_filter(args, *, target_date: pd.Timestamp) -> dict[str, object]:
+    symbols: list[str] = []
+    sources: list[str] = []
+
+    symbols_file = getattr(args, "symbols_file", None)
+    if symbols_file:
+        sources.append("symbols_file")
+        symbols.extend(_load_symbols_from_text(symbols_file))
+
+    by_date_file = getattr(args, "by_date_file", None)
+    if by_date_file:
+        sources.append("by_date_file_target_date")
+        by_date_symbols = _load_symbols_from_by_date_target_date(by_date_file, target_date=target_date)
+        if not by_date_symbols:
+            raise SystemExit(
+                "No symbols matched --by-date-file on target date "
+                f"{_format_date(target_date)}: {_resolve_path(by_date_file)}"
+            )
+        symbols.extend(by_date_symbols)
+
+    normalized = _normalize_symbol_list(symbols)
+    return {
+        "source": "+".join(sources) if sources else "all_asset_symbols",
+        "symbols": normalized,
+        "symbols_file": str(_resolve_path(symbols_file)) if symbols_file else None,
+        "by_date_file": str(_resolve_path(by_date_file)) if by_date_file else None,
+    }
+
+
 def _append_sample(values: list[str], item: str, *, limit: int) -> None:
     if item not in values and len(values) < limit:
         values.append(item)
+
+
+def _combine_samples(*sample_lists: Sequence[object], limit: int) -> list[str]:
+    combined: list[str] = []
+    for sample_list in sample_lists:
+        for item in sample_list:
+            text = str(item or "").strip()
+            if not text or text in combined:
+                continue
+            combined.append(text)
+            if len(combined) >= limit:
+                return combined
+    return combined
 
 
 def _round_pct(numerator: int, denominator: int) -> float:
@@ -225,23 +364,67 @@ def _round_pct(numerator: int, denominator: int) -> float:
     return round(float(numerator) / float(denominator) * 100.0, 2)
 
 
+def _quantile_or_none(values: Sequence[int], quantile: float) -> int | float | None:
+    if not values:
+        return None
+    result = float(pd.Series(list(values), dtype="float64").quantile(quantile))
+    if result.is_integer():
+        return int(result)
+    return round(result, 2)
+
+
+def _placeholder_mask(series: pd.Series) -> pd.Series:
+    text = series.map(lambda value: str(value).strip().lower() if not pd.isna(value) else "")
+    return series.notna() & text.isin(PLACEHOLDER_TOKENS)
+
+
+def _assess_target_series(target_series: pd.Series) -> dict[str, object]:
+    raw_nonnull_mask = target_series.notna()
+    placeholder_mask = _placeholder_mask(target_series)
+    numeric = pd.to_numeric(target_series, errors="coerce")
+    nonfinite_mask = raw_nonnull_mask & numeric.notna() & ~np.isfinite(numeric.to_numpy(dtype="float64"))
+    clean_mask = raw_nonnull_mask & ~placeholder_mask & ~nonfinite_mask
+    clean_series = target_series.loc[clean_mask]
+    clean_numeric = numeric.loc[clean_mask & numeric.notna()]
+    representative_clean_value = None
+    if not clean_series.empty:
+        first_clean_index = clean_series.index[0]
+        numeric_value = numeric.loc[first_clean_index]
+        if pd.notna(numeric_value) and np.isfinite(float(numeric_value)):
+            representative_clean_value = _serialize_scalar(float(numeric_value))
+        else:
+            representative_clean_value = _serialize_scalar(clean_series.iloc[0])
+
+    has_zero = False
+    if not clean_numeric.empty:
+        clean_numeric_values = clean_numeric.to_numpy(dtype="float64")
+        has_zero = bool(np.all(np.isfinite(clean_numeric_values)) and np.all(clean_numeric_values == 0.0))
+
+    return {
+        "has_raw_nonnull": bool(raw_nonnull_mask.any()),
+        "has_placeholder": bool(placeholder_mask.any()),
+        "has_nonfinite": bool(nonfinite_mask.any()),
+        "has_clean": bool(clean_mask.any()),
+        "has_zero": has_zero,
+        "representative_clean_value": representative_clean_value,
+    }
+
+
 def _render_asset_health_text(payload: Mapping[str, object]) -> str:
     summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
-    field_rows = (
-        payload.get("field_coverage")
-        if isinstance(payload.get("field_coverage"), list)
-        else []
-    )
+    field_rows = payload.get("field_coverage") if isinstance(payload.get("field_coverage"), list) else []
     latest_rows = (
         payload.get("latest_date_distribution")
         if isinstance(payload.get("latest_date_distribution"), list)
         else []
     )
-    stale_rows = (
-        payload.get("sample_stale_symbols")
-        if isinstance(payload.get("sample_stale_symbols"), list)
+    stale_rows = payload.get("sample_stale_symbols") if isinstance(payload.get("sample_stale_symbols"), list) else []
+    missing_file_rows = (
+        payload.get("sample_missing_asset_file_symbols")
+        if isinstance(payload.get("sample_missing_asset_file_symbols"), list)
         else []
     )
+    quality_checks = payload.get("quality_checks") if isinstance(payload.get("quality_checks"), list) else []
 
     lines = ["HK Asset Health"]
     for key in (
@@ -251,6 +434,7 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
         "target_date_source",
         "date_column",
         "selection_source",
+        "symbol_filter_source",
     ):
         value = summary.get(key)
         if value:
@@ -266,6 +450,8 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
     lines.append("Summary")
     for key in (
         "symbols_scanned",
+        "symbols_available_in_asset_dir",
+        "symbols_missing_asset_file",
         "symbols_with_target_date_row",
         "symbols_without_target_date_row",
         "target_date_coverage_pct",
@@ -280,6 +466,12 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
         lines.append("Audit Status")
         for status, count in sorted(status_counts.items()):
             lines.append(f"{status}: {count}")
+
+    if missing_file_rows:
+        lines.append("")
+        lines.append("Sample Missing Asset Files")
+        for symbol in missing_file_rows:
+            lines.append(str(symbol))
 
     if latest_rows:
         lines.append("")
@@ -308,14 +500,36 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
         field_df = field_df[
             [
                 "field",
-                "nonnull_on_target_date",
+                "clean_nonmissing_on_target_date",
                 "missing_on_target_date",
-                "missing_but_prior_nonnull",
-                "missing_and_never_nonnull",
-                "nonnull_pct_on_target_date",
+                "placeholder_on_target_date",
+                "nonfinite_on_target_date",
+                "zero_on_target_date",
+                "unique_clean_values_on_target_date",
+                "ffill_age_days_p90",
+                "ffill_age_days_max",
             ]
         ]
         lines.append(field_df.to_string(index=False))
+
+    if quality_checks:
+        lines.append("")
+        lines.append("Quality Checks")
+        for row in quality_checks:
+            if not isinstance(row, Mapping):
+                continue
+            check = row.get("check")
+            field = row.get("field")
+            severity = row.get("severity")
+            affected = row.get("affected_symbols")
+            pct = row.get("affected_pct")
+            sample_symbols = row.get("sample_symbols")
+            label = str(check or "")
+            if field:
+                label = f"{label} [{field}]"
+            lines.append(f"{severity}: {label} -> {affected} symbol(s), {pct}%")
+            if isinstance(sample_symbols, list) and sample_symbols:
+                lines.append(f"  samples: {', '.join(str(item) for item in sample_symbols)}")
 
     return "\n".join(lines).strip() + "\n"
 
@@ -326,8 +540,8 @@ def inspect_hk_asset_health(args) -> int:
     if not data_dir.exists():
         raise SystemExit(f"Asset directory is missing data/: {asset_dir}")
 
-    data_files = sorted(data_dir.glob("*.parquet"))
-    if not data_files:
+    all_data_files = sorted(data_dir.glob("*.parquet"))
+    if not all_data_files:
         raise SystemExit(f"No parquet files found under {data_dir}")
 
     manifest_path = asset_dir / "manifest.yml"
@@ -335,7 +549,7 @@ def inspect_hk_asset_health(args) -> int:
     dataset = str(manifest.get("dataset") or "").strip() if isinstance(manifest, Mapping) else ""
     dataset = dataset or None
 
-    sample_frame = _normalize_frame_columns(pd.read_parquet(data_files[0]))
+    sample_frame = _normalize_frame_columns(pd.read_parquet(all_data_files[0]))
     sample_columns = sample_frame.columns.tolist()
     date_column = _infer_date_column(sample_columns, getattr(args, "date_column", None))
     selected_fields, selection_source = _resolve_fields(
@@ -350,11 +564,20 @@ def inspect_hk_asset_health(args) -> int:
         explicit_value=getattr(args, "target_date", None),
         audit=audit,
         manifest=manifest,
-        data_files=data_files,
+        data_files=all_data_files,
         date_column=date_column,
     )
 
-    latest_counts, status_counts = _build_latest_date_counts(audit, data_files)
+    symbol_filter = _resolve_symbol_filter(args, target_date=target_date)
+    data_files_by_symbol = {_normalize_hk_symbol(path.stem): path for path in all_data_files}
+    candidate_symbols = symbol_filter["symbols"] or sorted(data_files_by_symbol)
+    if not candidate_symbols:
+        raise SystemExit("No symbols resolved for asset health inspection.")
+
+    existing_data_files = [data_files_by_symbol[symbol] for symbol in candidate_symbols if symbol in data_files_by_symbol]
+    missing_asset_symbols = [symbol for symbol in candidate_symbols if symbol not in data_files_by_symbol]
+
+    latest_counts, status_counts = _build_latest_date_counts(audit, existing_data_files)
     sample_limit = max(1, int(getattr(args, "sample_limit", 5) or 5))
 
     field_stats: dict[str, dict[str, object]] = {
@@ -362,16 +585,34 @@ def inspect_hk_asset_health(args) -> int:
             "field": field,
             "symbols_with_target_date_row": 0,
             "nonnull_on_target_date": 0,
+            "clean_nonmissing_on_target_date": 0,
             "missing_on_target_date": 0,
             "missing_but_prior_nonnull": 0,
             "missing_and_never_nonnull": 0,
+            "placeholder_on_target_date": 0,
+            "nonfinite_on_target_date": 0,
+            "zero_on_target_date": 0,
+            "unusable_but_prior_clean": 0,
             "sample_missing_symbols": [],
             "sample_prior_nonnull_symbols": [],
+            "sample_placeholder_symbols": [],
+            "sample_nonfinite_symbols": [],
+            "sample_zero_symbols": [],
+            "sample_prior_clean_symbols": [],
+            "sample_unusable_symbols": [],
+            "clean_value_counter": Counter(),
+            "ffill_age_records": [],
         }
         for field in selected_fields
     }
+    daily_rule_stats = {
+        "daily_price_bounds_violation": {"count": 0, "sample_symbols": []},
+        "daily_nonpositive_price": {"count": 0, "sample_symbols": []},
+        "daily_negative_volume": {"count": 0, "sample_symbols": []},
+        "daily_negative_total_turnover": {"count": 0, "sample_symbols": []},
+    }
 
-    stale_rows: list[dict[str, str]] = []
+    stale_rows: list[dict[str, str | None]] = []
     symbols_with_target_date_row = 0
     latest_min: pd.Timestamp | None = None
     latest_max: pd.Timestamp | None = None
@@ -380,8 +621,8 @@ def inspect_hk_asset_health(args) -> int:
     if audit is not None and not audit.empty:
         audit_by_symbol = audit.set_index("symbol", drop=False).to_dict(orient="index")
 
-    for path in data_files:
-        symbol = _normalize_hk_symbol(path.stem)
+    for symbol in candidate_symbols:
+        path = data_files_by_symbol.get(symbol)
         audit_entry = audit_by_symbol.get(symbol)
         latest_date = None
         status = ""
@@ -390,6 +631,9 @@ def inspect_hk_asset_health(args) -> int:
             if pd.isna(latest_date):
                 latest_date = None
             status = str(audit_entry.get("status") or "").strip()
+
+        if path is None:
+            continue
 
         if latest_date is not None:
             latest_ts = pd.to_datetime(latest_date).normalize()
@@ -400,7 +644,7 @@ def inspect_hk_asset_health(args) -> int:
                     stale_rows.append(
                         {
                             "symbol": symbol,
-                            "latest_date": _format_date(latest_ts) or "",
+                            "latest_date": _format_date(latest_ts),
                             "status": status,
                         }
                     )
@@ -443,7 +687,7 @@ def inspect_hk_asset_health(args) -> int:
                 stale_rows.append(
                     {
                         "symbol": symbol,
-                        "latest_date": _format_date(latest_ts) or "",
+                        "latest_date": _format_date(latest_ts),
                         "status": status,
                     }
                 )
@@ -452,6 +696,55 @@ def inspect_hk_asset_health(args) -> int:
         symbols_with_target_date_row += 1
         target_frame = work.loc[target_mask]
         prior_frame = work.loc[work[date_column] < target_date]
+
+        if dataset == "daily":
+            price_values: dict[str, float] = {}
+            for price_field in ("open", "high", "low", "close"):
+                if price_field not in target_frame.columns:
+                    continue
+                price_numeric = pd.to_numeric(target_frame[price_field], errors="coerce")
+                price_numeric = price_numeric[np.isfinite(price_numeric.to_numpy(dtype="float64"))]
+                if not price_numeric.empty:
+                    price_values[price_field] = float(price_numeric.iloc[0])
+
+            if {"open", "high", "low", "close"}.issubset(price_values):
+                open_price = price_values["open"]
+                high_price = price_values["high"]
+                low_price = price_values["low"]
+                close_price = price_values["close"]
+                if high_price < max(open_price, low_price, close_price) or low_price > min(
+                    open_price, high_price, close_price
+                ):
+                    daily_rule_stats["daily_price_bounds_violation"]["count"] += 1
+                    _append_sample(
+                        daily_rule_stats["daily_price_bounds_violation"]["sample_symbols"],
+                        symbol,
+                        limit=sample_limit,
+                    )
+                if min(open_price, high_price, low_price, close_price) <= 0:
+                    daily_rule_stats["daily_nonpositive_price"]["count"] += 1
+                    _append_sample(
+                        daily_rule_stats["daily_nonpositive_price"]["sample_symbols"],
+                        symbol,
+                        limit=sample_limit,
+                    )
+
+            for field_name, stat_key in (
+                ("volume", "daily_negative_volume"),
+                ("total_turnover", "daily_negative_total_turnover"),
+            ):
+                if field_name not in target_frame.columns:
+                    continue
+                numeric_series = pd.to_numeric(target_frame[field_name], errors="coerce")
+                numeric_series = numeric_series[np.isfinite(numeric_series.to_numpy(dtype="float64"))]
+                if not numeric_series.empty and float(numeric_series.iloc[0]) < 0:
+                    daily_rule_stats[stat_key]["count"] += 1
+                    _append_sample(
+                        daily_rule_stats[stat_key]["sample_symbols"],
+                        symbol,
+                        limit=sample_limit,
+                    )
+
         for field in selected_fields:
             stats = field_stats[field]
             stats["symbols_with_target_date_row"] = int(stats["symbols_with_target_date_row"]) + 1
@@ -459,23 +752,65 @@ def inspect_hk_asset_health(args) -> int:
                 stats["missing_on_target_date"] = int(stats["missing_on_target_date"]) + 1
                 stats["missing_and_never_nonnull"] = int(stats["missing_and_never_nonnull"]) + 1
                 _append_sample(stats["sample_missing_symbols"], symbol, limit=sample_limit)
+                _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
                 continue
 
             target_series = target_frame[field]
-            if target_series.notna().any():
+            prior_series = prior_frame[field]
+            assessment = _assess_target_series(target_series)
+
+            if assessment["has_raw_nonnull"]:
                 stats["nonnull_on_target_date"] = int(stats["nonnull_on_target_date"]) + 1
+            else:
+                stats["missing_on_target_date"] = int(stats["missing_on_target_date"]) + 1
+                _append_sample(stats["sample_missing_symbols"], symbol, limit=sample_limit)
+                _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
+                if prior_series.notna().any():
+                    stats["missing_but_prior_nonnull"] = int(stats["missing_but_prior_nonnull"]) + 1
+                    _append_sample(stats["sample_prior_nonnull_symbols"], symbol, limit=sample_limit)
+                else:
+                    stats["missing_and_never_nonnull"] = int(stats["missing_and_never_nonnull"]) + 1
+
+            if assessment["has_placeholder"]:
+                stats["placeholder_on_target_date"] = int(stats["placeholder_on_target_date"]) + 1
+                _append_sample(stats["sample_placeholder_symbols"], symbol, limit=sample_limit)
+                _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
+
+            if assessment["has_nonfinite"]:
+                stats["nonfinite_on_target_date"] = int(stats["nonfinite_on_target_date"]) + 1
+                _append_sample(stats["sample_nonfinite_symbols"], symbol, limit=sample_limit)
+                _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
+
+            if assessment["has_clean"]:
+                stats["clean_nonmissing_on_target_date"] = int(stats["clean_nonmissing_on_target_date"]) + 1
+                clean_value = assessment["representative_clean_value"]
+                if clean_value is not None:
+                    stats["clean_value_counter"][clean_value] += 1
+                if assessment["has_zero"]:
+                    stats["zero_on_target_date"] = int(stats["zero_on_target_date"]) + 1
+                    _append_sample(stats["sample_zero_symbols"], symbol, limit=sample_limit)
                 continue
 
-            stats["missing_on_target_date"] = int(stats["missing_on_target_date"]) + 1
-            _append_sample(stats["sample_missing_symbols"], symbol, limit=sample_limit)
-            prior_series = prior_frame[field]
-            if prior_series.notna().any():
-                stats["missing_but_prior_nonnull"] = int(stats["missing_but_prior_nonnull"]) + 1
-                _append_sample(stats["sample_prior_nonnull_symbols"], symbol, limit=sample_limit)
-            else:
-                stats["missing_and_never_nonnull"] = int(stats["missing_and_never_nonnull"]) + 1
+            prior_placeholder_mask = _placeholder_mask(prior_series)
+            prior_numeric = pd.to_numeric(prior_series, errors="coerce")
+            prior_nonfinite_mask = prior_series.notna() & prior_numeric.notna() & ~np.isfinite(
+                prior_numeric.to_numpy(dtype="float64")
+            )
+            prior_clean_mask = prior_series.notna() & ~prior_placeholder_mask & ~prior_nonfinite_mask
+            if bool(prior_clean_mask.any()):
+                last_nonnull_date = pd.to_datetime(prior_frame.loc[prior_clean_mask, date_column]).max().normalize()
+                age_days = int((target_date - last_nonnull_date).days)
+                stats["unusable_but_prior_clean"] = int(stats["unusable_but_prior_clean"]) + 1
+                _append_sample(stats["sample_prior_clean_symbols"], symbol, limit=sample_limit)
+                stats["ffill_age_records"].append(
+                    {
+                        "symbol": symbol,
+                        "last_nonnull_date": _format_date(last_nonnull_date),
+                        "age_days": age_days,
+                    }
+                )
 
-    symbols_scanned = len(data_files)
+    symbols_scanned = len(candidate_symbols)
     latest_rows = [
         {"latest_date": date_text, "symbols": int(count)}
         for date_text, count in sorted(
@@ -489,23 +824,192 @@ def inspect_hk_asset_health(args) -> int:
     for field in selected_fields:
         stats = field_stats[field]
         denominator = int(stats["symbols_with_target_date_row"])
+        nonnull = int(stats["nonnull_on_target_date"])
+        clean_nonmissing = int(stats["clean_nonmissing_on_target_date"])
         missing = int(stats["missing_on_target_date"])
         missing_but_prior = int(stats["missing_but_prior_nonnull"])
+        placeholder = int(stats["placeholder_on_target_date"])
+        nonfinite = int(stats["nonfinite_on_target_date"])
+        zero = int(stats["zero_on_target_date"])
+        unusable = int(max(denominator - clean_nonmissing, 0))
+        unusable_but_prior_clean = int(stats["unusable_but_prior_clean"])
+        clean_value_counter = stats["clean_value_counter"]
+        unique_clean_values = int(len(clean_value_counter))
+        most_common_clean_value = None
+        most_common_clean_value_symbols = 0
+        if clean_value_counter:
+            most_common_clean_value, most_common_clean_value_symbols = sorted(
+                clean_value_counter.items(),
+                key=lambda item: (-int(item[1]), str(item[0])),
+            )[0]
+
+        ffill_age_records = sorted(
+            stats["ffill_age_records"],
+            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
+        )
+        ffill_ages = [int(item["age_days"]) for item in ffill_age_records]
         field_rows.append(
             {
                 "field": field,
                 "symbols_with_target_date_row": denominator,
-                "nonnull_on_target_date": int(stats["nonnull_on_target_date"]),
-                "nonnull_pct_on_target_date": _round_pct(int(stats["nonnull_on_target_date"]), denominator),
+                "nonnull_on_target_date": nonnull,
+                "nonnull_pct_on_target_date": _round_pct(nonnull, denominator),
+                "clean_nonmissing_on_target_date": clean_nonmissing,
+                "clean_nonmissing_pct_on_target_date": _round_pct(clean_nonmissing, denominator),
+                "unusable_on_target_date": unusable,
+                "unusable_pct_on_target_date": _round_pct(unusable, denominator),
                 "missing_on_target_date": missing,
                 "missing_pct_on_target_date": _round_pct(missing, denominator),
                 "missing_but_prior_nonnull": missing_but_prior,
                 "missing_but_prior_nonnull_pct_of_missing": _round_pct(missing_but_prior, missing),
                 "missing_and_never_nonnull": int(stats["missing_and_never_nonnull"]),
+                "placeholder_on_target_date": placeholder,
+                "placeholder_pct_on_target_date": _round_pct(placeholder, denominator),
+                "nonfinite_on_target_date": nonfinite,
+                "nonfinite_pct_on_target_date": _round_pct(nonfinite, denominator),
+                "zero_on_target_date": zero,
+                "zero_pct_of_clean_nonmissing": _round_pct(zero, clean_nonmissing),
+                "unusable_but_prior_clean": unusable_but_prior_clean,
+                "unusable_but_prior_clean_pct_of_unusable": _round_pct(unusable_but_prior_clean, unusable),
+                "ffill_age_days_min": min(ffill_ages) if ffill_ages else None,
+                "ffill_age_days_p50": _quantile_or_none(ffill_ages, 0.5),
+                "ffill_age_days_p90": _quantile_or_none(ffill_ages, 0.9),
+                "ffill_age_days_max": max(ffill_ages) if ffill_ages else None,
+                "ffill_age_gt_1d_symbols": int(sum(age > 1 for age in ffill_ages)),
+                "ffill_age_gt_5d_symbols": int(sum(age > 5 for age in ffill_ages)),
+                "ffill_age_gt_10d_symbols": int(sum(age > 10 for age in ffill_ages)),
+                "unique_clean_values_on_target_date": unique_clean_values,
+                "most_common_clean_value_on_target_date": most_common_clean_value,
+                "most_common_clean_value_symbols": int(most_common_clean_value_symbols),
+                "most_common_clean_value_pct_of_clean_nonmissing": _round_pct(
+                    int(most_common_clean_value_symbols),
+                    clean_nonmissing,
+                ),
+                "is_constant_across_clean_values_on_target_date": bool(
+                    clean_nonmissing > 0 and unique_clean_values == 1
+                ),
                 "sample_missing_symbols": list(stats["sample_missing_symbols"]),
                 "sample_prior_nonnull_symbols": list(stats["sample_prior_nonnull_symbols"]),
+                "sample_placeholder_symbols": list(stats["sample_placeholder_symbols"]),
+                "sample_nonfinite_symbols": list(stats["sample_nonfinite_symbols"]),
+                "sample_zero_symbols": list(stats["sample_zero_symbols"]),
+                "sample_prior_clean_symbols": list(stats["sample_prior_clean_symbols"]),
+                "sample_unusable_symbols": list(stats["sample_unusable_symbols"]),
+                "sample_oldest_ffill_symbols": ffill_age_records[:sample_limit],
             }
         )
+
+    quality_checks: list[dict[str, object]] = []
+    for row in field_rows:
+        if not isinstance(row, Mapping):
+            continue
+        field = str(row.get("field") or "")
+        denominator = int(row.get("symbols_with_target_date_row") or 0)
+        clean_nonmissing = int(row.get("clean_nonmissing_on_target_date") or 0)
+        unusable = int(row.get("unusable_on_target_date") or 0)
+        placeholder_count = int(row.get("placeholder_on_target_date") or 0)
+        nonfinite_count = int(row.get("nonfinite_on_target_date") or 0)
+        zero_count = int(row.get("zero_on_target_date") or 0)
+        constant_cross_section = bool(row.get("is_constant_across_clean_values_on_target_date"))
+        all_zero_clean = (
+            clean_nonmissing > 0
+            and zero_count == clean_nonmissing
+            and row.get("most_common_clean_value_on_target_date") == 0
+        )
+        if denominator > 0 and clean_nonmissing == 0:
+            quality_checks.append(
+                {
+                    "check": "field_all_clean_missing_on_target_date",
+                    "field": field,
+                    "severity": "error",
+                    "affected_symbols": denominator,
+                    "affected_pct": _round_pct(denominator, denominator),
+                    "sample_symbols": _combine_samples(
+                        row.get("sample_unusable_symbols") or [],
+                        row.get("sample_prior_clean_symbols") or [],
+                        row.get("sample_missing_symbols") or [],
+                        limit=sample_limit,
+                    ),
+                }
+            )
+        if placeholder_count > 0:
+            quality_checks.append(
+                {
+                    "check": "field_placeholder_values_on_target_date",
+                    "field": field,
+                    "severity": "warning",
+                    "affected_symbols": placeholder_count,
+                    "affected_pct": _round_pct(placeholder_count, denominator),
+                    "sample_symbols": list(row.get("sample_placeholder_symbols") or []),
+                }
+            )
+        if nonfinite_count > 0:
+            quality_checks.append(
+                {
+                    "check": "field_nonfinite_values_on_target_date",
+                    "field": field,
+                    "severity": "error",
+                    "affected_symbols": nonfinite_count,
+                    "affected_pct": _round_pct(nonfinite_count, denominator),
+                    "sample_symbols": list(row.get("sample_nonfinite_symbols") or []),
+                }
+            )
+        if all_zero_clean:
+            quality_checks.append(
+                {
+                    "check": "field_all_clean_values_zero_on_target_date",
+                    "field": field,
+                    "severity": "warning",
+                    "affected_symbols": zero_count,
+                    "affected_pct": _round_pct(zero_count, clean_nonmissing),
+                    "sample_symbols": list(row.get("sample_zero_symbols") or []),
+                }
+            )
+        if clean_nonmissing > 1 and constant_cross_section:
+            quality_checks.append(
+                {
+                    "check": "field_constant_cross_section_on_target_date",
+                    "field": field,
+                    "severity": "warning",
+                    "affected_symbols": clean_nonmissing,
+                    "affected_pct": _round_pct(clean_nonmissing, denominator),
+                    "sample_symbols": list(row.get("sample_zero_symbols") or [])[:sample_limit],
+                }
+            )
+        for threshold, severity in ((10, "error"), (5, "warning"), (1, "info")):
+            affected = int(row.get(f"ffill_age_gt_{threshold}d_symbols") or 0)
+            if affected <= 0:
+                continue
+            quality_checks.append(
+                {
+                    "check": f"field_ffill_age_gt_{threshold}d",
+                    "field": field,
+                    "severity": severity,
+                    "affected_symbols": affected,
+                    "affected_pct": _round_pct(affected, unusable),
+                    "sample_symbols": [
+                        str(item.get("symbol"))
+                        for item in (row.get("sample_oldest_ffill_symbols") or [])
+                        if isinstance(item, Mapping)
+                    ][:sample_limit],
+                }
+            )
+
+    if dataset == "daily":
+        for check_name, stats in daily_rule_stats.items():
+            count = int(stats["count"])
+            if count <= 0:
+                continue
+            quality_checks.append(
+                {
+                    "check": check_name,
+                    "field": None,
+                    "severity": "error",
+                    "affected_symbols": count,
+                    "affected_pct": _round_pct(count, symbols_with_target_date_row),
+                    "sample_symbols": list(stats["sample_symbols"]),
+                }
+            )
 
     summary = {
         "asset_dir": str(asset_dir),
@@ -516,21 +1020,29 @@ def inspect_hk_asset_health(args) -> int:
         "selection_source": selection_source,
         "selected_fields": list(selected_fields),
         "manifest_query_date": _resolve_manifest_query_date(manifest),
+        "symbol_filter_source": str(symbol_filter["source"]),
+        "symbols_file": symbol_filter["symbols_file"],
+        "by_date_file": symbol_filter["by_date_file"],
         "symbols_scanned": symbols_scanned,
+        "symbols_available_in_asset_dir": len(all_data_files),
+        "symbols_missing_asset_file": len(missing_asset_symbols),
         "symbols_with_target_date_row": symbols_with_target_date_row,
         "symbols_without_target_date_row": int(symbols_scanned - symbols_with_target_date_row),
         "target_date_coverage_pct": _round_pct(symbols_with_target_date_row, symbols_scanned),
         "latest_date_min": _format_date(latest_min),
         "latest_date_max": _format_date(latest_max),
         "audit_status_counts": dict(sorted(status_counts.items())),
+        "quality_check_issue_count": len(quality_checks),
         "audit_file": str(asset_dir / "audit.csv") if (asset_dir / "audit.csv").exists() else None,
         "manifest_file": str(manifest_path) if manifest_path.exists() else None,
     }
     payload = {
         "summary": summary,
         "latest_date_distribution": latest_rows,
+        "sample_missing_asset_file_symbols": missing_asset_symbols[:sample_limit],
         "sample_stale_symbols": stale_rows,
         "field_coverage": field_rows,
+        "quality_checks": quality_checks,
     }
 
     output_format = str(getattr(args, "format", "text") or "text").strip().lower()
