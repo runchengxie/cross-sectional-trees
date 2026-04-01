@@ -455,6 +455,9 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
         "symbols_with_target_date_row",
         "symbols_without_target_date_row",
         "target_date_coverage_pct",
+        "symbols_with_duplicate_dates",
+        "duplicate_date_groups",
+        "duplicate_date_rows",
         "latest_date_min",
         "latest_date_max",
     ):
@@ -611,6 +614,12 @@ def inspect_hk_asset_health(args) -> int:
         "daily_negative_volume": {"count": 0, "sample_symbols": []},
         "daily_negative_total_turnover": {"count": 0, "sample_symbols": []},
     }
+    duplicate_date_stats = {
+        "symbols": 0,
+        "duplicate_date_groups": 0,
+        "duplicate_rows": 0,
+        "sample_symbols": [],
+    }
 
     stale_rows: list[dict[str, str | None]] = []
     symbols_with_target_date_row = 0
@@ -674,6 +683,29 @@ def inspect_hk_asset_health(args) -> int:
                     }
                 )
             continue
+
+        duplicate_counts = work[date_column].value_counts()
+        duplicate_date_count = int((duplicate_counts > 1).sum())
+        if duplicate_date_count > 0:
+            duplicate_date_stats["symbols"] = int(duplicate_date_stats["symbols"]) + 1
+            duplicate_date_stats["duplicate_date_groups"] = (
+                int(duplicate_date_stats["duplicate_date_groups"]) + duplicate_date_count
+            )
+            duplicate_date_stats["duplicate_rows"] = (
+                int(duplicate_date_stats["duplicate_rows"])
+                + int(duplicate_counts.loc[duplicate_counts > 1].sum())
+            )
+            _append_sample(
+                duplicate_date_stats["sample_symbols"],
+                symbol,
+                limit=sample_limit,
+            )
+            # Prefer the last observed row per date so downstream health checks stay stable.
+            work = (
+                work.drop_duplicates(subset=[date_column], keep="last")
+                .sort_values(date_column)
+                .reset_index(drop=True)
+            )
 
         latest_ts = work[date_column].max()
         latest_min = latest_ts if latest_min is None or latest_ts < latest_min else latest_min
@@ -1011,6 +1043,20 @@ def inspect_hk_asset_health(args) -> int:
                 }
             )
 
+    if int(duplicate_date_stats["symbols"]) > 0:
+        quality_checks.append(
+            {
+                "check": "symbol_duplicate_dates_in_asset_file",
+                "field": None,
+                "severity": "error",
+                "affected_symbols": int(duplicate_date_stats["symbols"]),
+                "affected_pct": _round_pct(int(duplicate_date_stats["symbols"]), symbols_scanned),
+                "duplicate_date_groups": int(duplicate_date_stats["duplicate_date_groups"]),
+                "duplicate_rows": int(duplicate_date_stats["duplicate_rows"]),
+                "sample_symbols": list(duplicate_date_stats["sample_symbols"]),
+            }
+        )
+
     summary = {
         "asset_dir": str(asset_dir),
         "dataset": dataset,
@@ -1029,6 +1075,9 @@ def inspect_hk_asset_health(args) -> int:
         "symbols_with_target_date_row": symbols_with_target_date_row,
         "symbols_without_target_date_row": int(symbols_scanned - symbols_with_target_date_row),
         "target_date_coverage_pct": _round_pct(symbols_with_target_date_row, symbols_scanned),
+        "symbols_with_duplicate_dates": int(duplicate_date_stats["symbols"]),
+        "duplicate_date_groups": int(duplicate_date_stats["duplicate_date_groups"]),
+        "duplicate_date_rows": int(duplicate_date_stats["duplicate_rows"]),
         "latest_date_min": _format_date(latest_min),
         "latest_date_max": _format_date(latest_max),
         "audit_status_counts": dict(sorted(status_counts.items())),
