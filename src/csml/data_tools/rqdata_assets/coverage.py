@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 import sys
 
 import numpy as np
@@ -19,11 +20,17 @@ from .build import (
 from .shared import (
     DEFAULT_PIPELINE_FUNDAMENTALS_NAME,
     DERIVED_PIT_FEATURES,
+    _coerce_bool,
+    _dedupe_preserve_order,
     _load_manifest,
+    _load_text_list,
+    _normalize_absolute_date,
     _normalize_field_list,
     _normalize_frame_columns,
+    _normalize_hk_symbol,
     _resolve_fields_with_overrides,
     _resolve_path,
+    _resolve_universe_by_date_columns,
 )
 
 
@@ -34,6 +41,437 @@ def _resolve_fields(args) -> tuple[list[str], dict]:
         args,
         load_hk_financial_fields_override=override,
     )
+
+
+def _parse_compact_date(value: object, *, label: str) -> pd.Timestamp:
+    normalized = _normalize_absolute_date(value, label=label)
+    return pd.to_datetime(normalized, format="%Y%m%d").normalize()
+
+
+def _format_date(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    timestamp = pd.to_datetime(value, errors="coerce")
+    if pd.isna(timestamp):
+        return None
+    return timestamp.normalize().strftime("%Y-%m-%d")
+
+
+def _round_pct(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(float(numerator) / float(denominator) * 100.0, 2)
+
+
+def _quantile_or_none(values: Sequence[int], quantile: float) -> int | float | None:
+    if not values:
+        return None
+    result = float(pd.Series(list(values), dtype="float64").quantile(quantile))
+    if result.is_integer():
+        return int(result)
+    return round(result, 2)
+
+
+def _normalize_symbol_list(values: Sequence[object]) -> list[str]:
+    normalized = [_normalize_hk_symbol(value) for value in values]
+    return _dedupe_preserve_order([symbol for symbol in normalized if symbol], strip=True)
+
+
+def _load_symbols_from_text(path_text: str | Path) -> list[str]:
+    return _normalize_symbol_list(_load_text_list(path_text, label="Symbols file"))
+
+
+def _load_health_universe_by_date_frame(path_text: str | Path) -> tuple[Path, pd.DataFrame]:
+    path = _resolve_path(path_text)
+    if not path.exists():
+        raise SystemExit(f"Universe-by-date file not found: {path}")
+    df = pd.read_csv(path)
+    if df.empty:
+        raise SystemExit(f"Universe-by-date file is empty: {path}")
+
+    columns = {str(col).lower(): str(col) for col in df.columns}
+    date_col, symbol_col = _resolve_universe_by_date_columns(df)
+    selected_col = (
+        columns.get("selected")
+        or columns.get("selected_bool")
+        or columns.get("selected_flag")
+        or columns.get("is_selected")
+    )
+    if selected_col and selected_col in df.columns:
+        df = df[df[selected_col].map(_coerce_bool)].copy()
+
+    df = df.rename(columns={date_col: "trade_date", symbol_col: "symbol"})
+    trade_date_text = df["trade_date"].astype(str).str.strip().str.replace(r"\.0+$", "", regex=True)
+    digits_mask = trade_date_text.str.fullmatch(r"\d{8}")
+    parsed = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    if digits_mask.any():
+        parsed.loc[digits_mask] = pd.to_datetime(
+            trade_date_text.loc[digits_mask],
+            format="%Y%m%d",
+            errors="coerce",
+        )
+    if (~digits_mask).any():
+        parsed.loc[~digits_mask] = pd.to_datetime(
+            trade_date_text.loc[~digits_mask],
+            errors="coerce",
+        )
+    df["trade_date"] = parsed.dt.normalize()
+    df["symbol"] = df["symbol"].map(_normalize_hk_symbol)
+    df = df[df["trade_date"].notna()].copy()
+    df = df[df["symbol"] != ""].copy()
+    return path, df.loc[:, ["trade_date", "symbol"]].drop_duplicates().reset_index(drop=True)
+
+
+def _resolve_health_by_date_path(
+    *,
+    args,
+    config_data: Mapping[str, object] | None,
+) -> tuple[Path | None, str | None]:
+    explicit = getattr(args, "by_date_file", None)
+    if explicit:
+        return _resolve_path(explicit), "explicit_by_date_file"
+    if isinstance(config_data, Mapping):
+        universe_cfg = config_data.get("universe")
+        if isinstance(universe_cfg, Mapping):
+            path_text = universe_cfg.get("by_date_file")
+            if path_text:
+                return _resolve_path(str(path_text)), "config_universe_by_date_file"
+    return None, None
+
+
+def _resolve_health_target_date(
+    *,
+    args,
+    by_date_frame: pd.DataFrame | None,
+    by_date_source: str | None,
+    frame: pd.DataFrame,
+) -> tuple[pd.Timestamp, str]:
+    explicit = getattr(args, "target_date", None)
+    if explicit:
+        return _parse_compact_date(explicit, label="--target-date"), "explicit"
+    if by_date_frame is not None and not by_date_frame.empty:
+        source = "by_date_file_max_trade_date"
+        if by_date_source == "config_universe_by_date_file":
+            source = "config_universe_by_date_max_trade_date"
+        return pd.Timestamp(by_date_frame["trade_date"].max()).normalize(), source
+    return pd.Timestamp(frame["trade_date"].max()).normalize(), "fundamentals_max_trade_date"
+
+
+def _resolve_health_symbol_filter(
+    *,
+    args,
+    target_date: pd.Timestamp,
+    by_date_frame: pd.DataFrame | None,
+    by_date_source: str | None,
+) -> dict[str, object]:
+    symbols: list[str] = []
+    sources: list[str] = []
+
+    symbols_file = getattr(args, "symbols_file", None)
+    if symbols_file:
+        sources.append("symbols_file")
+        symbols.extend(_load_symbols_from_text(symbols_file))
+
+    if by_date_frame is not None:
+        if by_date_source == "config_universe_by_date_file":
+            sources.append("config_universe_by_date_target_date")
+        else:
+            sources.append("by_date_file_target_date")
+        matched = by_date_frame.loc[by_date_frame["trade_date"] == target_date, "symbol"].drop_duplicates().tolist()
+        if not matched:
+            raise SystemExit(
+                "No symbols matched PIT health universe on target date "
+                f"{_format_date(target_date)}."
+            )
+        symbols.extend(matched)
+
+    normalized = _normalize_symbol_list(symbols)
+    return {
+        "source": "+".join(sources) if sources else "all_fundamentals_symbols",
+        "symbols": normalized,
+        "symbols_file": str(_resolve_path(symbols_file)) if symbols_file else None,
+    }
+
+
+def _make_sample_symbols(values: Sequence[object], *, limit: int) -> list[str]:
+    samples: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in samples:
+            continue
+        samples.append(text)
+        if len(samples) >= limit:
+            break
+    return samples
+
+
+def _make_oldest_samples(
+    latest_dates: pd.Series,
+    *,
+    target_date: pd.Timestamp,
+    sample_limit: int,
+) -> list[dict[str, object]]:
+    if latest_dates.empty:
+        return []
+    latest_dates = latest_dates.sort_values()
+    samples: list[dict[str, object]] = []
+    for symbol, last_date in latest_dates.head(sample_limit).items():
+        samples.append(
+            {
+                "symbol": str(symbol),
+                "last_observed_date": _format_date(last_date),
+                "age_days": int((target_date - pd.Timestamp(last_date)).days),
+            }
+        )
+    return samples
+
+
+def _build_pit_health_section(
+    *,
+    args,
+    config_data: Mapping[str, object] | None,
+    frame: pd.DataFrame,
+    feature_frame: pd.DataFrame,
+    selected_features: Sequence[str],
+    min_symbols: int,
+) -> dict[str, object]:
+    by_date_path, by_date_source = _resolve_health_by_date_path(args=args, config_data=config_data)
+    by_date_frame = None
+    if by_date_path is not None:
+        _, by_date_frame = _load_health_universe_by_date_frame(by_date_path)
+
+    target_date, target_date_source = _resolve_health_target_date(
+        args=args,
+        by_date_frame=by_date_frame,
+        by_date_source=by_date_source,
+        frame=frame,
+    )
+    symbol_filter = _resolve_health_symbol_filter(
+        args=args,
+        target_date=target_date,
+        by_date_frame=by_date_frame,
+        by_date_source=by_date_source,
+    )
+    sample_limit = int(getattr(args, "health_sample_limit", 5) or 5)
+
+    all_fundamentals_symbols = sorted(frame["symbol"].dropna().astype(str).unique().tolist())
+    requested_symbols = list(symbol_filter["symbols"]) or all_fundamentals_symbols
+    requested_set = set(requested_symbols)
+    available_set = set(all_fundamentals_symbols)
+    available_symbols = [symbol for symbol in requested_symbols if symbol in available_set]
+    missing_asset_symbols = [symbol for symbol in requested_symbols if symbol not in available_set]
+
+    scope_mask = frame["symbol"].isin(requested_set) & (frame["trade_date"] <= target_date)
+    scoped_frame = frame.loc[scope_mask].copy()
+    latest_rows = (
+        scoped_frame.sort_values(["symbol", "trade_date"])
+        .groupby("symbol", group_keys=False)
+        .tail(1)
+        .set_index("symbol")
+    )
+    latest_row_dates = latest_rows["trade_date"] if "trade_date" in latest_rows.columns else pd.Series(dtype="datetime64[ns]")
+    latest_row_ages = (
+        (target_date - latest_row_dates).dt.days.astype(int)
+        if not latest_row_dates.empty
+        else pd.Series(dtype="int64")
+    )
+
+    feature_date_map: dict[str, pd.Series] = {}
+    feature_health_rows: list[dict[str, object]] = []
+    quality_checks: list[dict[str, object]] = []
+    total_symbols = len(requested_symbols)
+
+    for feature in selected_features:
+        clean_mask = scope_mask & feature_frame[feature].notna()
+        available_rows = frame.loc[clean_mask, ["symbol", "trade_date"]].copy()
+        latest_feature_dates = (
+            available_rows.sort_values(["symbol", "trade_date"])
+            .groupby("symbol", group_keys=False)
+            .tail(1)
+            .set_index("symbol")["trade_date"]
+            if not available_rows.empty
+            else pd.Series(dtype="datetime64[ns]")
+        )
+        latest_feature_dates = latest_feature_dates.reindex(available_symbols).dropna()
+        feature_date_map[feature] = latest_feature_dates
+
+        age_days = (
+            (target_date - latest_feature_dates).dt.days.astype(int)
+            if not latest_feature_dates.empty
+            else pd.Series(dtype="int64")
+        )
+        stale_180_symbols = age_days.loc[age_days > 180].sort_values(ascending=False).index.tolist()
+        available_count = int(latest_feature_dates.index.nunique())
+        missing_symbols = [symbol for symbol in requested_symbols if symbol not in set(latest_feature_dates.index)]
+        row = {
+            "feature": feature,
+            "symbols_with_clean_value_asof_target_date": available_count,
+            "coverage_pct": _round_pct(available_count, total_symbols),
+            "missing_symbols_asof_target_date": int(total_symbols - available_count),
+            "age_days_min": int(age_days.min()) if not age_days.empty else None,
+            "age_days_p50": _quantile_or_none(age_days.tolist(), 0.5),
+            "age_days_p90": _quantile_or_none(age_days.tolist(), 0.9),
+            "age_days_max": int(age_days.max()) if not age_days.empty else None,
+            "age_gt_45d_symbols": int((age_days > 45).sum()) if not age_days.empty else 0,
+            "age_gt_90d_symbols": int((age_days > 90).sum()) if not age_days.empty else 0,
+            "age_gt_180d_symbols": int((age_days > 180).sum()) if not age_days.empty else 0,
+            "sample_oldest_symbols": _make_oldest_samples(
+                latest_feature_dates,
+                target_date=target_date,
+                sample_limit=sample_limit,
+            ),
+            "sample_missing_symbols": _make_sample_symbols(missing_symbols, limit=sample_limit),
+        }
+        feature_health_rows.append(row)
+
+        if available_count == 0 and total_symbols > 0:
+            quality_checks.append(
+                {
+                    "check": "feature_unavailable_asof_target_date",
+                    "field": feature,
+                    "severity": "error",
+                    "affected_symbols": total_symbols,
+                    "affected_pct": 100.0,
+                    "sample_symbols": _make_sample_symbols(requested_symbols, limit=sample_limit),
+                }
+            )
+        elif row["age_gt_180d_symbols"] > 0:
+            quality_checks.append(
+                {
+                    "check": "feature_stale_gt_180d_asof_target_date",
+                    "field": feature,
+                    "severity": "warning",
+                    "affected_symbols": row["age_gt_180d_symbols"],
+                    "affected_pct": _round_pct(row["age_gt_180d_symbols"], available_count),
+                    "sample_symbols": _make_sample_symbols(stale_180_symbols, limit=sample_limit),
+                }
+            )
+
+    feature_health_rows.sort(
+        key=lambda item: (
+            float(item["coverage_pct"]),
+            -(int(item["age_days_max"]) if item["age_days_max"] is not None else -1),
+            str(item["feature"]),
+        )
+    )
+
+    feature_date_frame = pd.DataFrame(index=requested_symbols)
+    for feature, latest_dates in feature_date_map.items():
+        feature_date_frame[feature] = latest_dates.reindex(requested_symbols)
+    any_feature_mask = feature_date_frame.notna().any(axis=1) if not feature_date_frame.empty else pd.Series(False, index=requested_symbols)
+    all_feature_mask = feature_date_frame.notna().all(axis=1) if not feature_date_frame.empty else pd.Series(False, index=requested_symbols)
+    complete_oldest_dates = (
+        feature_date_frame.loc[all_feature_mask].min(axis=1)
+        if not feature_date_frame.empty and bool(all_feature_mask.any())
+        else pd.Series(dtype="datetime64[ns]")
+    )
+    complete_oldest_ages = (
+        (target_date - complete_oldest_dates).dt.days.astype(int)
+        if not complete_oldest_dates.empty
+        else pd.Series(dtype="int64")
+    )
+
+    recent_disclosures = scoped_frame.loc[:, ["trade_date", "symbol"]].copy()
+    recent_windows: dict[str, int] = {}
+    for days in (30, 90, 180):
+        window_start = target_date - pd.Timedelta(days=days)
+        window_frame = recent_disclosures.loc[recent_disclosures["trade_date"] >= window_start]
+        recent_windows[f"rows_last_{days}d"] = int(len(window_frame))
+        recent_windows[f"symbols_updated_last_{days}d"] = int(window_frame["symbol"].nunique()) if not window_frame.empty else 0
+        recent_windows[f"disclosure_dates_last_{days}d"] = int(window_frame["trade_date"].nunique()) if not window_frame.empty else 0
+
+    recent_disclosure_rows = (
+        recent_disclosures.groupby("trade_date")["symbol"]
+        .agg(["count", "nunique"])
+        .reset_index()
+        .rename(columns={"count": "rows", "nunique": "symbols"})
+        .sort_values("trade_date")
+    )
+    recent_disclosure_rows = recent_disclosure_rows.tail(10)
+    recent_disclosure_payload = [
+        {
+            "trade_date": _format_date(row.trade_date),
+            "rows": int(row.rows),
+            "symbols": int(row.symbols),
+        }
+        for row in recent_disclosure_rows.itertuples(index=False)
+    ]
+
+    symbols_without_rows = [symbol for symbol in requested_symbols if symbol not in set(latest_row_dates.index)]
+    if symbols_without_rows:
+        quality_checks.append(
+            {
+                "check": "symbol_without_any_pit_row_before_target_date",
+                "field": None,
+                "severity": "error",
+                "affected_symbols": len(symbols_without_rows),
+                "affected_pct": _round_pct(len(symbols_without_rows), total_symbols),
+                "sample_symbols": _make_sample_symbols(symbols_without_rows, limit=sample_limit),
+            }
+        )
+
+    complete_count = int(all_feature_mask.sum()) if len(all_feature_mask) else 0
+    if complete_count == 0 and total_symbols > 0:
+        quality_checks.append(
+            {
+                "check": "selected_feature_set_unavailable_asof_target_date",
+                "field": None,
+                "severity": "error",
+                "affected_symbols": total_symbols,
+                "affected_pct": 100.0,
+                "sample_symbols": _make_sample_symbols(requested_symbols, limit=sample_limit),
+            }
+        )
+    elif complete_count < min_symbols:
+        quality_checks.append(
+            {
+                "check": "selected_feature_set_below_min_symbols_asof_target_date",
+                "field": None,
+                "severity": "warning",
+                "affected_symbols": total_symbols - complete_count,
+                "affected_pct": _round_pct(total_symbols - complete_count, total_symbols),
+                "sample_symbols": _make_sample_symbols(
+                    all_feature_mask.loc[~all_feature_mask].index.tolist(),
+                    limit=sample_limit,
+                ),
+            }
+        )
+
+    return {
+        "source": {
+            "target_date": _format_date(target_date),
+            "target_date_source": target_date_source,
+            "symbol_filter_source": symbol_filter["source"],
+            "symbols_file": symbol_filter.get("symbols_file"),
+            "by_date_file": str(by_date_path) if by_date_path is not None else None,
+        },
+        "summary": {
+            "symbols_scanned": total_symbols,
+            "symbols_available_in_fundamentals": len(available_symbols),
+            "symbols_missing_in_fundamentals": len(missing_asset_symbols),
+            "symbols_with_any_row_before_target_date": int(latest_row_dates.index.nunique()),
+            "symbols_without_any_row_before_target_date": len(symbols_without_rows),
+            "symbols_with_any_selected_features_asof_target_date": int(any_feature_mask.sum()) if len(any_feature_mask) else 0,
+            "symbols_with_all_selected_features_asof_target_date": complete_count,
+            "all_selected_features_coverage_pct": _round_pct(complete_count, total_symbols),
+            "latest_report_age_days_min": int(latest_row_ages.min()) if not latest_row_ages.empty else None,
+            "latest_report_age_days_p50": _quantile_or_none(latest_row_ages.tolist(), 0.5),
+            "latest_report_age_days_p90": _quantile_or_none(latest_row_ages.tolist(), 0.9),
+            "latest_report_age_days_max": int(latest_row_ages.max()) if not latest_row_ages.empty else None,
+            "latest_report_age_gt_45d_symbols": int((latest_row_ages > 45).sum()) if not latest_row_ages.empty else 0,
+            "latest_report_age_gt_90d_symbols": int((latest_row_ages > 90).sum()) if not latest_row_ages.empty else 0,
+            "latest_report_age_gt_180d_symbols": int((latest_row_ages > 180).sum()) if not latest_row_ages.empty else 0,
+            "complete_symbol_oldest_feature_age_days_max": int(complete_oldest_ages.max()) if not complete_oldest_ages.empty else None,
+            "complete_symbol_oldest_feature_age_gt_90d_symbols": int((complete_oldest_ages > 90).sum()) if not complete_oldest_ages.empty else 0,
+            "complete_symbol_oldest_feature_age_gt_180d_symbols": int((complete_oldest_ages > 180).sum()) if not complete_oldest_ages.empty else 0,
+            **recent_windows,
+        },
+        "sample_symbols_without_rows": _make_sample_symbols(symbols_without_rows, limit=sample_limit),
+        "sample_missing_asset_symbols": _make_sample_symbols(missing_asset_symbols, limit=sample_limit),
+        "recent_disclosures": recent_disclosure_payload,
+        "feature_health": feature_health_rows,
+        "quality_checks": quality_checks,
+    }
 
 
 def _is_supported_pit_coverage_feature(feature: str, available_columns: set[str]) -> bool:
@@ -620,6 +1058,7 @@ def _render_hk_pit_coverage_text(payload: Mapping[str, object], *, top: int, qua
         if isinstance(payload.get("fill_dependence_assessment"), Mapping)
         else {}
     )
+    health = payload.get("health") if isinstance(payload.get("health"), Mapping) else {}
     manifest_totals = (
         payload.get("pipeline_manifest_totals")
         if isinstance(payload.get("pipeline_manifest_totals"), Mapping)
@@ -792,6 +1231,84 @@ def _render_hk_pit_coverage_text(payload: Mapping[str, object], *, top: int, qua
         ]
         lines.append(trainable_df.to_string(index=False))
 
+    if health:
+        health_source = health.get("source") if isinstance(health.get("source"), Mapping) else {}
+        health_summary = health.get("summary") if isinstance(health.get("summary"), Mapping) else {}
+        feature_health = health.get("feature_health") if isinstance(health.get("feature_health"), list) else []
+        health_checks = health.get("quality_checks") if isinstance(health.get("quality_checks"), list) else []
+        recent_disclosures = health.get("recent_disclosures") if isinstance(health.get("recent_disclosures"), list) else []
+
+        lines.append("")
+        lines.append("Health")
+        for key in [
+            "target_date",
+            "target_date_source",
+            "symbol_filter_source",
+        ]:
+            if key in health_source:
+                lines.append(f"{key}: {health_source.get(key)}")
+        for key in [
+            "symbols_scanned",
+            "symbols_available_in_fundamentals",
+            "symbols_missing_in_fundamentals",
+            "symbols_with_any_row_before_target_date",
+            "symbols_without_any_row_before_target_date",
+            "symbols_with_any_selected_features_asof_target_date",
+            "symbols_with_all_selected_features_asof_target_date",
+            "all_selected_features_coverage_pct",
+            "latest_report_age_days_max",
+            "latest_report_age_gt_90d_symbols",
+            "latest_report_age_gt_180d_symbols",
+            "complete_symbol_oldest_feature_age_days_max",
+            "complete_symbol_oldest_feature_age_gt_90d_symbols",
+            "complete_symbol_oldest_feature_age_gt_180d_symbols",
+            "rows_last_30d",
+            "symbols_updated_last_30d",
+            "rows_last_90d",
+            "symbols_updated_last_90d",
+            "rows_last_180d",
+            "symbols_updated_last_180d",
+        ]:
+            if key in health_summary:
+                lines.append(f"{key}: {health_summary.get(key)}")
+
+        missing_rows = health.get("sample_symbols_without_rows")
+        if missing_rows:
+            lines.append("sample_symbols_without_rows: " + ", ".join(str(item) for item in missing_rows))
+        missing_assets = health.get("sample_missing_asset_symbols")
+        if missing_assets:
+            lines.append("sample_missing_asset_symbols: " + ", ".join(str(item) for item in missing_assets))
+
+        if feature_health:
+            lines.append("")
+            lines.append(f"Health Features (top {min(top, len(feature_health))})")
+            feature_df = pd.DataFrame(feature_health).head(top)
+            feature_df = feature_df[
+                [
+                    "feature",
+                    "coverage_pct",
+                    "missing_symbols_asof_target_date",
+                    "age_days_p90",
+                    "age_days_max",
+                    "age_gt_180d_symbols",
+                ]
+            ]
+            lines.append(feature_df.to_string(index=False))
+
+        if recent_disclosures:
+            lines.append("")
+            lines.append(f"Recent Disclosures (last {len(recent_disclosures)})")
+            recent_df = pd.DataFrame(recent_disclosures)
+            lines.append(recent_df.to_string(index=False))
+
+        if health_checks:
+            lines.append("")
+            lines.append("Health Checks")
+            checks_df = pd.DataFrame(health_checks)[
+                ["check", "field", "severity", "affected_symbols", "affected_pct"]
+            ]
+            lines.append(checks_df.to_string(index=False))
+
     return "\n".join(lines).strip() + "\n"
 
 
@@ -901,6 +1418,12 @@ def inspect_hk_pit_coverage(args) -> int:
     quarter_labels = trade_dates.dt.to_period("Q").astype(str)
     total_quarters = int(pd.Index(quarter_labels).nunique())
     date_counts = frame.groupby("trade_date")["symbol"].nunique()
+    include_health = bool(
+        getattr(args, "include_health", False)
+        or getattr(args, "target_date", None)
+        or getattr(args, "symbols_file", None)
+        or getattr(args, "by_date_file", None)
+    )
 
     if selected_features:
         complete_rows_mask = feature_frame.notna().all(axis=1)
@@ -1000,6 +1523,18 @@ def inspect_hk_pit_coverage(args) -> int:
             trainable_estimate=trainable_estimate,
             non_pit_features_ignored=non_pit_ignored,
         )
+    health_section = (
+        _build_pit_health_section(
+            args=args,
+            config_data=config_data,
+            frame=frame,
+            feature_frame=feature_frame,
+            selected_features=selected_features,
+            min_symbols=min_symbols,
+        )
+        if include_health
+        else None
+    )
 
     payload = {
         "source": {
@@ -1050,6 +1585,7 @@ def inspect_hk_pit_coverage(args) -> int:
         "trainable_estimate": trainable_estimate,
         "fill_dependence_assessment": fill_dependence_assessment,
         "trainable_period_coverage": trainable_period_rows,
+        "health": health_section,
     }
 
     output_format = str(getattr(args, "format", "text") or "text").strip().lower()

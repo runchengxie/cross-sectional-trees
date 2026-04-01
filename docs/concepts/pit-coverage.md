@@ -38,6 +38,21 @@ csml rqdata inspect-hk-pit-coverage \
 
 如果你已经在本地派生过配置，也可以把 `--config` 换成你自己的 `configs/local/*.yml`。
 
+如果你还想同时回答“这份 `pipeline_fundamentals.parquet` 到某个调仓日有没有陈旧、有没有断档”，可以在同一个命令上加：
+
+```bash
+csml rqdata inspect-hk-pit-coverage \
+  --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
+  --mode both \
+  --include-health \
+  --target-date 20260331
+```
+
+这里的 `Health` section 和 `Coverage` section 不同：
+
+* `Coverage` 看的是特征覆盖率和 trainability
+* `Health` 看的是 target-date 视角下的 freshness / staleness / 断档
+
 ### 关键指标
 
 | 指标 | 含义 | 看什么 |

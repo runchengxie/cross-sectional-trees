@@ -454,6 +454,15 @@ def test_cli_parses_rqdata_asset_commands():
             "configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml",
             "--mode",
             "trainable",
+            "--include-health",
+            "--target-date",
+            "20260331",
+            "--symbols-file",
+            "artifacts/assets/universe/hk_selected_symbols.txt",
+            "--by-date-file",
+            "artifacts/assets/universe/hk_selected_by_date.csv",
+            "--health-sample-limit",
+            "6",
             "--min-symbols",
             "10",
             "--format",
@@ -466,6 +475,11 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit_coverage.rq_command == "inspect-hk-pit-coverage"
     assert pit_coverage.config == "configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml"
     assert pit_coverage.mode == "trainable"
+    assert pit_coverage.include_health is True
+    assert pit_coverage.target_date == "20260331"
+    assert pit_coverage.symbols_file == "artifacts/assets/universe/hk_selected_symbols.txt"
+    assert pit_coverage.by_date_file == "artifacts/assets/universe/hk_selected_by_date.csv"
+    assert pit_coverage.health_sample_limit == 6
     assert pit_coverage.min_symbols == 10
     assert pit_coverage.format == "json"
     assert pit_coverage.out == "artifacts/reports/hk_pit_coverage.json"

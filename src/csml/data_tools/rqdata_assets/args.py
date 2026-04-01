@@ -809,6 +809,42 @@ def add_hk_pit_coverage_args(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--include-health",
+        action="store_true",
+        help=(
+            "Also inspect target-date PIT freshness / staleness. "
+            "Useful to tell whether sparse PIT rows can still be safely ffilled to a rebalance date."
+        ),
+    )
+    parser.add_argument(
+        "--target-date",
+        help=(
+            "Optional target date in YYYYMMDD for PIT health. "
+            "Default: latest date from --by-date-file or config universe.by_date_file when available, "
+            "else max trade_date in pipeline_fundamentals.parquet."
+        ),
+    )
+    parser.add_argument(
+        "--symbols-file",
+        help=(
+            "Optional text file with one HK symbol per line. "
+            "Limits PIT health inspection to those symbols."
+        ),
+    )
+    parser.add_argument(
+        "--by-date-file",
+        help=(
+            "Optional universe-by-date CSV for PIT health. "
+            "When omitted, defaults to config universe.by_date_file if available."
+        ),
+    )
+    parser.add_argument(
+        "--health-sample-limit",
+        type=int,
+        default=5,
+        help="Number of sample stale or missing symbols shown in PIT health output. Default: 5.",
+    )
+    parser.add_argument(
         "--min-symbols",
         type=int,
         help="Quarter viability threshold. Defaults to universe.min_symbols_per_date from --config, else 5.",

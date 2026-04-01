@@ -397,9 +397,17 @@ csml rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/indu
 
 ```bash
 csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml --mode both
+csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml --mode both --include-health --target-date 20260331
 ```
 
 详见 `docs/concepts/pit-coverage.md`。
+
+说明：
+
+* 默认输出还是覆盖率 / trainability 体检；加上 `--include-health` 后，会额外输出 `Health` section，回答“到某个 `target_date` 为止，这份 `pipeline_fundamentals.parquet` 能不能安全前推到调仓日”。
+* `--target-date` 不传时，会优先取 `--by-date-file` 或 `config universe.by_date_file` 里的最大日期；再没有时，回退到 `pipeline_fundamentals.parquet` 的最大 `trade_date`。
+* `Health` 会统计 `symbols_with_all_selected_features_asof_target_date`、各字段 `age_days_*`、`rows_last_30d/90d/180d`、以及 `symbol_without_any_pit_row_before_target_date` 这类断档告警。
+* `--symbols-file` 和 `--by-date-file` 只影响 `Health` section，不改变原有覆盖率 / trainable 计算口径。
 
 ### csml rqdata inspect-hk-asset-health
 
