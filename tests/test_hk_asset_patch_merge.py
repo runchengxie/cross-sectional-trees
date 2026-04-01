@@ -323,3 +323,68 @@ def test_merge_asset_patch_daily_accepts_legacy_ts_code_snapshot(tmp_path: Path)
 
     manifest = yaml.safe_load((out_dir / "manifest.yml").read_text(encoding="utf-8"))
     assert manifest["columns"] == ["trade_date", "symbol", "order_book_id", "open", "close"]
+
+
+def test_merge_asset_patch_preserves_source_audit_error_for_missing_remote_symbol(tmp_path: Path) -> None:
+    base_dir = _write_daily_snapshot(tmp_path, "daily_base_missing_remote", end_date="20260318")
+    patch_dir = _write_daily_patch(tmp_path, "daily_patch_missing_remote")
+    out_dir = tmp_path / "daily_latest_missing_remote"
+
+    (base_dir / "symbols.txt").write_text("00005.HK\n00006.HK\n00007.HK\n", encoding="utf-8")
+    (patch_dir / "symbols.txt").write_text("00005.HK\n00006.HK\n00007.HK\n", encoding="utf-8")
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "linked_base",
+                "max_trade_date": "20260318",
+                "error": None,
+            },
+            {
+                "symbol": "00007.HK",
+                "order_book_id": "00007.XHKG",
+                "status": "failed",
+                "max_trade_date": None,
+                "error": "no permission to access day bar",
+            },
+        ]
+    ).to_csv(base_dir / "audit.csv", index=False)
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_trade_date": "20260319",
+                "error": None,
+            },
+            {
+                "symbol": "00006.HK",
+                "order_book_id": "00006.XHKG",
+                "status": "patch_only",
+                "max_trade_date": "20260319",
+                "error": None,
+            },
+            {
+                "symbol": "00007.HK",
+                "order_book_id": "00007.XHKG",
+                "status": "failed",
+                "max_trade_date": None,
+                "error": "no permission to access day bar",
+            },
+        ]
+    ).to_csv(patch_dir / "audit.csv", index=False)
+
+    merge_asset_patch(
+        base_dir=base_dir,
+        patch_dir=patch_dir,
+        out_dir=out_dir,
+        alias_path=None,
+        overwrite=False,
+    )
+
+    audit = pd.read_csv(out_dir / "audit.csv")
+    row = audit.loc[audit["symbol"] == "00007.HK"].iloc[0].to_dict()
+    assert row["status"] == "missing_remote"
+    assert row["error"] == "no permission to access day bar"

@@ -13,6 +13,9 @@ from csml.data_providers import _to_rqdata_symbol
 from csml.data_tools import rqdata_assets as _base
 
 
+AUX_AUDIT_SYMBOL_COLUMNS = ("symbol", "ts_code", "order_book_id")
+
+
 DATASET_CONFIG: dict[str, dict[str, object]] = {
     "daily": {
         "kind": "daily",
@@ -128,6 +131,35 @@ def _merge_symbol_metadata(
     merged.update(base_source)
     merged["count"] = len(symbols_requested)
     return merged
+
+
+def _load_audit_rows(asset_dir: Path) -> dict[str, dict[str, object]]:
+    audit_path = asset_dir / "audit.csv"
+    if not audit_path.exists():
+        return {}
+    try:
+        audit = pd.read_csv(audit_path)
+    except pd.errors.EmptyDataError:
+        return {}
+    audit = _base._normalize_frame_columns(audit)
+    if audit.empty:
+        return {}
+
+    symbol_col = next((column for column in AUX_AUDIT_SYMBOL_COLUMNS if column in audit.columns), None)
+    if symbol_col is None:
+        return {}
+
+    rows_by_symbol: dict[str, dict[str, object]] = {}
+    for _, row in audit.iterrows():
+        symbol = _base._normalize_hk_symbol(row.get(symbol_col))
+        if not symbol:
+            continue
+        normalized_row = {
+            str(column): (None if pd.isna(value) else value)
+            for column, value in row.to_dict().items()
+        }
+        rows_by_symbol[symbol] = normalized_row
+    return rows_by_symbol
 
 
 def _create_relative_symlink(target: Path, link: Path) -> None:
@@ -360,6 +392,8 @@ def merge_asset_patch(
     patch_data_dir = patch_dir / "data"
     base_files = {path.stem: path for path in sorted(base_data_dir.glob("*.parquet"))}
     patch_files = {path.stem: path for path in sorted(patch_data_dir.glob("*.parquet"))}
+    base_audit_rows = _load_audit_rows(base_dir)
+    patch_audit_rows = _load_audit_rows(patch_dir)
 
     base_symbols_requested = _load_text_list(base_dir / "symbols.txt")
     patch_symbols_requested = _load_text_list(patch_dir / "symbols.txt")
@@ -448,6 +482,8 @@ def merge_asset_patch(
 
         order_book_id = _to_rqdata_symbol("hk", symbol)
         finished_at = _base._timestamp_now()
+        source_audit = patch_audit_rows.get(symbol) or base_audit_rows.get(symbol) or {}
+        missing_remote_error = str(source_audit.get("error") or "").strip() or None
         if kind == "daily":
             audit_by_symbol[symbol] = _base._daily_audit_record(
                 symbol=symbol,
@@ -457,7 +493,7 @@ def merge_asset_patch(
                 started_at=None,
                 finished_at=finished_at,
                 file_mtime=None,
-                error=None,
+                error=missing_remote_error,
                 entry=None,
             )
         else:
@@ -469,7 +505,7 @@ def merge_asset_patch(
                 started_at=None,
                 finished_at=finished_at,
                 file_mtime=None,
-                error=None,
+                error=missing_remote_error,
                 entry=None,
             )
 

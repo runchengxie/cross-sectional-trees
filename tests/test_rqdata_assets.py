@@ -3516,6 +3516,251 @@ def test_inspect_hk_asset_health_parses_compact_audit_dates_written_as_floats(tm
     ]
 
 
+def test_inspect_hk_asset_health_reports_missing_asset_file_details_and_audit_issue_groups(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_missing_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "valuation",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": ["pe_ratio_ttm"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260331"],
+            "pe_ratio_ttm": [10.0],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+                "error": None,
+            },
+            {
+                "symbol": "00011.HK",
+                "order_book_id": "00011.XHKG",
+                "status": "failed",
+                "max_date": None,
+                "error": "no permission to access day bar",
+            },
+            {
+                "symbol": "00700.HK",
+                "order_book_id": "00700.XHKG",
+                "status": "failed",
+                "max_date": None,
+                "error": "no permission to access day bar",
+            },
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    symbols_file = repo_root / "symbols.txt"
+    symbols_file.write_text("00005.HK\n00011.HK\n00700.HK\n", encoding="utf-8")
+
+    out_path = repo_root / "valuation_missing_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=str(symbols_file),
+        by_date_file=None,
+        field=["pe_ratio_ttm"],
+        date_column=None,
+        target_date="20260331",
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=False,
+        history_sample_limit=5,
+        format="json",
+        out=str(out_path),
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["symbols_scanned"] == 3
+    assert payload["summary"]["symbols_missing_asset_file"] == 2
+    assert payload["summary"]["audit_status_counts"] == {"failed": 2, "merged_patch": 1}
+    assert payload["sample_missing_asset_file_details"] == [
+        {
+            "symbol": "00011.HK",
+            "status": "failed",
+            "error": "no permission to access day bar",
+        },
+        {
+            "symbol": "00700.HK",
+            "status": "failed",
+            "error": "no permission to access day bar",
+        },
+    ]
+    assert payload["audit_issue_groups"] == [
+        {
+            "status": "failed",
+            "issue_category": "no_permission_day_bar",
+            "error": "no permission to access day bar",
+            "affected_symbols": 2,
+            "sample_symbols": ["00011.HK", "00700.HK"],
+        }
+    ]
+
+
+def test_inspect_hk_asset_health_include_history_flags_prior_daily_anomalies(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_history_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": ["open", "high", "low", "close", "volume", "total_turnover"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260330", "20260331"],
+            "open": [10.0, 11.0],
+            "high": [9.0, 11.5],
+            "low": [8.0, 10.5],
+            "close": [10.2, 11.2],
+            "volume": [1000.0, 1100.0],
+            "total_turnover": [10000.0, 11000.0],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "trade_date": ["20260331"],
+            "open": [20.0],
+            "high": [21.0],
+            "low": [19.0],
+            "close": [20.5],
+            "volume": [-50.0],
+            "total_turnover": [-500.0],
+        }
+    ).to_parquet(data_dir / "00011.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_trade_date": "20260331",
+            },
+            {
+                "symbol": "00011.HK",
+                "order_book_id": "00011.XHKG",
+                "status": "merged_patch",
+                "max_trade_date": "20260331",
+            },
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "daily_history_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=[],
+        date_column=None,
+        target_date="20260331",
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=True,
+        history_sample_limit=3,
+        format="json",
+        out=str(out_path),
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["include_history"] is True
+    assert payload["summary"]["history_issue_count"] == 3
+    assert payload["summary"]["history_rows_scanned"] == 3
+
+    history = payload["history"]
+    assert history["summary"] == {
+        "dataset": "daily",
+        "symbols_scanned": 2,
+        "rows_scanned": 3,
+        "date_min": "2026-03-30",
+        "date_max": "2026-03-31",
+        "issue_count": 3,
+    }
+
+    issues = {item["check"]: item for item in history["issues"]}
+    assert issues["daily_price_bounds_violation_any_date"] == {
+        "check": "daily_price_bounds_violation_any_date",
+        "severity": "error",
+        "affected_symbols": 1,
+        "affected_rows": 1,
+        "sample_rows": [
+            {
+                "symbol": "00005.HK",
+                "trade_date": "2026-03-30",
+                "open": 10,
+                "high": 9,
+                "low": 8,
+                "close": 10.2,
+            }
+        ],
+    }
+    assert issues["daily_negative_volume_any_date"] == {
+        "check": "daily_negative_volume_any_date",
+        "severity": "error",
+        "affected_symbols": 1,
+        "affected_rows": 1,
+        "sample_rows": [
+            {
+                "symbol": "00011.HK",
+                "trade_date": "2026-03-31",
+                "volume": -50,
+            }
+        ],
+    }
+    assert issues["daily_negative_total_turnover_any_date"] == {
+        "check": "daily_negative_total_turnover_any_date",
+        "severity": "error",
+        "affected_symbols": 1,
+        "affected_rows": 1,
+        "sample_rows": [
+            {
+                "symbol": "00011.HK",
+                "trade_date": "2026-03-31",
+                "total_turnover": -500,
+            }
+        ],
+    }
+
+
 def test_assess_trainable_fill_dependence_marks_healthier_pit_only_route_green():
     assessment = rqdata_assets._assess_trainable_fill_dependence(
         trainable_estimate={

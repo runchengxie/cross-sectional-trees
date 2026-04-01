@@ -923,6 +923,20 @@ def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
         help="Number of latest-date buckets shown in the summary. Default: 5.",
     )
     parser.add_argument(
+        "--include-history",
+        action="store_true",
+        help=(
+            "Also scan the full available history for row-level anomalies such as impossible "
+            "daily price bounds, negative volume, or negative turnover."
+        ),
+    )
+    parser.add_argument(
+        "--history-sample-limit",
+        type=int,
+        default=5,
+        help="Number of sample historical issue rows shown when --include-history is enabled. Default: 5.",
+    )
+    parser.add_argument(
         "--format",
         default="text",
         choices=["text", "json"],

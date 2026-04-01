@@ -70,6 +70,15 @@ def _format_date(value: object) -> str | None:
     return timestamp.normalize().strftime("%Y-%m-%d")
 
 
+def _clean_optional_text(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return None
+    return text
+
+
 def _serialize_scalar(value: object) -> int | float | str | bool | None:
     if value is None or pd.isna(value):
         return None
@@ -206,6 +215,108 @@ def _load_audit_frame(asset_dir: Path) -> tuple[pd.DataFrame | None, str | None]
         audit["status"] = ""
     audit = audit.dropna(subset=["symbol"])
     return audit, latest_col
+
+
+def _categorize_audit_issue(*, status: str, error: str | None) -> str:
+    status_text = str(status or "").strip() or "unknown"
+    error_text = _clean_optional_text(error) or ""
+    if not error_text:
+        return status_text
+
+    error_lower = error_text.lower()
+    if "no permission to access day bar" in error_lower:
+        return "no_permission_day_bar"
+    if "no permission" in error_lower:
+        return "no_permission"
+    if "quota" in error_lower:
+        return "quota_blocked"
+    if "temporary failure in name resolution" in error_lower:
+        return "dns_resolution_failure"
+    return error_text
+
+
+def _build_missing_asset_file_details(
+    *,
+    missing_asset_symbols: Sequence[str],
+    audit_by_symbol: Mapping[str, Mapping[str, object]],
+    sample_limit: int,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for symbol in missing_asset_symbols:
+        audit_entry = audit_by_symbol.get(symbol)
+        status = _clean_optional_text((audit_entry or {}).get("status")) or ""
+        error = _clean_optional_text((audit_entry or {}).get("error"))
+        if len(rows) >= sample_limit:
+            continue
+        rows.append(
+            {
+                "symbol": symbol,
+                "status": status or None,
+                "error": error,
+            }
+        )
+    return rows
+
+
+def _build_audit_issue_groups(
+    *,
+    audit_by_symbol: Mapping[str, Mapping[str, object]],
+    scoped_symbols: Sequence[str],
+    sample_limit: int,
+) -> list[dict[str, object]]:
+    grouped: dict[tuple[str, str], dict[str, object]] = {}
+    for symbol in scoped_symbols:
+        audit_entry = audit_by_symbol.get(symbol)
+        if not audit_entry:
+            continue
+        status = _clean_optional_text(audit_entry.get("status")) or ""
+        error = _clean_optional_text(audit_entry.get("error"))
+        if not status:
+            continue
+        if status not in {"failed", "missing_remote", "quota_blocked"}:
+            continue
+        category = _categorize_audit_issue(status=status, error=error)
+        key = (status, category)
+        row = grouped.get(key)
+        if row is None:
+            row = {
+                "status": status,
+                "issue_category": category,
+                "error": error,
+                "affected_symbols": 0,
+                "sample_symbols": [],
+            }
+            grouped[key] = row
+        elif not row.get("error") and error:
+            row["error"] = error
+        row["affected_symbols"] = int(row["affected_symbols"]) + 1
+        _append_sample(row["sample_symbols"], symbol, limit=sample_limit)
+
+    rows = list(grouped.values())
+    rows.sort(
+        key=lambda item: (
+            -int(item.get("affected_symbols") or 0),
+            str(item.get("status") or ""),
+            str(item.get("issue_category") or ""),
+        )
+    )
+    return rows
+
+
+def _build_audit_status_counts(
+    *,
+    audit_by_symbol: Mapping[str, Mapping[str, object]],
+    scoped_symbols: Sequence[str],
+) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for symbol in scoped_symbols:
+        audit_entry = audit_by_symbol.get(symbol)
+        if not audit_entry:
+            continue
+        status = _clean_optional_text(audit_entry.get("status")) or ""
+        if status:
+            counts[status] += 1
+    return counts
 
 
 def _resolve_target_date(
@@ -410,6 +521,177 @@ def _assess_target_series(target_series: pd.Series) -> dict[str, object]:
     }
 
 
+def _init_history_state(*, dataset: str | None) -> dict[str, object]:
+    issue_template = {
+        "daily_price_bounds_violation_any_date": {"severity": "error"},
+        "daily_nonpositive_price_any_date": {"severity": "error"},
+        "daily_negative_volume_any_date": {"severity": "error"},
+        "daily_negative_total_turnover_any_date": {"severity": "error"},
+    }
+    issues = {}
+    if dataset == "daily":
+        for check, meta in issue_template.items():
+            issues[check] = {
+                "check": check,
+                "severity": meta["severity"],
+                "affected_symbols": set(),
+                "affected_rows": 0,
+                "sample_rows": [],
+            }
+    return {
+        "dataset": dataset,
+        "symbols_scanned": 0,
+        "rows_scanned": 0,
+        "date_min": None,
+        "date_max": None,
+        "issues": issues,
+    }
+
+
+def _append_history_sample_row(
+    values: list[dict[str, object]],
+    row: Mapping[str, object],
+    *,
+    limit: int,
+) -> None:
+    if len(values) >= limit:
+        return
+    candidate = {key: _serialize_scalar(value) for key, value in row.items()}
+    for existing in values:
+        if existing == candidate:
+            return
+    values.append(candidate)
+
+
+def _update_daily_history_state(
+    *,
+    work: pd.DataFrame,
+    symbol: str,
+    date_column: str,
+    history_state: dict[str, object],
+    sample_limit: int,
+) -> None:
+    required_price_fields = ("open", "high", "low", "close")
+    missing_price_fields = [field for field in required_price_fields if field not in work.columns]
+    price_frame = {
+        field: pd.to_numeric(work[field], errors="coerce")
+        for field in required_price_fields
+        if field in work.columns
+    }
+    if not missing_price_fields:
+        open_arr = price_frame["open"].to_numpy(dtype="float64")
+        high_arr = price_frame["high"].to_numpy(dtype="float64")
+        low_arr = price_frame["low"].to_numpy(dtype="float64")
+        close_arr = price_frame["close"].to_numpy(dtype="float64")
+        finite_mask = (
+            np.isfinite(open_arr)
+            & np.isfinite(high_arr)
+            & np.isfinite(low_arr)
+            & np.isfinite(close_arr)
+        )
+        upper_bound = np.maximum.reduce([open_arr, low_arr, close_arr])
+        lower_bound = np.minimum.reduce([open_arr, high_arr, close_arr])
+        bounds_mask = finite_mask & ((high_arr < upper_bound) | (low_arr > lower_bound))
+        nonpositive_mask = finite_mask & (
+            np.minimum.reduce([open_arr, high_arr, low_arr, close_arr]) <= 0.0
+        )
+
+        for check_name, mask in (
+            ("daily_price_bounds_violation_any_date", bounds_mask),
+            ("daily_nonpositive_price_any_date", nonpositive_mask),
+        ):
+            check_state = history_state["issues"][check_name]
+            affected_rows = int(np.count_nonzero(mask))
+            if affected_rows <= 0:
+                continue
+            check_state["affected_rows"] = int(check_state["affected_rows"]) + affected_rows
+            check_state["affected_symbols"].add(symbol)
+            sample_indices = np.flatnonzero(mask)[:sample_limit]
+            for idx in sample_indices:
+                _append_history_sample_row(
+                    check_state["sample_rows"],
+                    {
+                        "symbol": symbol,
+                        "trade_date": work.iloc[idx][date_column],
+                        "open": open_arr[idx],
+                        "high": high_arr[idx],
+                        "low": low_arr[idx],
+                        "close": close_arr[idx],
+                    },
+                    limit=sample_limit,
+                )
+
+    for field_name, check_name in (
+        ("volume", "daily_negative_volume_any_date"),
+        ("total_turnover", "daily_negative_total_turnover_any_date"),
+    ):
+        if field_name not in work.columns:
+            continue
+        numeric = pd.to_numeric(work[field_name], errors="coerce").to_numpy(dtype="float64")
+        mask = np.isfinite(numeric) & (numeric < 0.0)
+        affected_rows = int(np.count_nonzero(mask))
+        if affected_rows <= 0:
+            continue
+        check_state = history_state["issues"][check_name]
+        check_state["affected_rows"] = int(check_state["affected_rows"]) + affected_rows
+        check_state["affected_symbols"].add(symbol)
+        sample_indices = np.flatnonzero(mask)[:sample_limit]
+        for idx in sample_indices:
+            _append_history_sample_row(
+                check_state["sample_rows"],
+                {
+                    "symbol": symbol,
+                    "trade_date": work.iloc[idx][date_column],
+                    field_name: numeric[idx],
+                },
+                limit=sample_limit,
+            )
+
+
+def _finalize_history_payload(history_state: Mapping[str, object] | None) -> dict[str, object] | None:
+    if not history_state:
+        return None
+
+    issues = history_state.get("issues") if isinstance(history_state.get("issues"), Mapping) else {}
+    issue_rows: list[dict[str, object]] = []
+    for check_name, check_state in issues.items():
+        if not isinstance(check_state, Mapping):
+            continue
+        affected_symbols = check_state.get("affected_symbols")
+        affected_symbol_count = len(affected_symbols) if isinstance(affected_symbols, set) else 0
+        affected_rows = int(check_state.get("affected_rows") or 0)
+        if affected_rows <= 0 and affected_symbol_count <= 0:
+            continue
+        issue_rows.append(
+            {
+                "check": check_name,
+                "severity": check_state.get("severity"),
+                "affected_symbols": affected_symbol_count,
+                "affected_rows": affected_rows,
+                "sample_rows": list(check_state.get("sample_rows") or []),
+            }
+        )
+
+    issue_rows.sort(
+        key=lambda item: (
+            -int(item.get("affected_rows") or 0),
+            -int(item.get("affected_symbols") or 0),
+            str(item.get("check") or ""),
+        )
+    )
+    return {
+        "summary": {
+            "dataset": history_state.get("dataset"),
+            "symbols_scanned": int(history_state.get("symbols_scanned") or 0),
+            "rows_scanned": int(history_state.get("rows_scanned") or 0),
+            "date_min": _format_date(history_state.get("date_min")),
+            "date_max": _format_date(history_state.get("date_max")),
+            "issue_count": len(issue_rows),
+        },
+        "issues": issue_rows,
+    }
+
+
 def _render_asset_health_text(payload: Mapping[str, object]) -> str:
     summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
     field_rows = payload.get("field_coverage") if isinstance(payload.get("field_coverage"), list) else []
@@ -420,11 +702,23 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
     )
     stale_rows = payload.get("sample_stale_symbols") if isinstance(payload.get("sample_stale_symbols"), list) else []
     missing_file_rows = (
-        payload.get("sample_missing_asset_file_symbols")
-        if isinstance(payload.get("sample_missing_asset_file_symbols"), list)
-        else []
+        payload.get("sample_missing_asset_file_details")
+        if isinstance(payload.get("sample_missing_asset_file_details"), list)
+        else (
+            payload.get("sample_missing_asset_file_symbols")
+            if isinstance(payload.get("sample_missing_asset_file_symbols"), list)
+            else []
+        )
     )
     quality_checks = payload.get("quality_checks") if isinstance(payload.get("quality_checks"), list) else []
+    audit_issue_groups = (
+        payload.get("audit_issue_groups") if isinstance(payload.get("audit_issue_groups"), list) else []
+    )
+    history_payload = payload.get("history") if isinstance(payload.get("history"), Mapping) else {}
+    history_summary = (
+        history_payload.get("summary") if isinstance(history_payload.get("summary"), Mapping) else {}
+    )
+    history_issues = history_payload.get("issues") if isinstance(history_payload.get("issues"), list) else []
 
     lines = ["HK Asset Health"]
     for key in (
@@ -473,14 +767,43 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
     if missing_file_rows:
         lines.append("")
         lines.append("Sample Missing Asset Files")
-        for symbol in missing_file_rows:
-            lines.append(str(symbol))
+        for row in missing_file_rows:
+            if isinstance(row, Mapping):
+                symbol = row.get("symbol")
+                status = row.get("status")
+                error = row.get("error")
+                suffix_parts = [str(item) for item in (status, error) if item]
+                if suffix_parts:
+                    lines.append(f"{symbol} ({'; '.join(suffix_parts)})")
+                else:
+                    lines.append(str(symbol))
+                continue
+            lines.append(str(row))
 
     if latest_rows:
         lines.append("")
         lines.append(f"Latest Dates (top {len(latest_rows)})")
         latest_df = pd.DataFrame(latest_rows)
         lines.append(latest_df.to_string(index=False))
+
+    if audit_issue_groups:
+        lines.append("")
+        lines.append("Audit Issues")
+        for row in audit_issue_groups:
+            if not isinstance(row, Mapping):
+                continue
+            lines.append(
+                "{status}: {issue_category} -> {affected_symbols} symbol(s)".format(
+                    status=row.get("status"),
+                    issue_category=row.get("issue_category"),
+                    affected_symbols=row.get("affected_symbols"),
+                )
+            )
+            if row.get("error"):
+                lines.append(f"  error: {row.get('error')}")
+            sample_symbols = row.get("sample_symbols")
+            if isinstance(sample_symbols, list) and sample_symbols:
+                lines.append(f"  samples: {', '.join(str(item) for item in sample_symbols)}")
 
     if stale_rows:
         lines.append("")
@@ -534,6 +857,27 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
             if isinstance(sample_symbols, list) and sample_symbols:
                 lines.append(f"  samples: {', '.join(str(item) for item in sample_symbols)}")
 
+    if history_summary:
+        lines.append("")
+        lines.append("History")
+        for key in ("symbols_scanned", "rows_scanned", "date_min", "date_max", "issue_count"):
+            lines.append(f"{key}: {history_summary.get(key)}")
+        for row in history_issues:
+            if not isinstance(row, Mapping):
+                continue
+            lines.append(
+                "{severity}: {check} -> {affected_rows} row(s), {affected_symbols} symbol(s)".format(
+                    severity=row.get("severity"),
+                    check=row.get("check"),
+                    affected_rows=row.get("affected_rows"),
+                    affected_symbols=row.get("affected_symbols"),
+                )
+            )
+            sample_rows = row.get("sample_rows")
+            if isinstance(sample_rows, list) and sample_rows:
+                sample_df = pd.DataFrame(sample_rows)
+                lines.append(sample_df.to_string(index=False))
+
     return "\n".join(lines).strip() + "\n"
 
 
@@ -577,11 +921,14 @@ def inspect_hk_asset_health(args) -> int:
     if not candidate_symbols:
         raise SystemExit("No symbols resolved for asset health inspection.")
 
-    existing_data_files = [data_files_by_symbol[symbol] for symbol in candidate_symbols if symbol in data_files_by_symbol]
     missing_asset_symbols = [symbol for symbol in candidate_symbols if symbol not in data_files_by_symbol]
-
-    latest_counts, status_counts = _build_latest_date_counts(audit, existing_data_files)
     sample_limit = max(1, int(getattr(args, "sample_limit", 5) or 5))
+    history_sample_limit = max(
+        1,
+        int(getattr(args, "history_sample_limit", sample_limit) or sample_limit),
+    )
+    include_history = bool(getattr(args, "include_history", False))
+    history_state = _init_history_state(dataset=dataset) if include_history else None
 
     field_stats: dict[str, dict[str, object]] = {
         field: {
@@ -630,34 +977,31 @@ def inspect_hk_asset_health(args) -> int:
     if audit is not None and not audit.empty:
         audit_by_symbol = audit.set_index("symbol", drop=False).to_dict(orient="index")
 
+    latest_counts: Counter[str] = Counter()
+    status_counts = _build_audit_status_counts(
+        audit_by_symbol=audit_by_symbol,
+        scoped_symbols=candidate_symbols,
+    )
+    missing_asset_file_details = _build_missing_asset_file_details(
+        missing_asset_symbols=missing_asset_symbols,
+        audit_by_symbol=audit_by_symbol,
+        sample_limit=sample_limit,
+    )
+    audit_issue_groups = _build_audit_issue_groups(
+        audit_by_symbol=audit_by_symbol,
+        scoped_symbols=candidate_symbols,
+        sample_limit=sample_limit,
+    )
+
     for symbol in candidate_symbols:
         path = data_files_by_symbol.get(symbol)
         audit_entry = audit_by_symbol.get(symbol)
-        latest_date = None
         status = ""
         if audit_entry:
-            latest_date = audit_entry.get("latest_date")
-            if pd.isna(latest_date):
-                latest_date = None
-            status = str(audit_entry.get("status") or "").strip()
+            status = _clean_optional_text(audit_entry.get("status")) or ""
 
         if path is None:
             continue
-
-        if latest_date is not None:
-            latest_ts = pd.to_datetime(latest_date).normalize()
-            latest_min = latest_ts if latest_min is None or latest_ts < latest_min else latest_min
-            latest_max = latest_ts if latest_max is None or latest_ts > latest_max else latest_max
-            if latest_ts != target_date:
-                if len(stale_rows) < sample_limit:
-                    stale_rows.append(
-                        {
-                            "symbol": symbol,
-                            "latest_date": _format_date(latest_ts),
-                            "status": status,
-                        }
-                    )
-                continue
 
         read_columns = [date_column, *selected_fields]
         try:
@@ -673,6 +1017,8 @@ def inspect_hk_asset_health(args) -> int:
         valid = parsed_dates.notna()
         work = work.loc[valid].copy()
         work[date_column] = parsed_dates.loc[valid]
+        if history_state is not None:
+            history_state["symbols_scanned"] = int(history_state["symbols_scanned"]) + 1
         if work.empty:
             if len(stale_rows) < sample_limit:
                 stale_rows.append(
@@ -683,6 +1029,29 @@ def inspect_hk_asset_health(args) -> int:
                     }
                 )
             continue
+
+        if history_state is not None:
+            history_state["rows_scanned"] = int(history_state["rows_scanned"]) + int(len(work))
+            history_date_min = work[date_column].min()
+            history_date_max = work[date_column].max()
+            history_state["date_min"] = (
+                history_date_min
+                if history_state["date_min"] is None or history_date_min < history_state["date_min"]
+                else history_state["date_min"]
+            )
+            history_state["date_max"] = (
+                history_date_max
+                if history_state["date_max"] is None or history_date_max > history_state["date_max"]
+                else history_state["date_max"]
+            )
+            if dataset == "daily":
+                _update_daily_history_state(
+                    work=work,
+                    symbol=symbol,
+                    date_column=date_column,
+                    history_state=history_state,
+                    sample_limit=history_sample_limit,
+                )
 
         duplicate_counts = work[date_column].value_counts()
         duplicate_date_count = int((duplicate_counts > 1).sum())
@@ -710,8 +1079,7 @@ def inspect_hk_asset_health(args) -> int:
         latest_ts = work[date_column].max()
         latest_min = latest_ts if latest_min is None or latest_ts < latest_min else latest_min
         latest_max = latest_ts if latest_max is None or latest_ts > latest_max else latest_max
-        if not latest_counts:
-            latest_counts[_format_date(latest_ts) or ""] += 1
+        latest_counts[_format_date(latest_ts) or ""] += 1
 
         target_mask = work[date_column] == target_date
         if not bool(target_mask.any()):
@@ -1081,17 +1449,27 @@ def inspect_hk_asset_health(args) -> int:
         "latest_date_min": _format_date(latest_min),
         "latest_date_max": _format_date(latest_max),
         "audit_status_counts": dict(sorted(status_counts.items())),
+        "audit_issue_group_count": len(audit_issue_groups),
         "quality_check_issue_count": len(quality_checks),
+        "include_history": include_history,
         "audit_file": str(asset_dir / "audit.csv") if (asset_dir / "audit.csv").exists() else None,
         "manifest_file": str(manifest_path) if manifest_path.exists() else None,
     }
+    history_payload = _finalize_history_payload(history_state)
+    if history_payload is not None:
+        history_summary = history_payload.get("summary") if isinstance(history_payload.get("summary"), Mapping) else {}
+        summary["history_issue_count"] = int(history_summary.get("issue_count") or 0)
+        summary["history_rows_scanned"] = int(history_summary.get("rows_scanned") or 0)
     payload = {
         "summary": summary,
         "latest_date_distribution": latest_rows,
         "sample_missing_asset_file_symbols": missing_asset_symbols[:sample_limit],
+        "sample_missing_asset_file_details": missing_asset_file_details,
+        "audit_issue_groups": audit_issue_groups,
         "sample_stale_symbols": stale_rows,
         "field_coverage": field_rows,
         "quality_checks": quality_checks,
+        "history": history_payload,
     }
 
     output_format = str(getattr(args, "format", "text") or "text").strip().lower()

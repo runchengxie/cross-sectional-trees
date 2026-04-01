@@ -417,6 +417,7 @@ csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_sel
 csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest
 csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --field pe_ratio_ttm --field pb_ratio_ttm --target-date 20260331 --format json --out artifacts/reports/hk_valuation_health_20260331.json
 csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --by-date-file artifacts/assets/universe/hk_selected_pit_research_by_date.csv --target-date 20260331
+csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --target-date 20260401 --include-history --history-sample-limit 10 --format json --out artifacts/reports/hk_daily_health_20260401_full_history.json
 ```
 
 说明：
@@ -427,6 +428,8 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valua
 * `placeholder_on_target_date`、`nonfinite_on_target_date`、`zero_on_target_date`、`is_constant_across_clean_values_on_target_date` 和 `symbol_duplicate_dates_in_asset_file` 用来补齐仅看 non-null 时抓不到的脏值、退化值、横截面常数和同一 `symbol-date` 重复行问题。
 * 对 `daily` 资产，命令还会额外检查 `high/low/open/close` 的价格逻辑关系，以及负成交量 / 负成交额。
 * `sample_stale_symbols` 会列出没有覆盖到目标日的样本 symbol，适合快速判断是原始数据没补齐，还是个别 symbol 落后。
+* `sample_missing_asset_file_details` 和 `audit_issue_groups` 会把 `audit.csv` 里的失败原因带出来，便于区分权限问题、quota 问题和单纯没有远端数据。
+* 加上 `--include-history` 后，命令会额外扫描每个 parquet 的全历史，输出 `history` section；当前主要覆盖 `daily` 资产的价格边界异常、非正价格、负成交量和负成交额，`--history-sample-limit` 控制样本行数量。
 
 ## 股票池命令
 

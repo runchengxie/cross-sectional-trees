@@ -505,6 +505,9 @@ def test_cli_parses_rqdata_asset_commands():
             "8",
             "--top-latest-dates",
             "3",
+            "--include-history",
+            "--history-sample-limit",
+            "4",
             "--format",
             "json",
             "--out",
@@ -520,6 +523,8 @@ def test_cli_parses_rqdata_asset_commands():
     assert asset_health.target_date == "20260331"
     assert asset_health.sample_limit == 8
     assert asset_health.top_latest_dates == 3
+    assert asset_health.include_history is True
+    assert asset_health.history_sample_limit == 4
     assert asset_health.format == "json"
     assert asset_health.out == "artifacts/reports/hk_asset_health.json"
     assert callable(asset_health.func)
