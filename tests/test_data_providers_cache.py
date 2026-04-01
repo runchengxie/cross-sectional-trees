@@ -398,6 +398,38 @@ def test_load_basic_from_local_asset_accepts_name_fallback_columns(tmp_path):
     assert result["list_date"].tolist() == ["19721101"]
 
 
+def test_load_basic_from_local_asset_normalizes_hk_symbol_when_order_book_id_present(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    instruments_file = tmp_path / "hk_instruments.parquet"
+
+    pd.DataFrame(
+        {
+            "symbol": ["00001.HK", "00002.HK"],
+            "order_book_id": ["00001.XHKG", "00002.XHKG"],
+            "name": ["长和", "中电控股"],
+            "listed_date": ["1972-11-01", "1980-01-02"],
+        }
+    ).to_parquet(instruments_file)
+
+    result = data_providers.load_basic(
+        "hk",
+        cache_dir,
+        client=None,
+        data_cfg={
+            "provider": "rqdata",
+            "rqdata": {
+                "instruments_file": str(instruments_file),
+            },
+        },
+        symbols=["00001.HK"],
+    )
+
+    assert result["symbol"].tolist() == ["00001.HK"]
+    assert result["name"].tolist() == ["长和"]
+    assert result["list_date"].tolist() == ["19721101"]
+
+
 def test_fetch_daily_backfills_tr_close_for_existing_cache(tmp_path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)

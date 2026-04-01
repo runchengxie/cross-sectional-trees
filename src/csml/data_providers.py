@@ -13,6 +13,7 @@ import pandas as pd
 from .data_tools.symbols import (
     PROVIDER_SYMBOL_PRIORITY,
     ensure_symbol_columns,
+    normalize_symbol_for_market,
     normalize_symbol_standard_name,
 )
 
@@ -384,7 +385,7 @@ def _load_basic_rqdata(
     client,
     data_cfg: Mapping,
 ) -> pd.DataFrame:
-    local_basic = _load_basic_from_local_asset(symbols, data_cfg)
+    local_basic = _load_basic_from_local_asset(market, symbols, data_cfg)
     if local_basic is not None:
         return local_basic
     if client is None:
@@ -832,6 +833,7 @@ def _load_daily_from_local_asset(
 
 
 def _load_basic_from_local_asset(
+    market: str,
     symbols: Optional[Iterable[str]],
     data_cfg: Mapping,
 ) -> pd.DataFrame | None:
@@ -864,7 +866,9 @@ def _load_basic_from_local_asset(
             f"Local RQData instruments file is missing required columns {missing}: {instruments_file}"
         )
     work = work[["symbol", "name", "list_date"]].copy()
-    work["symbol"] = work["symbol"].astype(str).str.strip()
+    work["symbol"] = work["symbol"].map(
+        lambda value: normalize_symbol_for_market(value, market=market)
+    )
     work["list_date"] = pd.to_datetime(work["list_date"], errors="coerce").dt.strftime("%Y%m%d")
     if symbols:
         work = work[work["symbol"].isin(list(symbols))].copy()

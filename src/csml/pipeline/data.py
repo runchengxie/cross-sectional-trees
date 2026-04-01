@@ -562,17 +562,24 @@ def _load_research_panel(
         ]["symbol"]
         df = df[~df["symbol"].isin(st_codes)].copy()
 
-    if min_listed_days > 0 and basic_df is not None and "list_date" in basic_df.columns:
+    if min_listed_days > 0 and basic_df is not None and not basic_df.empty and "list_date" in basic_df.columns:
         list_dates = basic_df.copy()
         list_dates["list_date"] = pd.to_datetime(
             list_dates["list_date"], format="%Y%m%d", errors="coerce"
         )
         list_date_map = list_dates.set_index("symbol")["list_date"].to_dict()
-        df["list_date"] = df["symbol"].map(list_date_map)
-        df = df[df["list_date"].notna()].copy()
-        df = df[
-            df["trade_date"] >= df["list_date"] + pd.Timedelta(days=min_listed_days)
-        ].copy()
+        df["list_date"] = pd.to_datetime(df["symbol"].map(list_date_map), errors="coerce")
+        valid_list_date_mask = df["list_date"].notna()
+        if not valid_list_date_mask.any():
+            logger.warning(
+                "Basic data returned no usable list_date values; skipping min_listed_days=%s filter.",
+                min_listed_days,
+            )
+        else:
+            df = df[valid_list_date_mask].copy()
+            df = df[
+                df["trade_date"] >= df["list_date"] + pd.Timedelta(days=min_listed_days)
+            ].copy()
 
     df["is_tradable"] = True
     if drop_suspended:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import logging
 import math
 import os
 import unicodedata
@@ -14,6 +15,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from ..config_utils import resolve_pipeline_config
+from ..data_interface import _patch_rqdatac_adjust_price_readonly
 from ..data_providers import normalize_market
 from . import holdings
 from ..data_tools.symbols import ensure_symbol_columns, normalize_symbol_for_market
@@ -61,6 +63,7 @@ def _init_rqdatac(
         rqdatac.init(**init_kwargs)
     except Exception as exc:
         raise SystemExit(f"rqdatac.init failed: {exc}") from exc
+    _patch_rqdatac_adjust_price_readonly(logging.getLogger("csml.liveops.alloc"))
     return rqdatac
 
 

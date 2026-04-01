@@ -317,3 +317,20 @@ def test_alloc_format_table_keeps_alignment_with_cjk_headers():
     assert len(lines) == 3
     widths = [_display_width(line) for line in lines]
     assert widths[0] == widths[1] == widths[2]
+
+
+def test_init_rqdatac_applies_readonly_adjust_price_patch(monkeypatch):
+    fake_module = types.SimpleNamespace(init=lambda **kwargs: None)
+    monkeypatch.setitem(sys.modules, "rqdatac", fake_module)
+
+    called: list[str] = []
+
+    def fake_patch(logger):
+        called.append(getattr(logger, "name", ""))
+
+    monkeypatch.setattr(alloc, "_patch_rqdatac_adjust_price_readonly", fake_patch)
+
+    result = alloc._init_rqdatac(None, None, None)
+
+    assert result is fake_module
+    assert called == ["csml.liveops.alloc"]
