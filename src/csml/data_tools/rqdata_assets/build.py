@@ -7,7 +7,7 @@ import sys
 
 import pandas as pd
 
-from ..symbols import ensure_symbol_columns
+from ..symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from .shared import (
     DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX,
     DEFAULT_PIPELINE_FUNDAMENTALS_NAME,
@@ -438,7 +438,7 @@ def _build_filtered_universe_by_date(
     selected_symbols = set(symbols)
     filtered = universe.loc[normalized_symbols.isin(selected_symbols)].copy()
     filtered["symbol"] = normalized_symbols.loc[filtered.index]
-    filtered = filtered.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    filtered = drop_legacy_symbol_columns(filtered)
     if symbol_col == "order_book_id":
         filtered = filtered.drop(columns=["order_book_id"], errors="ignore")
 

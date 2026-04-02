@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from csml.config_utils import resolve_pipeline_config
 from csml import data_providers
-from csml.data_tools.symbols import ensure_symbol_columns
+from csml.data_tools.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 
@@ -55,7 +55,7 @@ def _normalize_symbol_frame(frame: pd.DataFrame, *, label: str) -> pd.DataFrame:
     frame["symbol"] = _normalize_symbol(frame["symbol"])
     frame = frame.dropna(subset=["trade_date", "symbol"])
     frame = frame.drop_duplicates(subset=["trade_date", "symbol"]).reset_index(drop=True)
-    frame = frame.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    frame = drop_legacy_symbol_columns(frame)
     return frame
 
 

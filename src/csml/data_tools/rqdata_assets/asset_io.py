@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from ...data_providers import _to_rqdata_symbol
-from ..symbols import ensure_symbol_columns
+from ..symbols import canonicalize_symbol_columns
 from .models import (
     DailyMirrorAuditRecord,
     DailyMirrorEntry,
@@ -154,9 +154,8 @@ def _canonicalize_symbol_frame_for_storage(
     context: str,
     preferred: Sequence[str],
 ) -> pd.DataFrame:
-    normalized = ensure_symbol_columns(symbol_frame, context=context)
+    normalized = canonicalize_symbol_columns(symbol_frame, context=context)
     normalized = _normalize_storage_symbol_column(normalized)
-    normalized = normalized.drop(columns=list(LEGACY_STORAGE_SYMBOL_COLUMNS), errors="ignore")
     columns = _canonicalize_output_columns(normalized.columns.tolist(), preferred=preferred)
     if not columns:
         return normalized.copy()
@@ -212,9 +211,9 @@ def _load_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFrame:
     normalized = _normalize_frame_columns(frame)
     if normalized.empty and len(normalized.columns) == 0:
         return normalized
-    normalized = ensure_symbol_columns(normalized, context=f"Mirror asset file {path.name}")
+    normalized = canonicalize_symbol_columns(normalized, context=f"Mirror asset file {path.name}")
     normalized = _normalize_storage_symbol_column(normalized)
-    return normalized.drop(columns=["ts_code"], errors="ignore")
+    return normalized
 
 
 def _load_existing_entry(path: Path, *, fields: Sequence[str]) -> tuple[MirrorEntry, pd.DataFrame]:
@@ -477,9 +476,9 @@ def _load_daily_symbol_frame(path: Path, *, fields: Sequence[str]) -> pd.DataFra
     normalized = _normalize_frame_columns(frame)
     if normalized.empty and len(normalized.columns) == 0:
         return normalized
-    normalized = ensure_symbol_columns(normalized, context=f"Daily mirror asset file {path.name}")
+    normalized = canonicalize_symbol_columns(normalized, context=f"Daily mirror asset file {path.name}")
     normalized = _normalize_storage_symbol_column(normalized)
-    return normalized.drop(columns=["ts_code"], errors="ignore")
+    return normalized
 
 
 def _load_existing_daily_entry(path: Path, *, fields: Sequence[str]) -> tuple[DailyMirrorEntry, pd.DataFrame]:
@@ -636,9 +635,9 @@ def _load_dated_symbol_frame(path: Path, *, date_column: str, fields: Sequence[s
     normalized = _normalize_frame_columns(frame)
     if normalized.empty and len(normalized.columns) == 0:
         return normalized
-    normalized = ensure_symbol_columns(normalized, context=f"Dated mirror asset file {path.name}")
+    normalized = canonicalize_symbol_columns(normalized, context=f"Dated mirror asset file {path.name}")
     normalized = _normalize_storage_symbol_column(normalized)
-    return normalized.drop(columns=["ts_code"], errors="ignore")
+    return normalized
 
 
 def _load_existing_dated_entry(

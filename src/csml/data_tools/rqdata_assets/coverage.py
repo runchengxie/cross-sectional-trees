@@ -10,7 +10,7 @@ import pandas as pd
 
 from ...config_utils import resolve_pipeline_config
 from ...rebalance import get_rebalance_dates
-from ..symbols import ensure_symbol_columns
+from ..symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from .build import (
     _default_pipeline_fundamentals_path,
     _load_universe_by_date_frame,
@@ -1386,7 +1386,7 @@ def inspect_hk_pit_coverage(args) -> int:
     trade_dates = trade_dates.loc[valid_trade_date].dt.normalize()
     frame["trade_date"] = trade_dates
     frame["symbol"] = frame["symbol"].astype(str).str.strip()
-    frame = frame.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    frame = drop_legacy_symbol_columns(frame)
     frame = frame.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
     trade_dates = frame["trade_date"]
     available_columns = frame.columns.tolist()

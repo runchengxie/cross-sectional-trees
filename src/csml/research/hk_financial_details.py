@@ -9,7 +9,7 @@ import pandas as pd
 import yaml
 
 from ..config_utils import resolve_repo_configs_dir
-from ..data_tools.symbols import ensure_symbol_columns
+from ..data_tools.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 
 
 def _resolve_default_mapping_file() -> Path:
@@ -152,7 +152,7 @@ def _load_probe_frame(probe_dir: Path, fields: tuple[str, ...]) -> pd.DataFrame:
     frame["if_adjusted"] = pd.to_numeric(frame["if_adjusted"], errors="coerce").astype("Int64")
     if fields:
         frame = frame[frame["field"].isin(fields)].copy()
-    frame = frame.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    frame = drop_legacy_symbol_columns(frame)
     frame = frame.dropna(subset=["symbol", "field", "quarter", "subject", "standard"]).copy()
     frame = frame.sort_values(
         ["field", "standard", "subject", "symbol", "quarter", "info_date"],
@@ -177,7 +177,7 @@ def _load_audit(probe_dir: Path) -> pd.DataFrame:
         audit["order_book_id"] = audit["order_book_id"].str.upper()
     if "rows" in audit.columns:
         audit["rows"] = pd.to_numeric(audit["rows"], errors="coerce").fillna(0).astype(int)
-    audit = audit.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    audit = drop_legacy_symbol_columns(audit)
     return audit
 
 

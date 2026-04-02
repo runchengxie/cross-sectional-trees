@@ -12,6 +12,7 @@ import pandas as pd
 
 from .data_tools.symbols import (
     PROVIDER_SYMBOL_PRIORITY,
+    drop_legacy_symbol_columns,
     ensure_symbol_columns,
     normalize_symbol_for_market,
     normalize_symbol_standard_name,
@@ -371,12 +372,10 @@ def _is_small_leading_calendar_gap(
     return 0 < gap_days <= int(max_gap_days)
 
 
-def _drop_legacy_symbol_aliases(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-    out = df.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
-    out.attrs = dict(getattr(df, "attrs", {}))
-    return out
+def _drop_legacy_symbol_aliases(df: pd.DataFrame | None) -> pd.DataFrame | None:
+    if df is None:
+        return None
+    return drop_legacy_symbol_columns(df)
 
 
 def _load_basic_rqdata(

@@ -11,7 +11,7 @@ import pandas as pd
 import yaml
 
 from csml.data_providers import _cache_tag, _fundamentals_cache_file, normalize_market, resolve_provider
-from csml.data_tools.symbols import ensure_symbol_columns
+from csml.data_tools.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from csml.rebalance import get_rebalance_dates
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
@@ -67,7 +67,7 @@ def _normalize_symbol_frame(frame: pd.DataFrame, *, label: str) -> pd.DataFrame:
         frame["valuation_trade_date"] = _normalize_trade_date(frame["valuation_trade_date"])
     frame = frame.dropna(subset=["trade_date", "symbol"])
     frame = frame.drop_duplicates(subset=["trade_date", "symbol"]).reset_index(drop=True)
-    frame = frame.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    frame = drop_legacy_symbol_columns(frame)
     frame = frame.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
     return frame
 

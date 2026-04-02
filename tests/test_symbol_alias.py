@@ -1,6 +1,6 @@
 import pandas as pd
 
-from csml.data_tools.symbols import ensure_symbol_columns
+from csml.data_tools.symbols import canonicalize_symbol_columns, drop_legacy_symbol_columns, ensure_symbol_columns
 from csml.pipeline import load_universe_by_date
 from csml.pipeline.support import _annotate_positions_window, _build_rebalance_diff
 
@@ -19,6 +19,53 @@ def test_ensure_symbol_columns_accepts_symbol_only():
     assert out["symbol"].tolist() == ["AAA", "BBB", ""]
     assert "ts_code" not in out.columns
     assert "stock_ticker" not in out.columns
+
+
+def test_canonicalize_symbol_columns_drops_legacy_aliases_but_keeps_order_book_id():
+    frame = pd.DataFrame(
+        {
+            "ts_code": ["00005.HK"],
+            "stock_ticker": ["5"],
+            "order_book_id": ["00005.XHKG"],
+            "weight": [1.0],
+        }
+    )
+
+    out = canonicalize_symbol_columns(frame, context="positions.csv")
+
+    assert out.columns.tolist() == ["order_book_id", "weight", "symbol"]
+    assert out.iloc[0]["symbol"] == "00005.HK"
+    assert "ts_code" not in out.columns
+    assert "stock_ticker" not in out.columns
+
+
+def test_canonicalize_symbol_columns_can_drop_order_book_id():
+    frame = pd.DataFrame(
+        {
+            "order_book_id": ["00005.XHKG"],
+            "weight": [1.0],
+        }
+    )
+
+    out = canonicalize_symbol_columns(
+        frame,
+        context="positions.csv",
+        drop_order_book_id=True,
+    )
+
+    assert out.columns.tolist() == ["weight", "symbol"]
+    assert out.iloc[0]["symbol"] == "00005.XHKG"
+    assert "order_book_id" not in out.columns
+
+
+def test_drop_legacy_symbol_columns_preserves_attrs():
+    frame = pd.DataFrame({"ts_code": ["AAA"], "value": [1]})
+    frame.attrs["cache_key"] = "demo"
+
+    out = drop_legacy_symbol_columns(frame)
+
+    assert out.columns.tolist() == ["value"]
+    assert out.attrs == {"cache_key": "demo"}
 
 
 def test_load_universe_by_date_accepts_stock_ticker_column(tmp_path):

@@ -68,3 +68,30 @@ def ensure_symbol_columns(
 
     normalized[SYMBOL_COL] = merged
     return normalized
+
+
+def drop_legacy_symbol_columns(
+    df: pd.DataFrame,
+    *,
+    drop_order_book_id: bool = False,
+) -> pd.DataFrame:
+    drop_columns = [*LEGACY_SYMBOL_COLUMNS]
+    if drop_order_book_id:
+        drop_columns.append("order_book_id")
+    out = df.drop(columns=drop_columns, errors="ignore")
+    out.attrs = dict(getattr(df, "attrs", {}))
+    return out
+
+
+def canonicalize_symbol_columns(
+    df: pd.DataFrame,
+    *,
+    context: str,
+    priority: Sequence[str] = DEFAULT_SYMBOL_PRIORITY,
+    drop_order_book_id: bool = False,
+) -> pd.DataFrame:
+    normalized = ensure_symbol_columns(df, context=context, priority=priority)
+    return drop_legacy_symbol_columns(
+        normalized,
+        drop_order_book_id=drop_order_book_id,
+    )

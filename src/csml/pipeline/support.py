@@ -11,6 +11,7 @@ import pandas as pd
 from ..data_providers import normalize_market
 from ..data_tools.symbols import (
     PROVIDER_SYMBOL_PRIORITY,
+    canonicalize_symbol_columns,
     ensure_symbol_columns,
     normalize_symbol_for_market,
     normalize_symbol_standard_name,
@@ -39,7 +40,7 @@ def _prepare_panel_join_frame(
             join_df = join_df.rename(columns=rename_map)
     if "trade_date" not in join_df.columns and "date" in join_df.columns:
         join_df = join_df.rename(columns={"date": "trade_date"})
-    join_df = ensure_symbol_columns(
+    join_df = canonicalize_symbol_columns(
         join_df,
         context=f"{item_label} data",
         priority=PROVIDER_SYMBOL_PRIORITY,
@@ -59,7 +60,6 @@ def _prepare_panel_join_frame(
             parsed = pd.to_datetime(join_df[date_col], errors="coerce")
             join_df[date_col] = parsed.dt.normalize()
     join_df["symbol"] = join_df["symbol"].astype(str).str.strip()
-    join_df = join_df.drop(columns=[col for col in ("ts_code", "stock_ticker") if col in join_df.columns])
     join_df = join_df.drop_duplicates(subset=["trade_date", "symbol"]).copy()
     return join_df.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
 
@@ -127,8 +127,7 @@ def _ensure_symbol_alias(frame: pd.DataFrame) -> pd.DataFrame:
         return frame
     if not any(col in frame.columns for col in ("symbol", "ts_code", "stock_ticker", "order_book_id")):
         return frame
-    out = ensure_symbol_columns(frame, context="Pipeline output")
-    return out.drop(columns=["ts_code", "stock_ticker"], errors="ignore")
+    return canonicalize_symbol_columns(frame, context="Pipeline output")
 
 
 def save_json(payload: dict, path: Path) -> None:

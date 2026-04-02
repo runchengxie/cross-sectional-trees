@@ -18,7 +18,7 @@ from ..config_utils import resolve_pipeline_config
 from ..data_interface import _patch_rqdatac_adjust_price_readonly
 from ..data_providers import normalize_market
 from . import holdings
-from ..data_tools.symbols import ensure_symbol_columns, normalize_symbol_for_market
+from ..data_tools.symbols import canonicalize_symbol_columns, ensure_symbol_columns, normalize_symbol_for_market
 
 
 def _load_config(path: str | None) -> dict:
@@ -383,12 +383,15 @@ def _prepare_selection(
     side: str,
     top_n: int,
 ) -> pd.DataFrame:
-    prepared = ensure_symbol_columns(selection, context="Holdings payload")
+    prepared = canonicalize_symbol_columns(
+        selection,
+        context="Holdings payload",
+        drop_order_book_id=True,
+    )
     prepared_market = _resolve_market({}, prepared["symbol"].tolist())
     prepared["symbol"] = prepared["symbol"].map(
         lambda value: normalize_symbol_for_market(value, market=prepared_market)
     )
-    prepared = prepared.drop(columns=["ts_code", "stock_ticker", "order_book_id"], errors="ignore")
     if "side" not in prepared.columns:
         prepared["side"] = "long"
     if "rank" not in prepared.columns:

@@ -11,7 +11,7 @@ import pandas as pd
 from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, resolve_repo_path
 from ..config_utils import resolve_pipeline_config
 from ..date_utils import resolve_date_token
-from ..data_tools.symbols import ensure_symbol_columns, normalize_symbol_for_market
+from ..data_tools.symbols import canonicalize_symbol_columns, normalize_symbol_for_market
 
 
 def _normalize_provider(value: object | None) -> str | None:
@@ -484,12 +484,15 @@ def main(argv: list[str] | None = None) -> None:
     if selection.empty:
         raise SystemExit("No holdings found for the latest entry date.")
 
-    selection = ensure_symbol_columns(selection, context=positions_path.name)
+    selection = canonicalize_symbol_columns(
+        selection,
+        context=positions_path.name,
+        drop_order_book_id=True,
+    )
     selection_market = date_market or _infer_market_from_symbols(selection["symbol"].tolist())
     selection["symbol"] = selection["symbol"].map(
         lambda value: normalize_symbol_for_market(value, market=selection_market)
     )
-    selection = selection.drop(columns=["ts_code", "stock_ticker", "order_book_id"], errors="ignore")
     if "side" not in selection.columns:
         selection["side"] = "long"
     if "rank" not in selection.columns:
