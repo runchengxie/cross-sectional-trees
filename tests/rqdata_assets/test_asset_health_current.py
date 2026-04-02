@@ -833,3 +833,370 @@ def test_inspect_hk_asset_health_reports_missing_asset_file_details_and_audit_is
             "sample_symbols": ["00011.HK", "00700.HK"],
         }
     ]
+
+
+def test_inspect_hk_asset_health_infers_common_hk_event_date_columns(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    specs = [
+        ("ex_factors", "ex_date", "ex_factor", 1.2),
+        ("dividends", "declaration_announcement_date", "dividend_cash_before_tax", 0.5),
+        ("industry_changes", "start_date", "industry_name", "金融"),
+    ]
+
+    for dataset, date_column, field_name, field_value in specs:
+        asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / dataset / f"{dataset}_demo"
+        data_dir = asset_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        (asset_dir / "manifest.yml").write_text(
+            yaml.safe_dump(
+                {
+                    "dataset": dataset,
+                    "query": {
+                        "end_date": "20260331",
+                        "fields": [field_name],
+                    },
+                },
+                sort_keys=False,
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+
+        pd.DataFrame(
+            {
+                date_column: ["20260331"],
+                field_name: [field_value],
+            }
+        ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+        pd.DataFrame(
+            [
+                {
+                    "symbol": "00005.HK",
+                    "order_book_id": "00005.XHKG",
+                    "status": "written",
+                    "max_date": "2026-03-31",
+                }
+            ]
+        ).to_csv(asset_dir / "audit.csv", index=False)
+
+        out_path = repo_root / f"{dataset}_asset_health.json"
+        args = SimpleNamespace(
+            asset_dir=str(asset_dir),
+            symbols_file=None,
+            by_date_file=None,
+            field=[],
+            date_column=None,
+            target_date=None,
+            sample_limit=5,
+            top_latest_dates=5,
+            include_history=False,
+            history_sample_limit=5,
+            format="json",
+            out=str(out_path),
+            fail_on_severity="none",
+        )
+
+        assert rqdata_assets.inspect_hk_asset_health(args) == 0
+        payload = json.loads(out_path.read_text(encoding="utf-8"))
+        assert payload["summary"]["date_column"] == date_column
+        assert payload["summary"]["selected_fields"] == [field_name]
+
+
+def test_inspect_hk_asset_health_skips_zero_coverage_manifest_fields_by_default(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "shares" / "shares_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "shares",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": ["total", "circulation_a", "management_circulation"],
+                },
+                "field_coverage": [
+                    {"field": "total", "nonnull_rows": 1, "symbols_with_values": 1},
+                    {"field": "circulation_a", "nonnull_rows": 0, "symbols_with_values": 0},
+                    {"field": "management_circulation", "nonnull_rows": 0, "symbols_with_values": 0},
+                ],
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "date": ["20260331"],
+            "total": [100.0],
+            "circulation_a": [None],
+            "management_circulation": [None],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+            }
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "shares_asset_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=[],
+        date_column=None,
+        target_date=None,
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=False,
+        history_sample_limit=5,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["selected_fields"] == ["total"]
+    assert payload["quality_checks"] == []
+
+
+def test_inspect_hk_asset_health_uses_trading_type_in_southbound_duplicate_keys(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "southbound" / "southbound_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "southbound",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": ["trading_type", "eligible"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "date": ["20260331", "20260331"],
+            "trading_type": ["sh", "sz"],
+            "eligible": [1, 1],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "written",
+                "max_date": "2026-03-31",
+            }
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "southbound_asset_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=[],
+        date_column=None,
+        target_date=None,
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=False,
+        history_sample_limit=5,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["symbols_with_duplicate_dates"] == 0
+    assert payload["summary"]["duplicate_date_groups"] == 0
+    assert payload["summary"]["duplicate_date_rows"] == 0
+    assert not any(
+        item.get("check") == "symbol_duplicate_dates_in_asset_file"
+        for item in payload["quality_checks"]
+    )
+
+
+def test_inspect_hk_asset_health_treats_event_metadata_as_non_value_and_uses_unique_id_keys(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "dividends" / "dividends_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "dividends",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": [],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "declaration_announcement_date": ["20260331", "20260331"],
+            "ex_dividend_date": ["20260415", "20260430"],
+            "payable_date": ["20260428", "20260512"],
+            "dividend_cash_before_tax": [0.5, 0.7],
+            "round_lot": [1000, 1000],
+            "unique_id": ["00005_01.XHKG", "00005_02.XHKG"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+            }
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "dividends_asset_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=[],
+        date_column=None,
+        target_date=None,
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=False,
+        history_sample_limit=5,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["selection_source"] == "inferred_non_key_columns"
+    assert payload["summary"]["selected_fields"] == ["dividend_cash_before_tax"]
+    assert payload["summary"]["symbols_with_duplicate_dates"] == 0
+    assert not any(
+        item.get("check") == "symbol_duplicate_dates_in_asset_file"
+        for item in payload["quality_checks"]
+    )
+
+
+def test_inspect_hk_asset_health_uses_dividend_event_dates_in_duplicate_keys(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "dividends" / "dividends_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "dividends",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": [],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "declaration_announcement_date": ["20260331", "20260331"],
+            "ex_dividend_date": ["20260415", "20260430"],
+            "book_closure_date": ["20260416", "20260502"],
+            "payable_date": ["20260428", "20260512"],
+            "dividend_cash_before_tax": [0.5, 0.7],
+            "unique_id": ["00005_01.XHKG", "00005_01.XHKG"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+            }
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "dividends_event_keys_asset_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=[],
+        date_column=None,
+        target_date=None,
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=False,
+        history_sample_limit=5,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["symbols_with_duplicate_dates"] == 0
+    assert payload["summary"]["duplicate_date_groups"] == 0
+    assert payload["summary"]["duplicate_date_rows"] == 0
+    assert not any(
+        item.get("check") == "symbol_duplicate_dates_in_asset_file"
+        for item in payload["quality_checks"]
+    )

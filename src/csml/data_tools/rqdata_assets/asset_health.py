@@ -27,7 +27,14 @@ from .shared import (
     _resolve_universe_by_date_columns,
 )
 
-DATE_COLUMN_CANDIDATES = ("trade_date", "date", "info_date")
+DATE_COLUMN_CANDIDATES = (
+    "trade_date",
+    "date",
+    "info_date",
+    "ex_date",
+    "declaration_announcement_date",
+    "start_date",
+)
 AUDIT_LATEST_DATE_COLUMNS = ("max_trade_date", "max_date", "max_info_date")
 AUDIT_SYMBOL_COLUMNS = ("symbol", "ts_code", "order_book_id")
 KEY_COLUMNS = {
@@ -38,11 +45,22 @@ KEY_COLUMNS = {
     "trade_date",
     "date",
     "info_date",
+    "ex_date",
+    "ex_end_date",
+    "announcement_date",
+    "declaration_announcement_date",
+    "ex_dividend_date",
+    "book_closure_date",
+    "payable_date",
+    "start_date",
+    "cancel_date",
     "quarter",
     "fiscal_year",
     "rice_create_tm",
     "standard",
     "if_adjusted",
+    "round_lot",
+    "unique_id",
     "index",
 }
 PLACEHOLDER_TOKENS = {
@@ -150,28 +168,120 @@ def _resolve_default_fields(
     manifest: Mapping[str, object] | None,
     columns: Sequence[str],
 ) -> tuple[list[str], str]:
+    def _filter_with_manifest_coverage(
+        values: Sequence[str],
+        *,
+        source_label: str,
+    ) -> tuple[list[str], str] | None:
+        fields = [field for field in values if field in columns]
+        if not fields:
+            return None
+
+        if not isinstance(manifest, Mapping):
+            return fields, source_label
+        coverage_rows = manifest.get("field_coverage")
+        if not isinstance(coverage_rows, Sequence) or isinstance(coverage_rows, (str, bytes)):
+            return fields, source_label
+
+        coverage_by_field: dict[str, Mapping[str, object]] = {}
+        for row in coverage_rows:
+            if not isinstance(row, Mapping):
+                continue
+            field = str(row.get("field") or "").strip()
+            if field:
+                coverage_by_field[field] = row
+        if not coverage_by_field:
+            return fields, source_label
+
+        filtered: list[str] = []
+        for field in fields:
+            coverage = coverage_by_field.get(field)
+            if coverage is None:
+                filtered.append(field)
+                continue
+            symbols_with_values = pd.to_numeric(
+                pd.Series([coverage.get("symbols_with_values")]),
+                errors="coerce",
+            ).iloc[0]
+            nonnull_rows = pd.to_numeric(
+                pd.Series([coverage.get("nonnull_rows")]),
+                errors="coerce",
+            ).iloc[0]
+            if (
+                (pd.notna(symbols_with_values) and float(symbols_with_values) > 0)
+                or (pd.notna(nonnull_rows) and float(nonnull_rows) > 0)
+            ):
+                filtered.append(field)
+
+        if filtered:
+            if len(filtered) != len(fields):
+                return filtered, f"{source_label}_nonzero_coverage"
+            return filtered, source_label
+        return fields, source_label
+
     if dataset == "daily":
-        fields = [field for field in DEFAULT_HK_DAILY_FIELDS if field in columns]
-        if fields:
-            return fields, "default_daily_fields"
+        resolved = _filter_with_manifest_coverage(
+            DEFAULT_HK_DAILY_FIELDS,
+            source_label="default_daily_fields",
+        )
+        if resolved is not None:
+            return resolved
     if dataset == "valuation":
-        fields = [field for field in DEFAULT_HK_VALUATION_FIELDS if field in columns]
-        if fields:
-            return fields, "default_valuation_fields"
+        resolved = _filter_with_manifest_coverage(
+            DEFAULT_HK_VALUATION_FIELDS,
+            source_label="default_valuation_fields",
+        )
+        if resolved is not None:
+            return resolved
 
     if isinstance(manifest, Mapping):
         query = manifest.get("query")
         if isinstance(query, Mapping):
             manifest_fields = query.get("fields")
             if isinstance(manifest_fields, Sequence) and not isinstance(manifest_fields, (str, bytes)):
-                fields = [str(field).strip() for field in manifest_fields if str(field).strip() in columns]
-                if fields:
-                    return fields, "manifest_query_fields"
+                resolved = _filter_with_manifest_coverage(
+                    [str(field).strip() for field in manifest_fields if str(field).strip()],
+                    source_label="manifest_query_fields",
+                )
+                if resolved is not None:
+                    return resolved
 
     inferred = [column for column in columns if column not in KEY_COLUMNS]
     if inferred:
         return inferred, "inferred_non_key_columns"
     raise SystemExit("No value fields resolved for asset health inspection.")
+
+
+def _duplicate_key_columns(
+    *,
+    dataset: str | None,
+    date_column: str,
+    columns: Sequence[str],
+) -> list[str]:
+    keys = [date_column]
+    if dataset == "southbound" and "trading_type" in columns:
+        keys.append("trading_type")
+    elif dataset == "dividends":
+        for column in ("ex_dividend_date", "book_closure_date", "payable_date", "unique_id"):
+            if column in columns and column not in keys:
+                keys.append(column)
+    elif dataset in {"ex_factors", "shares"} and "unique_id" in columns:
+        keys.append("unique_id")
+    elif dataset == "industry_changes" and "industry_code" in columns:
+        keys.append("industry_code")
+    return keys
+
+
+def _duplicate_key_read_columns(*, dataset: str | None) -> list[str]:
+    if dataset == "southbound":
+        return ["trading_type"]
+    if dataset == "dividends":
+        return ["ex_dividend_date", "book_closure_date", "payable_date", "unique_id"]
+    if dataset in {"ex_factors", "shares"}:
+        return ["unique_id"]
+    if dataset == "industry_changes":
+        return ["industry_code"]
+    return []
 
 
 def _resolve_fields(
@@ -1220,7 +1330,10 @@ def inspect_hk_asset_health(args) -> int:
         if path is None:
             continue
 
-        read_columns = [date_column, *selected_fields]
+        read_columns = _dedupe_preserve_order(
+            [date_column, *selected_fields, *_duplicate_key_read_columns(dataset=dataset)],
+            strip=True,
+        )
         try:
             frame = pd.read_parquet(path, columns=read_columns)
         except Exception:
@@ -1247,7 +1360,12 @@ def inspect_hk_asset_health(args) -> int:
                 )
             continue
 
-        duplicate_counts = work[date_column].value_counts()
+        duplicate_key_columns = _duplicate_key_columns(
+            dataset=dataset,
+            date_column=date_column,
+            columns=work.columns,
+        )
+        duplicate_counts = work.value_counts(subset=duplicate_key_columns)
         duplicate_date_count = int((duplicate_counts > 1).sum())
         if duplicate_date_count > 0:
             duplicate_date_stats["symbols"] = int(duplicate_date_stats["symbols"]) + 1
@@ -1263,9 +1381,9 @@ def inspect_hk_asset_health(args) -> int:
                 symbol,
                 limit=sample_limit,
             )
-            # Prefer the last observed row per date so downstream health checks stay stable.
+            # Prefer the last observed row per logical key so downstream health checks stay stable.
             work = (
-                work.drop_duplicates(subset=[date_column], keep="last")
+                work.drop_duplicates(subset=duplicate_key_columns, keep="last")
                 .sort_values(date_column)
                 .reset_index(drop=True)
             )
