@@ -91,7 +91,7 @@ uv sync --extra dev --extra rqdata
 * 文档改动至少检查交叉引用和路径是否仍然有效。
 * 如需在本地提前拦住文档 / 路径 / 快回归问题，可安装仓库内置 git hooks：`./scripts/dev/install_git_hooks.sh`。
 * 代码改动后，运行与改动范围匹配的测试。
-* HK + RQData 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/test_pipeline_filters.py`、`tests/test_fundamentals_providers.py`、`tests/test_data_providers_cache.py`。
+* HK + RQData 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/rqdata_assets/`、`tests/test_data_providers_cache.py`。
 
 ## 说明
 

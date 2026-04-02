@@ -138,7 +138,7 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 
 1. `unit`（默认日常回归）：不依赖外部账号、网络与真实行情接口。
 1. `integration`：覆盖跨模块流程（可包含较慢测试或更重的 fixture）。
-1. `slow`：离线但更重的回归。当前主要覆盖 `tests/test_pipeline_filters.py` 这类会反复拉起 pipeline 的用例，便于本地和 CI 拆分执行。
+1. `slow`：离线但更重的回归。当前主要覆盖 `tests/` 下这组 `test_pipeline_filters_*.py` 用例，它们会反复拉起 pipeline，便于本地和 CI 拆分执行。
 
 常用命令：
 
@@ -199,9 +199,9 @@ uv run python -c "import pandas as pd; from csml.metrics import summarize_ic; se
 scripts/dev/run_tests.sh all \
   tests/test_pipeline_validation.py \
   tests/test_summarize_runs.py \
-  tests/test_pipeline_filters.py \
+  tests/test_pipeline_filters_*.py \
   tests/test_fundamentals_providers.py \
-  tests/test_rqdata_assets.py \
+  tests/rqdata_assets/ \
   tests/test_universe_tools.py \
   tests/test_cli_core.py \
   tests/test_cli_rqdata.py \
@@ -217,9 +217,9 @@ scripts/dev/run_tests.sh all \
 如果你改的是 `configs/experiments/baseline/hk_selected__quarterly_price_only.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`、`configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`、`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_*.yml`，或者 `configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`、`configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml` 及其依赖的 pipeline 行为，建议至少理解这几组测试：
 
 1. `tests/test_pipeline_validation.py`：配置模板烟雾检查，确认季度模板的 `label/eval/backtest.rebalance_frequency` 一致，`fundamentals.source` 没写反。
-1. `tests/test_pipeline_filters.py`：provider/file 两路基本面并入、PIT 文件读取、披露日后的 `ffill`，以及慢财报派生因子是否按披露节奏生效。
+1. `tests/` 下这组 `test_pipeline_filters_*.py`：provider/file 两路基本面并入、PIT 文件读取、披露日后的 `ffill`，以及慢财报派生因子是否按披露节奏生效。
 1. `tests/test_fundamentals_providers.py`：HK + RQData provider 基本面抓取、标准化和缓存键行为。
-1. `tests/test_rqdata_assets.py`：`mirror-hk-pit-financials` 和 `build-hk-pit-fundamentals` 这条 PIT 资产预处理链路。
+1. `tests/rqdata_assets/`：`mirror-hk-pit-financials`、`build-hk-pit-fundamentals`、coverage / health 检查等 PIT 资产预处理链路。
 1. `tests/test_universe_tools.py`：港股通 universe 构建脚本的日期 token、输出路径和流动性筛选边界。
 1. `tests/test_cli_rqdata.py`、`tests/test_cli_research.py`：PIT 资产命令和 `sweep-linear` 命令参数解析。
 1. `tests/test_linear_sweep.py`：季度 PIT 线性 sweep 配置是否能被正确读取，生成的 jobs 和 base config 是否匹配。
@@ -238,7 +238,7 @@ scripts/dev/run_tests.sh all \
 | `release_tools` 打包 / Release staging | `tests/test_asset_release_scripts.py`、`tests/test_run_release_scripts.py` | 对应脚本最小打包烟雾检查 |
 | `csml data query` / metadata catalog / standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py` | 本地补一个 `csml data query --sql "select 1 as value"` |
 | `alloc-hk` / `liveops-hk` / xlsx 输出 | `tests/test_alloc_hk.py`、`tests/test_cli_liveops.py` | `uv sync --extra dev --extra liveops-hk` 后补最小 xlsx smoke |
-| HK + RQData provider / PIT fundamentals / universe | `tests/test_pipeline_validation.py`、`tests/test_pipeline_filters.py`、`tests/test_fundamentals_providers.py`、`tests/test_rqdata_assets.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
+| HK + RQData provider / PIT fundamentals / universe | `tests/test_pipeline_validation.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/rqdata_assets/`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
 | intraday / patch merge / provider overlay audit / financial details 分析 | `tests/test_hk_intraday_download.py`、`tests/test_hk_intraday_tools.py`、`tests/test_hk_asset_patch_merge.py`、`tests/test_audit_provider_valuation.py`、`tests/test_hk_financial_details_analysis.py` | 对应 playbook 里的最小命令烟雾检查 |
 
 ## 提交前检查建议
