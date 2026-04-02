@@ -147,6 +147,7 @@ def test_inspect_hk_asset_health_reports_stale_symbols_and_ffill_candidates(tmp_
             "symbol": "00005.HK",
             "last_nonnull_date": "2026-03-30",
             "age_days": 1,
+            "reference_context": "no_daily_reference",
         }
     ]
     assert field_map["pe_ratio_ttm"]["sample_missing_symbols"] == ["00005.HK"]
@@ -158,6 +159,14 @@ def test_inspect_hk_asset_health_reports_stale_symbols_and_ffill_candidates(tmp_
     assert field_map["pb_ratio_ttm"]["missing_and_never_nonnull"] == 1
     assert field_map["pb_ratio_ttm"]["unusable_but_prior_clean"] == 1
     assert field_map["pb_ratio_ttm"]["ffill_age_days_max"] == 1
+    assert field_map["pb_ratio_ttm"]["sample_oldest_ffill_symbols"] == [
+        {
+            "symbol": "00005.HK",
+            "last_nonnull_date": "2026-03-30",
+            "age_days": 1,
+            "reference_context": "no_daily_reference",
+        }
+    ]
     assert field_map["pb_ratio_ttm"]["sample_missing_symbols"] == ["00005.HK", "00011.HK"]
     assert field_map["pb_ratio_ttm"]["sample_prior_nonnull_symbols"] == ["00005.HK"]
     assert payload["quality_checks"] == [
@@ -186,6 +195,108 @@ def test_inspect_hk_asset_health_reports_stale_symbols_and_ffill_candidates(tmp_
         "sample_failing_checks": [],
         "message": "1 quality issue(s) detected, including at least one error.",
     }
+
+
+def test_inspect_hk_asset_health_downgrades_provider_like_valuation_ffill_with_daily_reference(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_provider_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    daily_asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_provider_demo"
+    daily_data_dir = daily_asset_dir / "data"
+    daily_data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "valuation",
+                "query": {
+                    "start_date": "20260301",
+                    "end_date": "20260331",
+                    "fields": ["pe_ratio_ttm"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260328", "20260331"],
+            "pe_ratio_ttm": [10.0, None],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "trade_date": ["20260328", "20260331"],
+            "close": [8.0, 8.0],
+        }
+    ).to_parquet(daily_data_dir / "00005.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+            }
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "valuation_provider_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        field=["pe_ratio_ttm"],
+        date_column=None,
+        target_date="20260331",
+        sample_limit=5,
+        top_latest_dates=5,
+        daily_asset_dir=str(daily_asset_dir),
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    field_map = {item["field"]: item for item in payload["field_coverage"]}
+    assert field_map["pe_ratio_ttm"]["ffill_age_days_max"] is None
+    assert field_map["pe_ratio_ttm"]["provider_like_unusable_on_target_date"] == 1
+    assert field_map["pe_ratio_ttm"]["provider_ffill_age_days_max"] == 3
+    assert field_map["pe_ratio_ttm"]["sample_provider_like_ffill_symbols"] == [
+        {
+            "symbol": "00005.HK",
+            "last_nonnull_date": "2026-03-28",
+            "age_days": 3,
+            "reference_context": "no_daily_price_change",
+        }
+    ]
+    assert payload["quality_checks"] == [
+        {
+            "check": "field_all_clean_missing_on_target_date_provider_like",
+            "field": "pe_ratio_ttm",
+            "severity": "info",
+            "affected_symbols": 1,
+            "affected_pct": 100.0,
+            "sample_symbols": ["00005.HK"],
+        },
+        {
+            "check": "field_provider_like_ffill_age_gt_1d",
+            "field": "pe_ratio_ttm",
+            "severity": "info",
+            "affected_symbols": 1,
+            "affected_pct": 100.0,
+            "sample_symbols": ["00005.HK"],
+        },
+    ]
+    assert payload["quality_verdict"]["overall_severity"] == "info"
 
 def test_inspect_hk_asset_health_supports_symbol_filters_and_extended_sanity_checks(
     tmp_path, monkeypatch

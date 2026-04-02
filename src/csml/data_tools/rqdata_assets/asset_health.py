@@ -77,6 +77,14 @@ PLACEHOLDER_TOKENS = {
     "#n/a",
 }
 VALUATION_STALE_RUN_MIN_LENGTH = 5
+VALUATION_PROVIDER_LIKE_REASON_LABELS = {
+    "no_daily_reference_window": "no_daily_reference_window",
+    "no_finite_daily_close": "no_finite_daily_close",
+    "daily_reference_stale": "daily_reference_stale",
+    "no_daily_price_change": "no_daily_price_change",
+    "daily_price_changed": "daily_price_changed",
+    "no_daily_reference": "no_daily_reference",
+}
 
 
 def _parse_compact_date(value: object, *, label: str) -> pd.Timestamp:
@@ -807,21 +815,6 @@ def _update_valuation_history_state(
     for field in fields:
         if field == date_column or field not in deduped.columns:
             continue
-        check_key = f"valuation_stale_run_any_date::{field}"
-        check_state = history_state["issues"].setdefault(
-            check_key,
-            {
-                "check": "valuation_stale_run_any_date",
-                "field": field,
-                "severity": "warning",
-                "stale_run_min_length": VALUATION_STALE_RUN_MIN_LENGTH,
-                "affected_symbols": set(),
-                "affected_rows": 0,
-                "sample_rows": [],
-                "run_lengths": [],
-                "symbol_max_run_lengths": {},
-            },
-        )
         value_keys = _build_history_clean_value_keys(deduped[field])
         if not bool(value_keys.notna().any()):
             continue
@@ -853,44 +846,23 @@ def _update_valuation_history_state(
         segments = segments.loc[segments["run_length"] >= VALUATION_STALE_RUN_MIN_LENGTH].copy()
         if segments.empty:
             continue
-        if daily_reference is not None and not daily_reference.empty:
-            actionable_mask: list[bool] = []
-            for _, segment in segments.iterrows():
-                start_date = pd.to_datetime(segment["start_date"], errors="coerce").normalize()
-                end_date = pd.to_datetime(segment["end_date"], errors="coerce").normalize()
-                reference_window = daily_reference.loc[
-                    (daily_reference["trade_date"] >= start_date)
-                    & (daily_reference["trade_date"] <= end_date)
-                ]
-                if reference_window.empty:
-                    actionable_mask.append(True)
-                    continue
-                close_values = pd.to_numeric(reference_window["close"], errors="coerce")
-                finite_mask = np.isfinite(close_values.to_numpy(dtype="float64"))
-                if not bool(finite_mask.any()):
-                    actionable_mask.append(True)
-                    continue
-                actionable_mask.append(int(close_values.loc[finite_mask].nunique(dropna=True)) > 1)
-            segments = segments.loc[actionable_mask].copy()
-            if segments.empty:
-                continue
         segments = segments.sort_values(
             ["run_length", "end_date", "start_date"],
             ascending=[False, False, False],
         ).reset_index(drop=True)
 
-        check_state["affected_symbols"].add(symbol)
-        check_state["affected_rows"] = int(check_state["affected_rows"]) + int(segments["run_length"].sum())
-        check_state["run_lengths"].extend(int(item) for item in segments["run_length"].tolist())
-        symbol_max_run_lengths = check_state["symbol_max_run_lengths"]
-        symbol_max_run_lengths[symbol] = max(
-            int(symbol_max_run_lengths.get(symbol) or 0),
-            int(segments["run_length"].max()),
-        )
-
-        for _, segment in segments.head(sample_limit).iterrows():
-            _append_history_sample_row(
-                check_state["sample_rows"],
+        grouped_segments: dict[str, list[dict[str, object]]] = {
+            "actionable": [],
+            "provider_like": [],
+        }
+        for _, segment in segments.iterrows():
+            context = _classify_valuation_reference_window(
+                start_date=segment["start_date"],
+                end_date=segment["end_date"],
+                daily_reference=daily_reference,
+            )
+            group = "provider_like" if context["provider_like"] else "actionable"
+            grouped_segments[group].append(
                 {
                     "symbol": symbol,
                     "start_date": segment["start_date"],
@@ -903,9 +875,99 @@ def _update_valuation_history_state(
                         ).days
                     ),
                     "stale_value": segment["stale_value"],
-                },
-                limit=sample_limit,
+                    "reference_context": context["reason"],
+                }
             )
+
+        for group, group_segments in grouped_segments.items():
+            if not group_segments:
+                continue
+            check_name = (
+                "valuation_stale_run_provider_like_any_date"
+                if group == "provider_like"
+                else "valuation_stale_run_any_date"
+            )
+            check_key = f"{check_name}::{field}"
+            check_state = history_state["issues"].setdefault(
+                check_key,
+                {
+                    "check": check_name,
+                    "field": field,
+                    "severity": "info" if group == "provider_like" else "warning",
+                    "stale_run_min_length": VALUATION_STALE_RUN_MIN_LENGTH,
+                    "affected_symbols": set(),
+                    "affected_rows": 0,
+                    "sample_rows": [],
+                    "run_lengths": [],
+                    "symbol_max_run_lengths": {},
+                },
+            )
+            check_state["affected_symbols"].add(symbol)
+            check_state["affected_rows"] = int(check_state["affected_rows"]) + int(
+                sum(int(item["run_length"]) for item in group_segments)
+            )
+            check_state["run_lengths"].extend(int(item["run_length"]) for item in group_segments)
+            symbol_max_run_lengths = check_state["symbol_max_run_lengths"]
+            symbol_max_run_lengths[symbol] = max(
+                int(symbol_max_run_lengths.get(symbol) or 0),
+                max(int(item["run_length"]) for item in group_segments),
+            )
+            for segment in group_segments[:sample_limit]:
+                _append_history_sample_row(
+                    check_state["sample_rows"],
+                    segment,
+                    limit=sample_limit,
+                )
+
+
+def _classify_valuation_reference_window(
+    *,
+    start_date: object,
+    end_date: object,
+    daily_reference: pd.DataFrame | None,
+) -> dict[str, object]:
+    if daily_reference is None or daily_reference.empty:
+        return {
+            "provider_like": False,
+            "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["no_daily_reference"],
+        }
+
+    start_ts = pd.to_datetime(start_date, errors="coerce").normalize()
+    end_ts = pd.to_datetime(end_date, errors="coerce").normalize()
+    reference_window = daily_reference.loc[
+        (daily_reference["trade_date"] >= start_ts) & (daily_reference["trade_date"] <= end_ts)
+    ]
+    if reference_window.empty:
+        return {
+            "provider_like": True,
+            "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["no_daily_reference_window"],
+        }
+
+    close_values = pd.to_numeric(reference_window["close"], errors="coerce")
+    finite_mask = np.isfinite(close_values.to_numpy(dtype="float64"))
+    if not bool(finite_mask.any()):
+        return {
+            "provider_like": True,
+            "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["no_finite_daily_close"],
+        }
+
+    reference_window = reference_window.loc[finite_mask].copy()
+    close_values = close_values.loc[finite_mask]
+    latest_trade_date = pd.to_datetime(reference_window["trade_date"], errors="coerce").max()
+    if pd.notna(latest_trade_date) and latest_trade_date.normalize() < end_ts:
+        return {
+            "provider_like": True,
+            "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["daily_reference_stale"],
+        }
+    if int(close_values.nunique(dropna=True)) <= 1:
+        return {
+            "provider_like": True,
+            "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["no_daily_price_change"],
+        }
+    return {
+        "provider_like": False,
+        "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["daily_price_changed"],
+    }
 
 
 def _finalize_history_payload(history_state: Mapping[str, object] | None) -> dict[str, object] | None:
@@ -1279,6 +1341,7 @@ def inspect_hk_asset_health(args) -> int:
             "sample_unusable_symbols": [],
             "clean_value_counter": Counter(),
             "ffill_age_records": [],
+            "provider_ffill_age_records": [],
         }
         for field in selected_fields
     }
@@ -1326,6 +1389,9 @@ def inspect_hk_asset_health(args) -> int:
         status = ""
         if audit_entry:
             status = _clean_optional_text(audit_entry.get("status")) or ""
+        daily_reference = None
+        if dataset == "valuation":
+            daily_reference = _load_daily_reference_frame(daily_reference_asset_dir, symbol)
 
         if path is None:
             continue
@@ -1411,7 +1477,6 @@ def inspect_hk_asset_health(args) -> int:
                     sample_limit=history_sample_limit,
                 )
             elif dataset == "valuation":
-                daily_reference = _load_daily_reference_frame(daily_reference_asset_dir, symbol)
                 _update_valuation_history_state(
                     work=work,
                     symbol=symbol,
@@ -1549,13 +1614,24 @@ def inspect_hk_asset_health(args) -> int:
                 age_days = int((target_date - last_nonnull_date).days)
                 stats["unusable_but_prior_clean"] = int(stats["unusable_but_prior_clean"]) + 1
                 _append_sample(stats["sample_prior_clean_symbols"], symbol, limit=sample_limit)
-                stats["ffill_age_records"].append(
-                    {
-                        "symbol": symbol,
-                        "last_nonnull_date": _format_date(last_nonnull_date),
-                        "age_days": age_days,
-                    }
-                )
+                ffill_record = {
+                    "symbol": symbol,
+                    "last_nonnull_date": _format_date(last_nonnull_date),
+                    "age_days": age_days,
+                }
+                if dataset == "valuation":
+                    context = _classify_valuation_reference_window(
+                        start_date=last_nonnull_date,
+                        end_date=target_date,
+                        daily_reference=daily_reference,
+                    )
+                    ffill_record["reference_context"] = context["reason"]
+                    if context["provider_like"]:
+                        stats["provider_ffill_age_records"].append(ffill_record)
+                    else:
+                        stats["ffill_age_records"].append(ffill_record)
+                else:
+                    stats["ffill_age_records"].append(ffill_record)
 
     symbols_scanned = len(candidate_symbols)
     latest_rows = [
@@ -1595,6 +1671,12 @@ def inspect_hk_asset_health(args) -> int:
             key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
         )
         ffill_ages = [int(item["age_days"]) for item in ffill_age_records]
+        provider_ffill_age_records = sorted(
+            stats["provider_ffill_age_records"],
+            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
+        )
+        provider_ffill_ages = [int(item["age_days"]) for item in provider_ffill_age_records]
+        provider_like_unusable = int(len(provider_ffill_age_records))
         field_rows.append(
             {
                 "field": field,
@@ -1618,6 +1700,8 @@ def inspect_hk_asset_health(args) -> int:
                 "zero_pct_of_clean_nonmissing": _round_pct(zero, clean_nonmissing),
                 "unusable_but_prior_clean": unusable_but_prior_clean,
                 "unusable_but_prior_clean_pct_of_unusable": _round_pct(unusable_but_prior_clean, unusable),
+                "provider_like_unusable_on_target_date": provider_like_unusable,
+                "provider_like_unusable_pct_of_unusable": _round_pct(provider_like_unusable, unusable),
                 "ffill_age_days_min": min(ffill_ages) if ffill_ages else None,
                 "ffill_age_days_p50": _quantile_or_none(ffill_ages, 0.5),
                 "ffill_age_days_p90": _quantile_or_none(ffill_ages, 0.9),
@@ -1625,6 +1709,13 @@ def inspect_hk_asset_health(args) -> int:
                 "ffill_age_gt_1d_symbols": int(sum(age > 1 for age in ffill_ages)),
                 "ffill_age_gt_5d_symbols": int(sum(age > 5 for age in ffill_ages)),
                 "ffill_age_gt_10d_symbols": int(sum(age > 10 for age in ffill_ages)),
+                "provider_ffill_age_days_min": min(provider_ffill_ages) if provider_ffill_ages else None,
+                "provider_ffill_age_days_p50": _quantile_or_none(provider_ffill_ages, 0.5),
+                "provider_ffill_age_days_p90": _quantile_or_none(provider_ffill_ages, 0.9),
+                "provider_ffill_age_days_max": max(provider_ffill_ages) if provider_ffill_ages else None,
+                "provider_ffill_age_gt_1d_symbols": int(sum(age > 1 for age in provider_ffill_ages)),
+                "provider_ffill_age_gt_5d_symbols": int(sum(age > 5 for age in provider_ffill_ages)),
+                "provider_ffill_age_gt_10d_symbols": int(sum(age > 10 for age in provider_ffill_ages)),
                 "unique_clean_values_on_target_date": unique_clean_values,
                 "most_common_clean_value_on_target_date": most_common_clean_value,
                 "most_common_clean_value_symbols": int(most_common_clean_value_symbols),
@@ -1644,6 +1735,7 @@ def inspect_hk_asset_health(args) -> int:
                 "sample_prior_clean_symbols": list(stats["sample_prior_clean_symbols"]),
                 "sample_unusable_symbols": list(stats["sample_unusable_symbols"]),
                 "sample_oldest_ffill_symbols": ffill_age_records[:sample_limit],
+                "sample_provider_like_ffill_symbols": provider_ffill_age_records[:sample_limit],
             }
         )
 
@@ -1655,6 +1747,7 @@ def inspect_hk_asset_health(args) -> int:
         denominator = int(row.get("symbols_with_target_date_row") or 0)
         clean_nonmissing = int(row.get("clean_nonmissing_on_target_date") or 0)
         unusable = int(row.get("unusable_on_target_date") or 0)
+        provider_like_unusable = int(row.get("provider_like_unusable_on_target_date") or 0)
         placeholder_count = int(row.get("placeholder_on_target_date") or 0)
         nonfinite_count = int(row.get("nonfinite_on_target_date") or 0)
         zero_count = int(row.get("zero_on_target_date") or 0)
@@ -1665,21 +1758,37 @@ def inspect_hk_asset_health(args) -> int:
             and row.get("most_common_clean_value_on_target_date") == 0
         )
         if denominator > 0 and clean_nonmissing == 0:
-            quality_checks.append(
-                {
-                    "check": "field_all_clean_missing_on_target_date",
-                    "field": field,
-                    "severity": "error",
-                    "affected_symbols": denominator,
-                    "affected_pct": _round_pct(denominator, denominator),
-                    "sample_symbols": _combine_samples(
-                        row.get("sample_unusable_symbols") or [],
-                        row.get("sample_prior_clean_symbols") or [],
-                        row.get("sample_missing_symbols") or [],
-                        limit=sample_limit,
-                    ),
-                }
-            )
+            if dataset == "valuation" and provider_like_unusable > 0 and provider_like_unusable == unusable:
+                quality_checks.append(
+                    {
+                        "check": "field_all_clean_missing_on_target_date_provider_like",
+                        "field": field,
+                        "severity": "info",
+                        "affected_symbols": denominator,
+                        "affected_pct": _round_pct(denominator, denominator),
+                        "sample_symbols": [
+                            str(item.get("symbol"))
+                            for item in (row.get("sample_provider_like_ffill_symbols") or [])
+                            if isinstance(item, Mapping)
+                        ][:sample_limit],
+                    }
+                )
+            else:
+                quality_checks.append(
+                    {
+                        "check": "field_all_clean_missing_on_target_date",
+                        "field": field,
+                        "severity": "error",
+                        "affected_symbols": denominator,
+                        "affected_pct": _round_pct(denominator, denominator),
+                        "sample_symbols": _combine_samples(
+                            row.get("sample_unusable_symbols") or [],
+                            row.get("sample_prior_clean_symbols") or [],
+                            row.get("sample_missing_symbols") or [],
+                            limit=sample_limit,
+                        ),
+                    }
+                )
         if placeholder_count > 0:
             quality_checks.append(
                 {
@@ -1738,6 +1847,24 @@ def inspect_hk_asset_health(args) -> int:
                     "sample_symbols": [
                         str(item.get("symbol"))
                         for item in (row.get("sample_oldest_ffill_symbols") or [])
+                        if isinstance(item, Mapping)
+                    ][:sample_limit],
+                }
+            )
+        for threshold, severity in ((10, "warning"), (5, "info"), (1, "info")):
+            affected = int(row.get(f"provider_ffill_age_gt_{threshold}d_symbols") or 0)
+            if affected <= 0:
+                continue
+            quality_checks.append(
+                {
+                    "check": f"field_provider_like_ffill_age_gt_{threshold}d",
+                    "field": field,
+                    "severity": severity,
+                    "affected_symbols": affected,
+                    "affected_pct": _round_pct(affected, unusable),
+                    "sample_symbols": [
+                        str(item.get("symbol"))
+                        for item in (row.get("sample_provider_like_ffill_symbols") or [])
                         if isinstance(item, Mapping)
                     ][:sample_limit],
                 }

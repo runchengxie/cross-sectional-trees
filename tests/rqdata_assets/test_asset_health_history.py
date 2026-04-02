@@ -246,6 +246,7 @@ def test_inspect_hk_asset_health_include_history_reports_valuation_stale_runs(tm
                     "run_length": 6,
                     "span_days": 7,
                     "stale_value": 10,
+                    "reference_context": "no_daily_reference",
                 }
             ],
             "field": "pe_ratio_ttm",
@@ -259,7 +260,7 @@ def test_inspect_hk_asset_health_include_history_reports_valuation_stale_runs(tm
         }
     ]
 
-def test_inspect_hk_asset_health_include_history_filters_valuation_stale_runs_with_daily_reference(
+def test_inspect_hk_asset_health_include_history_classifies_provider_like_valuation_stale_runs_with_daily_reference(
     tmp_path, monkeypatch
 ):
     repo_root = tmp_path / "repo"
@@ -365,6 +366,32 @@ def test_inspect_hk_asset_health_include_history_filters_valuation_stale_runs_wi
                     "run_length": 6,
                     "span_days": 7,
                     "stale_value": 20,
+                    "reference_context": "daily_price_changed",
+                }
+            ],
+            "field": "pe_ratio_ttm",
+            "stale_run_min_length": 5,
+            "run_length_p50": 6,
+            "run_length_p90": 6,
+            "run_length_max": 6,
+            "run_length_gt_3_symbols": 1,
+            "run_length_gt_5_symbols": 1,
+            "run_length_gt_10_symbols": 0,
+        },
+        {
+            "check": "valuation_stale_run_provider_like_any_date",
+            "severity": "info",
+            "affected_symbols": 1,
+            "affected_rows": 6,
+            "sample_rows": [
+                {
+                    "symbol": "00005.HK",
+                    "start_date": "2026-03-20",
+                    "end_date": "2026-03-27",
+                    "run_length": 6,
+                    "span_days": 7,
+                    "stale_value": 10,
+                    "reference_context": "no_daily_price_change",
                 }
             ],
             "field": "pe_ratio_ttm",
