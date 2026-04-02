@@ -118,6 +118,39 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 * `tests/test_provider_integration.py` 也带 `integration` 标记，但未设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时会自动 skip，所以“integration” 不等于真实 provider 在线联调。
 * 文档引用和公开入口契约现在也有测试兜底，主要看 `tests/test_docs_contracts.py` 和 `tests/test_run_tests_script.py`。
 
+## HK 资产维护 Driver
+
+如果你在做 HK + RQData 资产维护，而不是日常研究 / pipeline 开发，可以直接用维护者 driver：
+
+```bash
+python scripts/internal/run_hk_asset_workflow.py --target-date 20260402
+```
+
+默认会串联三段：
+
+* `refresh`：刷新 `instruments / daily / daily_clean / valuation / ex_factors / dividends / shares / industry_changes / southbound`
+* `inspect`：把健康检查报告统一写到 `artifacts/reports/`
+* `package`：把当前这次 run 解析到的 snapshot 交给 `csml.release_tools.package_assets`
+
+常见变体：
+
+```bash
+# 先看完整命令计划，不实际执行
+python scripts/internal/run_hk_asset_workflow.py --target-date 20260402 --dry-run
+
+# 只续跑镜像，不做后续体检 / 打包
+python scripts/internal/run_hk_asset_workflow.py --phase refresh --target-date 20260402 --resume
+
+# 在已有 package 结果上继续发 GitHub release
+python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 20260402 --repo owner/name --prerelease
+```
+
+说明：
+
+* 这是维护者脚本，不是公开 `csml` 主 CLI。
+* 它只做薄编排；底层数据抓取、健康检查、打包、release 逻辑仍然分别落在现有命令里。
+* `refresh` 成功后默认会回指通用 `latest` alias；如果你只想产出 dated snapshot，不想动 alias，传 `--no-repoint-latest`。
+
 ### 测试矩阵
 
 把最容易混淆的事实放在一张表里：

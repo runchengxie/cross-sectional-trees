@@ -13,6 +13,10 @@ def _prepare_demo_assets(repo_root: Path) -> None:
     daily_dir.mkdir(parents=True, exist_ok=True)
     (daily_dir / "00005.HK.parquet").write_text("daily", encoding="utf-8")
 
+    valuation_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_demo"
+    valuation_dir.mkdir(parents=True, exist_ok=True)
+    (valuation_dir / "00005.HK.parquet").write_text("valuation", encoding="utf-8")
+
     instruments_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instruments"
     instruments_dir.mkdir(parents=True, exist_ok=True)
     (instruments_dir / "instruments_demo.parquet").write_text("instruments", encoding="utf-8")
@@ -64,6 +68,7 @@ def _stage_demo_parts(tmp_path: Path) -> tuple[object, Path]:
             "symbols_demo.txt",
             "--universe-meta",
             "meta_demo.yml",
+            "--no-valuation",
             "--no-pit",
             "--no-reference",
             "--no-exchange-rate",
@@ -74,6 +79,51 @@ def _stage_demo_parts(tmp_path: Path) -> tuple[object, Path]:
             "daily",
             "--part",
             "universe",
+        ]
+    )
+
+    assert exit_code == 0
+    return package_script, stage_root
+
+
+def _stage_demo_valuation_part(tmp_path: Path) -> tuple[object, Path]:
+    package_script = _load_module("csml.release_tools.package_assets")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _prepare_demo_assets(repo_root)
+
+    package_script.REPO_ROOT = repo_root
+    package_script.ASSETS_ROOT = repo_root / "artifacts" / "assets"
+
+    stage_root = tmp_path / "stage_valuation"
+    exit_code = package_script.main(
+        [
+            "--dest",
+            str(stage_root),
+            "--name",
+            "demo_assets_valuation",
+            "--as-of",
+            "20260318",
+            "--daily-snapshot",
+            "daily_demo",
+            "--valuation-snapshot",
+            "valuation_demo",
+            "--instruments-file",
+            "instruments_demo.parquet",
+            "--universe-by-date",
+            "by_date_demo.csv",
+            "--universe-symbols",
+            "symbols_demo.txt",
+            "--universe-meta",
+            "meta_demo.yml",
+            "--no-pit",
+            "--no-reference",
+            "--no-exchange-rate",
+            "--no-southbound",
+            "--no-financial-details",
+            "--no-industry",
+            "--part",
+            "valuation",
         ]
     )
 
@@ -115,6 +165,7 @@ def _stage_demo_supplemental_parts(tmp_path: Path) -> tuple[object, Path]:
             "southbound_demo",
             "--financial-details-snapshot",
             "financial_details_demo",
+            "--no-valuation",
             "--no-pit",
             "--no-reference",
             "--no-industry",
@@ -175,6 +226,45 @@ def test_release_assets_builds_multiple_tarballs_for_selected_parts(tmp_path):
     assert (tar_dir / "assets-demo_assets-20260318-daily.tar.gz").exists()
     assert (tar_dir / "assets-demo_assets-20260318-universe.tar.gz").exists()
     assert (stage_root / "README.md").exists()
+
+
+def test_package_assets_can_stage_valuation_part(tmp_path):
+    _, stage_root = _stage_demo_valuation_part(tmp_path)
+
+    assert (
+        stage_root
+        / "valuation"
+        / "rqdata"
+        / "hk"
+        / "valuation"
+        / "valuation_demo"
+        / "00005.HK.parquet"
+    ).exists()
+    assert (stage_root / "valuation" / "rqdata" / "hk" / "valuation" / "latest").is_symlink()
+
+    root_manifest = yaml.safe_load((stage_root / "manifest.yml").read_text(encoding="utf-8"))
+    assert sorted(root_manifest["parts"].keys()) == ["valuation"]
+
+
+def test_release_assets_builds_tarballs_for_valuation_part(tmp_path):
+    _, stage_root = _stage_demo_valuation_part(tmp_path)
+    release_script = _load_module("csml.release_tools.release_assets")
+
+    tar_dir = tmp_path / "tarballs_valuation"
+    exit_code = release_script.main(
+        [
+            "--staged-root",
+            str(stage_root),
+            "--tar-dir",
+            str(tar_dir),
+            "--part",
+            "valuation",
+            "--skip-upload",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (tar_dir / "assets-demo_assets_valuation-20260318-valuation.tar.gz").exists()
 
 
 def test_package_assets_stages_supplemental_parts_and_manifests(tmp_path):

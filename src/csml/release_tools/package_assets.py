@@ -16,6 +16,7 @@ REPO_ROOT = find_repo_root(__file__)
 ASSETS_ROOT = REPO_ROOT / "artifacts" / "assets"
 AVAILABLE_PART_CHOICES = (
     "daily",
+    "valuation",
     "instruments",
     "pit",
     "reference",
@@ -33,6 +34,7 @@ DEFAULT_PART_CHOICES = tuple(
 PRESETS = {
     "hk_full": {
         "daily_snapshot": "hk_all_2000_20260327_daily_final_latest",
+        "valuation_snapshot": "hk_all_valuation_latest",
         "instruments_file": "hk_all_instruments_20260327.parquet",
         "pit_snapshot": "hk_all_2000_2025_full_market_latest",
         "ex_factors_snapshot": "hk_all_2000_20260327_ex_factors_full_market_latest",
@@ -49,6 +51,7 @@ PRESETS = {
     },
     "hk_connect": {
         "daily_snapshot": "hk_all_2000_20260327_daily_final_latest",
+        "valuation_snapshot": None,
         "instruments_file": "hk_connect_full_20260326.parquet",
         "pit_snapshot": "hk_connect_full_2000_2025_full_latest",
         "ex_factors_snapshot": None,
@@ -149,6 +152,9 @@ def _latest_link(link: str, target: str) -> dict:
 def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
     preset = PRESETS[args.preset]
     daily_snapshot = args.daily_snapshot or preset["daily_snapshot"]
+    valuation_snapshot = (
+        None if args.no_valuation else (args.valuation_snapshot or preset.get("valuation_snapshot"))
+    )
     instruments_file = args.instruments_file or preset["instruments_file"]
     pit_snapshot = None if args.no_pit else (args.pit_snapshot or preset["pit_snapshot"])
     if args.no_reference:
@@ -189,6 +195,11 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
     universe_meta = args.universe_meta if args.universe_meta is not None else preset["universe_meta"]
 
     daily_dir = resolve_snapshot_path(ASSETS_ROOT / "rqdata" / "hk" / "daily", daily_snapshot)
+    valuation_dir = (
+        resolve_snapshot_path(ASSETS_ROOT / "rqdata" / "hk" / "valuation", valuation_snapshot)
+        if valuation_snapshot
+        else None
+    )
     instruments_path = resolve_snapshot_path(
         ASSETS_ROOT / "rqdata" / "hk" / "instruments",
         instruments_file,
@@ -259,6 +270,8 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
     universe_meta_path = resolve_snapshot_path(universe_root, universe_meta) if universe_meta else None
 
     ensure_exists(daily_dir, "Daily snapshot directory")
+    if valuation_dir:
+        ensure_exists(valuation_dir, "Valuation snapshot directory")
     ensure_exists(instruments_path, "Instruments file")
     if pit_dir:
         ensure_exists(pit_dir, "PIT snapshot directory")
@@ -285,6 +298,7 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
 
     return {
         "daily_dir": daily_dir,
+        "valuation_dir": valuation_dir,
         "instruments_path": instruments_path,
         "pit_dir": pit_dir,
         "ex_factors_dir": ex_factors_dir,
@@ -303,6 +317,7 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
 
 def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
     daily_dir = resolved["daily_dir"]
+    valuation_dir = resolved["valuation_dir"]
     instruments_path = resolved["instruments_path"]
     pit_dir = resolved["pit_dir"]
     ex_factors_dir = resolved["ex_factors_dir"]
@@ -335,6 +350,25 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
             ],
             "summary": {"snapshot": daily_dir.name},
         },
+        "valuation": {
+            "description": "HK valuation snapshot directory.",
+            "entries": [
+                _part_entry(
+                    "valuation",
+                    valuation_dir,
+                    f"rqdata/hk/valuation/{valuation_dir.name}",
+                )
+            ],
+            "latest_links": [
+                _latest_link(
+                    "rqdata/hk/valuation/latest",
+                    f"rqdata/hk/valuation/{valuation_dir.name}",
+                )
+            ],
+            "summary": {"snapshot": valuation_dir.name},
+        }
+        if valuation_dir
+        else None,
         "instruments": {
             "description": "HK instruments parquet.",
             "entries": [
@@ -397,6 +431,8 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
             )
         )
         parts["universe"]["summary"]["meta"] = universe_meta_path.name
+
+    parts = {name: spec for name, spec in parts.items() if spec is not None}
 
     if pit_dir:
         parts["pit"] = {
@@ -572,7 +608,10 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
 
 
 def _selected_parts(requested_parts: list[str], available_parts: dict[str, dict]) -> list[str]:
-    selected = list(dict.fromkeys(requested_parts or DEFAULT_PART_CHOICES))
+    if requested_parts:
+        selected = list(dict.fromkeys(requested_parts))
+    else:
+        selected = [part for part in DEFAULT_PART_CHOICES if part in available_parts]
     missing = [part for part in selected if part not in available_parts]
     if missing:
         raise SystemExit(f"Requested parts are not available under the current preset/settings: {missing}")
@@ -676,8 +715,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--no-pit", action="store_true", help="Skip PIT assets.")
     parser.add_argument("--no-reference", action="store_true", help="Skip reference assets (ex_factors/dividends/shares).")
+    parser.add_argument("--no-valuation", action="store_true", help="Skip valuation assets.")
     parser.add_argument("--as-of", dest="as_of", default=None)
     parser.add_argument("--daily-snapshot", default=None)
+    parser.add_argument("--valuation-snapshot", default=None)
     parser.add_argument("--instruments-file", default=None)
     parser.add_argument("--pit-snapshot", default=None)
     parser.add_argument("--ex-factors-snapshot", default=None)
