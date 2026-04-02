@@ -85,6 +85,7 @@ VALUATION_PROVIDER_LIKE_REASON_LABELS = {
     "no_daily_price_change": "no_daily_price_change",
     "daily_price_changed": "daily_price_changed",
     "no_daily_reference": "no_daily_reference",
+    "ex_factor_event_in_window": "ex_factor_event_in_window",
 }
 VALUATION_FRESH_TARGET_GAP_REASON_LABELS = {
     "target_market_val_present": "target_market_val_present",
@@ -834,6 +835,7 @@ def _update_valuation_history_state(
     history_state: dict[str, object],
     sample_limit: int,
     daily_reference: pd.DataFrame | None = None,
+    ex_factor_reference: pd.DataFrame | None = None,
 ) -> None:
     deduped = (
         work.drop_duplicates(subset=[date_column], keep="last")
@@ -891,6 +893,7 @@ def _update_valuation_history_state(
                 start_date=segment["start_date"],
                 end_date=segment["end_date"],
                 daily_reference=daily_reference,
+                ex_factor_reference=ex_factor_reference,
             )
             group = "provider_like" if context["provider_like"] else "actionable"
             grouped_segments[group].append(
@@ -956,15 +959,26 @@ def _classify_valuation_reference_window(
     start_date: object,
     end_date: object,
     daily_reference: pd.DataFrame | None,
+    ex_factor_reference: pd.DataFrame | None = None,
 ) -> dict[str, object]:
+    start_ts = pd.to_datetime(start_date, errors="coerce").normalize()
+    end_ts = pd.to_datetime(end_date, errors="coerce").normalize()
+    if ex_factor_reference is not None and not ex_factor_reference.empty:
+        ex_window = ex_factor_reference.loc[
+            (ex_factor_reference["ex_date"] >= start_ts) & (ex_factor_reference["ex_date"] <= end_ts)
+        ]
+        if not ex_window.empty:
+            return {
+                "provider_like": True,
+                "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["ex_factor_event_in_window"],
+            }
+
     if daily_reference is None or daily_reference.empty:
         return {
             "provider_like": False,
             "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["no_daily_reference"],
         }
 
-    start_ts = pd.to_datetime(start_date, errors="coerce").normalize()
-    end_ts = pd.to_datetime(end_date, errors="coerce").normalize()
     reference_window = daily_reference.loc[
         (daily_reference["trade_date"] >= start_ts) & (daily_reference["trade_date"] <= end_ts)
     ]
@@ -1334,6 +1348,44 @@ def _load_daily_reference_frame(daily_asset_dir: Path | None, symbol: str) -> pd
     )
 
 
+def _resolve_default_hk_ex_factor_asset_dir(asset_dir: Path) -> Path | None:
+    hk_root = asset_dir.parent.parent
+    if hk_root.name != "hk":
+        return None
+    ex_factor_root = hk_root / "ex_factors"
+    if not ex_factor_root.exists():
+        return None
+    preferred = ex_factor_root / "hk_all_ex_factors_latest"
+    if preferred.exists() and (preferred / "data").exists():
+        return preferred
+    return None
+
+
+def _load_ex_factor_reference_frame(ex_factor_asset_dir: Path | None, symbol: str) -> pd.DataFrame | None:
+    if ex_factor_asset_dir is None:
+        return None
+    ex_factor_path = ex_factor_asset_dir / "data" / f"{symbol}.parquet"
+    if not ex_factor_path.exists():
+        return None
+    try:
+        frame = pd.read_parquet(ex_factor_path, columns=["ex_date"])
+    except Exception:
+        frame = pd.read_parquet(ex_factor_path)
+    frame = _normalize_frame_columns(frame)
+    if "ex_date" not in frame.columns:
+        return None
+    frame["ex_date"] = pd.to_datetime(frame["ex_date"], errors="coerce").dt.normalize()
+    frame = frame.dropna(subset=["ex_date"]).copy()
+    if frame.empty:
+        return None
+    return (
+        frame[["ex_date"]]
+        .drop_duplicates(subset=["ex_date"], keep="last")
+        .sort_values("ex_date")
+        .reset_index(drop=True)
+    )
+
+
 def inspect_hk_asset_health(args) -> int:
     asset_dir = _resolve_path(args.asset_dir)
     data_dir = asset_dir / "data"
@@ -1383,6 +1435,7 @@ def inspect_hk_asset_health(args) -> int:
     include_history = bool(getattr(args, "include_history", False))
     history_state = _init_history_state(dataset=dataset) if include_history else None
     daily_reference_asset_dir: Path | None = None
+    ex_factor_reference_asset_dir: Path | None = None
     if getattr(args, "daily_asset_dir", None):
         daily_reference_asset_dir = _resolve_path(args.daily_asset_dir)
         if not daily_reference_asset_dir.exists():
@@ -1391,6 +1444,8 @@ def inspect_hk_asset_health(args) -> int:
             raise SystemExit(
                 f"Daily reference asset directory is missing data/: {daily_reference_asset_dir}"
             )
+    if dataset == "valuation":
+        ex_factor_reference_asset_dir = _resolve_default_hk_ex_factor_asset_dir(asset_dir)
 
     field_stats: dict[str, dict[str, object]] = {
         field: {
@@ -1465,8 +1520,10 @@ def inspect_hk_asset_health(args) -> int:
         if audit_entry:
             status = _clean_optional_text(audit_entry.get("status")) or ""
         daily_reference = None
+        ex_factor_reference = None
         if dataset == "valuation":
             daily_reference = _load_daily_reference_frame(daily_reference_asset_dir, symbol)
+            ex_factor_reference = _load_ex_factor_reference_frame(ex_factor_reference_asset_dir, symbol)
 
         if path is None:
             continue
@@ -1569,6 +1626,7 @@ def inspect_hk_asset_health(args) -> int:
                     history_state=history_state,
                     sample_limit=history_sample_limit,
                     daily_reference=daily_reference,
+                    ex_factor_reference=ex_factor_reference,
                 )
 
         latest_ts = work[date_column].max()
@@ -1720,6 +1778,7 @@ def inspect_hk_asset_health(args) -> int:
                         start_date=last_nonnull_date,
                         end_date=target_date,
                         daily_reference=daily_reference,
+                        ex_factor_reference=ex_factor_reference,
                     )
                     ffill_record["reference_context"] = context["reason"]
                     if context["provider_like"]:

@@ -405,6 +405,120 @@ def test_inspect_hk_asset_health_include_history_classifies_provider_like_valuat
         }
     ]
 
+
+def test_inspect_hk_asset_health_include_history_downgrades_valuation_stale_runs_with_ex_factor_events(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_history_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    daily_asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_ref_demo"
+    daily_data_dir = daily_asset_dir / "data"
+    daily_data_dir.mkdir(parents=True)
+    ex_factor_asset_dir = (
+        repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "ex_factors" / "hk_all_ex_factors_latest"
+    )
+    ex_factor_data_dir = ex_factor_asset_dir / "data"
+    ex_factor_data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "valuation",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": ["pe_ratio_ttm"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260320", "20260323", "20260324", "20260325", "20260326", "20260327"],
+            "pe_ratio_ttm": [20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+        }
+    ).to_parquet(data_dir / "00011.HK.parquet", index=False)
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260320", "20260323", "20260324", "20260325", "20260326", "20260327"],
+            "close": [20.0, 21.0, 22.0, 23.0, 24.0, 25.0],
+        }
+    ).to_parquet(daily_data_dir / "00011.HK.parquet", index=False)
+
+    pd.DataFrame(
+        {
+            "ex_date": ["20260324"],
+            "ex_factor": [1.2],
+        }
+    ).to_parquet(ex_factor_data_dir / "00011.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00011.HK",
+                "order_book_id": "00011.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+            }
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "valuation_history_health_ex_factor_ref.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=["pe_ratio_ttm"],
+        date_column=None,
+        target_date="20260331",
+        daily_asset_dir=str(daily_asset_dir),
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=True,
+        history_sample_limit=3,
+        format="json",
+        out=str(out_path),
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    history = payload["history"]
+    assert history["issues"] == [
+        {
+            "check": "valuation_stale_run_provider_like_any_date",
+            "severity": "info",
+            "affected_symbols": 1,
+            "affected_rows": 6,
+            "sample_rows": [
+                {
+                    "symbol": "00011.HK",
+                    "start_date": "2026-03-20",
+                    "end_date": "2026-03-27",
+                    "run_length": 6,
+                    "span_days": 7,
+                    "stale_value": 20,
+                    "reference_context": "ex_factor_event_in_window",
+                }
+            ],
+            "field": "pe_ratio_ttm",
+            "stale_run_min_length": 5,
+            "run_length_p50": 6,
+            "run_length_p90": 6,
+            "run_length_max": 6,
+            "run_length_gt_3_symbols": 1,
+            "run_length_gt_5_symbols": 1,
+            "run_length_gt_10_symbols": 0,
+        }
+    ]
+
 def test_assess_trainable_fill_dependence_marks_healthier_pit_only_route_green():
     assessment = rqdata_assets._assess_trainable_fill_dependence(
         trainable_estimate={
