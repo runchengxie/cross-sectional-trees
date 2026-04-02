@@ -220,6 +220,7 @@ def test_inspect_hk_intraday_health_reports_integrity_and_daily_reconciliation(t
     assert payload["daily_reconciliation"]["summary"]["mismatch_counts"] == {
         "daily_close_mismatch": 1
     }
+    assert payload["daily_reconciliation"]["summary"]["suppressed_mismatch_counts"] == {}
     assert payload["daily_reconciliation"]["sample_mismatch_rows"] == [
         {
             "symbol": "00011.HK",
@@ -259,3 +260,102 @@ def test_inspect_hk_intraday_health_reports_integrity_and_daily_reconciliation(t
         fail_on_severity="warning",
     )
     assert rqdata_assets.inspect_hk_intraday_health(fail_args) == 2
+
+
+def test_inspect_hk_intraday_health_suppresses_minor_ohl_reconciliation_noise(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    intraday_path = repo_root / "artifacts" / "cache" / "intraday" / "hk_all_5m_demo.parquet"
+    intraday_path.parent.mkdir(parents=True)
+    daily_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_demo"
+    (daily_dir / "data").mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    date_text = "2026-03-31"
+    base_times = _hk_5m_timestamps(date_text)
+    rows: list[dict[str, object]] = []
+    for idx, timestamp in enumerate(base_times):
+        price = 100.0 + idx * 0.1
+        rows.append(
+            {
+                "symbol": "00005.HK",
+                "trade_datetime": timestamp,
+                "open": price,
+                "high": price + 0.3,
+                "low": price - 0.3,
+                "close": price + 0.1,
+                "volume": 10.0,
+                "amount": (price + 0.1) * 10.0,
+            }
+        )
+        price_2 = 200.0 + idx * 0.1
+        rows.append(
+            {
+                "symbol": "00011.HK",
+                "trade_datetime": timestamp,
+                "open": price_2,
+                "high": price_2 + 0.3,
+                "low": price_2 - 0.3,
+                "close": price_2 + 0.1,
+                "volume": 20.0,
+                "amount": (price_2 + 0.1) * 20.0,
+            }
+        )
+    intraday_frame = pd.DataFrame(rows).sort_values(["symbol", "trade_datetime"]).reset_index(drop=True)
+    intraday_frame.to_parquet(intraday_path, index=False)
+
+    symbol_00005 = intraday_frame.loc[intraday_frame["symbol"] == "00005.HK"].copy()
+    symbol_00011 = intraday_frame.loc[intraday_frame["symbol"] == "00011.HK"].copy()
+    pd.DataFrame(
+        {
+            "trade_date": ["20260331"],
+            "open": [float(symbol_00005["open"].iloc[0]) + 0.15],
+            "high": [float(symbol_00005["high"].max()) - 0.05],
+            "low": [float(symbol_00005["low"].min()) + 0.10],
+            "close": [float(symbol_00005["close"].iloc[-1])],
+            "volume": [float(symbol_00005["volume"].sum())],
+            "total_turnover": [float(symbol_00005["amount"].sum())],
+        }
+    ).to_parquet(daily_dir / "data" / "00005.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "trade_date": ["20260331"],
+            "open": [float(symbol_00011["open"].iloc[0])],
+            "high": [float(symbol_00011["high"].max())],
+            "low": [float(symbol_00011["low"].min()) + 2.0],
+            "close": [float(symbol_00011["close"].iloc[-1])],
+            "volume": [float(symbol_00011["volume"].sum())],
+            "total_turnover": [float(symbol_00011["amount"].sum())],
+        }
+    ).to_parquet(daily_dir / "data" / "00011.HK.parquet", index=False)
+
+    out_path = repo_root / "intraday_health_minor_ohl.json"
+    args = SimpleNamespace(
+        input=[str(intraday_path)],
+        daily_asset_dir=str(daily_dir),
+        sample_limit=5,
+        expected_bars_per_day=66,
+        numeric_rtol=1e-6,
+        numeric_atol=1e-8,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_intraday_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    checks = {item["check"]: item for item in payload["quality_checks"]}
+    assert "daily_open_mismatch" not in checks
+    assert "daily_high_mismatch" not in checks
+    assert "daily_low_mismatch" in checks
+    assert checks["daily_low_mismatch"]["affected_items"] == 1
+    assert payload["daily_reconciliation"]["summary"]["mismatch_counts"] == {
+        "daily_low_mismatch": 1
+    }
+    assert payload["daily_reconciliation"]["summary"]["suppressed_mismatch_counts"] == {
+        "daily_high_mismatch": 1,
+        "daily_low_mismatch": 1,
+        "daily_open_mismatch": 1,
+    }

@@ -504,6 +504,8 @@ def test_cli_parses_rqdata_asset_commands():
             "pb_ratio_ttm",
             "--target-date",
             "20260331",
+            "--daily-asset-dir",
+            "artifacts/assets/rqdata/hk/daily/demo",
             "--sample-limit",
             "8",
             "--top-latest-dates",
@@ -526,6 +528,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert asset_health.by_date_file == "artifacts/assets/universe/demo_by_date.csv"
     assert asset_health.field == ["pe_ratio_ttm", "pb_ratio_ttm"]
     assert asset_health.target_date == "20260331"
+    assert asset_health.daily_asset_dir == "artifacts/assets/rqdata/hk/daily/demo"
     assert asset_health.sample_limit == 8
     assert asset_health.top_latest_dates == 3
     assert asset_health.include_history is True

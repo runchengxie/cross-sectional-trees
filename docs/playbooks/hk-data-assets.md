@@ -29,13 +29,14 @@
 
 | 场景 | 当前默认入口 | 说明 |
 | --- | --- | --- |
-| HK 月频研究 | `configs/presets/hk.yml` | 默认使用 `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest`、`artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`、`artifacts/assets/universe/hk_connect_full_research_by_date.csv` |
+| HK 月频研究 | `configs/presets/hk.yml` | 默认使用 `artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest`、`artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`、`artifacts/assets/universe/hk_connect_full_research_by_date.csv` |
 | HK 季频 PIT 研究 | `configs/presets/hk_quarterly_pit_hybrid.yml` | 默认使用 `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 和 `artifacts/assets/universe/hk_selected_pit_research_by_date.csv` |
 | 全市场离线 alias | `artifacts/assets/rqdata/hk/.../hk_all_*_latest` | 当前工作区里 `daily`、`instruments`、`ex_factors`、`dividends`、`shares`、`industry_changes` 这些 alias 已切到当前可用的 canonical snapshot；其中价格与 reference 层已前移到 `2026-03-26` |
 | 行业标签 alias 所在目录 | `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/` | 当前目录下已经有 `industry_labels_d/m/q.parquet`，研究直接 join 时优先用这些派生文件 |
 
 需要单独注意的一点：
 
+* 研究默认读取的 `daily` alias 现在是 `hk_all_daily_clean_latest`；`hk_all_daily_latest` 继续保留原始日线底座，给资产巡检、patch merge 和 clean-layer 重建用。
 * `src/csml/release_tools/package_assets.py` 里的 preset 是静态快照名，不是 alias 解析器。
 * 当前 `hk_full` / `hk_connect` preset 里的 `daily_snapshot` 已更新到 `hk_all_2000_20260326_daily_final_latest`，但它依然是静态名字，不会自动跟着 alias 再往前走。
 * `southbound` 和 `financial_details` 现在也能打成独立 part；`exchange_rate` 默认走的是一个已完成的短窗 probe snapshot，不是假装“2000-至今”的长窗都已经成功。

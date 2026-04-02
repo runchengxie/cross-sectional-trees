@@ -60,7 +60,7 @@ export RQDATA_PASSWORD=your_password
 data:
   provider: rqdata
   rqdata:
-    daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
+    daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
     instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
 ```
 

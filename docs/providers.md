@@ -109,13 +109,14 @@ fundamentals:
 data:
   provider: rqdata
   rqdata:
-    daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
+    daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
     instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
     ex_factors_dir: artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest
 ```
 
 说明：
 
+* 研究默认建议优先指向 `hk_all_daily_clean_latest`；保留 `hk_all_daily_latest` 主要是为了原始资产巡检、patch merge 和 clean-layer 重建。
 * `daily_asset_dir` 与 `instruments_file` 同时存在时，`rqdatac.init` 会被跳过
 * 这条“跳过”只针对本地 daily / instruments 读取；如果后续还要在线拉 fundamentals / provider overlay，cache miss 时仍会 lazy init `rqdatac`
 * 如果提供 `ex_factors_dir`，pipeline 可以自动派生 `tr_close`

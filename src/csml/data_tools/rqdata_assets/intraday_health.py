@@ -23,6 +23,7 @@ _EXPECTED_HK_5M_TIME_KEYS = [
     *pd.date_range("13:05", "16:00", freq="5min").strftime("%H:%M").tolist(),
 ]
 _EXPECTED_HK_5M_TIME_KEY_SET = set(_EXPECTED_HK_5M_TIME_KEYS)
+_MINOR_DAILY_RECON_PRICE_DIFF_ATOL = 0.2
 
 
 def _round_pct(numerator: int, denominator: int) -> float:
@@ -150,6 +151,77 @@ def _compare_numeric(
     return result
 
 
+def _daily_reconciliation_exact_match_mask(
+    merged: pd.DataFrame,
+    *,
+    rtol: float,
+    atol: float,
+) -> dict[str, pd.Series]:
+    return {
+        "close": ~_compare_numeric(merged["intraday_close"], merged["daily_close"], rtol=rtol, atol=atol),
+        "volume": ~_compare_numeric(merged["intraday_volume"], merged["daily_volume"], rtol=rtol, atol=atol),
+        "amount": ~_compare_numeric(merged["intraday_amount"], merged["daily_amount"], rtol=rtol, atol=atol),
+    }
+
+
+def _resolve_reconciliation_suppressed_mask(
+    *,
+    merged: pd.DataFrame,
+    mismatch_mask: pd.Series,
+    issue_key: str,
+    exact_match_mask: Mapping[str, pd.Series],
+) -> pd.Series:
+    base_mask = (
+        mismatch_mask
+        & exact_match_mask["close"]
+        & exact_match_mask["volume"]
+        & exact_match_mask["amount"]
+    )
+    if not bool(base_mask.any()):
+        return pd.Series(False, index=merged.index, dtype=bool)
+
+    if issue_key == "daily_open_mismatch":
+        within_session_range = (
+            merged["daily_open"].notna()
+            & merged["intraday_low"].notna()
+            & merged["intraday_high"].notna()
+            & (merged["daily_open"] >= merged["intraday_low"])
+            & (merged["daily_open"] <= merged["intraday_high"])
+        )
+        return base_mask & within_session_range
+
+    if issue_key in {"daily_high_mismatch", "daily_low_mismatch"}:
+        intraday_field = "intraday_high" if issue_key == "daily_high_mismatch" else "intraday_low"
+        daily_field = "daily_high" if issue_key == "daily_high_mismatch" else "daily_low"
+        diff = (pd.to_numeric(merged[intraday_field], errors="coerce") - pd.to_numeric(
+            merged[daily_field], errors="coerce")
+        ).abs()
+        small_diff_mask = diff <= _MINOR_DAILY_RECON_PRICE_DIFF_ATOL
+        if issue_key == "daily_high_mismatch":
+            auction_like_mask = (
+                pd.to_numeric(merged["daily_high"], errors="coerce")
+                > pd.to_numeric(merged["intraday_high"], errors="coerce")
+            ) & np.isclose(
+                pd.to_numeric(merged["daily_high"], errors="coerce"),
+                pd.to_numeric(merged["daily_open"], errors="coerce"),
+                rtol=1e-6,
+                atol=1e-8,
+            )
+        else:
+            auction_like_mask = (
+                pd.to_numeric(merged["daily_low"], errors="coerce")
+                < pd.to_numeric(merged["intraday_low"], errors="coerce")
+            ) & np.isclose(
+                pd.to_numeric(merged["daily_low"], errors="coerce"),
+                pd.to_numeric(merged["daily_open"], errors="coerce"),
+                rtol=1e-6,
+                atol=1e-8,
+            )
+        return base_mask & (small_diff_mask | auction_like_mask)
+
+    return pd.Series(False, index=merged.index, dtype=bool)
+
+
 def _build_daily_reconciliation(
     *,
     intraday_daily: pd.DataFrame,
@@ -163,6 +235,7 @@ def _build_daily_reconciliation(
         raise SystemExit(f"Daily asset directory is missing data/: {daily_asset_dir}")
 
     mismatch_counts: Counter[str] = Counter()
+    suppressed_mismatch_counts: Counter[str] = Counter()
     sample_missing_daily_rows: list[dict[str, object]] = []
     sample_mismatch_rows: list[dict[str, object]] = []
     reconciled_symbol_days = 0
@@ -225,6 +298,11 @@ def _build_daily_reconciliation(
         if matched.empty:
             continue
         reconciled_symbol_days += int(len(matched))
+        exact_match_mask = _daily_reconciliation_exact_match_mask(
+            matched,
+            rtol=rtol,
+            atol=atol,
+        )
 
         for intraday_field, daily_field, issue_key in (
             ("intraday_open", "daily_open", "daily_open_mismatch"),
@@ -240,6 +318,15 @@ def _build_daily_reconciliation(
                 rtol=rtol,
                 atol=atol,
             )
+            suppressed_mask = _resolve_reconciliation_suppressed_mask(
+                merged=matched,
+                mismatch_mask=mismatch_mask,
+                issue_key=issue_key,
+                exact_match_mask=exact_match_mask,
+            )
+            if bool(suppressed_mask.any()):
+                suppressed_mismatch_counts[issue_key] += int(suppressed_mask.sum())
+                mismatch_mask = mismatch_mask & ~suppressed_mask
             count = int(mismatch_mask.sum())
             if count <= 0:
                 continue
@@ -263,6 +350,7 @@ def _build_daily_reconciliation(
             "reconciled_symbol_days": reconciled_symbol_days,
             "missing_daily_symbol_days": missing_daily_rows,
             "mismatch_counts": dict(sorted(mismatch_counts.items())),
+            "suppressed_mismatch_counts": dict(sorted(suppressed_mismatch_counts.items())),
         },
         "sample_missing_daily_rows": sample_missing_daily_rows,
         "sample_mismatch_rows": sample_mismatch_rows,

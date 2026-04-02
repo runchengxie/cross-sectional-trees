@@ -12,7 +12,7 @@ from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_re
 
 
 REPO_ROOT = find_repo_root(__file__)
-DEFAULT_DAILY_ASSET_DIR = "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest"
+DEFAULT_DAILY_ASSET_DIR = "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest"
 DEFAULT_VALUATION_ASSET_DIR = "artifacts/assets/rqdata/hk/valuation/hk_all_valuation_latest"
 DEFAULT_WEIGHT_COL = "hk_total_market_val"
 DEFAULT_ENTRY_PRICE_COL = "open"

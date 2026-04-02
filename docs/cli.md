@@ -433,6 +433,7 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valua
 csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --field pe_ratio_ttm --field pb_ratio_ttm --target-date 20260331 --format json --out artifacts/reports/hk_valuation_health_20260331.json
 csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --by-date-file artifacts/assets/universe/hk_selected_pit_research_by_date.csv --target-date 20260331
 csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --target-date 20260401 --include-history --history-sample-limit 10 --format json --out artifacts/reports/hk_daily_health_20260401_full_history.json
+csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260401_valuation_full_market_refetched_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260401_daily_clean_latest --target-date 20260401 --include-history --format json --out artifacts/reports/hk_valuation_health_20260401_with_daily_ref.json
 ```
 
 说明：
@@ -445,6 +446,7 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/daily
 * `sample_stale_symbols` 会列出没有覆盖到目标日的样本 symbol，适合快速判断是原始数据没补齐，还是个别 symbol 落后。
 * `sample_missing_asset_file_details` 和 `audit_issue_groups` 会把 `audit.csv` 里的失败原因带出来，便于区分权限问题、quota 问题和单纯没有远端数据。
 * 加上 `--include-history` 后，命令会额外扫描每个 parquet 的全历史，输出 `history` section；当前覆盖 `daily` 资产的价格边界异常、非正价格、负成交量、负成交额，以及 `valuation` 资产的连续 stale run，`--history-sample-limit` 控制样本行数量。
+* 对 `valuation` 资产，如果同时传 `--daily-asset-dir`，历史 stale-run 检查会用本地 `daily close` 做去噪：只有在对应 run 期间 `close` 发生变化的常数段才继续报出来，长期停牌 / 无交易导致的平价常数段会被抑制。
 * JSON 输出会额外给出统一的 `quality_verdict`；需要阻断时可用 `--fail-on-severity none|info|warning|error`。
 
 ### csml rqdata inspect-hk-intraday-health
@@ -461,6 +463,7 @@ csml rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5
 * `--input` 可以重复传多个 parquet；如果同名 `.parts/` 目录存在，命令会自动展开分片文件。
 * HK `5m` 的默认 full-session bar 数是 `66`，命令会同时检查缺 bar、off-schedule bar 和 `bar_count != 66` 的 symbol-day。
 * 传入 `--daily-asset-dir` 后，会把 intraday 聚合后的 `open/high/low/close/volume/amount` 和本地 daily parquet 对账，方便定位是 intraday 本身漏 bar，还是 daily / intraday 之间有不一致。
+* 对账时，`close/volume/amount` 仍按严格数值比较；`open/high/low` 则会自动抑制一部分“close/volume/amount 已经对上、但只差轻微 tick / 集合竞价口径”的噪音 mismatch，真正留下来的 warning 会更偏向值得人工看的偏差。
 * JSON 输出会额外给出统一的 `quality_verdict`；需要阻断时可用 `--fail-on-severity none|info|warning|error`。
 
 ### csml rqdata build-hk-daily-clean-layer

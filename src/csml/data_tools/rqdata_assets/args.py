@@ -925,6 +925,14 @@ def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--daily-asset-dir",
+        help=(
+            "Optional HK daily asset snapshot used to de-noise valuation stale-run history. "
+            "When provided together with --include-history on valuation assets, stale runs are only "
+            "flagged when the corresponding daily close changed during the run."
+        ),
+    )
+    parser.add_argument(
         "--sample-limit",
         type=int,
         default=5,

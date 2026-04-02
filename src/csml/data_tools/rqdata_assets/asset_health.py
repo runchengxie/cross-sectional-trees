@@ -684,6 +684,7 @@ def _update_valuation_history_state(
     fields: Sequence[str],
     history_state: dict[str, object],
     sample_limit: int,
+    daily_reference: pd.DataFrame | None = None,
 ) -> None:
     deduped = (
         work.drop_duplicates(subset=[date_column], keep="last")
@@ -742,6 +743,27 @@ def _update_valuation_history_state(
         segments = segments.loc[segments["run_length"] >= VALUATION_STALE_RUN_MIN_LENGTH].copy()
         if segments.empty:
             continue
+        if daily_reference is not None and not daily_reference.empty:
+            actionable_mask: list[bool] = []
+            for _, segment in segments.iterrows():
+                start_date = pd.to_datetime(segment["start_date"], errors="coerce").normalize()
+                end_date = pd.to_datetime(segment["end_date"], errors="coerce").normalize()
+                reference_window = daily_reference.loc[
+                    (daily_reference["trade_date"] >= start_date)
+                    & (daily_reference["trade_date"] <= end_date)
+                ]
+                if reference_window.empty:
+                    actionable_mask.append(True)
+                    continue
+                close_values = pd.to_numeric(reference_window["close"], errors="coerce")
+                finite_mask = np.isfinite(close_values.to_numpy(dtype="float64"))
+                if not bool(finite_mask.any()):
+                    actionable_mask.append(True)
+                    continue
+                actionable_mask.append(int(close_values.loc[finite_mask].nunique(dropna=True)) > 1)
+            segments = segments.loc[actionable_mask].copy()
+            if segments.empty:
+                continue
         segments = segments.sort_values(
             ["run_length", "end_date", "start_date"],
             ascending=[False, False, False],
@@ -878,6 +900,7 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
         "target_date_source",
         "date_column",
         "selection_source",
+        "daily_reference_asset_dir",
         "symbol_filter_source",
     ):
         value = summary.get(key)
@@ -1037,6 +1060,34 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def _load_daily_reference_frame(daily_asset_dir: Path | None, symbol: str) -> pd.DataFrame | None:
+    if daily_asset_dir is None:
+        return None
+    daily_path = daily_asset_dir / "data" / f"{symbol}.parquet"
+    if not daily_path.exists():
+        return None
+    try:
+        frame = pd.read_parquet(daily_path, columns=["trade_date", "close"])
+    except Exception:
+        frame = pd.read_parquet(daily_path)
+    frame = _normalize_frame_columns(frame)
+    if "trade_date" not in frame.columns:
+        return None
+    if "close" not in frame.columns:
+        frame["close"] = np.nan
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce").dt.normalize()
+    frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
+    frame = frame.dropna(subset=["trade_date"]).copy()
+    if frame.empty:
+        return None
+    return (
+        frame[["trade_date", "close"]]
+        .drop_duplicates(subset=["trade_date"], keep="last")
+        .sort_values("trade_date")
+        .reset_index(drop=True)
+    )
+
+
 def inspect_hk_asset_health(args) -> int:
     asset_dir = _resolve_path(args.asset_dir)
     data_dir = asset_dir / "data"
@@ -1085,6 +1136,15 @@ def inspect_hk_asset_health(args) -> int:
     )
     include_history = bool(getattr(args, "include_history", False))
     history_state = _init_history_state(dataset=dataset) if include_history else None
+    daily_reference_asset_dir: Path | None = None
+    if getattr(args, "daily_asset_dir", None):
+        daily_reference_asset_dir = _resolve_path(args.daily_asset_dir)
+        if not daily_reference_asset_dir.exists():
+            raise SystemExit(f"Daily reference asset directory not found: {daily_reference_asset_dir}")
+        if not (daily_reference_asset_dir / "data").exists():
+            raise SystemExit(
+                f"Daily reference asset directory is missing data/: {daily_reference_asset_dir}"
+            )
 
     field_stats: dict[str, dict[str, object]] = {
         field: {
@@ -1233,6 +1293,7 @@ def inspect_hk_asset_health(args) -> int:
                     sample_limit=history_sample_limit,
                 )
             elif dataset == "valuation":
+                daily_reference = _load_daily_reference_frame(daily_reference_asset_dir, symbol)
                 _update_valuation_history_state(
                     work=work,
                     symbol=symbol,
@@ -1240,6 +1301,7 @@ def inspect_hk_asset_health(args) -> int:
                     fields=selected_fields,
                     history_state=history_state,
                     sample_limit=history_sample_limit,
+                    daily_reference=daily_reference,
                 )
 
         latest_ts = work[date_column].max()
@@ -1607,6 +1669,7 @@ def inspect_hk_asset_health(args) -> int:
         "selection_source": selection_source,
         "selected_fields": list(selected_fields),
         "manifest_query_date": _resolve_manifest_query_date(manifest),
+        "daily_reference_asset_dir": str(daily_reference_asset_dir) if daily_reference_asset_dir else None,
         "symbol_filter_source": str(symbol_filter["source"]),
         "symbols_file": symbol_filter["symbols_file"],
         "by_date_file": symbol_filter["by_date_file"],
