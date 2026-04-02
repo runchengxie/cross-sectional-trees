@@ -408,6 +408,7 @@ csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_sel
 * `--target-date` 不传时，会优先取 `--by-date-file` 或 `config universe.by_date_file` 里的最大日期；再没有时，回退到 `pipeline_fundamentals.parquet` 的最大 `trade_date`。
 * `Health` 会统计 `symbols_with_all_selected_features_asof_target_date`、各字段 `age_days_*`、`rows_last_30d/90d/180d`、以及 `symbol_without_any_pit_row_before_target_date` 这类断档告警。
 * `--symbols-file` 和 `--by-date-file` 只影响 `Health` section，不改变原有覆盖率 / trainable 计算口径。
+* `--fail-on-severity none|info|warning|error` 可以把 health 检查升级成质量闸门；命中对应级别的问题时命令会非零退出。显式传这个参数时，即使没写 `--include-health`，也会自动启用 `Health` section。
 
 ### csml rqdata inspect-hk-asset-health
 
@@ -430,6 +431,7 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/daily
 * `sample_stale_symbols` 会列出没有覆盖到目标日的样本 symbol，适合快速判断是原始数据没补齐，还是个别 symbol 落后。
 * `sample_missing_asset_file_details` 和 `audit_issue_groups` 会把 `audit.csv` 里的失败原因带出来，便于区分权限问题、quota 问题和单纯没有远端数据。
 * 加上 `--include-history` 后，命令会额外扫描每个 parquet 的全历史，输出 `history` section；当前覆盖 `daily` 资产的价格边界异常、非正价格、负成交量、负成交额，以及 `valuation` 资产的连续 stale run，`--history-sample-limit` 控制样本行数量。
+* JSON 输出会额外给出统一的 `quality_verdict`；需要阻断时可用 `--fail-on-severity none|info|warning|error`。
 
 ### csml rqdata inspect-hk-intraday-health
 
@@ -445,6 +447,7 @@ csml rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5
 * `--input` 可以重复传多个 parquet；如果同名 `.parts/` 目录存在，命令会自动展开分片文件。
 * HK `5m` 的默认 full-session bar 数是 `66`，命令会同时检查缺 bar、off-schedule bar 和 `bar_count != 66` 的 symbol-day。
 * 传入 `--daily-asset-dir` 后，会把 intraday 聚合后的 `open/high/low/close/volume/amount` 和本地 daily parquet 对账，方便定位是 intraday 本身漏 bar，还是 daily / intraday 之间有不一致。
+* JSON 输出会额外给出统一的 `quality_verdict`；需要阻断时可用 `--fail-on-severity none|info|warning|error`。
 
 ### csml rqdata build-hk-daily-clean-layer
 

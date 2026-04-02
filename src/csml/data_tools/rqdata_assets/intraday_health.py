@@ -10,6 +10,11 @@ import pandas as pd
 
 from ..symbols import normalize_symbol_for_market
 from ...research.hk_intraday_slippage_report import resolve_input_parquet_paths
+from .quality_gate import (
+    append_quality_verdict_lines,
+    quality_gate_exit_code,
+    summarize_quality_checks,
+)
 from .shared import _normalize_frame_columns, _resolve_path
 
 
@@ -267,6 +272,9 @@ def _build_daily_reconciliation(
 def _render_intraday_health_text(payload: Mapping[str, object]) -> str:
     summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
     quality_checks = payload.get("quality_checks") if isinstance(payload.get("quality_checks"), list) else []
+    quality_verdict = (
+        payload.get("quality_verdict") if isinstance(payload.get("quality_verdict"), Mapping) else None
+    )
     lines = ["HK Intraday Health"]
     for key in (
         "rows_scanned",
@@ -299,6 +307,7 @@ def _render_intraday_health_text(payload: Mapping[str, object]) -> str:
                     pct=row.get("affected_pct"),
                 )
             )
+    append_quality_verdict_lines(lines, quality_verdict)
     return "\n".join(lines).strip() + "\n"
 
 
@@ -329,6 +338,7 @@ def inspect_hk_intraday_health(args) -> int:
     sample_missing_symbol_days: list[dict[str, object]] = []
     sample_negative_rows: list[dict[str, object]] = []
     sample_unexpected_bar_count_symbol_days: list[dict[str, object]] = []
+    sample_off_schedule_rows: list[dict[str, object]] = []
     daily_parts: list[pd.DataFrame] = []
 
     for parquet_path in parquet_paths:
@@ -381,6 +391,17 @@ def inspect_hk_intraday_health(args) -> int:
 
         off_schedule_mask = ~work["time_key"].isin(_EXPECTED_HK_5M_TIME_KEY_SET)
         off_schedule_bar_rows += int(off_schedule_mask.sum())
+        if bool(off_schedule_mask.any()):
+            for _, row in work.loc[off_schedule_mask].head(sample_limit).iterrows():
+                _append_sample(
+                    sample_off_schedule_rows,
+                    {
+                        "symbol": row["symbol"],
+                        "trade_datetime": row["trade_datetime"],
+                        "time_key": row["time_key"],
+                    },
+                    limit=sample_limit,
+                )
 
         deduped = (
             work.drop_duplicates(subset=["symbol", "trade_datetime"], keep="last")
@@ -525,7 +546,7 @@ def inspect_hk_intraday_health(args) -> int:
                 "severity": "warning",
                 "affected_items": off_schedule_bar_rows,
                 "affected_pct": _round_pct(off_schedule_bar_rows, rows_scanned),
-                "sample_rows": [],
+                "sample_rows": sample_off_schedule_rows,
             }
         )
 
@@ -602,12 +623,18 @@ def inspect_hk_intraday_health(args) -> int:
         "daily_reconciliation_missing_daily_rows": int(reconciliation_summary.get("missing_daily_symbol_days") or 0),
         "quality_check_issue_count": len(quality_checks),
     }
+    quality_verdict = summarize_quality_checks(
+        quality_checks,
+        fail_on_severity=getattr(args, "fail_on_severity", "none"),
+    )
     payload = {
         "summary": summary,
+        "quality_verdict": quality_verdict,
         "sample_duplicate_timestamps": sample_duplicate_rows,
         "sample_missing_symbol_days": sample_missing_symbol_days,
         "sample_negative_rows": sample_negative_rows,
         "sample_unexpected_bar_count_symbol_days": sample_unexpected_bar_count_symbol_days,
+        "sample_off_schedule_rows": sample_off_schedule_rows,
         "daily_reconciliation": reconciliation,
         "quality_checks": quality_checks,
     }
@@ -624,4 +651,4 @@ def inspect_hk_intraday_health(args) -> int:
         out_path.write_text(rendered, encoding="utf-8")
     else:
         print(rendered, end="")
-    return 0
+    return quality_gate_exit_code(quality_verdict)

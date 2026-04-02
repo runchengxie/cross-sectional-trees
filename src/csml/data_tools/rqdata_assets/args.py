@@ -41,6 +41,19 @@ def _add_hk_symbol_selection_args(
     )
 
 
+def _add_quality_gate_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--fail-on-severity",
+        default="none",
+        choices=["none", "info", "warning", "error"],
+        help=(
+            "Optional quality gate threshold. "
+            "The command exits non-zero when a quality issue at or above this severity is found. "
+            "Default: none."
+        ),
+    )
+
+
 def _add_mirror_output_args(
     parser: argparse.ArgumentParser,
     *,
@@ -871,6 +884,7 @@ def add_hk_pit_coverage_args(parser: argparse.ArgumentParser) -> None:
         "--out",
         help="Optional output path. Default: print to stdout.",
     )
+    _add_quality_gate_arg(parser)
 
 
 def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
@@ -946,6 +960,7 @@ def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
         "--out",
         help="Optional output path. Default: print to stdout.",
     )
+    _add_quality_gate_arg(parser)
 
 
 def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
@@ -999,6 +1014,7 @@ def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
         "--out",
         help="Optional output path. Default: print to stdout.",
     )
+    _add_quality_gate_arg(parser)
 
 
 def add_hk_daily_clean_layer_args(parser: argparse.ArgumentParser) -> None:

@@ -134,6 +134,7 @@ def test_inspect_hk_intraday_health_reports_integrity_and_daily_reconciliation(t
         numeric_atol=1e-8,
         format="json",
         out=str(out_path),
+        fail_on_severity="none",
     )
 
     assert rqdata_assets.inspect_hk_intraday_health(args) == 0
@@ -194,6 +195,18 @@ def test_inspect_hk_intraday_health_reports_integrity_and_daily_reconciliation(t
             "expected_bars": 66,
         }
     ]
+    assert payload["sample_off_schedule_rows"] == [
+        {
+            "symbol": "00005.HK",
+            "trade_datetime": "2026-03-31 09:31:00",
+            "time_key": "09:31",
+        },
+        {
+            "symbol": "00011.HK",
+            "trade_datetime": "2026-03-31 12:05:00",
+            "time_key": "12:05",
+        },
+    ]
 
     checks = {item["check"]: item for item in payload["quality_checks"]}
     assert checks["duplicate_intraday_timestamps"]["affected_items"] == 1
@@ -216,3 +229,33 @@ def test_inspect_hk_intraday_health_reports_integrity_and_daily_reconciliation(t
             "daily_value": 999.0,
         }
     ]
+    assert payload["quality_verdict"] == {
+        "color": "red",
+        "overall_severity": "error",
+        "issue_count": 7,
+        "severity_counts": {
+            "error": 3,
+            "warning": 4,
+            "info": 0,
+        },
+        "fail_on_severity": "none",
+        "gate_triggered": False,
+        "gate_status": "pass",
+        "failing_issue_count": 0,
+        "sample_failing_checks": [],
+        "message": "7 quality issue(s) detected, including at least one error.",
+    }
+
+    fail_out_path = repo_root / "intraday_health_fail_warning.json"
+    fail_args = SimpleNamespace(
+        input=[str(intraday_path)],
+        daily_asset_dir=str(daily_dir),
+        sample_limit=5,
+        expected_bars_per_day=66,
+        numeric_rtol=1e-6,
+        numeric_atol=1e-8,
+        format="json",
+        out=str(fail_out_path),
+        fail_on_severity="warning",
+    )
+    assert rqdata_assets.inspect_hk_intraday_health(fail_args) == 2

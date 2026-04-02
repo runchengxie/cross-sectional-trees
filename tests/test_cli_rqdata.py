@@ -465,6 +465,8 @@ def test_cli_parses_rqdata_asset_commands():
             "6",
             "--min-symbols",
             "10",
+            "--fail-on-severity",
+            "warning",
             "--format",
             "json",
             "--out",
@@ -481,6 +483,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit_coverage.by_date_file == "artifacts/assets/universe/hk_selected_by_date.csv"
     assert pit_coverage.health_sample_limit == 6
     assert pit_coverage.min_symbols == 10
+    assert pit_coverage.fail_on_severity == "warning"
     assert pit_coverage.format == "json"
     assert pit_coverage.out == "artifacts/reports/hk_pit_coverage.json"
     assert callable(pit_coverage.func)
@@ -508,6 +511,8 @@ def test_cli_parses_rqdata_asset_commands():
             "--include-history",
             "--history-sample-limit",
             "4",
+            "--fail-on-severity",
+            "error",
             "--format",
             "json",
             "--out",
@@ -525,6 +530,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert asset_health.top_latest_dates == 3
     assert asset_health.include_history is True
     assert asset_health.history_sample_limit == 4
+    assert asset_health.fail_on_severity == "error"
     assert asset_health.format == "json"
     assert asset_health.out == "artifacts/reports/hk_asset_health.json"
     assert callable(asset_health.func)
@@ -547,6 +553,8 @@ def test_cli_parses_rqdata_asset_commands():
             "0.001",
             "--numeric-atol",
             "0.01",
+            "--fail-on-severity",
+            "info",
             "--format",
             "json",
             "--out",
@@ -564,6 +572,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert intraday_health.expected_bars_per_day == 66
     assert intraday_health.numeric_rtol == 0.001
     assert intraday_health.numeric_atol == 0.01
+    assert intraday_health.fail_on_severity == "info"
     assert intraday_health.format == "json"
     assert intraday_health.out == "artifacts/reports/hk_intraday_health.json"
     assert callable(intraday_health.func)

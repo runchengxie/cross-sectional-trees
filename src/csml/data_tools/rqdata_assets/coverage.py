@@ -17,6 +17,12 @@ from .build import (
     _pipeline_fundamentals_manifest_path,
     _resolve_build_fields,
 )
+from .quality_gate import (
+    append_quality_verdict_lines,
+    normalize_fail_on_severity,
+    quality_gate_exit_code,
+    summarize_quality_checks,
+)
 from .shared import (
     DEFAULT_PIPELINE_FUNDAMENTALS_NAME,
     DERIVED_PIT_FEATURES,
@@ -437,6 +443,11 @@ def _build_pit_health_section(
             }
         )
 
+    quality_verdict = summarize_quality_checks(
+        quality_checks,
+        fail_on_severity=getattr(args, "fail_on_severity", "none"),
+    )
+
     return {
         "source": {
             "target_date": _format_date(target_date),
@@ -470,6 +481,7 @@ def _build_pit_health_section(
         "sample_missing_asset_symbols": _make_sample_symbols(missing_asset_symbols, limit=sample_limit),
         "recent_disclosures": recent_disclosure_payload,
         "feature_health": feature_health_rows,
+        "quality_verdict": quality_verdict,
         "quality_checks": quality_checks,
     }
 
@@ -1235,6 +1247,9 @@ def _render_hk_pit_coverage_text(payload: Mapping[str, object], *, top: int, qua
         health_source = health.get("source") if isinstance(health.get("source"), Mapping) else {}
         health_summary = health.get("summary") if isinstance(health.get("summary"), Mapping) else {}
         feature_health = health.get("feature_health") if isinstance(health.get("feature_health"), list) else []
+        health_verdict = (
+            health.get("quality_verdict") if isinstance(health.get("quality_verdict"), Mapping) else None
+        )
         health_checks = health.get("quality_checks") if isinstance(health.get("quality_checks"), list) else []
         recent_disclosures = health.get("recent_disclosures") if isinstance(health.get("recent_disclosures"), list) else []
 
@@ -1278,6 +1293,8 @@ def _render_hk_pit_coverage_text(payload: Mapping[str, object], *, top: int, qua
         missing_assets = health.get("sample_missing_asset_symbols")
         if missing_assets:
             lines.append("sample_missing_asset_symbols: " + ", ".join(str(item) for item in missing_assets))
+
+        append_quality_verdict_lines(lines, health_verdict, heading="Health Verdict")
 
         if feature_health:
             lines.append("")
@@ -1418,11 +1435,13 @@ def inspect_hk_pit_coverage(args) -> int:
     quarter_labels = trade_dates.dt.to_period("Q").astype(str)
     total_quarters = int(pd.Index(quarter_labels).nunique())
     date_counts = frame.groupby("trade_date")["symbol"].nunique()
+    fail_on_severity = normalize_fail_on_severity(getattr(args, "fail_on_severity", "none"))
     include_health = bool(
         getattr(args, "include_health", False)
         or getattr(args, "target_date", None)
         or getattr(args, "symbols_file", None)
         or getattr(args, "by_date_file", None)
+        or fail_on_severity != "none"
     )
 
     if selected_features:
@@ -1586,6 +1605,11 @@ def inspect_hk_pit_coverage(args) -> int:
         "fill_dependence_assessment": fill_dependence_assessment,
         "trainable_period_coverage": trainable_period_rows,
         "health": health_section,
+        "quality_verdict": (
+            health_section.get("quality_verdict")
+            if isinstance(health_section, Mapping) and isinstance(health_section.get("quality_verdict"), Mapping)
+            else None
+        ),
     }
 
     output_format = str(getattr(args, "format", "text") or "text").strip().lower()
@@ -1606,4 +1630,6 @@ def inspect_hk_pit_coverage(args) -> int:
         out_path.write_text(rendered, encoding="utf-8")
     else:
         print(rendered, end="")
-    return 0
+    return quality_gate_exit_code(
+        payload.get("quality_verdict") if isinstance(payload.get("quality_verdict"), Mapping) else None
+    )

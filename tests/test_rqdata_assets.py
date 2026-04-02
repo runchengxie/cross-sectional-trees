@@ -2508,6 +2508,7 @@ def test_inspect_hk_pit_coverage_supports_config_selected_derived_features(tmp_p
         quarter_limit=12,
         format="json",
         out=str(out_path),
+        fail_on_severity="none",
     )
 
     assert rqdata_assets.inspect_hk_pit_coverage(args) == 0
@@ -2838,6 +2839,83 @@ def test_inspect_hk_pit_coverage_include_health_reports_target_date_staleness(
         "affected_pct": 33.33,
         "sample_symbols": ["00700.HK"],
     }
+    assert health["quality_verdict"] == {
+        "color": "red",
+        "overall_severity": "error",
+        "issue_count": 2,
+        "severity_counts": {
+            "error": 1,
+            "warning": 1,
+            "info": 0,
+        },
+        "fail_on_severity": "none",
+        "gate_triggered": False,
+        "gate_status": "pass",
+        "failing_issue_count": 0,
+        "sample_failing_checks": [],
+        "message": "2 quality issue(s) detected, including at least one error.",
+    }
+    assert payload["quality_verdict"] == health["quality_verdict"]
+
+
+def test_inspect_hk_pit_coverage_fail_on_severity_auto_enables_health(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    asset_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    fundamentals_path = asset_dir / "pipeline_fundamentals.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": ["20250320", "20250320", "20250628"],
+            "symbol": ["00005.HK", "00011.HK", "00005.HK"],
+            "revenue": [100.0, 200.0, 110.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    by_date_file = repo_root / "artifacts" / "assets" / "universe" / "pit_gate_by_date.csv"
+    by_date_file.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "trade_date": ["20250930", "20250930"],
+            "symbol": ["00005.HK", "00700.HK"],
+            "selected": [1, 1],
+        }
+    ).to_csv(by_date_file, index=False)
+
+    out_path = repo_root / "pit_gate.json"
+    args = SimpleNamespace(
+        config=None,
+        asset_dir=str(asset_dir),
+        fundamentals_file=None,
+        field_profile=[],
+        field=["revenue"],
+        fields_file=[],
+        mode="strict",
+        include_health=False,
+        target_date="20250930",
+        symbols_file=None,
+        by_date_file=str(by_date_file),
+        health_sample_limit=3,
+        min_symbols=2,
+        top=10,
+        quarter_limit=12,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="warning",
+    )
+
+    assert rqdata_assets.inspect_hk_pit_coverage(args) == 2
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["health"] is not None
+    assert payload["quality_verdict"]["fail_on_severity"] == "warning"
+    assert payload["quality_verdict"]["gate_triggered"] is True
+    assert payload["quality_verdict"]["gate_status"] == "fail"
+    assert payload["quality_verdict"]["sample_failing_checks"] == [
+        "symbol_without_any_pit_row_before_target_date",
+        "selected_feature_set_below_min_symbols_asof_target_date",
+    ]
 
 
 def test_inspect_hk_asset_health_reports_stale_symbols_and_ffill_candidates(tmp_path, monkeypatch):
@@ -2925,6 +3003,7 @@ def test_inspect_hk_asset_health_reports_stale_symbols_and_ffill_candidates(tmp_
         top_latest_dates=5,
         format="json",
         out=str(out_path),
+        fail_on_severity="none",
     )
 
     assert rqdata_assets.inspect_hk_asset_health(args) == 0
@@ -3000,6 +3079,22 @@ def test_inspect_hk_asset_health_reports_stale_symbols_and_ffill_candidates(tmp_
             "sample_symbols": ["00005.HK", "00011.HK"],
         }
     ]
+    assert payload["quality_verdict"] == {
+        "color": "red",
+        "overall_severity": "error",
+        "issue_count": 1,
+        "severity_counts": {
+            "error": 1,
+            "warning": 0,
+            "info": 0,
+        },
+        "fail_on_severity": "none",
+        "gate_triggered": False,
+        "gate_status": "pass",
+        "failing_issue_count": 0,
+        "sample_failing_checks": [],
+        "message": "1 quality issue(s) detected, including at least one error.",
+    }
 
 
 def test_inspect_hk_asset_health_supports_symbol_filters_and_extended_sanity_checks(
@@ -3108,6 +3203,7 @@ def test_inspect_hk_asset_health_supports_symbol_filters_and_extended_sanity_che
         top_latest_dates=5,
         format="json",
         out=str(out_path),
+        fail_on_severity="none",
     )
 
     assert rqdata_assets.inspect_hk_asset_health(args) == 0
@@ -3214,6 +3310,38 @@ def test_inspect_hk_asset_health_supports_symbol_filters_and_extended_sanity_che
         "affected_pct": 50.0,
         "sample_symbols": ["00005.HK"],
     }
+    assert payload["quality_verdict"] == {
+        "color": "red",
+        "overall_severity": "error",
+        "issue_count": 5,
+        "severity_counts": {
+            "error": 1,
+            "warning": 2,
+            "info": 2,
+        },
+        "fail_on_severity": "none",
+        "gate_triggered": False,
+        "gate_status": "pass",
+        "failing_issue_count": 0,
+        "sample_failing_checks": [],
+        "message": "5 quality issue(s) detected, including at least one error.",
+    }
+
+    fail_out_path = repo_root / "filtered_asset_health_fail_warning.json"
+    fail_args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=str(symbols_file),
+        by_date_file=str(by_date_file),
+        field=["metric_num", "metric_text"],
+        date_column=None,
+        target_date="20260331",
+        sample_limit=5,
+        top_latest_dates=5,
+        format="json",
+        out=str(fail_out_path),
+        fail_on_severity="warning",
+    )
+    assert rqdata_assets.inspect_hk_asset_health(fail_args) == 2
 
 
 def test_inspect_hk_asset_health_flags_daily_price_rule_violations(tmp_path, monkeypatch):

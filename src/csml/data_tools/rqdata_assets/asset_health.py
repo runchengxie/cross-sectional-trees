@@ -8,6 +8,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .quality_gate import (
+    append_quality_verdict_lines,
+    quality_gate_exit_code,
+    summarize_quality_checks,
+)
 from .shared import (
     DEFAULT_HK_DAILY_FIELDS,
     DEFAULT_HK_VALUATION_FIELDS,
@@ -861,6 +866,9 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
         history_payload.get("summary") if isinstance(history_payload.get("summary"), Mapping) else {}
     )
     history_issues = history_payload.get("issues") if isinstance(history_payload.get("issues"), list) else []
+    quality_verdict = (
+        payload.get("quality_verdict") if isinstance(payload.get("quality_verdict"), Mapping) else None
+    )
 
     lines = ["HK Asset Health"]
     for key in (
@@ -927,6 +935,8 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
         lines.append(f"Latest Dates (top {len(latest_rows)})")
         latest_df = pd.DataFrame(latest_rows)
         lines.append(latest_df.to_string(index=False))
+
+    append_quality_verdict_lines(lines, quality_verdict)
 
     if audit_issue_groups:
         lines.append("")
@@ -1094,6 +1104,7 @@ def inspect_hk_asset_health(args) -> int:
             "sample_placeholder_symbols": [],
             "sample_nonfinite_symbols": [],
             "sample_zero_symbols": [],
+            "sample_clean_symbols": [],
             "sample_prior_clean_symbols": [],
             "sample_unusable_symbols": [],
             "clean_value_counter": Counter(),
@@ -1338,6 +1349,7 @@ def inspect_hk_asset_health(args) -> int:
 
             if assessment["has_clean"]:
                 stats["clean_nonmissing_on_target_date"] = int(stats["clean_nonmissing_on_target_date"]) + 1
+                _append_sample(stats["sample_clean_symbols"], symbol, limit=sample_limit)
                 clean_value = assessment["representative_clean_value"]
                 if clean_value is not None:
                     stats["clean_value_counter"][clean_value] += 1
@@ -1448,6 +1460,7 @@ def inspect_hk_asset_health(args) -> int:
                 "sample_placeholder_symbols": list(stats["sample_placeholder_symbols"]),
                 "sample_nonfinite_symbols": list(stats["sample_nonfinite_symbols"]),
                 "sample_zero_symbols": list(stats["sample_zero_symbols"]),
+                "sample_clean_symbols": list(stats["sample_clean_symbols"]),
                 "sample_prior_clean_symbols": list(stats["sample_prior_clean_symbols"]),
                 "sample_unusable_symbols": list(stats["sample_unusable_symbols"]),
                 "sample_oldest_ffill_symbols": ffill_age_records[:sample_limit],
@@ -1528,7 +1541,7 @@ def inspect_hk_asset_health(args) -> int:
                     "severity": "warning",
                     "affected_symbols": clean_nonmissing,
                     "affected_pct": _round_pct(clean_nonmissing, denominator),
-                    "sample_symbols": list(row.get("sample_zero_symbols") or [])[:sample_limit],
+                    "sample_symbols": list(row.get("sample_clean_symbols") or [])[:sample_limit],
                 }
             )
         for threshold, severity in ((10, "error"), (5, "warning"), (1, "info")):
@@ -1580,6 +1593,11 @@ def inspect_hk_asset_health(args) -> int:
             }
         )
 
+    quality_verdict = summarize_quality_checks(
+        quality_checks,
+        fail_on_severity=getattr(args, "fail_on_severity", "none"),
+    )
+
     summary = {
         "asset_dir": str(asset_dir),
         "dataset": dataset,
@@ -1617,6 +1635,7 @@ def inspect_hk_asset_health(args) -> int:
         summary["history_rows_scanned"] = int(history_summary.get("rows_scanned") or 0)
     payload = {
         "summary": summary,
+        "quality_verdict": quality_verdict,
         "latest_date_distribution": latest_rows,
         "sample_missing_asset_file_symbols": missing_asset_symbols[:sample_limit],
         "sample_missing_asset_file_details": missing_asset_file_details,
@@ -1639,4 +1658,4 @@ def inspect_hk_asset_health(args) -> int:
         out_path.write_text(rendered, encoding="utf-8")
     else:
         print(rendered, end="")
-    return 0
+    return quality_gate_exit_code(quality_verdict)
