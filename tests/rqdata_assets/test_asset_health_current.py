@@ -1263,6 +1263,88 @@ def test_inspect_hk_asset_health_uses_trading_type_in_southbound_duplicate_keys(
     )
 
 
+def test_inspect_hk_asset_health_skips_constant_cross_section_warning_for_southbound_flags(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "southbound" / "southbound_constant_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "southbound",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": ["trading_type", "eligible"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "date": ["20260331"],
+            "trading_type": ["sh"],
+            "eligible": [1],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "date": ["20260331"],
+            "trading_type": ["sh"],
+            "eligible": [1],
+        }
+    ).to_parquet(data_dir / "00011.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "written",
+                "max_date": "2026-03-31",
+            },
+            {
+                "symbol": "00011.HK",
+                "order_book_id": "00011.XHKG",
+                "status": "written",
+                "max_date": "2026-03-31",
+            },
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "southbound_constant_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=[],
+        date_column=None,
+        target_date="20260331",
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=False,
+        history_sample_limit=5,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    field_map = {item["field"]: item for item in payload["field_coverage"]}
+    assert field_map["trading_type"]["is_constant_across_clean_values_on_target_date"] is True
+    assert field_map["eligible"]["is_constant_across_clean_values_on_target_date"] is True
+    assert payload["quality_checks"] == []
+
+
 def test_inspect_hk_asset_health_treats_event_metadata_as_non_value_and_uses_unique_id_keys(
     tmp_path, monkeypatch
 ):

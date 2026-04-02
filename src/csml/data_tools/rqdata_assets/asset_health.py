@@ -90,6 +90,9 @@ VALUATION_FRESH_TARGET_GAP_REASON_LABELS = {
     "target_market_val_present": "target_market_val_present",
     "target_market_val_changed": "target_market_val_changed",
 }
+CONSTANT_CROSS_SECTION_FIELD_EXEMPTIONS = {
+    "southbound": {"eligible", "trading_type"},
+}
 
 
 def _parse_compact_date(value: object, *, label: str) -> pd.Timestamp:
@@ -311,6 +314,13 @@ def _duplicate_key_read_columns(*, dataset: str | None) -> list[str]:
     if dataset == "industry_changes":
         return ["industry_code"]
     return []
+
+
+def _skip_constant_cross_section_quality_check(*, dataset: str | None, field: str) -> bool:
+    exempt_fields = CONSTANT_CROSS_SECTION_FIELD_EXEMPTIONS.get(str(dataset or "").strip())
+    if not exempt_fields:
+        return False
+    return field in exempt_fields
 
 
 def _resolve_fields(
@@ -1916,7 +1926,11 @@ def inspect_hk_asset_health(args) -> int:
                     "sample_symbols": list(row.get("sample_zero_symbols") or []),
                 }
             )
-        if clean_nonmissing > 1 and constant_cross_section:
+        if (
+            clean_nonmissing > 1
+            and constant_cross_section
+            and not _skip_constant_cross_section_quality_check(dataset=dataset, field=field)
+        ):
             quality_checks.append(
                 {
                     "check": "field_constant_cross_section_on_target_date",
