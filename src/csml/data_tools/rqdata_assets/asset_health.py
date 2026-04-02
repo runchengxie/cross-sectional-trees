@@ -86,6 +86,10 @@ VALUATION_PROVIDER_LIKE_REASON_LABELS = {
     "daily_price_changed": "daily_price_changed",
     "no_daily_reference": "no_daily_reference",
 }
+VALUATION_FRESH_TARGET_GAP_REASON_LABELS = {
+    "target_market_val_present": "target_market_val_present",
+    "target_market_val_changed": "target_market_val_changed",
+}
 
 
 def _parse_compact_date(value: object, *, label: str) -> pd.Timestamp:
@@ -987,6 +991,49 @@ def _classify_valuation_reference_window(
     }
 
 
+def _classify_valuation_fresh_target_gap(
+    *,
+    field: str,
+    work: pd.DataFrame,
+    target_frame: pd.DataFrame,
+    date_column: str,
+    start_date: object,
+    end_date: object,
+) -> dict[str, object]:
+    if field == "hk_total_market_val":
+        return {"fresh_gap": False, "reason": None}
+    if "hk_total_market_val" not in target_frame.columns or "hk_total_market_val" not in work.columns:
+        return {"fresh_gap": False, "reason": None}
+
+    target_market_val = pd.to_numeric(target_frame["hk_total_market_val"], errors="coerce")
+    target_finite_mask = np.isfinite(target_market_val.to_numpy(dtype="float64"))
+    if not bool(target_finite_mask.any()):
+        return {"fresh_gap": False, "reason": None}
+
+    start_ts = pd.to_datetime(start_date, errors="coerce").normalize()
+    end_ts = pd.to_datetime(end_date, errors="coerce").normalize()
+    market_window = work.loc[
+        (work[date_column] >= start_ts) & (work[date_column] <= end_ts),
+        "hk_total_market_val",
+    ]
+    market_values = pd.to_numeric(market_window, errors="coerce")
+    finite_market_values = market_values[np.isfinite(market_values.to_numpy(dtype="float64"))]
+    if finite_market_values.empty:
+        return {
+            "fresh_gap": True,
+            "reason": VALUATION_FRESH_TARGET_GAP_REASON_LABELS["target_market_val_present"],
+        }
+    if int(finite_market_values.nunique(dropna=True)) > 1:
+        return {
+            "fresh_gap": True,
+            "reason": VALUATION_FRESH_TARGET_GAP_REASON_LABELS["target_market_val_changed"],
+        }
+    return {
+        "fresh_gap": True,
+        "reason": VALUATION_FRESH_TARGET_GAP_REASON_LABELS["target_market_val_present"],
+    }
+
+
 def _finalize_history_payload(history_state: Mapping[str, object] | None) -> dict[str, object] | None:
     if not history_state:
         return None
@@ -1359,6 +1406,7 @@ def inspect_hk_asset_health(args) -> int:
             "clean_value_counter": Counter(),
             "ffill_age_records": [],
             "provider_ffill_age_records": [],
+            "fresh_target_gap_records": [],
         }
         for field in selected_fields
     }
@@ -1414,7 +1462,16 @@ def inspect_hk_asset_health(args) -> int:
             continue
 
         read_columns = _dedupe_preserve_order(
-            [date_column, *selected_fields, *_duplicate_key_read_columns(dataset=dataset)],
+            [
+                date_column,
+                *selected_fields,
+                *(
+                    ["hk_total_market_val"]
+                    if dataset == "valuation" and "hk_total_market_val" not in selected_fields
+                    else []
+                ),
+                *_duplicate_key_read_columns(dataset=dataset),
+            ],
             strip=True,
         )
         try:
@@ -1637,6 +1694,18 @@ def inspect_hk_asset_health(args) -> int:
                     "age_days": age_days,
                 }
                 if dataset == "valuation":
+                    fresh_gap = _classify_valuation_fresh_target_gap(
+                        field=field,
+                        work=work,
+                        target_frame=target_frame,
+                        date_column=date_column,
+                        start_date=last_nonnull_date,
+                        end_date=target_date,
+                    )
+                    if fresh_gap["fresh_gap"]:
+                        ffill_record["reference_context"] = fresh_gap["reason"]
+                        stats["fresh_target_gap_records"].append(ffill_record)
+                        continue
                     context = _classify_valuation_reference_window(
                         start_date=last_nonnull_date,
                         end_date=target_date,
@@ -1694,6 +1763,11 @@ def inspect_hk_asset_health(args) -> int:
         )
         provider_ffill_ages = [int(item["age_days"]) for item in provider_ffill_age_records]
         provider_like_unusable = int(len(provider_ffill_age_records))
+        fresh_target_gap_records = sorted(
+            stats["fresh_target_gap_records"],
+            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
+        )
+        fresh_target_gap_count = int(len(fresh_target_gap_records))
         field_rows.append(
             {
                 "field": field,
@@ -1719,6 +1793,8 @@ def inspect_hk_asset_health(args) -> int:
                 "unusable_but_prior_clean_pct_of_unusable": _round_pct(unusable_but_prior_clean, unusable),
                 "provider_like_unusable_on_target_date": provider_like_unusable,
                 "provider_like_unusable_pct_of_unusable": _round_pct(provider_like_unusable, unusable),
+                "fresh_target_gap_on_target_date": fresh_target_gap_count,
+                "fresh_target_gap_pct_of_unusable": _round_pct(fresh_target_gap_count, unusable),
                 "ffill_age_days_min": min(ffill_ages) if ffill_ages else None,
                 "ffill_age_days_p50": _quantile_or_none(ffill_ages, 0.5),
                 "ffill_age_days_p90": _quantile_or_none(ffill_ages, 0.9),
@@ -1753,6 +1829,7 @@ def inspect_hk_asset_health(args) -> int:
                 "sample_unusable_symbols": list(stats["sample_unusable_symbols"]),
                 "sample_oldest_ffill_symbols": ffill_age_records[:sample_limit],
                 "sample_provider_like_ffill_symbols": provider_ffill_age_records[:sample_limit],
+                "sample_fresh_target_gap_symbols": fresh_target_gap_records[:sample_limit],
             }
         )
 
