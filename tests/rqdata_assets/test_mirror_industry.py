@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 import yaml
 
 from csml import data_providers
@@ -92,12 +93,109 @@ def test_mirror_hk_southbound_writes_symbol_history_assets(tmp_path, monkeypatch
     client.hk.calls.clear()
     args.resume = True
     assert rqdata_assets.mirror_hk_southbound(args, client) == 0
-    assert client.hk.calls == [
-        {"trading_type": "sh", "date": "20250102"},
+    assert client.hk.calls == []
+
+
+def test_mirror_hk_southbound_resume_continues_from_completed_batch_checkpoint(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+    (repo_root / "artifacts" / "assets" / "universe").mkdir(parents=True)
+    by_date_file = repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_by_date.csv"
+    by_date_file.write_text(
+        "\n".join(
+            [
+                "trade_date,symbol,selected",
+                "20250102,00005.HK,1",
+                "20250102,00011.HK,1",
+                "20250131,00012.HK,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class _InterruptingSouthboundClient(_FakeRQSouthboundClient):
+        def __init__(self):
+            super().__init__()
+            original = self.hk.get_southbound_eligible_secs
+            self._calls_seen = 0
+
+            def _wrapped(trading_type=None, date=None):
+                self._calls_seen += 1
+                if self._calls_seen == 2:
+                    self.hk.calls.append({"trading_type": trading_type, "date": date})
+                    raise KeyboardInterrupt()
+                return original(trading_type=trading_type, date=date)
+
+            self.hk.get_southbound_eligible_secs = _wrapped
+
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20250131",
+        symbol=[],
+        symbols_file=None,
+        by_date_file="artifacts/assets/universe/hk_connect_full_by_date.csv",
+        limit=None,
+        trading_type=["both"],
+        rebalance_frequency="D",
+        out_root="artifacts/assets/rqdata",
+        name="southbound_resume_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    interrupting_client = _InterruptingSouthboundClient()
+    with pytest.raises(KeyboardInterrupt):
+        rqdata_assets.mirror_hk_southbound(args, interrupting_client)
+
+    output_dir = (
+        repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "southbound" / "southbound_resume_demo"
+    )
+    partial_manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert partial_manifest["status"] == "interrupted"
+    assert partial_manifest["checkpoint"]["completed_batches"] == 1
+    assert partial_manifest["checkpoint"]["pending_batches"] == 3
+    assert partial_manifest["batches"] == [
+        {
+            "date": "20250102",
+            "trading_type": "sh",
+            "rows": 1,
+            "symbols": 1,
+            "status": "completed",
+            "attempts": 1,
+            "started_at": partial_manifest["batches"][0]["started_at"],
+            "finished_at": partial_manifest["batches"][0]["finished_at"],
+        }
+    ]
+
+    frame_5 = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert frame_5["date"].tolist() == ["20250102"]
+    assert frame_5["trading_type"].tolist() == ["sh"]
+
+    resume_client = _FakeRQSouthboundClient()
+    args.resume = True
+    assert rqdata_assets.mirror_hk_southbound(args, resume_client) == 0
+    assert resume_client.hk.calls == [
         {"trading_type": "sz", "date": "20250102"},
         {"trading_type": "sh", "date": "20250131"},
         {"trading_type": "sz", "date": "20250131"},
     ]
+
+    frame_11 = pd.read_parquet(output_dir / "data" / "00011.HK.parquet")
+    assert frame_11["date"].tolist() == ["20250102", "20250131"]
+    assert frame_11["trading_type"].tolist() == ["sz", "sz"]
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["status"] == "completed"
+    assert manifest["checkpoint"]["completed_batches"] == 4
+    assert manifest["checkpoint"]["pending_batches"] == 0
 
 def test_mirror_hk_announcement_writes_symbol_history_assets(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"

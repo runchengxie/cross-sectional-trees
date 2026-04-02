@@ -76,6 +76,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
     data_dir = output_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     audit_path = output_dir / "audit.csv"
+    manifest_path = output_dir / "manifest.yml"
 
     fields = ["trading_type", "eligible"]
     field_metadata = {
@@ -86,10 +87,9 @@ def mirror_hk_southbound(args, rqdatac) -> int:
     }
     entries_by_symbol: dict[str, DatedMirrorEntry] = {}
     audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
-    frames_by_symbol: dict[str, list[pd.DataFrame]] = {}
+    frames_by_symbol: dict[str, pd.DataFrame] = {}
     batches: list[dict[str, object]] = []
     columns: list[str] = []
-    field_coverage = _field_coverage_template(fields)
     started_at = _timestamp_now()
     status = "completed"
     error: str | None = None
@@ -97,6 +97,29 @@ def mirror_hk_southbound(args, rqdatac) -> int:
     quota_blocked = False
     order_book_id_by_symbol = {symbol: _to_rqdata_symbol("hk", symbol) for symbol in symbols}
     symbol_map = {order_book_id: symbol for symbol, order_book_id in order_book_id_by_symbol.items()}
+    existing_manifest = _load_manifest(manifest_path) if resume and manifest_path.exists() else {}
+    existing_status = (
+        str(existing_manifest.get("status") or "").strip()
+        if isinstance(existing_manifest, Mapping)
+        else ""
+    )
+    resume_from_partial = resume and existing_status not in {"", "completed"}
+    requested_batch_keys = [(query_date, trading_type) for query_date in snapshot_dates for trading_type in trading_types]
+    completed_batch_keys: set[tuple[str, str]] = set()
+
+    if isinstance(existing_manifest, Mapping):
+        existing_batches = existing_manifest.get("batches")
+        if isinstance(existing_batches, Sequence) and not isinstance(existing_batches, (str, bytes)):
+            for row in existing_batches:
+                if not isinstance(row, Mapping):
+                    continue
+                batch = dict(row)
+                batches.append(batch)
+                if batch.get("status") == "completed":
+                    batch_date = str(batch.get("date") or "").strip()
+                    batch_type = str(batch.get("trading_type") or "").strip()
+                    if batch_date and batch_type:
+                        completed_batch_keys.add((batch_date, batch_type))
 
     def _record_entry(
         *,
@@ -113,7 +136,6 @@ def mirror_hk_southbound(args, rqdatac) -> int:
         entries_by_symbol[symbol] = entry
         if not columns and not symbol_frame.empty:
             columns = symbol_frame.columns.tolist()
-        _update_field_coverage(field_coverage, symbol_frame, fields=fields)
         audit_by_symbol[symbol] = _dated_audit_record(
             symbol=symbol,
             order_book_id=entry.order_book_id,
@@ -145,6 +167,84 @@ def mirror_hk_southbound(args, rqdatac) -> int:
             file_mtime=None,
             error=error_text,
             entry=None,
+        )
+
+    def _current_pending_batches() -> int:
+        return max(0, len(requested_batch_keys) - len(completed_batch_keys))
+
+    def _write_checkpoint_manifest(*, checkpoint_status: str, checkpoint_error: str | None) -> None:
+        effective_status = checkpoint_status
+        if _current_pending_batches() > 0 and effective_status == "completed":
+            effective_status = "running"
+        checkpoint_finished_at = _timestamp_now()
+        checkpoint_manifest = _build_dated_manifest(
+            dataset_name="southbound",
+            api_name="rqdatac.hk.get_southbound_eligible_secs",
+            output_dir=output_dir,
+            fields=fields,
+            field_metadata=field_metadata,
+            symbol_metadata=symbol_metadata,
+            symbols_requested=symbols,
+            entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
+            missing_symbols=[],
+            start_date=start_date,
+            end_date=end_date,
+            date_column="date",
+            batches=batches,
+            columns=columns,
+            audit_file=audit_path,
+            audit_records=[audit_by_symbol[symbol] for symbol in symbols if symbol in audit_by_symbol],
+            field_coverage=[],
+            started_at=started_at,
+            finished_at=checkpoint_finished_at,
+            status=effective_status,
+            error=checkpoint_error,
+            config_ref=getattr(args, "config", None),
+        )
+        checkpoint_query = checkpoint_manifest.get("query", {})
+        if isinstance(checkpoint_query, dict):
+            checkpoint_query["rebalance_frequency"] = snapshot_metadata.get("rebalance_frequency")
+            checkpoint_query["dates_count"] = len(snapshot_dates)
+            checkpoint_query["dates_file"] = str(output_dir / "dates.txt")
+            checkpoint_query["trading_types"] = list(trading_types)
+            checkpoint_query["trading_types_file"] = str(output_dir / "trading_types.txt")
+        checkpoint_manifest["date_source"] = snapshot_metadata
+        checkpoint_manifest["checkpoint"] = {
+            "completed_batches": len(completed_batch_keys),
+            "total_batches": len(requested_batch_keys),
+            "pending_batches": _current_pending_batches(),
+            "symbols_with_persisted_data": sum(
+                1 for symbol in symbols if (data_dir / f"{symbol}.parquet").exists()
+            ),
+        }
+        _write_manifest(manifest_path, checkpoint_manifest)
+
+    def _write_symbol_history(symbol: str, symbol_frame: pd.DataFrame) -> None:
+        current = frames_by_symbol.get(symbol)
+        if current is None:
+            out_path = data_dir / f"{symbol}.parquet"
+            if out_path.exists():
+                _, current = _load_existing_dated_entry(
+                    out_path,
+                    date_column="date",
+                    fields=fields,
+                )
+        if current is not None and not current.empty:
+            combined = pd.concat([current, symbol_frame], ignore_index=True)
+        else:
+            combined = symbol_frame.copy()
+        combined = combined.drop_duplicates(subset=["date", "trading_type"], keep="last")
+        combined = combined.sort_values(["date", "trading_type"]).reset_index(drop=True)
+        frames_by_symbol[symbol] = combined
+        entry = _write_dated_symbol_frame(data_dir, combined, date_column="date")
+        _record_entry(
+            symbol=symbol,
+            entry=entry,
+            symbol_frame=combined,
+            record_status="written",
+            attempts=0,
+            started_at_value=started_at,
+            finished_at_value=_path_mtime_iso(entry.path),
         )
 
     try:
@@ -194,7 +294,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
         pending_symbols: list[str] = []
         for symbol in symbols:
             out_path = data_dir / f"{symbol}.parquet"
-            if skip_existing and out_path.exists():
+            if skip_existing and not resume_from_partial and out_path.exists():
                 try:
                     entry, symbol_frame = _load_existing_dated_entry(
                         out_path,
@@ -217,12 +317,17 @@ def mirror_hk_southbound(args, rqdatac) -> int:
             pending_symbols.append(symbol)
 
         pending_symbol_set = set(pending_symbols)
+        if _current_pending_batches() > 0:
+            _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
         for query_date in snapshot_dates:
             if quota_blocked or not pending_symbol_set:
                 break
             for trading_type in trading_types:
                 if quota_blocked or not pending_symbol_set:
                     break
+                batch_key = (query_date, trading_type)
+                if batch_key in completed_batch_keys:
+                    continue
                 batch_started_at = _timestamp_now()
                 try:
                     payload, attempts = _retry_fetch(
@@ -251,6 +356,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                             "error": str(exc),
                         }
                     )
+                    _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
                     break
                 except MirrorFetchError as exc:
                     batches.append(
@@ -267,6 +373,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                     if status == "completed":
                         status = "completed_with_failures"
                     result_code = max(result_code, 1)
+                    _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
                     continue
 
                 rows = []
@@ -294,64 +401,92 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                 )
                 prepared = _ensure_requested_fields(prepared, fields)
                 batches.append(
-                    {
-                        "date": query_date,
-                        "trading_type": trading_type,
-                        "rows": int(len(prepared)),
-                        "symbols": int(prepared["symbol"].nunique()) if not prepared.empty else 0,
+                        {
+                            "date": query_date,
+                            "trading_type": trading_type,
+                            "rows": int(len(prepared)),
+                            "symbols": int(prepared["symbol"].nunique()) if not prepared.empty else 0,
                         "status": "completed",
                         "attempts": attempts,
                         "started_at": batch_started_at,
-                        "finished_at": _timestamp_now(),
-                    }
-                )
+                            "finished_at": _timestamp_now(),
+                        }
+                    )
+                completed_batch_keys.add(batch_key)
                 if prepared.empty:
+                    _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
                     continue
                 for symbol in prepared["symbol"].drop_duplicates().tolist():
                     symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
                     if symbol_frame.empty:
                         continue
-                    frames_by_symbol.setdefault(symbol, []).append(symbol_frame)
+                    _write_symbol_history(symbol, symbol_frame)
+                _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
 
         if result_code == 1 and status == "completed":
             status = "completed_with_failures"
+    except KeyboardInterrupt:
+        status = "interrupted"
+        error = "Interrupted by user"
+        result_code = max(result_code, 1)
+        _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
+        raise
     except Exception as exc:
         status = "failed"
         error = str(exc)
         result_code = max(result_code, 1)
+        _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
         raise
     finally:
         finished_at = _timestamp_now()
+        final_entries_by_symbol: dict[str, DatedMirrorEntry] = {}
+        final_audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
+        final_columns: list[str] = list(columns)
+        final_field_coverage = _field_coverage_template(fields)
+        completed_noop_resume = resume and existing_status == "completed" and _current_pending_batches() == 0
         for symbol in symbols:
-            if symbol in audit_by_symbol:
-                continue
-            frames = frames_by_symbol.get(symbol) or []
-            if frames:
-                combined = pd.concat(frames, ignore_index=True)
-                combined = combined.drop_duplicates(subset=["date", "trading_type"], keep="last")
-                combined = combined.sort_values(["date", "trading_type"]).reset_index(drop=True)
-                entry = _write_dated_symbol_frame(data_dir, combined, date_column="date")
-                _record_entry(
+            out_path = data_dir / f"{symbol}.parquet"
+            if out_path.exists():
+                entry, symbol_frame = _load_existing_dated_entry(
+                    out_path,
+                    date_column="date",
+                    fields=fields,
+                )
+                final_entries_by_symbol[symbol] = entry
+                if not final_columns and not symbol_frame.empty:
+                    final_columns = symbol_frame.columns.tolist()
+                _update_field_coverage(final_field_coverage, symbol_frame, fields=fields)
+                prior_record = audit_by_symbol.get(symbol)
+                record_status = (
+                    "skipped_existing"
+                    if completed_noop_resume or (prior_record and prior_record.status == "skipped_existing")
+                    else "written"
+                )
+                final_audit_by_symbol[symbol] = _dated_audit_record(
                     symbol=symbol,
+                    order_book_id=entry.order_book_id,
+                    status=record_status,
+                    attempts=prior_record.attempts if prior_record else 0,
+                    started_at=prior_record.started_at if prior_record else started_at,
+                    finished_at=finished_at,
+                    file_mtime=_path_mtime_iso(entry.path),
+                    error=error if quota_blocked and record_status == "written" else None,
                     entry=entry,
-                    symbol_frame=combined,
-                    record_status="written",
-                    attempts=0,
-                    started_at_value=started_at,
-                    finished_at_value=finished_at,
-                    error_text=error if quota_blocked else None,
                 )
                 continue
-            _record_non_entry(
+            final_audit_by_symbol[symbol] = _dated_audit_record(
                 symbol=symbol,
-                record_status="quota_blocked" if quota_blocked else "missing_remote",
+                order_book_id=order_book_id_by_symbol[symbol],
+                status="quota_blocked" if quota_blocked else "missing_remote",
                 attempts=0,
-                started_at_value=None,
-                finished_at_value=finished_at,
-                error_text=error if quota_blocked else None,
+                started_at=None,
+                finished_at=finished_at,
+                file_mtime=None,
+                error=error if quota_blocked else None,
+                entry=None,
             )
 
-        audit_records = [audit_by_symbol[symbol] for symbol in symbols]
+        audit_records = [final_audit_by_symbol[symbol] for symbol in symbols]
         _write_dated_audit_csv(audit_path, audit_records)
         manifest = _build_dated_manifest(
             dataset_name="southbound",
@@ -361,16 +496,16 @@ def mirror_hk_southbound(args, rqdatac) -> int:
             field_metadata=field_metadata,
             symbol_metadata=symbol_metadata,
             symbols_requested=symbols,
-            entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
+            entries=[final_entries_by_symbol[symbol] for symbol in symbols if symbol in final_entries_by_symbol],
             missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
             start_date=start_date,
             end_date=end_date,
             date_column="date",
             batches=batches,
-            columns=columns,
+            columns=final_columns,
             audit_file=audit_path,
             audit_records=audit_records,
-            field_coverage=list(field_coverage.values()),
+            field_coverage=list(final_field_coverage.values()),
             started_at=started_at,
             finished_at=finished_at,
             status=status,
@@ -385,13 +520,19 @@ def mirror_hk_southbound(args, rqdatac) -> int:
             manifest_query["trading_types"] = list(trading_types)
             manifest_query["trading_types_file"] = str(output_dir / "trading_types.txt")
         manifest["date_source"] = snapshot_metadata
-        _write_manifest(output_dir / "manifest.yml", manifest)
+        manifest["checkpoint"] = {
+            "completed_batches": len(completed_batch_keys),
+            "total_batches": len(requested_batch_keys),
+            "pending_batches": _current_pending_batches(),
+            "symbols_with_persisted_data": len(final_entries_by_symbol),
+        }
+        _write_manifest(manifest_path, manifest)
 
     totals = {
-        "files": len(entries_by_symbol),
-        "symbols": len(entries_by_symbol),
-        "rows": sum(item.rows for item in entries_by_symbol.values()),
-        "bytes": sum(item.total_bytes for item in entries_by_symbol.values()),
+        "files": len(final_entries_by_symbol),
+        "symbols": len(final_entries_by_symbol),
+        "rows": sum(item.rows for item in final_entries_by_symbol.values()),
+        "bytes": sum(item.total_bytes for item in final_entries_by_symbol.values()),
     }
     print(
         f"Wrote southbound mirror to {output_dir} "
