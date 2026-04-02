@@ -40,9 +40,7 @@ csml <subcommand> --help
 - 内置别名：`default` / `hk`
 - 本地 YAML 路径：`configs/presets/hk.yml`
 
-> `csml run --config default` 里的 `default` 是内置别名，不等于 `configs/presets/default.yml`。
->
-> `default` 当前指向 HK starter 模板，默认 `data.provider=rqdata`。第一次跑 `default` 或 `hk` 前，先安装 `uv sync --extra dev --extra rqdata`。
+> `csml run --config default` 里的 `default` 是内置别名，`default` 当前指向 HK starter 模板，默认 `data.provider=rqdata`。第一次跑 `default` 或 `hk` 前，先安装 `uv sync --extra dev --extra rqdata`。
 >
 > 这些内置别名以及 `csml init-config` 都读取仓库根目录的 `configs/`。默认使用场景是源码 checkout 或包含 `configs/` 的导出源码目录。
 

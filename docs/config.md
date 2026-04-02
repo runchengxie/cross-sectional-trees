@@ -1,9 +1,9 @@
 # 配置参考
 
-本页解决什么：配置键与默认行为的速查表。
-本页不解决什么：不展开研究路线与概念选择。
-适合谁：需要查配置定义与模板的人。
-读完你会得到什么：配置键的权威定义与常用模板入口。
+本页解决什么：配置键与默认行为的速查表。\
+本页不解决什么：不展开研究路线与概念选择。\
+适合谁：需要查配置定义与模板的人。\
+读完你会得到什么：配置键的权威定义与常用模板入口。\
 相关页面：`docs/concepts/model-selection.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/universe-modes.md`、`docs/concepts/data-sources.md`、`docs/concepts/execution-costs.md`
 
 ## 常用模板速查
@@ -19,9 +19,7 @@
 | 更宽的季度实验路线 | `configs/experiments/variants/hk_selected__pit_quarterly_*` | 适合继续派生专题路线 |
 | 本地实验 | `configs/local/*.yml`（个人自建，默认不跟踪）或自建实验目录 | 仅作个人派生，不当作官方入口 |
 
-> **注意**：`csml run --config default` 里的 `default` 是内置别名，不等于仓库里的 `configs/presets/default.yml`。
->
-> 这些内置别名和 `csml init-config` 都读取仓库根目录的 `configs/`。默认使用场景是源码 checkout 或包含 `configs/` 的导出源码目录，而不是脱离仓库上下文的孤立 wheel。
+> **注意**：`csml run --config default` 里的 `default` 是内置别名，这些内置别名和 `csml init-config` 都读取仓库根目录的 `configs/`。默认使用场景是源码 checkout 或包含 `configs/` 的导出源码目录，而不是脱离仓库上下文的孤立 wheel。
 
 ### `PIT` 在这个仓库里分别指什么
 
