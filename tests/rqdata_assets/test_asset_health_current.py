@@ -1311,3 +1311,78 @@ def test_inspect_hk_asset_health_uses_dividend_event_dates_in_duplicate_keys(
         item.get("check") == "symbol_duplicate_dates_in_asset_file"
         for item in payload["quality_checks"]
     )
+
+
+def test_inspect_hk_asset_health_uses_dividend_cash_to_disambiguate_event_keys(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "dividends" / "dividends_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "dividends",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": [],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "declaration_announcement_date": ["20260331", "20260331"],
+            "ex_dividend_date": ["20260415", "20260415"],
+            "book_closure_date": ["20260416", "20260416"],
+            "payable_date": ["20260428", "20260428"],
+            "dividend_cash_before_tax": [0.5, 0.7],
+            "unique_id": ["00005_01.XHKG", "00005_01.XHKG"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "merged_patch",
+                "max_date": "2026-03-31",
+            }
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "dividends_cash_key_asset_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=[],
+        date_column=None,
+        target_date=None,
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=False,
+        history_sample_limit=5,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["symbols_with_duplicate_dates"] == 0
+    assert payload["summary"]["duplicate_date_groups"] == 0
+    assert payload["summary"]["duplicate_date_rows"] == 0
+    assert not any(
+        item.get("check") == "symbol_duplicate_dates_in_asset_file"
+        for item in payload["quality_checks"]
+    )

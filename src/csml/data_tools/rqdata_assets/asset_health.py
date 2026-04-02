@@ -52,6 +52,7 @@ KEY_COLUMNS = {
     "ex_dividend_date",
     "book_closure_date",
     "payable_date",
+    "advance_date",
     "start_date",
     "cancel_date",
     "quarter",
@@ -270,7 +271,15 @@ def _duplicate_key_columns(
     if dataset == "southbound" and "trading_type" in columns:
         keys.append("trading_type")
     elif dataset == "dividends":
-        for column in ("ex_dividend_date", "book_closure_date", "payable_date", "unique_id"):
+        for column in (
+            "ex_dividend_date",
+            "book_closure_date",
+            "payable_date",
+            "advance_date",
+            "quarter",
+            "dividend_cash_before_tax",
+            "unique_id",
+        ):
             if column in columns and column not in keys:
                 keys.append(column)
     elif dataset in {"ex_factors", "shares"} and "unique_id" in columns:
@@ -284,7 +293,15 @@ def _duplicate_key_read_columns(*, dataset: str | None) -> list[str]:
     if dataset == "southbound":
         return ["trading_type"]
     if dataset == "dividends":
-        return ["ex_dividend_date", "book_closure_date", "payable_date", "unique_id"]
+        return [
+            "ex_dividend_date",
+            "book_closure_date",
+            "payable_date",
+            "advance_date",
+            "quarter",
+            "dividend_cash_before_tax",
+            "unique_id",
+        ]
     if dataset in {"ex_factors", "shares"}:
         return ["unique_id"]
     if dataset == "industry_changes":
