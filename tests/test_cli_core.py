@@ -13,9 +13,10 @@ from csml.data_tools import build_hk_daily_asset_universe as hk_daily_assets_too
 
 def test_cli_parses_run_command():
     parser = cli.build_parser()
-    args = parser.parse_args(["run", "--config", "default"])
+    args = parser.parse_args(["run", "--config", "default", "--fail-on-quality", "warning"])
     assert args.command == "run"
     assert args.config == "default"
+    assert args.fail_on_quality == "warning"
     assert callable(args.func)
 
 
@@ -163,11 +164,16 @@ def test_cli_parses_init_config_and_universe():
 
 
 def test_cli_main_run_calls_pipeline(monkeypatch):
-    calls: list[str | None] = []
-    monkeypatch.setattr(pipeline_module, "run", lambda config: calls.append(config))
+    calls: list[tuple[str | None, str | None]] = []
+
+    def fake_run(config, *, fail_on_quality=None):
+        calls.append((config, fail_on_quality))
+
+    monkeypatch.setattr(pipeline_module, "run", fake_run)
 
     assert cli.main(["run", "--config", "hk"]) == 0
-    assert calls == ["hk"]
+    assert cli.main(["run", "--config", "hk", "--fail-on-quality", "error"]) == 0
+    assert calls == [("hk", None), ("hk", "error")]
 
 
 def test_cli_main_universe_wrappers_pass_through_args(monkeypatch):

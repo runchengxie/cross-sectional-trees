@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from ..data_tools.symbols import ensure_symbol_columns
+from ..pipeline.quality import enforce_liveops_quality_gate
 from . import alloc as base_alloc
 from . import holdings
 
@@ -2028,6 +2029,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--username", help="Override RQData username.")
     parser.add_argument("--password", help="Override RQData password.")
     parser.add_argument(
+        "--fail-on-quality",
+        choices=["none", "info", "warning", "error"],
+        default=None,
+        help=(
+            "Optional quality gate threshold. When omitted, alloc-hk reuses the threshold stored "
+            "in the resolved run summary or from the config."
+        ),
+    )
+    parser.add_argument(
         "--format",
         default="text",
         choices=["text", "csv", "json", "xlsx"],
@@ -2049,6 +2059,12 @@ def main(argv: list[str] | None = None) -> None:
         args,
         cfg=cfg,
         selection_top_n=max(scenario_top_ns),
+    )
+    enforce_liveops_quality_gate(
+        command_name="alloc-hk",
+        run_dir=run_dir,
+        config_ref=args.config,
+        fail_on_quality=args.fail_on_quality,
     )
     tickers = _selection_to_tickers(prepared)
     if not tickers:

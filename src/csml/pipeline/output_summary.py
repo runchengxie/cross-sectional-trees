@@ -316,6 +316,11 @@ def build_run_summary(
             if art["positions_diff_live_path"]
             else None,
         },
+        "quality": (
+            ctx["quality_summary"]
+            if isinstance(ctx.get("quality_summary"), Mapping)
+            else {"preflight": None}
+        ),
         "fundamentals": {
             "enabled": ctx["FUNDAMENTALS_ENABLED"],
             "source": ctx["FUNDAMENTALS_SOURCE"] if ctx["FUNDAMENTALS_ENABLED"] else None,

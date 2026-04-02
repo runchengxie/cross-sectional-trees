@@ -11,8 +11,15 @@ from .runner import run as _run
 from .support import load_universe_by_date
 
 
-def run(config_ref: str | Path | None = None) -> None:
-    _run(config_ref)
+def run(
+    config_ref: str | Path | None = None,
+    *,
+    fail_on_quality: str | None = None,
+) -> None:
+    if fail_on_quality is None:
+        _run(config_ref)
+        return
+    _run(config_ref, fail_on_quality=fail_on_quality)
 
 
 def main(argv: list[str] | None = None) -> None:

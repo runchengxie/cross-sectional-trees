@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 import sys
 import types
 
@@ -279,6 +280,62 @@ def test_alloc_hk_scenario_grid_csv_emits_overview(tmp_path, monkeypatch, capsys
     assert "scenario_capital" in overview.columns
     assert "scenario_top_n" in overview.columns
     assert len(overview) == 4
+
+
+def test_alloc_hk_quality_gate_blocks_before_market_data(monkeypatch):
+    prepared = pd.DataFrame(
+        {
+            "symbol": ["00001.HK"],
+            "weight": [1.0],
+            "rank": [1],
+            "signal": [0.2],
+            "side": ["long"],
+        }
+    )
+
+    monkeypatch.setattr(
+        alloc_hk,
+        "_resolve_settings",
+        lambda _args: ({}, alloc_hk.HkAllocSettings(cash=100000.0, method="custom")),
+    )
+    monkeypatch.setattr(alloc_hk, "_resolve_scenarios", lambda _args, **_kwargs: ((100000.0,), (1,)))
+    monkeypatch.setattr(
+        alloc_hk,
+        "_load_selection",
+        lambda *_args, **_kwargs: (
+            prepared,
+            pd.Timestamp("2020-01-02"),
+            pd.Timestamp("2020-01-03"),
+            "positions_file",
+            None,
+            Path("positions.csv"),
+            "hk",
+        ),
+    )
+    monkeypatch.setattr(
+        alloc_hk,
+        "enforce_liveops_quality_gate",
+        lambda **_kwargs: (_ for _ in ()).throw(SystemExit("alloc-hk blocked by quality gate")),
+    )
+    monkeypatch.setattr(
+        alloc_hk.base_alloc,
+        "_init_rqdatac",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("_init_rqdatac should not run")),
+    )
+
+    with pytest.raises(SystemExit, match="alloc-hk blocked by quality gate"):
+        alloc_hk.main(
+            [
+                "--positions-file",
+                "positions.csv",
+                "--top-n",
+                "1",
+                "--method",
+                "custom",
+                "--fail-on-quality",
+                "warning",
+            ]
+        )
 
 
 def test_build_target_values_custom_weights() -> None:

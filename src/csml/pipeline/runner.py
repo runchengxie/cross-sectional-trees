@@ -6,6 +6,7 @@ Usage:
     # rqdatac auth may be required (RQDATA_USERNAME/RQDATA_PASSWORD)
 """
 import argparse
+from collections.abc import Mapping
 import logging
 import sys
 from pathlib import Path
@@ -64,6 +65,7 @@ from .eval import (
 )
 from .live import _prepare_live_snapshot
 from .output import persist_run_outputs
+from .quality import run_quality_preflight
 from .runtime import _prepare_split_context
 from .stats import (
     _compute_rolling_ic,
@@ -141,7 +143,11 @@ def _load_benchmark_return_series(path: Path) -> pd.Series:
     return series
 
 
-def run(config_ref: str | Path | None = None) -> None:
+def run(
+    config_ref: str | Path | None = None,
+    *,
+    fail_on_quality: str | None = None,
+) -> None:
     package_api = sys.modules.get(__package__)
     backtest_topk_fn = (
         getattr(package_api, "backtest_topk", backtest_topk)
@@ -418,6 +424,31 @@ def run(config_ref: str | Path | None = None) -> None:
     run_hash = run_artifacts["run_hash"]
     run_dir = run_artifacts["run_dir"]
     active_log_file = run_artifacts["active_log_file"]
+    quality_preflight = run_quality_preflight(
+        config=config,
+        run_dir=run_dir if SAVE_ARTIFACTS else None,
+        save_artifacts=SAVE_ARTIFACTS,
+        fail_on_quality=fail_on_quality,
+        logger=logger,
+    )
+    quality_summary = {"preflight": quality_preflight}
+    quality_overall_verdict = (
+        quality_preflight.get("overall_verdict")
+        if isinstance(quality_preflight, Mapping)
+        and isinstance(quality_preflight.get("overall_verdict"), Mapping)
+        else None
+    )
+    if isinstance(quality_overall_verdict, Mapping) and bool(quality_overall_verdict.get("gate_triggered")):
+        quality_report = None
+        quality_checks = quality_preflight.get("checks") if isinstance(quality_preflight.get("checks"), list) else []
+        for item in quality_checks:
+            if isinstance(item, Mapping) and item.get("report_file"):
+                quality_report = str(item.get("report_file"))
+                break
+        detail = f" Report: {quality_report}" if quality_report else ""
+        raise SystemExit(
+            f"Pipeline quality gate failed: {quality_overall_verdict.get('message')}{detail}"
+        )
 
     fundamentals_cols: list[str] = []
     industry_cols: list[str] = []
@@ -1298,8 +1329,20 @@ def main(argv: list[str] | None = None) -> None:
         "--config",
         help="Path to YAML config or built-in name (default/hk).",
     )
+    parser.add_argument(
+        "--fail-on-quality",
+        choices=["none", "info", "warning", "error"],
+        default=None,
+        help=(
+            "Optional quality gate threshold. Overrides quality.fail_on_severity in the config "
+            "when provided."
+        ),
+    )
     args = parser.parse_args(argv)
-    run(args.config)
+    if args.fail_on_quality is None:
+        run(args.config)
+        return
+    run(args.config, fail_on_quality=args.fail_on_quality)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import argparse
 
 from ..config_utils import resolve_pipeline_config
 from .. import pipeline
+from ..pipeline.quality import enforce_liveops_quality_gate
 from . import holdings
 
 
@@ -44,6 +45,15 @@ def main(argv: list[str] | None = None) -> None:
         "--out",
         help="Optional output path (default: stdout).",
     )
+    parser.add_argument(
+        "--fail-on-quality",
+        choices=["none", "info", "warning", "error"],
+        default=None,
+        help=(
+            "Optional quality gate threshold. When omitted, snapshot reuses the threshold stored "
+            "in the latest run summary or from the config."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not args.config and not args.run_dir:
@@ -57,7 +67,18 @@ def main(argv: list[str] | None = None) -> None:
         live_cfg = live_cfg if isinstance(live_cfg, dict) else {}
         if not bool(live_cfg.get("enabled", False)):
             raise SystemExit("snapshot requires live.enabled=true in the config.")
-        pipeline.run(args.config)
+        if args.fail_on_quality is None:
+            pipeline.run(args.config)
+        else:
+            pipeline.run(args.config, fail_on_quality=args.fail_on_quality)
+    else:
+        resolved_run_dir = holdings._resolve_run_dir(args.config, args.run_dir, args.top_k)
+        enforce_liveops_quality_gate(
+            command_name="snapshot",
+            run_dir=resolved_run_dir,
+            config_ref=args.config,
+            fail_on_quality=args.fail_on_quality,
+        )
 
     hold_args: list[str] = ["--source", "live", "--as-of", args.as_of]
     if args.config:

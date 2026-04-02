@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 import pytest
 
@@ -28,34 +29,44 @@ def test_snapshot_skip_run_does_not_call_pipeline(monkeypatch):
     calls: dict[str, list] = {"holdings": []}
 
     monkeypatch.setattr(
-        snapshot,
-        "resolve_pipeline_config",
-        lambda _cfg: (_ for _ in ()).throw(AssertionError("resolve_pipeline_config should not run")),
-    )
-    monkeypatch.setattr(
         snapshot.pipeline,
         "run",
         lambda _cfg: (_ for _ in ()).throw(AssertionError("pipeline.run should not run")),
+    )
+    monkeypatch.setattr(snapshot.holdings, "_resolve_run_dir", lambda *_args: Path("artifacts/runs/demo"))
+    monkeypatch.setattr(
+        snapshot,
+        "enforce_liveops_quality_gate",
+        lambda **kwargs: calls.setdefault("quality", []).append(kwargs),
     )
     monkeypatch.setattr(snapshot.holdings, "main", lambda argv: calls["holdings"].append(argv))
 
     snapshot.main(["--config", "hk", "--skip-run"])
 
     assert calls["holdings"] == [["--source", "live", "--as-of", "t-1", "--config", "hk", "--format", "text"]]
+    assert calls["quality"] == [
+        {
+            "command_name": "snapshot",
+            "run_dir": Path("artifacts/runs/demo"),
+            "config_ref": "hk",
+            "fail_on_quality": None,
+        }
+    ]
 
 
 def test_snapshot_run_dir_mode_skips_pipeline(monkeypatch):
     calls: dict[str, list] = {"holdings": []}
 
     monkeypatch.setattr(
-        snapshot,
-        "resolve_pipeline_config",
-        lambda _cfg: (_ for _ in ()).throw(AssertionError("resolve_pipeline_config should not run")),
-    )
-    monkeypatch.setattr(
         snapshot.pipeline,
         "run",
         lambda _cfg: (_ for _ in ()).throw(AssertionError("pipeline.run should not run")),
+    )
+    monkeypatch.setattr(snapshot.holdings, "_resolve_run_dir", lambda *_args: Path("artifacts/runs/demo"))
+    monkeypatch.setattr(
+        snapshot,
+        "enforce_liveops_quality_gate",
+        lambda **kwargs: calls.setdefault("quality", []).append(kwargs),
     )
     monkeypatch.setattr(snapshot.holdings, "main", lambda argv: calls["holdings"].append(argv))
 
@@ -63,6 +74,14 @@ def test_snapshot_run_dir_mode_skips_pipeline(monkeypatch):
 
     assert calls["holdings"] == [
         ["--source", "live", "--as-of", "t-1", "--run-dir", "artifacts/runs/demo", "--format", "csv"]
+    ]
+    assert calls["quality"] == [
+        {
+            "command_name": "snapshot",
+            "run_dir": Path("artifacts/runs/demo"),
+            "config_ref": None,
+            "fail_on_quality": None,
+        }
     ]
 
 
@@ -80,3 +99,24 @@ def test_snapshot_requires_live_enabled_when_running_pipeline(monkeypatch):
 def test_snapshot_requires_config_or_run_dir():
     with pytest.raises(SystemExit, match="snapshot requires --config or --run-dir."):
         snapshot.main([])
+
+
+def test_snapshot_forwards_fail_on_quality_to_pipeline(monkeypatch):
+    calls: dict[str, list] = {"pipeline": [], "holdings": []}
+
+    monkeypatch.setattr(
+        snapshot,
+        "resolve_pipeline_config",
+        lambda _cfg: SimpleNamespace(data={"live": {"enabled": True}}),
+    )
+    monkeypatch.setattr(
+        snapshot.pipeline,
+        "run",
+        lambda cfg, *, fail_on_quality=None: calls["pipeline"].append((cfg, fail_on_quality)),
+    )
+    monkeypatch.setattr(snapshot.holdings, "main", lambda argv: calls["holdings"].append(argv))
+
+    snapshot.main(["--config", "hk", "--fail-on-quality", "warning"])
+
+    assert calls["pipeline"] == [("hk", "warning")]
+    assert calls["holdings"] == [["--source", "live", "--as-of", "t-1", "--config", "hk", "--format", "text"]]

@@ -20,7 +20,9 @@ def test_cli_parses_liveops_commands():
     assert alloc.source == "auto"
     assert alloc.side == "long"
 
-    alloc_hk = parser.parse_args(["alloc-hk", "--config", "default", "--method", "custom"])
+    alloc_hk = parser.parse_args(
+        ["alloc-hk", "--config", "default", "--method", "custom", "--fail-on-quality", "warning"]
+    )
     assert alloc_hk.command == "alloc-hk"
     assert alloc_hk.method == "custom"
     assert alloc_hk.top_n == 20
@@ -28,6 +30,7 @@ def test_cli_parses_liveops_commands():
     assert alloc_hk.side == "long"
     assert alloc_hk.scenario_capital is None
     assert alloc_hk.scenario_top_n is None
+    assert alloc_hk.fail_on_quality == "warning"
 
     alloc_hk_xlsx = parser.parse_args(
         ["alloc-hk", "--config", "default", "--format", "xlsx", "--out", "a.xlsx"]
@@ -53,9 +56,12 @@ def test_cli_parses_liveops_commands():
     assert alloc_hk_grid.scenario_capital == ["100000,200000"]
     assert alloc_hk_grid.scenario_top_n == ["5", "10"]
 
-    snapshot = parser.parse_args(["snapshot", "--config", "default", "--skip-run"])
+    snapshot = parser.parse_args(
+        ["snapshot", "--config", "default", "--skip-run", "--fail-on-quality", "error"]
+    )
     assert snapshot.command == "snapshot"
     assert snapshot.skip_run is True
+    assert snapshot.fail_on_quality == "error"
 
 
 def test_cli_main_holdings_passes_through_args(monkeypatch):
@@ -245,6 +251,8 @@ def test_cli_main_alloc_hk_passes_through_args(monkeypatch):
                 "user",
                 "--password",
                 "pass",
+                "--fail-on-quality",
+                "warning",
                 "--format",
                 "json",
                 "--out",
@@ -306,6 +314,8 @@ def test_cli_main_alloc_hk_passes_through_args(monkeypatch):
             "user",
             "--password",
             "pass",
+            "--fail-on-quality",
+            "warning",
             "--format",
             "json",
             "--out",
@@ -331,6 +341,8 @@ def test_cli_main_snapshot_passes_through_args(monkeypatch):
                 "--skip-run",
                 "--top-k",
                 "15",
+                "--fail-on-quality",
+                "warning",
                 "--format",
                 "csv",
                 "--out",
@@ -350,6 +362,8 @@ def test_cli_main_snapshot_passes_through_args(monkeypatch):
             "--skip-run",
             "--top-k",
             "15",
+            "--fail-on-quality",
+            "warning",
             "--format",
             "csv",
             "--out",

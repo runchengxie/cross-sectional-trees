@@ -7,7 +7,10 @@ from ..config_utils import resolve_pipeline_filename, resolve_repo_preset_path
 
 
 def handle_run(args) -> int:
-    pipeline.run(args.config)
+    if getattr(args, "fail_on_quality", None) is None:
+        pipeline.run(args.config)
+    else:
+        pipeline.run(args.config, fail_on_quality=args.fail_on_quality)
     return 0
 
 
@@ -48,6 +51,15 @@ def register_core_commands(subparsers) -> None:
     run.add_argument(
         "--config",
         help="Path to YAML config or built-in name (default/hk).",
+    )
+    run.add_argument(
+        "--fail-on-quality",
+        choices=["none", "info", "warning", "error"],
+        default=None,
+        help=(
+            "Optional quality gate threshold. Overrides quality.fail_on_severity in the config "
+            "when provided."
+        ),
     )
     run.set_defaults(func=handle_run)
 

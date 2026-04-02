@@ -27,6 +27,7 @@ def handle_snapshot(args) -> int:
     append_arg(argv, "--as-of", getattr(args, "as_of", None))
     append_bool_switch(argv, getattr(args, "skip_run", None), true_flag="--skip-run")
     append_arg(argv, "--top-k", getattr(args, "top_k", None), formatter=str)
+    append_arg(argv, "--fail-on-quality", getattr(args, "fail_on_quality", None))
     append_arg(argv, "--format", getattr(args, "format", None))
     append_arg(argv, "--out", getattr(args, "out", None))
     snapshot.main(argv)
@@ -154,6 +155,7 @@ def handle_alloc_hk(args) -> int:
     )
     append_arg(argv, "--username", getattr(args, "username", None))
     append_arg(argv, "--password", getattr(args, "password", None))
+    append_arg(argv, "--fail-on-quality", getattr(args, "fail_on_quality", None))
     append_arg(argv, "--format", getattr(args, "format", None))
     append_arg(argv, "--out", getattr(args, "out", None))
     alloc_hk.main(argv)
@@ -431,6 +433,15 @@ def register_liveops_commands(subparsers) -> None:
     alloc_hk.add_argument("--username", help="Override RQData username.")
     alloc_hk.add_argument("--password", help="Override RQData password.")
     alloc_hk.add_argument(
+        "--fail-on-quality",
+        choices=["none", "info", "warning", "error"],
+        default=None,
+        help=(
+            "Optional quality gate threshold. When omitted, alloc-hk reuses the threshold stored "
+            "in the resolved run summary or from the config."
+        ),
+    )
+    alloc_hk.add_argument(
         "--format",
         default="text",
         choices=["text", "csv", "json", "xlsx"],
@@ -481,5 +492,14 @@ def register_liveops_commands(subparsers) -> None:
     snapshot.add_argument(
         "--out",
         help="Optional output path (default: stdout).",
+    )
+    snapshot.add_argument(
+        "--fail-on-quality",
+        choices=["none", "info", "warning", "error"],
+        default=None,
+        help=(
+            "Optional quality gate threshold. When omitted, snapshot reuses the threshold stored "
+            "in the resolved run summary or from the config."
+        ),
     )
     snapshot.set_defaults(func=handle_snapshot)

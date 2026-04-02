@@ -267,6 +267,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 | `final_oos` | 最终留出期（启用时）对应评估与回测摘要 |
 | `positions` | 回测持仓文件路径与窗口字段声明 |
 | `live` | live 模式状态、as_of 与 live 持仓文件路径 |
+| `quality` | 主流程 preflight 质量闸门摘要与报告路径 |
 | `fundamentals` | 基本面数据源与字段配置摘要 |
 | `industry` | 本地行业标签 join 配置摘要 |
 | `walk_forward` | 滚动窗口验证参数与结果 |
@@ -375,6 +376,37 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. `sample_weight_mode` / `sample_weight_params` 反映模型拟合时是否启用了近期样本加权。
 1. `train_window` 反映主训练、CV、walk-forward 训练段、`final_oos` 拟合与 `live.train_mode=full` 复训所使用的训练窗口配置。
 
+`summary.json -> quality -> preflight` 会记录主流程前置质量检查的结果；当前支持的是 HK 本地 PIT fundamentals 文件对应的 PIT health gate。例如：
+
+```json
+{
+  "enabled": true,
+  "fail_on_severity": "warning",
+  "gate_triggered": false,
+  "message": "2 quality issue(s) detected; none met fail_on_severity=warning.",
+  "overall_verdict": {
+    "color": "yellow",
+    "overall_severity": "warning",
+    "issue_count": 2,
+    "severity_counts": {"error": 0, "warning": 2, "info": 0},
+    "fail_on_severity": "warning",
+    "gate_triggered": false,
+    "gate_status": "pass"
+  },
+  "checks": [
+    {
+      "name": "hk_pit_coverage_health",
+      "report_file": "artifacts/runs/<run_dir>/quality/hk_pit_coverage_preflight.json"
+    }
+  ]
+}
+```
+
+说明：
+
+1. `overall_verdict` 是给 `snapshot` / `alloc-hk` 复用的统一 verdict；liveops 可在不重跑 inspection 的情况下，按新的 `--fail-on-quality` 阈值重新判定。
+1. `checks[*].report_file` 是详细 JSON 报告；需要回看具体红灯项时，优先读它。
+
 `summary.json -> industry` 会记录本地行业标签 join 的配置与解析结果：
 
 ```json
@@ -414,7 +446,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 稳定 contract（版本演进时尽量保持不变）：
 
-1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/fundamentals/industry/walk_forward`）。
+1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/quality/fundamentals/industry/walk_forward`）。
 1. 研究主链路内部 canonical 标的列是 `symbol`；新生成的 run artifacts / CLI 输出默认只写 `symbol`。
 1. `csml build-hk-connect-universe` 和 `csml build-hk-daily-asset-universe` 新生成的 universe CSV 也默认只写 `symbol`，不再主动补 `ts_code` / `stock_ticker`。
 1. 旧输入文件里的 `ts_code`、`stock_ticker`、`order_book_id` 仍会在读取时自动映射到 `symbol`。
@@ -436,6 +468,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | `summary.json` | 默认 | 机器可读总摘要，包含路径指针与关键指标 |
 | `config.used.yml` | 默认 | 实际生效配置（复现优先读这个） |
 | `run.log` | `eval.save_artifacts=true` 且未显式配置 `logging.file` | 本次 run 的默认本地日志 |
+| `quality/hk_pit_coverage_preflight.json` | `quality.fail_on_severity!=none` 或 `quality.save_report=true` 且当前 config 命中受支持 preflight | 主流程前置质量报告，供 liveops / 审计复用 |
 | `dropped_dates.csv` | 存在被 `min_symbols_per_date` 丢弃的日期时 | 排查样本不足与过滤影响 |
 | `eval_scored.parquet` | `eval.save_artifacts=true` 且 `eval.save_scored_artifact=true` 且评估阶段成功 | `grid` 与二次分析复用 |
 | `dataset.parquet` | `eval.save_artifacts=true` 且 `eval.save_dataset=true` | 冻结建模输入样本 |

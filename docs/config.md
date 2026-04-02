@@ -212,6 +212,25 @@ live:
 * `live.alloc_hk.scenarios.capitals` 和 `top_ns` 同时存在时，会按 `资金 × TopN` 生成场景矩阵。
 * CLI 传 `--scenario-capital` / `--scenario-top-n` 时，会覆盖对应配置项。
 
+### `quality`
+
+主流程和 liveops 入口现在支持一层可选的质量闸门。第一版只接入“HK + RQData + `fundamentals.source=file`”这类本地 PIT fundamentals 场景，会在 `csml run` 前跑一遍 `inspect-hk-pit-coverage` 的 health gate，并把结果写进 `summary.json -> quality.preflight`。
+
+```yaml
+quality:
+  fail_on_severity: warning   # none / info / warning / error
+  save_report: true           # 是否把 preflight JSON 报告写到 <run_dir>/quality/
+  pit_coverage_mode: strict   # strict / trainable / both
+  target_date: null           # 可选；默认沿用 by_date_file 最新日或 PIT 文件最大 trade_date
+  health_sample_limit: 5
+```
+
+补充：
+
+* `fail_on_severity` 是主开关。`none` 表示只记录、不阻断；其余值会在命中对应级别时让 `csml run` / `csml snapshot` / `csml alloc-hk` 直接 fail-fast。
+* `save_report=true` 时，支持的 preflight 会把 JSON 报告写到 `<run_dir>/quality/`；liveops 入口优先复用 `summary.json` 里的 verdict，不会默认重跑整套 inspection。
+* CLI 传 `--fail-on-quality ...` 时，会覆盖这里的 `quality.fail_on_severity`。
+
 ### 日志
 
 ```yaml

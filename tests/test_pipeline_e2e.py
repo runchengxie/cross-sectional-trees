@@ -151,6 +151,7 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
         "final_oos",
         "positions",
         "live",
+        "quality",
         "fundamentals",
         "industry",
         "walk_forward",

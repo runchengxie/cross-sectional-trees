@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from csml import pipeline
+from csml.pipeline import runner as pipeline_runner
 from csml.config_utils import resolve_pipeline_config
 from csml.data_interface import DataInterface
 from csml.pipeline.config import normalize_eval_settings
@@ -170,6 +171,55 @@ def test_pipeline_live_requires_artifacts(tmp_path, no_client):
         SystemExit,
         match="live.enabled=true requires eval.save_artifacts=true to persist holdings.",
     ):
+        pipeline.run(str(config_path))
+
+
+def test_pipeline_quality_gate_blocks_before_panel_load(tmp_path, no_client, monkeypatch):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["quality"] = {"fail_on_severity": "warning"}
+    config["fundamentals"] = {
+        "enabled": True,
+        "source": "file",
+        "file": str(tmp_path / "pit.parquet"),
+        "features": ["revenue"],
+    }
+    config_path = _write_config(tmp_path, config)
+
+    monkeypatch.setattr(
+        pipeline_runner,
+        "run_quality_preflight",
+        lambda **_kwargs: {
+            "enabled": True,
+            "fail_on_severity": "warning",
+            "checks": [
+                {
+                    "name": "hk_pit_coverage_health",
+                    "report_file": str(tmp_path / "runs" / "validation_quality" / "quality" / "hk_pit_coverage_preflight.json"),
+                }
+            ],
+            "overall_verdict": {
+                "color": "red",
+                "overall_severity": "error",
+                "issue_count": 2,
+                "severity_counts": {"error": 1, "warning": 1, "info": 0},
+                "fail_on_severity": "warning",
+                "gate_triggered": True,
+                "gate_status": "fail",
+                "failing_issue_count": 2,
+                "sample_failing_checks": ["hk_pit_coverage_health"],
+                "message": "2 quality issue(s) met fail_on_severity=warning; the inspection gate was triggered.",
+            },
+            "gate_triggered": True,
+            "message": "2 quality issue(s) met fail_on_severity=warning; the inspection gate was triggered.",
+        },
+    )
+    monkeypatch.setattr(
+        pipeline_runner,
+        "_load_research_panel",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("_load_research_panel should not run")),
+    )
+
+    with pytest.raises(SystemExit, match="Pipeline quality gate failed: 2 quality issue\\(s\\) met fail_on_severity=warning"):
         pipeline.run(str(config_path))
 
 

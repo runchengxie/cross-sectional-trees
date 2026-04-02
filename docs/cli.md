@@ -1,9 +1,9 @@
 # CLI 参考
 
-本页解决什么：`csml` 命令入口与高频参数速查。
-本页不解决什么：不展开研究流程与配置语义。
-适合谁：需要查命令和参数的读者。
-读完你会得到什么：按场景检索命令与参数的路径。
+本页解决什么：`csml` 命令入口与高频参数速查。\
+本页不解决什么：不展开研究流程与配置语义。\
+适合谁：需要查命令和参数的读者。\
+读完你会得到什么：按场景检索命令与参数的路径。\
 相关页面：`docs/cookbook.md`、`docs/capabilities.md`、`docs/config.md`、`docs/outputs.md`
 
 ## 快速决策
@@ -86,7 +86,13 @@ csml universe hk-connect --config configs/presets/universe/hk_connect.yml -- --m
 ```bash
 csml run --config default
 csml run --config hk
+csml run --config configs/presets/hk_quarterly_pit_hybrid.yml --fail-on-quality warning
 ```
+
+说明：
+
+* `--fail-on-quality none|info|warning|error` 会覆盖配置里的 `quality.fail_on_severity`。
+* 当前主流程 preflight 只接入“HK + RQData + 本地 PIT fundamentals file”场景；命中时会先跑一遍 PIT health gate，再决定是否继续训练。
 
 ### csml grid
 
@@ -137,7 +143,13 @@ csml holdings --run-dir artifacts/runs/<run_dir> --format csv
 csml snapshot --config path/to/live.yml
 csml snapshot --config path/to/live.yml --skip-run
 csml snapshot --run-dir artifacts/runs/<run_dir>
+csml snapshot --run-dir artifacts/runs/<run_dir> --fail-on-quality warning
 ```
+
+补充：
+
+* 如果 run 的 `summary.json` 里已经有 `quality.preflight`，`snapshot` 会直接复用它。
+* 显式传 `--fail-on-quality ...` 时，会按该阈值重新判定是否阻断；未显式传时，优先沿用 run summary 或 config 里的阈值。
 
 ### csml alloc
 
@@ -156,12 +168,14 @@ csml alloc-hk --config path/to/live.yml --source live --top-n 20 --cash 1000000 
 csml alloc-hk --positions-file artifacts/runs/<run_dir>/positions_current_live.csv --as-of 2026-03-20 --roll-window 252 --no-secondary-fill
 csml alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --format xlsx --out artifacts/exports/alloc_hk.xlsx
 csml alloc-hk --config path/to/live.yml --source live --scenario-capital 1000000,500000 --scenario-top-n 20,10 --method custom --format xlsx --out artifacts/exports/alloc_hk_grid.xlsx
+csml alloc-hk --run-dir artifacts/runs/<run_dir> --fail-on-quality warning --format json
 ```
 
 说明：
 
 - 单场景时，`csv` 仍输出逐标的分配表。
 - 多场景时，`csv` 会切换为场景总览表；完整明细优先用 `json` 或 `xlsx`。
+- `--fail-on-quality` 的优先级高于 `quality.fail_on_severity`；如果 run summary 已经记录了 preflight verdict，`alloc-hk` 会直接复用，不会默认重跑。
 
 
 ## 数据管理命令
