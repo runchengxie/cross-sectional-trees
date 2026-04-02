@@ -66,6 +66,18 @@ def handle_rqdata_inspect_hk_asset_health(args) -> int:
     return int(rqdata_assets.inspect_hk_asset_health(args) or 0)
 
 
+def handle_rqdata_inspect_hk_intraday_health(args) -> int:
+    from ..data_tools import rqdata_assets
+
+    return int(rqdata_assets.inspect_hk_intraday_health(args) or 0)
+
+
+def handle_rqdata_build_hk_daily_clean_layer(args) -> int:
+    from ..data_tools import rqdata_assets
+
+    return int(rqdata_assets.build_hk_daily_clean_layer(args) or 0)
+
+
 def handle_rqdata_export_hk_instruments(args) -> int:
     return _run_rqdata_asset_command(args, "export_hk_instruments")
 
@@ -266,3 +278,17 @@ def register_rqdata_command(subparsers) -> None:
     )
     rqdata_assets.add_hk_asset_health_args(rq_asset_health)
     rq_asset_health.set_defaults(func=handle_rqdata_inspect_hk_asset_health)
+
+    rq_intraday_health = rq_sub.add_parser(
+        "inspect-hk-intraday-health",
+        help="Inspect local HK 5m parquet files for duplicate bars, missing bars, and daily reconciliation",
+    )
+    rqdata_assets.add_hk_intraday_health_args(rq_intraday_health)
+    rq_intraday_health.set_defaults(func=handle_rqdata_inspect_hk_intraday_health)
+
+    rq_daily_clean = rq_sub.add_parser(
+        "build-hk-daily-clean-layer",
+        help="Build a conservative cleaned HK daily snapshot without mutating the source asset",
+    )
+    rqdata_assets.add_hk_daily_clean_layer_args(rq_daily_clean)
+    rq_daily_clean.set_defaults(func=handle_rqdata_build_hk_daily_clean_layer)

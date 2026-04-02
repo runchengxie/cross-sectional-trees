@@ -1,0 +1,627 @@
+from __future__ import annotations
+
+import json
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from ..symbols import normalize_symbol_for_market
+from ...research.hk_intraday_slippage_report import resolve_input_parquet_paths
+from .shared import _normalize_frame_columns, _resolve_path
+
+
+_EXPECTED_HK_5M_TIME_KEYS = [
+    *pd.date_range("09:35", "12:00", freq="5min").strftime("%H:%M").tolist(),
+    *pd.date_range("13:05", "16:00", freq="5min").strftime("%H:%M").tolist(),
+]
+_EXPECTED_HK_5M_TIME_KEY_SET = set(_EXPECTED_HK_5M_TIME_KEYS)
+
+
+def _round_pct(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(float(numerator) / float(denominator) * 100.0, 2)
+
+
+def _quantile_or_none(values: Sequence[int], quantile: float) -> int | float | None:
+    if not values:
+        return None
+    result = float(pd.Series(list(values), dtype="float64").quantile(quantile))
+    if result.is_integer():
+        return int(result)
+    return round(result, 2)
+
+
+def _format_date(value: object) -> str | None:
+    timestamp = pd.to_datetime(value, errors="coerce")
+    if pd.isna(timestamp):
+        return None
+    return timestamp.normalize().strftime("%Y-%m-%d")
+
+
+def _format_timestamp(value: object) -> str | None:
+    timestamp = pd.to_datetime(value, errors="coerce")
+    if pd.isna(timestamp):
+        return None
+    if timestamp == timestamp.normalize():
+        return timestamp.strftime("%Y-%m-%d")
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _serialize_scalar(value: object) -> int | float | str | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, (pd.Timestamp, np.datetime64)):
+        return _format_timestamp(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        numeric = float(value)
+        if not np.isfinite(numeric):
+            return str(numeric)
+        if numeric.is_integer():
+            return int(numeric)
+        return round(numeric, 8)
+    return str(value)
+
+
+def _resolve_intraday_symbol_series(frame: pd.DataFrame) -> pd.Series:
+    for column in ("symbol", "ts_code", "rq_order_book_id", "order_book_id"):
+        if column in frame.columns:
+            return frame[column]
+    raise SystemExit(
+        "Intraday frame is missing a canonical symbol column. "
+        "Legacy aliases ts_code, rq_order_book_id, and order_book_id remain accepted."
+    )
+
+
+def _normalize_intraday_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    work = _normalize_frame_columns(frame)
+    if "trade_datetime" not in work.columns and "datetime" in work.columns:
+        work = work.rename(columns={"datetime": "trade_datetime"})
+    if "amount" not in work.columns and "total_turnover" in work.columns:
+        work = work.rename(columns={"total_turnover": "amount"})
+
+    work["symbol"] = _resolve_intraday_symbol_series(work).map(
+        lambda value: normalize_symbol_for_market(value, market="hk")
+    )
+    work["trade_datetime"] = pd.to_datetime(work.get("trade_datetime"), errors="coerce")
+    work = work.dropna(subset=["symbol", "trade_datetime"]).copy()
+    work["trade_date"] = work["trade_datetime"].dt.normalize()
+    work["time_key"] = work["trade_datetime"].dt.strftime("%H:%M")
+
+    for field in ("open", "high", "low", "close", "volume", "amount"):
+        if field in work.columns:
+            work[field] = pd.to_numeric(work[field], errors="coerce")
+        else:
+            work[field] = np.nan
+    return work.sort_values(["symbol", "trade_datetime"]).reset_index(drop=True)
+
+
+def _append_sample(samples: list[dict[str, object]], row: Mapping[str, object], *, limit: int) -> None:
+    if len(samples) >= limit:
+        return
+    payload = {key: _serialize_scalar(value) for key, value in row.items()}
+    if payload in samples:
+        return
+    samples.append(payload)
+
+
+def _aggregate_intraday_daily(frame: pd.DataFrame) -> pd.DataFrame:
+    grouped = frame.groupby(["symbol", "trade_date"], sort=True)
+    daily = grouped.agg(
+        intraday_open=("open", "first"),
+        intraday_high=("high", "max"),
+        intraday_low=("low", "min"),
+        intraday_close=("close", "last"),
+        intraday_volume=("volume", "sum"),
+        intraday_amount=("amount", "sum"),
+        intraday_bar_count=("trade_datetime", "size"),
+    ).reset_index()
+    return daily
+
+
+def _compare_numeric(
+    left: pd.Series,
+    right: pd.Series,
+    *,
+    rtol: float,
+    atol: float,
+) -> pd.Series:
+    left_numeric = pd.to_numeric(left, errors="coerce")
+    right_numeric = pd.to_numeric(right, errors="coerce")
+    both = left_numeric.notna() & right_numeric.notna()
+    result = pd.Series(False, index=left.index, dtype=bool)
+    if bool(both.any()):
+        result.loc[both] = ~np.isclose(
+            left_numeric.loc[both].to_numpy(dtype="float64"),
+            right_numeric.loc[both].to_numpy(dtype="float64"),
+            rtol=rtol,
+            atol=atol,
+        )
+    return result
+
+
+def _build_daily_reconciliation(
+    *,
+    intraday_daily: pd.DataFrame,
+    daily_asset_dir: Path,
+    sample_limit: int,
+    rtol: float,
+    atol: float,
+) -> dict[str, object]:
+    data_dir = daily_asset_dir / "data"
+    if not data_dir.exists():
+        raise SystemExit(f"Daily asset directory is missing data/: {daily_asset_dir}")
+
+    mismatch_counts: Counter[str] = Counter()
+    sample_missing_daily_rows: list[dict[str, object]] = []
+    sample_mismatch_rows: list[dict[str, object]] = []
+    reconciled_symbol_days = 0
+    missing_daily_rows = 0
+
+    for symbol, symbol_df in intraday_daily.groupby("symbol", sort=True):
+        daily_path = data_dir / f"{symbol}.parquet"
+        if not daily_path.exists():
+            missing_daily_rows += int(len(symbol_df))
+            for _, row in symbol_df.head(sample_limit).iterrows():
+                _append_sample(
+                    sample_missing_daily_rows,
+                    {
+                        "symbol": symbol,
+                        "trade_date": row["trade_date"],
+                        "reason": "daily_parquet_missing",
+                    },
+                    limit=sample_limit,
+                )
+            continue
+
+        daily_frame = _normalize_frame_columns(
+            pd.read_parquet(daily_path)
+        )
+        if "trade_date" not in daily_frame.columns:
+            continue
+        daily_frame["trade_date"] = pd.to_datetime(daily_frame["trade_date"], errors="coerce").dt.normalize()
+        daily_frame = daily_frame.dropna(subset=["trade_date"]).copy()
+        daily_frame = daily_frame.rename(
+            columns={
+                "open": "daily_open",
+                "high": "daily_high",
+                "low": "daily_low",
+                "close": "daily_close",
+                "volume": "daily_volume",
+                "total_turnover": "daily_amount",
+            }
+        )
+        merged = symbol_df.merge(
+            daily_frame,
+            on="trade_date",
+            how="left",
+            sort=True,
+        )
+        missing_match_mask = merged["daily_open"].isna() & merged["daily_close"].isna()
+        if bool(missing_match_mask.any()):
+            missing_daily_rows += int(missing_match_mask.sum())
+            for _, row in merged.loc[missing_match_mask].head(sample_limit).iterrows():
+                _append_sample(
+                    sample_missing_daily_rows,
+                    {
+                        "symbol": symbol,
+                        "trade_date": row["trade_date"],
+                        "reason": "daily_trade_date_missing",
+                    },
+                    limit=sample_limit,
+                )
+
+        matched = merged.loc[~missing_match_mask].copy()
+        if matched.empty:
+            continue
+        reconciled_symbol_days += int(len(matched))
+
+        for intraday_field, daily_field, issue_key in (
+            ("intraday_open", "daily_open", "daily_open_mismatch"),
+            ("intraday_high", "daily_high", "daily_high_mismatch"),
+            ("intraday_low", "daily_low", "daily_low_mismatch"),
+            ("intraday_close", "daily_close", "daily_close_mismatch"),
+            ("intraday_volume", "daily_volume", "daily_volume_mismatch"),
+            ("intraday_amount", "daily_amount", "daily_amount_mismatch"),
+        ):
+            mismatch_mask = _compare_numeric(
+                matched[intraday_field],
+                matched[daily_field],
+                rtol=rtol,
+                atol=atol,
+            )
+            count = int(mismatch_mask.sum())
+            if count <= 0:
+                continue
+            mismatch_counts[issue_key] += count
+            for _, row in matched.loc[mismatch_mask].head(sample_limit).iterrows():
+                _append_sample(
+                    sample_mismatch_rows,
+                    {
+                        "symbol": symbol,
+                        "trade_date": row["trade_date"],
+                        "field": issue_key,
+                        "intraday_value": row[intraday_field],
+                        "daily_value": row[daily_field],
+                    },
+                    limit=sample_limit,
+                )
+
+    return {
+        "summary": {
+            "daily_asset_dir": str(daily_asset_dir),
+            "reconciled_symbol_days": reconciled_symbol_days,
+            "missing_daily_symbol_days": missing_daily_rows,
+            "mismatch_counts": dict(sorted(mismatch_counts.items())),
+        },
+        "sample_missing_daily_rows": sample_missing_daily_rows,
+        "sample_mismatch_rows": sample_mismatch_rows,
+    }
+
+
+def _render_intraday_health_text(payload: Mapping[str, object]) -> str:
+    summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
+    quality_checks = payload.get("quality_checks") if isinstance(payload.get("quality_checks"), list) else []
+    lines = ["HK Intraday Health"]
+    for key in (
+        "rows_scanned",
+        "symbols_scanned",
+        "symbol_days_scanned",
+        "trade_date_min",
+        "trade_date_max",
+        "duplicate_timestamp_groups",
+        "duplicate_timestamp_rows",
+        "symbol_days_with_missing_bars",
+        "missing_bar_rows",
+        "negative_volume_rows",
+        "negative_amount_rows",
+        "daily_reconciliation_symbol_days",
+        "daily_reconciliation_missing_daily_rows",
+    ):
+        lines.append(f"{key}: {summary.get(key)}")
+
+    if quality_checks:
+        lines.append("")
+        lines.append("Quality Checks")
+        for row in quality_checks:
+            if not isinstance(row, Mapping):
+                continue
+            lines.append(
+                "{severity}: {check} -> {affected} item(s), {pct}%".format(
+                    severity=row.get("severity"),
+                    check=row.get("check"),
+                    affected=row.get("affected_items"),
+                    pct=row.get("affected_pct"),
+                )
+            )
+    return "\n".join(lines).strip() + "\n"
+
+
+def inspect_hk_intraday_health(args) -> int:
+    input_specs = list(getattr(args, "input", []) or [])
+    if not input_specs:
+        raise SystemExit("At least one --input is required.")
+
+    parquet_paths = resolve_input_parquet_paths(input_specs)
+    sample_limit = max(1, int(getattr(args, "sample_limit", 5) or 5))
+    expected_bars_per_day = max(1, int(getattr(args, "expected_bars_per_day", 66) or 66))
+    numeric_rtol = float(getattr(args, "numeric_rtol", 1e-6) or 1e-6)
+    numeric_atol = float(getattr(args, "numeric_atol", 1e-8) or 1e-8)
+
+    duplicate_timestamp_groups = 0
+    duplicate_timestamp_rows = 0
+    missing_bar_symbol_days = 0
+    missing_bar_rows = 0
+    off_schedule_bar_rows = 0
+    negative_volume_rows = 0
+    negative_amount_rows = 0
+    rows_scanned = 0
+    symbols_seen: set[str] = set()
+    trade_date_min: pd.Timestamp | None = None
+    trade_date_max: pd.Timestamp | None = None
+    bar_count_values: list[int] = []
+    sample_duplicate_rows: list[dict[str, object]] = []
+    sample_missing_symbol_days: list[dict[str, object]] = []
+    sample_negative_rows: list[dict[str, object]] = []
+    sample_unexpected_bar_count_symbol_days: list[dict[str, object]] = []
+    daily_parts: list[pd.DataFrame] = []
+
+    for parquet_path in parquet_paths:
+        frame = pd.read_parquet(parquet_path)
+        work = _normalize_intraday_frame(frame)
+        if work.empty:
+            continue
+        rows_scanned += int(len(work))
+        symbols_seen.update(work["symbol"].dropna().astype(str).tolist())
+        part_date_min = work["trade_date"].min()
+        part_date_max = work["trade_date"].max()
+        trade_date_min = part_date_min if trade_date_min is None or part_date_min < trade_date_min else trade_date_min
+        trade_date_max = part_date_max if trade_date_max is None or part_date_max > trade_date_max else trade_date_max
+
+        duplicate_groups = (
+            work.groupby(["symbol", "trade_datetime"], sort=True).size().rename("duplicate_rows").reset_index()
+        )
+        duplicate_groups = duplicate_groups.loc[duplicate_groups["duplicate_rows"] > 1].copy()
+        duplicate_timestamp_groups += int(len(duplicate_groups))
+        duplicate_timestamp_rows += int(duplicate_groups["duplicate_rows"].sum()) if not duplicate_groups.empty else 0
+        for _, row in duplicate_groups.head(sample_limit).iterrows():
+            _append_sample(
+                sample_duplicate_rows,
+                {
+                    "symbol": row["symbol"],
+                    "trade_datetime": pd.to_datetime(row["trade_datetime"]),
+                    "duplicate_rows": row["duplicate_rows"],
+                },
+                limit=sample_limit,
+            )
+
+        negative_volume_mask = work["volume"].notna() & (work["volume"] < 0.0)
+        negative_amount_mask = work["amount"].notna() & (work["amount"] < 0.0)
+        negative_volume_rows += int(negative_volume_mask.sum())
+        negative_amount_rows += int(negative_amount_mask.sum())
+        for field_name, mask in (("volume", negative_volume_mask), ("amount", negative_amount_mask)):
+            if not bool(mask.any()):
+                continue
+            for _, row in work.loc[mask].head(sample_limit).iterrows():
+                _append_sample(
+                    sample_negative_rows,
+                    {
+                        "symbol": row["symbol"],
+                        "trade_datetime": row["trade_datetime"],
+                        "field": field_name,
+                        "value": row[field_name],
+                    },
+                    limit=sample_limit,
+                )
+
+        off_schedule_mask = ~work["time_key"].isin(_EXPECTED_HK_5M_TIME_KEY_SET)
+        off_schedule_bar_rows += int(off_schedule_mask.sum())
+
+        deduped = (
+            work.drop_duplicates(subset=["symbol", "trade_datetime"], keep="last")
+            .sort_values(["symbol", "trade_datetime"])
+            .reset_index(drop=True)
+        )
+        grouped = deduped.groupby(["symbol", "trade_date"], sort=True)
+        for (symbol, trade_date), group in grouped:
+            observed_times = group["time_key"].astype(str).tolist()
+            observed_set = set(observed_times)
+            missing_times = [time_key for time_key in _EXPECTED_HK_5M_TIME_KEYS if time_key not in observed_set]
+            observed_bars = int(len(group))
+            bar_count_values.append(observed_bars)
+            if observed_bars != expected_bars_per_day:
+                _append_sample(
+                    sample_unexpected_bar_count_symbol_days,
+                    {
+                        "symbol": symbol,
+                        "trade_date": trade_date,
+                        "observed_bars": observed_bars,
+                        "expected_bars": expected_bars_per_day,
+                    },
+                    limit=sample_limit,
+                )
+            if missing_times:
+                missing_bar_symbol_days += 1
+                missing_bar_rows += int(len(missing_times))
+                _append_sample(
+                    sample_missing_symbol_days,
+                    {
+                        "symbol": symbol,
+                        "trade_date": trade_date,
+                        "observed_bars": observed_bars,
+                        "missing_bars": len(missing_times),
+                        "sample_missing_times": ",".join(missing_times[:5]),
+                    },
+                    limit=sample_limit,
+                )
+
+        daily_parts.append(_aggregate_intraday_daily(deduped))
+
+    intraday_daily = (
+        pd.concat(daily_parts, ignore_index=True)
+        .sort_values(["symbol", "trade_date"])
+        .reset_index(drop=True)
+        if daily_parts
+        else pd.DataFrame(
+            columns=[
+                "symbol",
+                "trade_date",
+                "intraday_open",
+                "intraday_high",
+                "intraday_low",
+                "intraday_close",
+                "intraday_volume",
+                "intraday_amount",
+                "intraday_bar_count",
+            ]
+        )
+    )
+    if not intraday_daily.empty:
+        intraday_daily = (
+            intraday_daily.groupby(["symbol", "trade_date"], sort=True, as_index=False)
+            .agg(
+                intraday_open=("intraday_open", "first"),
+                intraday_high=("intraday_high", "max"),
+                intraday_low=("intraday_low", "min"),
+                intraday_close=("intraday_close", "last"),
+                intraday_volume=("intraday_volume", "sum"),
+                intraday_amount=("intraday_amount", "sum"),
+                intraday_bar_count=("intraday_bar_count", "sum"),
+            )
+        )
+
+    reconciliation = None
+    if getattr(args, "daily_asset_dir", None):
+        reconciliation = _build_daily_reconciliation(
+            intraday_daily=intraday_daily,
+            daily_asset_dir=_resolve_path(args.daily_asset_dir),
+            sample_limit=sample_limit,
+            rtol=numeric_rtol,
+            atol=numeric_atol,
+        )
+
+    quality_checks: list[dict[str, object]] = []
+    symbol_days_scanned = int(len(intraday_daily))
+    if duplicate_timestamp_groups > 0:
+        quality_checks.append(
+            {
+                "check": "duplicate_intraday_timestamps",
+                "severity": "error",
+                "affected_items": duplicate_timestamp_groups,
+                "affected_pct": _round_pct(duplicate_timestamp_groups, symbol_days_scanned),
+                "sample_rows": sample_duplicate_rows,
+            }
+        )
+    if missing_bar_symbol_days > 0:
+        quality_checks.append(
+            {
+                "check": "intraday_missing_bars_vs_expected_schedule",
+                "severity": "warning",
+                "affected_items": missing_bar_symbol_days,
+                "affected_pct": _round_pct(missing_bar_symbol_days, symbol_days_scanned),
+                "sample_rows": sample_missing_symbol_days,
+            }
+        )
+    unexpected_bar_count_symbol_days = int(sum(value != expected_bars_per_day for value in bar_count_values))
+    if unexpected_bar_count_symbol_days > 0:
+        quality_checks.append(
+            {
+                "check": "intraday_unexpected_session_bar_count",
+                "severity": "warning",
+                "affected_items": unexpected_bar_count_symbol_days,
+                "affected_pct": _round_pct(unexpected_bar_count_symbol_days, symbol_days_scanned),
+                "sample_rows": sample_unexpected_bar_count_symbol_days,
+            }
+        )
+    if negative_volume_rows > 0:
+        quality_checks.append(
+            {
+                "check": "intraday_negative_volume_rows",
+                "severity": "error",
+                "affected_items": negative_volume_rows,
+                "affected_pct": _round_pct(negative_volume_rows, rows_scanned),
+                "sample_rows": [row for row in sample_negative_rows if row.get("field") == "volume"],
+            }
+        )
+    if negative_amount_rows > 0:
+        quality_checks.append(
+            {
+                "check": "intraday_negative_amount_rows",
+                "severity": "error",
+                "affected_items": negative_amount_rows,
+                "affected_pct": _round_pct(negative_amount_rows, rows_scanned),
+                "sample_rows": [row for row in sample_negative_rows if row.get("field") == "amount"],
+            }
+        )
+    if off_schedule_bar_rows > 0:
+        quality_checks.append(
+            {
+                "check": "intraday_off_schedule_bar_rows",
+                "severity": "warning",
+                "affected_items": off_schedule_bar_rows,
+                "affected_pct": _round_pct(off_schedule_bar_rows, rows_scanned),
+                "sample_rows": [],
+            }
+        )
+
+    reconciliation_summary = {}
+    if isinstance(reconciliation, Mapping):
+        reconciliation_summary = (
+            reconciliation.get("summary") if isinstance(reconciliation.get("summary"), Mapping) else {}
+        )
+        if int(reconciliation_summary.get("missing_daily_symbol_days") or 0) > 0:
+            quality_checks.append(
+                {
+                    "check": "intraday_daily_rows_missing_from_asset",
+                    "severity": "warning",
+                    "affected_items": int(reconciliation_summary.get("missing_daily_symbol_days") or 0),
+                    "affected_pct": _round_pct(
+                        int(reconciliation_summary.get("missing_daily_symbol_days") or 0),
+                        symbol_days_scanned,
+                    ),
+                    "sample_rows": list(reconciliation.get("sample_missing_daily_rows") or []),
+                }
+            )
+        mismatch_counts = (
+            reconciliation_summary.get("mismatch_counts")
+            if isinstance(reconciliation_summary.get("mismatch_counts"), Mapping)
+            else {}
+        )
+        for field_name, severity in (
+            ("daily_open_mismatch", "warning"),
+            ("daily_high_mismatch", "warning"),
+            ("daily_low_mismatch", "warning"),
+            ("daily_close_mismatch", "warning"),
+            ("daily_volume_mismatch", "warning"),
+            ("daily_amount_mismatch", "warning"),
+        ):
+            affected = int(mismatch_counts.get(field_name) or 0)
+            if affected <= 0:
+                continue
+            quality_checks.append(
+                {
+                    "check": field_name,
+                    "severity": severity,
+                    "affected_items": affected,
+                    "affected_pct": _round_pct(affected, int(reconciliation_summary.get("reconciled_symbol_days") or 0)),
+                    "sample_rows": [
+                        row
+                        for row in (reconciliation.get("sample_mismatch_rows") or [])
+                        if row.get("field") == field_name
+                    ],
+                }
+            )
+
+    summary = {
+        "input_count": len(input_specs),
+        "parquet_files_scanned": len(parquet_paths),
+        "rows_scanned": rows_scanned,
+        "symbols_scanned": len(symbols_seen),
+        "symbol_days_scanned": symbol_days_scanned,
+        "trade_date_min": _format_date(trade_date_min),
+        "trade_date_max": _format_date(trade_date_max),
+        "expected_bars_per_day": expected_bars_per_day,
+        "duplicate_timestamp_groups": duplicate_timestamp_groups,
+        "duplicate_timestamp_rows": duplicate_timestamp_rows,
+        "symbol_days_with_missing_bars": missing_bar_symbol_days,
+        "missing_bar_rows": missing_bar_rows,
+        "off_schedule_bar_rows": off_schedule_bar_rows,
+        "bar_count_min": min(bar_count_values) if bar_count_values else None,
+        "bar_count_p50": _quantile_or_none(bar_count_values, 0.5),
+        "bar_count_p90": _quantile_or_none(bar_count_values, 0.9),
+        "bar_count_max": max(bar_count_values) if bar_count_values else None,
+        "symbol_days_with_unexpected_bar_count": unexpected_bar_count_symbol_days,
+        "negative_volume_rows": negative_volume_rows,
+        "negative_amount_rows": negative_amount_rows,
+        "daily_reconciliation_symbol_days": int(reconciliation_summary.get("reconciled_symbol_days") or 0),
+        "daily_reconciliation_missing_daily_rows": int(reconciliation_summary.get("missing_daily_symbol_days") or 0),
+        "quality_check_issue_count": len(quality_checks),
+    }
+    payload = {
+        "summary": summary,
+        "sample_duplicate_timestamps": sample_duplicate_rows,
+        "sample_missing_symbol_days": sample_missing_symbol_days,
+        "sample_negative_rows": sample_negative_rows,
+        "sample_unexpected_bar_count_symbol_days": sample_unexpected_bar_count_symbol_days,
+        "daily_reconciliation": reconciliation,
+        "quality_checks": quality_checks,
+    }
+
+    output_format = str(getattr(args, "format", "text") or "text").strip().lower()
+    if output_format == "json":
+        rendered = json.dumps(payload, ensure_ascii=False, indent=2)
+    else:
+        rendered = _render_intraday_health_text(payload)
+
+    out_path = _resolve_path(args.out) if getattr(args, "out", None) else None
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(rendered, encoding="utf-8")
+    else:
+        print(rendered, end="")
+    return 0

@@ -429,7 +429,41 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/daily
 * 对 `daily` 资产，命令还会额外检查 `high/low/open/close` 的价格逻辑关系，以及负成交量 / 负成交额。
 * `sample_stale_symbols` 会列出没有覆盖到目标日的样本 symbol，适合快速判断是原始数据没补齐，还是个别 symbol 落后。
 * `sample_missing_asset_file_details` 和 `audit_issue_groups` 会把 `audit.csv` 里的失败原因带出来，便于区分权限问题、quota 问题和单纯没有远端数据。
-* 加上 `--include-history` 后，命令会额外扫描每个 parquet 的全历史，输出 `history` section；当前主要覆盖 `daily` 资产的价格边界异常、非正价格、负成交量和负成交额，`--history-sample-limit` 控制样本行数量。
+* 加上 `--include-history` 后，命令会额外扫描每个 parquet 的全历史，输出 `history` section；当前覆盖 `daily` 资产的价格边界异常、非正价格、负成交量、负成交额，以及 `valuation` 资产的连续 stale run，`--history-sample-limit` 控制样本行数量。
+
+### csml rqdata inspect-hk-intraday-health
+
+检查本地 HK `5m` parquet 是否有重复时间戳、缺 bar、session bar count 异常、负成交量 / 成交额，以及和本地 `daily` 快照是否能对账。
+
+```bash
+csml rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet
+csml rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --format json --out artifacts/reports/hk_intraday_health_20260401.json
+```
+
+说明：
+
+* `--input` 可以重复传多个 parquet；如果同名 `.parts/` 目录存在，命令会自动展开分片文件。
+* HK `5m` 的默认 full-session bar 数是 `66`，命令会同时检查缺 bar、off-schedule bar 和 `bar_count != 66` 的 symbol-day。
+* 传入 `--daily-asset-dir` 后，会把 intraday 聚合后的 `open/high/low/close/volume/amount` 和本地 daily parquet 对账，方便定位是 intraday 本身漏 bar，还是 daily / intraday 之间有不一致。
+
+### csml rqdata build-hk-daily-clean-layer
+
+在不改动原始日线镜像的前提下，构建一层保守的 HK `daily` clean snapshot。当前只处理规则明确的问题：`high/low` 边界不自洽、负成交量 / 负成交额，以及连续零价段。
+
+```bash
+csml rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402 --alias artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
+csml rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402 --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --zero-price-min-run 10 --overwrite
+csml rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_clean_20260402 --instruments-file artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet --etf-short-zero-max-run 2 --overwrite
+```
+
+说明：
+
+* 原始 `asset-dir` 不会被改写；命令会在 `out-dir` 里写一个新的快照，未改动的 symbol 直接复用源文件，改动过的 symbol 才会重写 parquet。
+* `price_bounds_fix` 只会把异常行的 `high` / `low` 收敛到该行 `OHLC` 的最大 / 最小值，不会改动 `open` / `close`。
+* 连续零价段默认要求至少 `5` 根连续日线都满足 `open=high=low=close=0`；命令会把这段的 `OHLCV` 和 `total_turnover` 置空，避免把明显坏段继续喂给下游。
+* ETF 快照如果能拿到 instruments metadata，会启用 second-pass：vanilla ETF 的短零价段默认允许再清到 `2` 连，杠杆 / 反向 / crypto / commodity 这类特殊产品不会被自动清洗，只会在 `cleaning_report.json` 里单独报出来。
+* 负 `volume` / `total_turnover` 当前按保守策略置空，不会强行改成 `0`。
+* 输出目录会额外写 `cleaning_report.json` 和 `cleaning_actions.csv`，方便追踪到底修了哪些 symbol、哪类规则各修了多少行。
 
 ## 股票池命令
 

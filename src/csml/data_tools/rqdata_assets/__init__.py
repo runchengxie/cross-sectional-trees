@@ -211,6 +211,8 @@ from .coverage import (
     inspect_hk_pit_coverage,
 )
 from .asset_health import inspect_hk_asset_health
+from .clean_daily import build_hk_daily_clean_layer
+from .intraday_health import inspect_hk_intraday_health
 
 
 def add_list_hk_financial_fields_args(parser: argparse.ArgumentParser) -> None:
@@ -390,6 +392,14 @@ def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_asset_health_args(parser)
 
 
+def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_intraday_health_args(parser)
+
+
+def add_hk_daily_clean_layer_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_daily_clean_layer_args(parser)
+
+
 __all__ = [
     "DEFAULT_BATCH_SIZE",
     "DEFAULT_HK_DAILY_FIELDS",
@@ -411,6 +421,7 @@ __all__ = [
     "STARTER_HK_FINANCIAL_FIELDS",
     "add_hk_announcement_mirror_args",
     "add_hk_daily_mirror_args",
+    "add_hk_daily_clean_layer_args",
     "add_hk_dividends_mirror_args",
     "add_hk_exchange_rate_mirror_args",
     "add_hk_ex_factors_mirror_args",
@@ -420,6 +431,7 @@ __all__ = [
     "add_hk_instrument_industry_mirror_args",
     "add_hk_instruments_export_args",
     "add_hk_asset_health_args",
+    "add_hk_intraday_health_args",
     "add_hk_pit_coverage_args",
     "add_hk_pit_fundamentals_build_args",
     "add_hk_shares_mirror_args",
@@ -427,9 +439,11 @@ __all__ = [
     "add_hk_valuation_mirror_args",
     "add_list_hk_financial_fields_args",
     "build_hk_industry_labels_file",
+    "build_hk_daily_clean_layer",
     "build_hk_pit_fundamentals_file",
     "export_hk_instruments",
     "inspect_hk_asset_health",
+    "inspect_hk_intraday_health",
     "inspect_hk_pit_coverage",
     "list_hk_financial_fields",
     "mirror_hk_announcement",

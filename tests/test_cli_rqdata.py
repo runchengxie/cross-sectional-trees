@@ -529,6 +529,78 @@ def test_cli_parses_rqdata_asset_commands():
     assert asset_health.out == "artifacts/reports/hk_asset_health.json"
     assert callable(asset_health.func)
 
+    intraday_health = parser.parse_args(
+        [
+            "rqdata",
+            "inspect-hk-intraday-health",
+            "--input",
+            "artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet",
+            "--input",
+            "artifacts/cache/intraday/hk_all_5m_2026.parquet",
+            "--daily-asset-dir",
+            "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest",
+            "--sample-limit",
+            "7",
+            "--expected-bars-per-day",
+            "66",
+            "--numeric-rtol",
+            "0.001",
+            "--numeric-atol",
+            "0.01",
+            "--format",
+            "json",
+            "--out",
+            "artifacts/reports/hk_intraday_health.json",
+        ]
+    )
+    assert intraday_health.command == "rqdata"
+    assert intraday_health.rq_command == "inspect-hk-intraday-health"
+    assert intraday_health.input == [
+        "artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet",
+        "artifacts/cache/intraday/hk_all_5m_2026.parquet",
+    ]
+    assert intraday_health.daily_asset_dir == "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest"
+    assert intraday_health.sample_limit == 7
+    assert intraday_health.expected_bars_per_day == 66
+    assert intraday_health.numeric_rtol == 0.001
+    assert intraday_health.numeric_atol == 0.01
+    assert intraday_health.format == "json"
+    assert intraday_health.out == "artifacts/reports/hk_intraday_health.json"
+    assert callable(intraday_health.func)
+
+    daily_clean = parser.parse_args(
+        [
+            "rqdata",
+            "build-hk-daily-clean-layer",
+            "--asset-dir",
+            "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest",
+            "--out-dir",
+            "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402",
+            "--alias",
+            "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest",
+            "--symbols-file",
+            "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt",
+            "--instruments-file",
+            "artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet",
+            "--zero-price-min-run",
+            "7",
+            "--etf-short-zero-max-run",
+            "3",
+            "--overwrite",
+        ]
+    )
+    assert daily_clean.command == "rqdata"
+    assert daily_clean.rq_command == "build-hk-daily-clean-layer"
+    assert daily_clean.asset_dir == "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest"
+    assert daily_clean.out_dir == "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402"
+    assert daily_clean.alias == "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest"
+    assert daily_clean.symbols_file == "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt"
+    assert daily_clean.instruments_file == "artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet"
+    assert daily_clean.zero_price_min_run == 7
+    assert daily_clean.etf_short_zero_max_run == 3
+    assert daily_clean.overwrite is True
+    assert callable(daily_clean.func)
+
 
 def test_cli_main_rqdata_info_prints_client_info(monkeypatch, capsys):
     class _FakeClient:

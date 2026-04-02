@@ -53,6 +53,7 @@ PLACEHOLDER_TOKENS = {
     "none",
     "#n/a",
 }
+VALUATION_STALE_RUN_MIN_LENGTH = 5
 
 
 def _parse_compact_date(value: object, *, label: str) -> pd.Timestamp:
@@ -273,7 +274,7 @@ def _build_audit_issue_groups(
         error = _clean_optional_text(audit_entry.get("error"))
         if not status:
             continue
-        if status not in {"failed", "missing_remote", "quota_blocked"}:
+        if status not in {"failed", "missing_remote", "missing_source_asset", "quota_blocked"}:
             continue
         category = _categorize_audit_issue(status=status, error=error)
         key = (status, category)
@@ -521,6 +522,28 @@ def _assess_target_series(target_series: pd.Series) -> dict[str, object]:
     }
 
 
+def _build_history_clean_value_keys(series: pd.Series) -> pd.Series:
+    value_keys = pd.Series(None, index=series.index, dtype=object)
+    raw_nonnull_mask = series.notna()
+    if not bool(raw_nonnull_mask.any()):
+        return value_keys
+
+    placeholder_mask = _placeholder_mask(series)
+    numeric = pd.to_numeric(series, errors="coerce")
+    finite_numeric_mask = raw_nonnull_mask & numeric.notna() & np.isfinite(numeric.to_numpy(dtype="float64"))
+    if bool(finite_numeric_mask.any()):
+        value_keys.loc[finite_numeric_mask] = numeric.loc[finite_numeric_mask].map(
+            lambda item: _serialize_scalar(float(item))
+        )
+
+    clean_text_mask = raw_nonnull_mask & ~placeholder_mask & numeric.isna()
+    if bool(clean_text_mask.any()):
+        value_keys.loc[clean_text_mask] = series.loc[clean_text_mask].map(
+            lambda value: _serialize_scalar(str(value).strip())
+        )
+    return value_keys
+
+
 def _init_history_state(*, dataset: str | None) -> dict[str, object]:
     issue_template = {
         "daily_price_bounds_violation_any_date": {"severity": "error"},
@@ -648,6 +671,106 @@ def _update_daily_history_state(
             )
 
 
+def _update_valuation_history_state(
+    *,
+    work: pd.DataFrame,
+    symbol: str,
+    date_column: str,
+    fields: Sequence[str],
+    history_state: dict[str, object],
+    sample_limit: int,
+) -> None:
+    deduped = (
+        work.drop_duplicates(subset=[date_column], keep="last")
+        .sort_values(date_column)
+        .reset_index(drop=True)
+    )
+    if deduped.empty:
+        return
+
+    for field in fields:
+        if field == date_column or field not in deduped.columns:
+            continue
+        check_key = f"valuation_stale_run_any_date::{field}"
+        check_state = history_state["issues"].setdefault(
+            check_key,
+            {
+                "check": "valuation_stale_run_any_date",
+                "field": field,
+                "severity": "warning",
+                "stale_run_min_length": VALUATION_STALE_RUN_MIN_LENGTH,
+                "affected_symbols": set(),
+                "affected_rows": 0,
+                "sample_rows": [],
+                "run_lengths": [],
+                "symbol_max_run_lengths": {},
+            },
+        )
+        value_keys = _build_history_clean_value_keys(deduped[field])
+        if not bool(value_keys.notna().any()):
+            continue
+        change_mask = value_keys.ne(value_keys.shift()) | value_keys.isna()
+        run_frame = pd.DataFrame(
+            {
+                "row_idx": np.arange(len(deduped)),
+                date_column: deduped[date_column],
+                "value_key": value_keys,
+                "group_id": change_mask.cumsum(),
+            }
+        )
+        run_frame = run_frame.loc[run_frame["value_key"].notna()].copy()
+        if run_frame.empty:
+            continue
+
+        segments = (
+            run_frame.groupby("group_id", sort=True)
+            .agg(
+                run_length=("row_idx", "size"),
+                start_row=("row_idx", "min"),
+                end_row=("row_idx", "max"),
+                start_date=(date_column, "min"),
+                end_date=(date_column, "max"),
+                stale_value=("value_key", "first"),
+            )
+            .reset_index(drop=True)
+        )
+        segments = segments.loc[segments["run_length"] >= VALUATION_STALE_RUN_MIN_LENGTH].copy()
+        if segments.empty:
+            continue
+        segments = segments.sort_values(
+            ["run_length", "end_date", "start_date"],
+            ascending=[False, False, False],
+        ).reset_index(drop=True)
+
+        check_state["affected_symbols"].add(symbol)
+        check_state["affected_rows"] = int(check_state["affected_rows"]) + int(segments["run_length"].sum())
+        check_state["run_lengths"].extend(int(item) for item in segments["run_length"].tolist())
+        symbol_max_run_lengths = check_state["symbol_max_run_lengths"]
+        symbol_max_run_lengths[symbol] = max(
+            int(symbol_max_run_lengths.get(symbol) or 0),
+            int(segments["run_length"].max()),
+        )
+
+        for _, segment in segments.head(sample_limit).iterrows():
+            _append_history_sample_row(
+                check_state["sample_rows"],
+                {
+                    "symbol": symbol,
+                    "start_date": segment["start_date"],
+                    "end_date": segment["end_date"],
+                    "run_length": int(segment["run_length"]),
+                    "span_days": int(
+                        (
+                            pd.to_datetime(segment["end_date"])
+                            - pd.to_datetime(segment["start_date"])
+                        ).days
+                    ),
+                    "stale_value": segment["stale_value"],
+                },
+                limit=sample_limit,
+            )
+
+
 def _finalize_history_payload(history_state: Mapping[str, object] | None) -> dict[str, object] | None:
     if not history_state:
         return None
@@ -662,15 +785,34 @@ def _finalize_history_payload(history_state: Mapping[str, object] | None) -> dic
         affected_rows = int(check_state.get("affected_rows") or 0)
         if affected_rows <= 0 and affected_symbol_count <= 0:
             continue
-        issue_rows.append(
-            {
-                "check": check_name,
-                "severity": check_state.get("severity"),
-                "affected_symbols": affected_symbol_count,
-                "affected_rows": affected_rows,
-                "sample_rows": list(check_state.get("sample_rows") or []),
-            }
-        )
+        row = {
+            "check": check_state.get("check") or check_name,
+            "severity": check_state.get("severity"),
+            "affected_symbols": affected_symbol_count,
+            "affected_rows": affected_rows,
+            "sample_rows": list(check_state.get("sample_rows") or []),
+        }
+        if check_state.get("field"):
+            row["field"] = check_state.get("field")
+        if check_state.get("stale_run_min_length"):
+            row["stale_run_min_length"] = int(check_state.get("stale_run_min_length") or 0)
+        run_lengths = [int(item) for item in (check_state.get("run_lengths") or [])]
+        if run_lengths:
+            row["run_length_p50"] = _quantile_or_none(run_lengths, 0.5)
+            row["run_length_p90"] = _quantile_or_none(run_lengths, 0.9)
+            row["run_length_max"] = max(run_lengths)
+            symbol_max_run_lengths = check_state.get("symbol_max_run_lengths")
+            if isinstance(symbol_max_run_lengths, Mapping):
+                row["run_length_gt_3_symbols"] = int(
+                    sum(int(value) > 3 for value in symbol_max_run_lengths.values())
+                )
+                row["run_length_gt_5_symbols"] = int(
+                    sum(int(value) > 5 for value in symbol_max_run_lengths.values())
+                )
+                row["run_length_gt_10_symbols"] = int(
+                    sum(int(value) > 10 for value in symbol_max_run_lengths.values())
+                )
+        issue_rows.append(row)
 
     issue_rows.sort(
         key=lambda item: (
@@ -866,9 +1008,13 @@ def _render_asset_health_text(payload: Mapping[str, object]) -> str:
             if not isinstance(row, Mapping):
                 continue
             lines.append(
-                "{severity}: {check} -> {affected_rows} row(s), {affected_symbols} symbol(s)".format(
+                "{severity}: {label} -> {affected_rows} row(s), {affected_symbols} symbol(s)".format(
                     severity=row.get("severity"),
-                    check=row.get("check"),
+                    label=(
+                        f"{row.get('check')} [{row.get('field')}]"
+                        if row.get("field")
+                        else row.get("check")
+                    ),
                     affected_rows=row.get("affected_rows"),
                     affected_symbols=row.get("affected_symbols"),
                 )
@@ -1030,29 +1176,6 @@ def inspect_hk_asset_health(args) -> int:
                 )
             continue
 
-        if history_state is not None:
-            history_state["rows_scanned"] = int(history_state["rows_scanned"]) + int(len(work))
-            history_date_min = work[date_column].min()
-            history_date_max = work[date_column].max()
-            history_state["date_min"] = (
-                history_date_min
-                if history_state["date_min"] is None or history_date_min < history_state["date_min"]
-                else history_state["date_min"]
-            )
-            history_state["date_max"] = (
-                history_date_max
-                if history_state["date_max"] is None or history_date_max > history_state["date_max"]
-                else history_state["date_max"]
-            )
-            if dataset == "daily":
-                _update_daily_history_state(
-                    work=work,
-                    symbol=symbol,
-                    date_column=date_column,
-                    history_state=history_state,
-                    sample_limit=history_sample_limit,
-                )
-
         duplicate_counts = work[date_column].value_counts()
         duplicate_date_count = int((duplicate_counts > 1).sum())
         if duplicate_date_count > 0:
@@ -1075,6 +1198,38 @@ def inspect_hk_asset_health(args) -> int:
                 .sort_values(date_column)
                 .reset_index(drop=True)
             )
+
+        if history_state is not None:
+            history_state["rows_scanned"] = int(history_state["rows_scanned"]) + int(len(work))
+            history_date_min = work[date_column].min()
+            history_date_max = work[date_column].max()
+            history_state["date_min"] = (
+                history_date_min
+                if history_state["date_min"] is None or history_date_min < history_state["date_min"]
+                else history_state["date_min"]
+            )
+            history_state["date_max"] = (
+                history_date_max
+                if history_state["date_max"] is None or history_date_max > history_state["date_max"]
+                else history_state["date_max"]
+            )
+            if dataset == "daily":
+                _update_daily_history_state(
+                    work=work,
+                    symbol=symbol,
+                    date_column=date_column,
+                    history_state=history_state,
+                    sample_limit=history_sample_limit,
+                )
+            elif dataset == "valuation":
+                _update_valuation_history_state(
+                    work=work,
+                    symbol=symbol,
+                    date_column=date_column,
+                    fields=selected_fields,
+                    history_state=history_state,
+                    sample_limit=history_sample_limit,
+                )
 
         latest_ts = work[date_column].max()
         latest_min = latest_ts if latest_min is None or latest_ts < latest_min else latest_min

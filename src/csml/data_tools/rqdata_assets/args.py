@@ -946,3 +946,104 @@ def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
         "--out",
         help="Optional output path. Default: print to stdout.",
     )
+
+
+def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--input",
+        action="append",
+        required=True,
+        help=(
+            "Intraday parquet input path. Repeatable. "
+            "When a matching .parts directory exists, the command scans its part files automatically."
+        ),
+    )
+    parser.add_argument(
+        "--daily-asset-dir",
+        help=(
+            "Optional HK daily asset snapshot for 5m-vs-daily reconciliation. "
+            "When provided, the command compares intraday aggregated OHLCV/amount against daily parquet rows."
+        ),
+    )
+    parser.add_argument(
+        "--sample-limit",
+        type=int,
+        default=5,
+        help="Number of sample rows or symbol-days shown per issue. Default: 5.",
+    )
+    parser.add_argument(
+        "--expected-bars-per-day",
+        type=int,
+        default=66,
+        help="Expected HK 5m bars per full session. Default: 66.",
+    )
+    parser.add_argument(
+        "--numeric-rtol",
+        type=float,
+        default=1e-6,
+        help="Relative tolerance used for daily reconciliation. Default: 1e-6.",
+    )
+    parser.add_argument(
+        "--numeric-atol",
+        type=float,
+        default=1e-8,
+        help="Absolute tolerance used for daily reconciliation. Default: 1e-8.",
+    )
+    parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format. Default: text.",
+    )
+    parser.add_argument(
+        "--out",
+        help="Optional output path. Default: print to stdout.",
+    )
+
+
+def add_hk_daily_clean_layer_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--asset-dir",
+        required=True,
+        help="Path to a local HK daily asset snapshot directory containing data/.",
+    )
+    parser.add_argument(
+        "--out-dir",
+        required=True,
+        help="Destination directory for the cleaned daily snapshot.",
+    )
+    parser.add_argument(
+        "--alias",
+        help="Optional alias/symlink path to point at the cleaned snapshot after it is built.",
+    )
+    parser.add_argument(
+        "--symbols-file",
+        help="Optional text file with one HK symbol per line. Defaults to source symbols.txt when present.",
+    )
+    parser.add_argument(
+        "--instruments-file",
+        help=(
+            "Optional HK instruments parquet. "
+            "When the snapshot is ETF-oriented, this enables ETF second-pass rules and product-profile reporting."
+        ),
+    )
+    parser.add_argument(
+        "--zero-price-min-run",
+        type=int,
+        default=5,
+        help="Minimum consecutive all-zero OHLC run length to null out. Default: 5.",
+    )
+    parser.add_argument(
+        "--etf-short-zero-max-run",
+        type=int,
+        default=2,
+        help=(
+            "When ETF product metadata is available, null out vanilla ETF all-zero OHLC runs up to this length. "
+            "Default: 2."
+        ),
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite --out-dir if it already exists.",
+    )
