@@ -35,6 +35,35 @@ def test_backtest_initial_cost_applied():
     assert stats["periods_with_delayed_exit"] == 0
 
 
+def test_backtest_accepts_legacy_ts_code_input():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(["2020-01-01", "2020-01-01", "2020-01-02", "2020-01-02"]),
+            "ts_code": ["A", "B", "A", "B"],
+            "pred": [2.0, 1.0, 2.0, 1.0],
+            "close": [100.0, 100.0, 110.0, 90.0],
+        }
+    )
+    rebalance_dates = [pd.Timestamp("2020-01-01"), pd.Timestamp("2020-01-02")]
+
+    stats, net_series, gross_series, turnover_series, _ = backtest_topk(
+        df,
+        pred_col="pred",
+        price_col="close",
+        rebalance_dates=rebalance_dates,
+        top_k=1,
+        shift_days=0,
+        cost_bps=10,
+        trading_days_per_year=252,
+        exit_mode="rebalance",
+    )
+
+    assert stats["periods"] == 1
+    assert np.isclose(gross_series.iloc[0], 0.10)
+    assert np.isclose(net_series.iloc[0], 0.10 - 0.001)
+    assert np.isclose(turnover_series.iloc[0], 1.0)
+
+
 def test_backtest_turnover_accounts_for_weight_drift():
     df = pd.DataFrame(
         {

@@ -15,7 +15,7 @@ import yaml
 from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR
 from ..backtest import backtest_topk
 from ..config_utils import resolve_pipeline_config
-from ..data_tools.symbols import ensure_symbol_columns
+from ..data_tools.symbols import canonicalize_symbol_columns
 from ..execution import build_execution_model
 from ..metrics import daily_ic_series, estimate_turnover, quantile_returns, summarize_ic
 from ..rebalance import get_rebalance_dates
@@ -351,7 +351,7 @@ def main(argv: list[str] | None = None) -> None:
     scored_data = pd.read_parquet(scored_path)
     if scored_data.empty:
         raise SystemExit("Scored data is empty; cannot run grid.")
-    scored_data = ensure_symbol_columns(scored_data, context="Grid scored data")
+    scored_data = canonicalize_symbol_columns(scored_data, context="Grid scored data")
     scored_data["trade_date"] = pd.to_datetime(scored_data["trade_date"])
 
     eval_signal_col = str(_get_nested(summary, "eval", "scored_signal_col") or "signal_eval")

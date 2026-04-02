@@ -58,6 +58,23 @@ def test_quantile_returns_shape_and_turnover():
     assert np.isclose(turnover.iloc[0], 0.0)
 
 
+def test_estimate_turnover_accepts_legacy_stock_ticker_input():
+    df = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(["2020-01-01"] * 4 + ["2020-01-02"] * 4),
+            "stock_ticker": ["A", "B", "C", "D"] * 2,
+            "pred": [4, 3, 2, 1, 4, 3, 2, 1],
+            "target": [0.04, 0.03, 0.02, 0.01] * 2,
+        }
+    )
+
+    rebalance_dates = sorted(df["trade_date"].unique())
+    turnover = estimate_turnover(df, "pred", k=2, rebalance_dates=rebalance_dates)
+
+    assert turnover.shape[0] == 1
+    assert np.isclose(turnover.iloc[0], 0.0)
+
+
 def test_quantile_returns_insufficient_symbols():
     df = pd.DataFrame(
         {

@@ -18,7 +18,7 @@ import pandas_ta as ta
 from ..artifacts import CACHE_DIR as DEFAULT_CACHE_DIR, resolve_repo_path
 from ..data_interface import DataInterface
 from ..data_providers import normalize_market
-from ..data_tools.symbols import ensure_symbol_columns
+from ..data_tools.symbols import canonicalize_symbol_columns
 from ..dataset import DatasetSchema, build_dataset
 from .dates import _build_trade_date_slices, _slice_trade_dates
 from .support import (
@@ -478,7 +478,7 @@ def _load_research_panel(
         sys.exit("No data returned - check symbols and date range.")
 
     df = pd.concat(frames, ignore_index=True)
-    df = ensure_symbol_columns(df, context="Daily panel")
+    df = canonicalize_symbol_columns(df, context="Daily panel")
     df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
     df.sort_values(["symbol", "trade_date"], inplace=True)
     df = _derive_execution_liquidity_proxy_columns(df, execution_pricing_cols)
@@ -551,7 +551,7 @@ def _load_research_panel(
                 )
             basic_df = data_interface.load_basic(symbols_for_non_price)
             if basic_df is not None and not basic_df.empty:
-                basic_df = ensure_symbol_columns(basic_df, context="Basic data")
+                basic_df = canonicalize_symbol_columns(basic_df, context="Basic data")
         except Exception as exc:
             logger.warning("Basic data load failed (%s); skipping ST/listed filters.", exc)
             basic_df = None

@@ -175,7 +175,7 @@ def _annotate_positions_window(frame: pd.DataFrame) -> pd.DataFrame:
 def _build_rebalance_diff(frame: pd.DataFrame) -> pd.DataFrame:
     if frame is None or frame.empty or "entry_date" not in frame.columns:
         return pd.DataFrame()
-    frame = ensure_symbol_columns(frame, context="Rebalance diff")
+    frame = canonicalize_symbol_columns(frame, context="Rebalance diff")
     entry_compact = _coerce_yyyymmdd(frame["entry_date"])
     entry_dt = pd.to_datetime(entry_compact, format="%Y%m%d", errors="coerce")
     unique_entries = sorted(entry_dt.dropna().unique())

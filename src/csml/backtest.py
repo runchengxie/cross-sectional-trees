@@ -5,7 +5,7 @@ from typing import Literal, Optional
 import numpy as np
 import pandas as pd
 
-from .data_tools.symbols import ensure_symbol_columns
+from .data_tools.symbols import canonicalize_symbol_columns
 from .portfolio import (
     build_position_weights,
     normalize_position_weights,
@@ -299,9 +299,9 @@ def backtest_topk(
     pricing_data: Optional[pd.DataFrame] = None,
 ):
     if data is not None and not data.empty:
-        data = ensure_symbol_columns(data, context="Backtest data")
+        data = canonicalize_symbol_columns(data, context="Backtest data")
     if pricing_data is not None and not pricing_data.empty:
-        pricing_data = ensure_symbol_columns(pricing_data, context="Backtest pricing data")
+        pricing_data = canonicalize_symbol_columns(pricing_data, context="Backtest pricing data")
     if execution is None:
         if exit_price_policy not in {"strict", "ffill", "delay"}:
             raise ValueError("exit_price_policy must be one of: strict, ffill, delay.")

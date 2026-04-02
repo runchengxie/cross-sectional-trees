@@ -16,7 +16,7 @@ from .build_hk_connect_universe import (
     get_rebalance_dates,
     validate_yyyymmdd,
 )
-from .symbols import ensure_symbol_columns
+from .symbols import canonicalize_symbol_columns
 
 DEFAULT_DAILY_ASSET_GLOBS = (
     "hk_all_*_daily_final_latest",
@@ -112,7 +112,7 @@ def _load_symbol_turnover_frame(path: Path) -> tuple[str, pd.Series] | None:
         return None
     if "symbol" not in frame.columns and "ts_code" not in frame.columns:
         frame["symbol"] = path.stem
-    frame = ensure_symbol_columns(frame, context=f"Daily asset file {path.name}")
+    frame = canonicalize_symbol_columns(frame, context=f"Daily asset file {path.name}")
     trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")
     valid = trade_dates.notna()
     if not valid.any():

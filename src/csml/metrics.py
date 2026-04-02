@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .data_tools.symbols import ensure_symbol_columns
+from .data_tools.symbols import canonicalize_symbol_columns
 from .portfolio import apply_rebalance_buffer
 
 try:
@@ -219,7 +219,7 @@ def estimate_turnover(
 ) -> pd.Series:
     if data is None or data.empty:
         return pd.Series(dtype=float, name="turnover")
-    data = ensure_symbol_columns(data, context="Turnover data")
+    data = canonicalize_symbol_columns(data, context="Turnover data")
     prev = None
     turnovers: list[tuple[pd.Timestamp, float]] = []
     day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}

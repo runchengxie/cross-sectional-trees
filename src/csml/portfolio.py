@@ -5,7 +5,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from .data_tools.symbols import ensure_symbol_columns
+from .data_tools.symbols import canonicalize_symbol_columns
 from .execution import ExecutionModel, SelectionConstraints
 
 
@@ -212,7 +212,7 @@ def build_positions_by_rebalance(
     execution: Optional[ExecutionModel] = None,
 ) -> pd.DataFrame:
     if data is not None and not data.empty:
-        data = ensure_symbol_columns(data, context="Portfolio data")
+        data = canonicalize_symbol_columns(data, context="Portfolio data")
     weighting_mode = normalize_weighting_mode(weighting)
     entry_price_col = execution.entry_policy.price_col if execution is not None else price_col
     selection_constraints = (
