@@ -646,23 +646,25 @@ csml backup-data \
 
 ```bash
 uv run python -m csml.release_tools.package_assets \
-  --preset hk_full \
-  --daily-snapshot hk_all_2000_20260326_daily_final_latest \
-  --dest ~/csml_asset_parts/hk_full_20260327 \
+  --preset hk_current \
+  --dest ~/csml_asset_parts/hk_current_20260403 \
   --mode copy \
   --overwrite
 ```
 
 这条链路的特点：
 
-* 默认会把资产拆成 `daily / instruments / pit / reference / exchange_rate / southbound / financial_details / industry / universe` 这些 part
+* `valuation` 其实一直都支持单独打包；之前缺的是 `intraday` 和 ETF 这两类当前也值得长期留档的资产
+* `hk_current` preset 会优先解析当前 alias 指向的稳定资产，默认打 `daily / intraday / etf / valuation / instruments / pit / reference / southbound / industry / universe`
+* `hk_full` / `hk_connect` 这些旧 preset 仍然保留，它们更像历史快照模板，里面的 snapshot 名不会自动前移
 * 新增了 `hk_etf` preset，默认只打 `daily + instruments` 两个 part，不再强依赖 universe / PIT / reference 那些 ETF 当前没有主线快照的层
+* `intraday` part 会打包正式 `artifacts/assets/rqdata/hk/intraday/<snapshot>/` 资产层；`etf` part 会把 ETF `daily` snapshot 和 ETF instruments 一起打进去
 * `announcement` 也支持单独打包，但默认不进包；只有显式传 `--part announcement --announcement-snapshot <snapshot-or-path>` 才会生成
 * 每个 part 都有自己的 `manifest.yml`
 * part 内部会生成 `latest` 软链接，方便下游配置直接引用
-* 只想打核心层时，可以显式传 `--part daily --part instruments --part pit --part universe`
+* 只想打核心层时，可以显式传 `--part daily --part intraday --part etf --part valuation --part instruments --part pit --part universe`
 * 当前 preset 不会默认绑定 `announcement_snapshot`，因为仓库里现成的公告镜像还是 `hk_selected` 小范围补充层，不应自动混进 `hk_full` / `hk_connect` 主链分发
-* 如果你不想带增强层，可以补 `--no-exchange-rate`、`--no-southbound`、`--no-financial-details`
+* 如果你不想带增强层，可以补 `--no-intraday`、`--no-etf`、`--no-exchange-rate`、`--no-southbound`、`--no-financial-details`
 
 单独打 `announcement` 的例子：
 
@@ -683,6 +685,19 @@ ETF `daily` 资产的正式打包例子：
 uv run python -m csml.release_tools.package_assets \
   --preset hk_etf \
   --dest ~/csml_asset_parts/hk_etf_20260401 \
+  --mode copy \
+  --overwrite
+```
+
+如果你只想把当前正式 `intraday + ETF + valuation` 这三层打成备份包，可以直接选 part：
+
+```bash
+uv run python -m csml.release_tools.package_assets \
+  --preset hk_current \
+  --part intraday \
+  --part etf \
+  --part valuation \
+  --dest ~/csml_asset_parts/hk_current_focus_20260403 \
   --mode copy \
   --overwrite
 ```

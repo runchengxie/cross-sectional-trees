@@ -16,6 +16,8 @@ REPO_ROOT = find_repo_root(__file__)
 ASSETS_ROOT = REPO_ROOT / "artifacts" / "assets"
 AVAILABLE_PART_CHOICES = (
     "daily",
+    "intraday",
+    "etf",
     "valuation",
     "instruments",
     "pit",
@@ -35,6 +37,9 @@ PRESETS = {
     "hk_full": {
         "default_parts": DEFAULT_PART_CHOICES,
         "daily_snapshot": "hk_all_2000_20260327_daily_final_latest",
+        "intraday_snapshot": None,
+        "etf_daily_snapshot": None,
+        "etf_instruments_file": None,
         "valuation_snapshot": "hk_all_valuation_latest",
         "instruments_file": "hk_all_instruments_20260327.parquet",
         "pit_snapshot": "hk_all_2000_2025_full_market_latest",
@@ -53,6 +58,9 @@ PRESETS = {
     "hk_connect": {
         "default_parts": DEFAULT_PART_CHOICES,
         "daily_snapshot": "hk_all_2000_20260327_daily_final_latest",
+        "intraday_snapshot": None,
+        "etf_daily_snapshot": None,
+        "etf_instruments_file": None,
         "valuation_snapshot": None,
         "instruments_file": "hk_connect_full_20260326.parquet",
         "pit_snapshot": "hk_connect_full_2000_2025_full_latest",
@@ -71,6 +79,9 @@ PRESETS = {
     "hk_etf": {
         "default_parts": ("daily", "instruments"),
         "daily_snapshot": "hk_etf_2000_20260401_daily_latest",
+        "intraday_snapshot": None,
+        "etf_daily_snapshot": None,
+        "etf_instruments_file": None,
         "valuation_snapshot": None,
         "instruments_file": "hk_etf_instruments_latest.parquet",
         "pit_snapshot": None,
@@ -86,6 +97,38 @@ PRESETS = {
         "universe_symbols": None,
         "universe_meta": None,
     },
+    "hk_current": {
+        "default_parts": (
+            "daily",
+            "intraday",
+            "etf",
+            "valuation",
+            "instruments",
+            "pit",
+            "reference",
+            "southbound",
+            "industry",
+            "universe",
+        ),
+        "daily_snapshot": "hk_all_daily_latest",
+        "intraday_snapshot": "hk_intraday_latest",
+        "etf_daily_snapshot": "hk_etf_daily_latest",
+        "etf_instruments_file": "hk_etf_instruments_latest.parquet",
+        "valuation_snapshot": "hk_all_valuation_latest",
+        "instruments_file": "hk_all_instruments_latest.parquet",
+        "pit_snapshot": "hk_all_2000_2025_full_market_latest",
+        "ex_factors_snapshot": "hk_all_ex_factors_latest",
+        "dividends_snapshot": "hk_all_dividends_latest",
+        "shares_snapshot": "hk_all_shares_latest",
+        "exchange_rate_snapshot": "hk_all_2000_20260319_exchange_rate_latest",
+        "southbound_snapshot": "hk_connect_southbound_latest",
+        "financial_details_snapshot": "hk_financial_details_portable_bundle_20260324",
+        "announcement_snapshot": None,
+        "industry_changes_snapshot": "hk_all_industry_changes_latest",
+        "universe_by_date": "hk_all_full_by_date.csv",
+        "universe_symbols": "hk_all_full_symbols.txt",
+        "universe_meta": "hk_all_full_by_date.meta.yml",
+    },
 }
 
 
@@ -98,9 +141,8 @@ def looks_like_path(value: str) -> bool:
 
 
 def resolve_snapshot_path(base: Path, value: str) -> Path:
-    if looks_like_path(value):
-        return resolve_repo_path(value)
-    return base / value
+    path = resolve_repo_path(value) if looks_like_path(value) else base / value
+    return path.resolve() if path.exists() else path
 
 
 def detect_as_of(text: str) -> str:
@@ -172,6 +214,13 @@ def _latest_link(link: str, target: str) -> dict:
 def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
     preset = PRESETS[args.preset]
     daily_snapshot = args.daily_snapshot or preset["daily_snapshot"]
+    intraday_snapshot = (
+        None if args.no_intraday else (args.intraday_snapshot or preset.get("intraday_snapshot"))
+    )
+    etf_daily_snapshot = None if args.no_etf else (args.etf_daily_snapshot or preset.get("etf_daily_snapshot"))
+    etf_instruments_file = (
+        None if args.no_etf else (args.etf_instruments_file or preset.get("etf_instruments_file"))
+    )
     valuation_snapshot = (
         None if args.no_valuation else (args.valuation_snapshot or preset.get("valuation_snapshot"))
     )
@@ -288,14 +337,43 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
     universe_by_date_path = resolve_snapshot_path(universe_root, universe_by_date) if universe_by_date else None
     universe_symbols_path = resolve_snapshot_path(universe_root, universe_symbols) if universe_symbols else None
     universe_meta_path = resolve_snapshot_path(universe_root, universe_meta) if universe_meta else None
+    intraday_dir = (
+        resolve_snapshot_path(ASSETS_ROOT / "rqdata" / "hk" / "intraday", intraday_snapshot)
+        if intraday_snapshot
+        else None
+    )
+    etf_daily_dir = (
+        resolve_snapshot_path(ASSETS_ROOT / "rqdata" / "hk" / "daily", etf_daily_snapshot)
+        if etf_daily_snapshot
+        else None
+    )
+    etf_instruments_path = (
+        resolve_snapshot_path(
+            ASSETS_ROOT / "rqdata" / "hk" / "instruments",
+            etf_instruments_file,
+        )
+        if etf_instruments_file
+        else None
+    )
 
     if bool(universe_by_date_path) != bool(universe_symbols_path):
         raise SystemExit(
             "Universe part requires both --universe-by-date and --universe-symbols. "
             "Provide both, or leave both unset."
         )
+    if bool(etf_daily_dir) != bool(etf_instruments_path):
+        raise SystemExit(
+            "ETF part requires both --etf-daily-snapshot and --etf-instruments-file. "
+            "Provide both, or leave both unset."
+        )
 
     ensure_exists(daily_dir, "Daily snapshot directory")
+    if intraday_dir:
+        ensure_exists(intraday_dir, "Intraday snapshot directory")
+    if etf_daily_dir:
+        ensure_exists(etf_daily_dir, "ETF daily snapshot directory")
+    if etf_instruments_path:
+        ensure_exists(etf_instruments_path, "ETF instruments file")
     if valuation_dir:
         ensure_exists(valuation_dir, "Valuation snapshot directory")
     ensure_exists(instruments_path, "Instruments file")
@@ -326,6 +404,9 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
 
     return {
         "daily_dir": daily_dir,
+        "intraday_dir": intraday_dir,
+        "etf_daily_dir": etf_daily_dir,
+        "etf_instruments_path": etf_instruments_path,
         "valuation_dir": valuation_dir,
         "instruments_path": instruments_path,
         "pit_dir": pit_dir,
@@ -345,6 +426,9 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
 
 def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
     daily_dir = resolved["daily_dir"]
+    intraday_dir = resolved["intraday_dir"]
+    etf_daily_dir = resolved["etf_daily_dir"]
+    etf_instruments_path = resolved["etf_instruments_path"]
     valuation_dir = resolved["valuation_dir"]
     instruments_path = resolved["instruments_path"]
     pit_dir = resolved["pit_dir"]
@@ -378,6 +462,56 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
             ],
             "summary": {"snapshot": daily_dir.name},
         },
+        "intraday": {
+            "description": "HK intraday 5m snapshot directory.",
+            "entries": [
+                _part_entry(
+                    "intraday",
+                    intraday_dir,
+                    f"rqdata/hk/intraday/{intraday_dir.name}",
+                )
+            ],
+            "latest_links": [
+                _latest_link(
+                    "rqdata/hk/intraday/hk_intraday_latest",
+                    f"rqdata/hk/intraday/{intraday_dir.name}",
+                )
+            ],
+            "summary": {"snapshot": intraday_dir.name},
+        }
+        if intraday_dir
+        else None,
+        "etf": {
+            "description": "HK ETF daily snapshot plus ETF instruments parquet.",
+            "entries": [
+                _part_entry(
+                    "etf_daily",
+                    etf_daily_dir,
+                    f"rqdata/hk/daily/{etf_daily_dir.name}",
+                ),
+                _part_entry(
+                    "etf_instruments",
+                    etf_instruments_path,
+                    f"rqdata/hk/instruments/{etf_instruments_path.name}",
+                ),
+            ],
+            "latest_links": [
+                _latest_link(
+                    "rqdata/hk/daily/hk_etf_daily_latest",
+                    f"rqdata/hk/daily/{etf_daily_dir.name}",
+                ),
+                _latest_link(
+                    "rqdata/hk/instruments/hk_etf_instruments_latest.parquet",
+                    f"rqdata/hk/instruments/{etf_instruments_path.name}",
+                ),
+            ],
+            "summary": {
+                "daily_snapshot": etf_daily_dir.name,
+                "instruments_file": etf_instruments_path.name,
+            },
+        }
+        if etf_daily_dir and etf_instruments_path
+        else None,
         "valuation": {
             "description": "HK valuation snapshot directory.",
             "entries": [
@@ -755,6 +889,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-valuation", action="store_true", help="Skip valuation assets.")
     parser.add_argument("--as-of", dest="as_of", default=None)
     parser.add_argument("--daily-snapshot", default=None)
+    parser.add_argument("--intraday-snapshot", default=None)
+    parser.add_argument("--etf-daily-snapshot", default=None)
+    parser.add_argument("--etf-instruments-file", default=None)
     parser.add_argument("--valuation-snapshot", default=None)
     parser.add_argument("--instruments-file", default=None)
     parser.add_argument("--pit-snapshot", default=None)
@@ -771,6 +908,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--universe-meta", default=None)
     parser.add_argument("--no-exchange-rate", action="store_true", help="Skip exchange_rate assets.")
     parser.add_argument("--no-southbound", action="store_true", help="Skip southbound assets.")
+    parser.add_argument("--no-intraday", action="store_true", help="Skip intraday assets.")
+    parser.add_argument("--no-etf", action="store_true", help="Skip ETF daily + ETF instruments assets.")
     parser.add_argument(
         "--no-financial-details",
         action="store_true",

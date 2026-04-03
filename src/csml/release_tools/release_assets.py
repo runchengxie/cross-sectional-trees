@@ -214,6 +214,8 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         choices=(
             "daily",
+            "intraday",
+            "etf",
             "valuation",
             "instruments",
             "pit",

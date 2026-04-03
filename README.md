@@ -64,4 +64,9 @@ cp .env.example .env
 
 ## 后续按什么路径读文档
 
-从 [docs/README.md](docs/README.md) 进入。新手直接看 `docs/get-started.md`，先建立系统地图看 `docs/pipeline-overview.md`，正式研究路线从 `docs/playbooks/README.md` 进入，通用工作流速查看 `docs/cookbook.md`，按对象查细节看 `docs/cli.md` / `docs/config.md` / `docs/outputs.md`。
+从 [docs/README.md](docs/README.md) 作为起点。\
+初次使用直接看 `docs/get-started.md`\
+先建立系统地图看 `docs/pipeline-overview.md`\
+正式研究路线从 `docs/playbooks/README.md` 进入\
+通用工作流速查看 `docs/cookbook.md`\
+按对象查细节看 `docs/cli.md` / `docs/config.md` / `docs/outputs.md`。
