@@ -78,6 +78,7 @@ PLACEHOLDER_TOKENS = {
     "#n/a",
 }
 VALUATION_STALE_RUN_MIN_LENGTH = 5
+VALUATION_DELIST_BOUNDARY_MAX_DAYS = 5
 VALUATION_PROVIDER_LIKE_REASON_LABELS = {
     "no_daily_reference_window": "no_daily_reference_window",
     "no_finite_daily_close": "no_finite_daily_close",
@@ -86,6 +87,8 @@ VALUATION_PROVIDER_LIKE_REASON_LABELS = {
     "daily_price_changed": "daily_price_changed",
     "no_daily_reference": "no_daily_reference",
     "ex_factor_event_in_window": "ex_factor_event_in_window",
+    "shares_event_in_window": "shares_event_in_window",
+    "delisted_instrument_boundary": "delisted_instrument_boundary",
 }
 VALUATION_FRESH_TARGET_GAP_REASON_LABELS = {
     "target_market_val_present": "target_market_val_present",
@@ -836,6 +839,8 @@ def _update_valuation_history_state(
     sample_limit: int,
     daily_reference: pd.DataFrame | None = None,
     ex_factor_reference: pd.DataFrame | None = None,
+    shares_reference: pd.DataFrame | None = None,
+    instrument_reference: pd.DataFrame | None = None,
 ) -> None:
     deduped = (
         work.drop_duplicates(subset=[date_column], keep="last")
@@ -894,6 +899,8 @@ def _update_valuation_history_state(
                 end_date=segment["end_date"],
                 daily_reference=daily_reference,
                 ex_factor_reference=ex_factor_reference,
+                shares_reference=shares_reference,
+                instrument_reference=instrument_reference,
             )
             group = "provider_like" if context["provider_like"] else "actionable"
             grouped_segments[group].append(
@@ -960,9 +967,26 @@ def _classify_valuation_reference_window(
     end_date: object,
     daily_reference: pd.DataFrame | None,
     ex_factor_reference: pd.DataFrame | None = None,
+    shares_reference: pd.DataFrame | None = None,
+    instrument_reference: pd.DataFrame | None = None,
 ) -> dict[str, object]:
     start_ts = pd.to_datetime(start_date, errors="coerce").normalize()
     end_ts = pd.to_datetime(end_date, errors="coerce").normalize()
+    if instrument_reference is not None and not instrument_reference.empty:
+        delisted_rows = instrument_reference.loc[instrument_reference["de_listed_date"].notna()].copy()
+        if not delisted_rows.empty:
+            delisted_rows["boundary_days"] = (
+                delisted_rows["de_listed_date"] - end_ts
+            ).dt.days
+            boundary_rows = delisted_rows.loc[
+                (delisted_rows["boundary_days"] >= 0)
+                & (delisted_rows["boundary_days"] <= VALUATION_DELIST_BOUNDARY_MAX_DAYS)
+            ]
+            if not boundary_rows.empty:
+                return {
+                    "provider_like": True,
+                    "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["delisted_instrument_boundary"],
+                }
     if ex_factor_reference is not None and not ex_factor_reference.empty:
         ex_window = ex_factor_reference.loc[
             (ex_factor_reference["ex_date"] >= start_ts) & (ex_factor_reference["ex_date"] <= end_ts)
@@ -971,6 +995,15 @@ def _classify_valuation_reference_window(
             return {
                 "provider_like": True,
                 "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["ex_factor_event_in_window"],
+            }
+    if shares_reference is not None and not shares_reference.empty:
+        shares_window = shares_reference.loc[
+            (shares_reference["date"] >= start_ts) & (shares_reference["date"] <= end_ts)
+        ]
+        if not shares_window.empty:
+            return {
+                "provider_like": True,
+                "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["shares_event_in_window"],
             }
 
     if daily_reference is None or daily_reference.empty:
@@ -1361,6 +1394,40 @@ def _resolve_default_hk_ex_factor_asset_dir(asset_dir: Path) -> Path | None:
     return None
 
 
+def _resolve_default_hk_shares_asset_dir(asset_dir: Path) -> Path | None:
+    hk_root = asset_dir.parent.parent
+    if hk_root.name != "hk":
+        return None
+    shares_root = hk_root / "shares"
+    if not shares_root.exists():
+        return None
+    preferred = shares_root / "hk_all_shares_latest"
+    if preferred.exists() and (preferred / "data").exists():
+        return preferred
+    candidates = sorted(
+        [path for path in shares_root.iterdir() if path.is_dir() and (path / "data").exists()],
+        key=lambda path: (-path.stat().st_mtime, path.name),
+    )
+    return candidates[0] if candidates else None
+
+
+def _resolve_default_hk_instruments_path(asset_dir: Path) -> Path | None:
+    hk_root = asset_dir.parent.parent
+    if hk_root.name != "hk":
+        return None
+    instruments_dir = hk_root / "instruments"
+    if not instruments_dir.exists():
+        return None
+    preferred = instruments_dir / "hk_all_instruments_latest.parquet"
+    if preferred.exists():
+        return preferred
+    candidates = sorted(
+        instruments_dir.glob("hk_all_instruments*.parquet"),
+        key=lambda path: (-path.stat().st_mtime, path.name),
+    )
+    return candidates[0] if candidates else None
+
+
 def _load_ex_factor_reference_frame(ex_factor_asset_dir: Path | None, symbol: str) -> pd.DataFrame | None:
     if ex_factor_asset_dir is None:
         return None
@@ -1384,6 +1451,64 @@ def _load_ex_factor_reference_frame(ex_factor_asset_dir: Path | None, symbol: st
         .sort_values("ex_date")
         .reset_index(drop=True)
     )
+
+
+def _load_shares_reference_frame(shares_asset_dir: Path | None, symbol: str) -> pd.DataFrame | None:
+    if shares_asset_dir is None:
+        return None
+    shares_path = shares_asset_dir / "data" / f"{symbol}.parquet"
+    if not shares_path.exists():
+        return None
+    try:
+        frame = pd.read_parquet(shares_path, columns=["date"])
+    except Exception:
+        frame = pd.read_parquet(shares_path)
+    frame = _normalize_frame_columns(frame)
+    if "date" not in frame.columns:
+        return None
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.normalize()
+    frame = frame.dropna(subset=["date"]).copy()
+    if frame.empty:
+        return None
+    return (
+        frame[["date"]]
+        .drop_duplicates(subset=["date"], keep="last")
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+
+def _load_hk_instrument_reference_map(instruments_path: Path | None) -> dict[str, pd.DataFrame]:
+    if instruments_path is None or not instruments_path.exists():
+        return {}
+    frame = _normalize_frame_columns(pd.read_parquet(instruments_path))
+    if "symbol" not in frame.columns and "ts_code" in frame.columns:
+        frame = frame.rename(columns={"ts_code": "symbol"})
+    if "symbol" not in frame.columns:
+        return {}
+    frame["symbol"] = frame["symbol"].map(_normalize_hk_symbol)
+    frame = frame[frame["symbol"] != ""].copy()
+    if frame.empty:
+        return {}
+    if "de_listed_date" in frame.columns:
+        de_listed_text = frame["de_listed_date"].astype(str).str.strip()
+        de_listed_text = de_listed_text.mask(de_listed_text == "0000-00-00")
+        frame["de_listed_date"] = pd.to_datetime(de_listed_text, errors="coerce").dt.normalize()
+    else:
+        frame["de_listed_date"] = pd.NaT
+    if "listed_date" in frame.columns:
+        frame["listed_date"] = pd.to_datetime(frame["listed_date"], errors="coerce").dt.normalize()
+    else:
+        frame["listed_date"] = pd.NaT
+    if "status" not in frame.columns:
+        frame["status"] = ""
+    frame["status"] = frame["status"].fillna("").astype(str).str.strip()
+    grouped: dict[str, pd.DataFrame] = {}
+    for symbol, group in frame.groupby("symbol", sort=False):
+        grouped[str(symbol)] = group[
+            ["symbol", "listed_date", "de_listed_date", "status"]
+        ].sort_values(["de_listed_date", "listed_date"], kind="mergesort").reset_index(drop=True)
+    return grouped
 
 
 def inspect_hk_asset_health(args) -> int:
@@ -1436,6 +1561,8 @@ def inspect_hk_asset_health(args) -> int:
     history_state = _init_history_state(dataset=dataset) if include_history else None
     daily_reference_asset_dir: Path | None = None
     ex_factor_reference_asset_dir: Path | None = None
+    shares_reference_asset_dir: Path | None = None
+    instrument_reference_by_symbol: dict[str, pd.DataFrame] = {}
     if getattr(args, "daily_asset_dir", None):
         daily_reference_asset_dir = _resolve_path(args.daily_asset_dir)
         if not daily_reference_asset_dir.exists():
@@ -1446,6 +1573,10 @@ def inspect_hk_asset_health(args) -> int:
             )
     if dataset == "valuation":
         ex_factor_reference_asset_dir = _resolve_default_hk_ex_factor_asset_dir(asset_dir)
+        shares_reference_asset_dir = _resolve_default_hk_shares_asset_dir(asset_dir)
+        instrument_reference_by_symbol = _load_hk_instrument_reference_map(
+            _resolve_default_hk_instruments_path(asset_dir)
+        )
 
     field_stats: dict[str, dict[str, object]] = {
         field: {
@@ -1521,9 +1652,13 @@ def inspect_hk_asset_health(args) -> int:
             status = _clean_optional_text(audit_entry.get("status")) or ""
         daily_reference = None
         ex_factor_reference = None
+        shares_reference = None
+        instrument_reference = None
         if dataset == "valuation":
             daily_reference = _load_daily_reference_frame(daily_reference_asset_dir, symbol)
             ex_factor_reference = _load_ex_factor_reference_frame(ex_factor_reference_asset_dir, symbol)
+            shares_reference = _load_shares_reference_frame(shares_reference_asset_dir, symbol)
+            instrument_reference = instrument_reference_by_symbol.get(symbol)
 
         if path is None:
             continue
@@ -1627,6 +1762,8 @@ def inspect_hk_asset_health(args) -> int:
                     sample_limit=history_sample_limit,
                     daily_reference=daily_reference,
                     ex_factor_reference=ex_factor_reference,
+                    shares_reference=shares_reference,
+                    instrument_reference=instrument_reference,
                 )
 
         latest_ts = work[date_column].max()
@@ -1779,6 +1916,8 @@ def inspect_hk_asset_health(args) -> int:
                         end_date=target_date,
                         daily_reference=daily_reference,
                         ex_factor_reference=ex_factor_reference,
+                        shares_reference=shares_reference,
+                        instrument_reference=instrument_reference,
                     )
                     ffill_record["reference_context"] = context["reason"]
                     if context["provider_like"]:
