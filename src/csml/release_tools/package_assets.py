@@ -33,6 +33,7 @@ DEFAULT_PART_CHOICES = tuple(
 
 PRESETS = {
     "hk_full": {
+        "default_parts": DEFAULT_PART_CHOICES,
         "daily_snapshot": "hk_all_2000_20260327_daily_final_latest",
         "valuation_snapshot": "hk_all_valuation_latest",
         "instruments_file": "hk_all_instruments_20260327.parquet",
@@ -50,6 +51,7 @@ PRESETS = {
         "universe_meta": "hk_all_full_by_date.meta.yml",
     },
     "hk_connect": {
+        "default_parts": DEFAULT_PART_CHOICES,
         "daily_snapshot": "hk_all_2000_20260327_daily_final_latest",
         "valuation_snapshot": None,
         "instruments_file": "hk_connect_full_20260326.parquet",
@@ -65,6 +67,24 @@ PRESETS = {
         "universe_by_date": "hk_connect_full_by_date.csv",
         "universe_symbols": "hk_connect_full_symbols.txt",
         "universe_meta": "hk_connect_full_by_date.meta.yml",
+    },
+    "hk_etf": {
+        "default_parts": ("daily", "instruments"),
+        "daily_snapshot": "hk_etf_2000_20260401_daily_latest",
+        "valuation_snapshot": None,
+        "instruments_file": "hk_etf_instruments_latest.parquet",
+        "pit_snapshot": None,
+        "ex_factors_snapshot": None,
+        "dividends_snapshot": None,
+        "shares_snapshot": None,
+        "exchange_rate_snapshot": None,
+        "southbound_snapshot": None,
+        "financial_details_snapshot": None,
+        "announcement_snapshot": None,
+        "industry_changes_snapshot": None,
+        "universe_by_date": None,
+        "universe_symbols": None,
+        "universe_meta": None,
     },
 }
 
@@ -190,9 +210,9 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         if args.no_industry
         else (args.industry_changes_snapshot or preset.get("industry_changes_snapshot"))
     )
-    universe_by_date = args.universe_by_date or preset["universe_by_date"]
-    universe_symbols = args.universe_symbols or preset["universe_symbols"]
-    universe_meta = args.universe_meta if args.universe_meta is not None else preset["universe_meta"]
+    universe_by_date = args.universe_by_date if args.universe_by_date is not None else preset.get("universe_by_date")
+    universe_symbols = args.universe_symbols if args.universe_symbols is not None else preset.get("universe_symbols")
+    universe_meta = args.universe_meta if args.universe_meta is not None else preset.get("universe_meta")
 
     daily_dir = resolve_snapshot_path(ASSETS_ROOT / "rqdata" / "hk" / "daily", daily_snapshot)
     valuation_dir = (
@@ -265,9 +285,15 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         else None
     )
     universe_root = ASSETS_ROOT / "universe"
-    universe_by_date_path = resolve_snapshot_path(universe_root, universe_by_date)
-    universe_symbols_path = resolve_snapshot_path(universe_root, universe_symbols)
+    universe_by_date_path = resolve_snapshot_path(universe_root, universe_by_date) if universe_by_date else None
+    universe_symbols_path = resolve_snapshot_path(universe_root, universe_symbols) if universe_symbols else None
     universe_meta_path = resolve_snapshot_path(universe_root, universe_meta) if universe_meta else None
+
+    if bool(universe_by_date_path) != bool(universe_symbols_path):
+        raise SystemExit(
+            "Universe part requires both --universe-by-date and --universe-symbols. "
+            "Provide both, or leave both unset."
+        )
 
     ensure_exists(daily_dir, "Daily snapshot directory")
     if valuation_dir:
@@ -291,8 +317,10 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         ensure_exists(announcement_dir, "Announcement snapshot directory")
     if industry_changes_dir:
         ensure_exists(industry_changes_dir, "Industry changes snapshot directory")
-    ensure_exists(universe_by_date_path, "Universe by-date file")
-    ensure_exists(universe_symbols_path, "Universe symbols file")
+    if universe_by_date_path:
+        ensure_exists(universe_by_date_path, "Universe by-date file")
+    if universe_symbols_path:
+        ensure_exists(universe_symbols_path, "Universe symbols file")
     if universe_meta_path and not universe_meta_path.exists():
         universe_meta_path = None
 
@@ -386,37 +414,41 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
             ],
             "summary": {"file": instruments_path.name},
         },
-        "universe": {
-            "description": "Universe membership and symbol files.",
-            "entries": [
-                _part_entry(
-                    "by_date",
-                    universe_by_date_path,
-                    f"universe/{universe_by_date_path.name}",
-                ),
-                _part_entry(
-                    "symbols",
-                    universe_symbols_path,
-                    f"universe/{universe_symbols_path.name}",
-                ),
-            ],
-            "latest_links": [
-                _latest_link(
-                    "universe/latest_by_date.csv",
-                    f"universe/{universe_by_date_path.name}",
-                ),
-                _latest_link(
-                    "universe/latest_symbols.txt",
-                    f"universe/{universe_symbols_path.name}",
-                ),
-            ],
-            "summary": {
-                "by_date": universe_by_date_path.name,
-                "symbols": universe_symbols_path.name,
-            },
-        },
+        "universe": (
+            {
+                "description": "Universe membership and symbol files.",
+                "entries": [
+                    _part_entry(
+                        "by_date",
+                        universe_by_date_path,
+                        f"universe/{universe_by_date_path.name}",
+                    ),
+                    _part_entry(
+                        "symbols",
+                        universe_symbols_path,
+                        f"universe/{universe_symbols_path.name}",
+                    ),
+                ],
+                "latest_links": [
+                    _latest_link(
+                        "universe/latest_by_date.csv",
+                        f"universe/{universe_by_date_path.name}",
+                    ),
+                    _latest_link(
+                        "universe/latest_symbols.txt",
+                        f"universe/{universe_symbols_path.name}",
+                    ),
+                ],
+                "summary": {
+                    "by_date": universe_by_date_path.name,
+                    "symbols": universe_symbols_path.name,
+                },
+            }
+            if universe_by_date_path and universe_symbols_path
+            else None
+        ),
     }
-    if universe_meta_path:
+    if universe_meta_path and parts.get("universe"):
         parts["universe"]["entries"].append(
             _part_entry(
                 "meta",
@@ -607,11 +639,16 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
     return parts
 
 
-def _selected_parts(requested_parts: list[str], available_parts: dict[str, dict]) -> list[str]:
+def _selected_parts(
+    requested_parts: list[str],
+    available_parts: dict[str, dict],
+    *,
+    default_parts: tuple[str, ...],
+) -> list[str]:
     if requested_parts:
         selected = list(dict.fromkeys(requested_parts))
     else:
-        selected = [part for part in DEFAULT_PART_CHOICES if part in available_parts]
+        selected = [part for part in default_parts if part in available_parts]
     missing = [part for part in selected if part not in available_parts]
     if missing:
         raise SystemExit(f"Requested parts are not available under the current preset/settings: {missing}")
@@ -743,6 +780,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-industry", action="store_true", help="Skip industry_changes assets.")
     args = parser.parse_args(argv)
 
+    preset = PRESETS[args.preset]
+    default_parts = tuple(preset.get("default_parts") or DEFAULT_PART_CHOICES)
     resolved = _resolve_assets(args)
     daily_dir = resolved["daily_dir"]
     as_of = args.as_of or detect_as_of(daily_dir.name)
@@ -753,7 +792,7 @@ def main(argv: list[str] | None = None) -> int:
     ensure_dest_root(dest, args.overwrite, dry_run=args.dry_run)
 
     part_specs = _build_part_specs(resolved)
-    selected_parts = _selected_parts(args.part, part_specs)
+    selected_parts = _selected_parts(args.part, part_specs, default_parts=default_parts)
     generated_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
     for part_name in selected_parts:

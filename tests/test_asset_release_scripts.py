@@ -13,6 +13,10 @@ def _prepare_demo_assets(repo_root: Path) -> None:
     daily_dir.mkdir(parents=True, exist_ok=True)
     (daily_dir / "00005.HK.parquet").write_text("daily", encoding="utf-8")
 
+    etf_daily_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_etf_2000_20260401_daily_latest"
+    etf_daily_dir.mkdir(parents=True, exist_ok=True)
+    (etf_daily_dir / "02800.HK.parquet").write_text("etf-daily", encoding="utf-8")
+
     valuation_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_demo"
     valuation_dir.mkdir(parents=True, exist_ok=True)
     (valuation_dir / "00005.HK.parquet").write_text("valuation", encoding="utf-8")
@@ -20,6 +24,7 @@ def _prepare_demo_assets(repo_root: Path) -> None:
     instruments_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instruments"
     instruments_dir.mkdir(parents=True, exist_ok=True)
     (instruments_dir / "instruments_demo.parquet").write_text("instruments", encoding="utf-8")
+    (instruments_dir / "hk_etf_instruments_latest.parquet").write_text("etf-instruments", encoding="utf-8")
 
     universe_dir = repo_root / "artifacts" / "assets" / "universe"
     universe_dir.mkdir(parents=True, exist_ok=True)
@@ -182,6 +187,33 @@ def _stage_demo_supplemental_parts(tmp_path: Path) -> tuple[object, Path]:
     return package_script, stage_root
 
 
+def _stage_demo_etf_parts(tmp_path: Path) -> tuple[object, Path]:
+    package_script = _load_module("csml.release_tools.package_assets")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _prepare_demo_assets(repo_root)
+
+    package_script.REPO_ROOT = repo_root
+    package_script.ASSETS_ROOT = repo_root / "artifacts" / "assets"
+
+    stage_root = tmp_path / "stage_etf"
+    exit_code = package_script.main(
+        [
+            "--preset",
+            "hk_etf",
+            "--dest",
+            str(stage_root),
+            "--name",
+            "demo_etf_assets",
+            "--as-of",
+            "20260401",
+        ]
+    )
+
+    assert exit_code == 0
+    return package_script, stage_root
+
+
 def test_package_assets_stages_selected_parts_and_manifests(tmp_path):
     _, stage_root = _stage_demo_parts(tmp_path)
 
@@ -334,6 +366,34 @@ def test_release_assets_builds_tarballs_for_supplemental_parts(tmp_path):
     assert (tar_dir / "assets-demo_assets_extra-20260319-exchange_rate.tar.gz").exists()
     assert (tar_dir / "assets-demo_assets_extra-20260319-southbound.tar.gz").exists()
     assert (tar_dir / "assets-demo_assets_extra-20260319-financial_details.tar.gz").exists()
+
+
+def test_package_assets_etf_preset_stages_daily_and_instruments_without_universe(tmp_path):
+    _, stage_root = _stage_demo_etf_parts(tmp_path)
+
+    assert (
+        stage_root
+        / "daily"
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / "hk_etf_2000_20260401_daily_latest"
+        / "02800.HK.parquet"
+    ).exists()
+    assert (
+        stage_root
+        / "instruments"
+        / "rqdata"
+        / "hk"
+        / "instruments"
+        / "hk_etf_instruments_latest.parquet"
+    ).exists()
+    assert not (stage_root / "universe").exists()
+    assert (stage_root / "daily" / "rqdata" / "hk" / "daily" / "latest").is_symlink()
+    assert (stage_root / "instruments" / "rqdata" / "hk" / "instruments" / "latest.parquet").is_symlink()
+
+    root_manifest = yaml.safe_load((stage_root / "manifest.yml").read_text(encoding="utf-8"))
+    assert sorted(root_manifest["parts"].keys()) == ["daily", "instruments"]
 
 
 def test_release_assets_creates_single_release_with_multiple_assets(tmp_path, monkeypatch):

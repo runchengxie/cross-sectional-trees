@@ -656,6 +656,7 @@ uv run python -m csml.release_tools.package_assets \
 这条链路的特点：
 
 * 默认会把资产拆成 `daily / instruments / pit / reference / exchange_rate / southbound / financial_details / industry / universe` 这些 part
+* 新增了 `hk_etf` preset，默认只打 `daily + instruments` 两个 part，不再强依赖 universe / PIT / reference 那些 ETF 当前没有主线快照的层
 * `announcement` 也支持单独打包，但默认不进包；只有显式传 `--part announcement --announcement-snapshot <snapshot-or-path>` 才会生成
 * 每个 part 都有自己的 `manifest.yml`
 * part 内部会生成 `latest` 软链接，方便下游配置直接引用
@@ -674,6 +675,27 @@ uv run python -m csml.release_tools.package_assets \
   --dest artifacts/releases/assets/hk_connect_refresh_20260326_announcement_stage \
   --mode copy \
   --overwrite
+```
+
+ETF `daily` 资产的正式打包例子：
+
+```bash
+uv run python -m csml.release_tools.package_assets \
+  --preset hk_etf \
+  --dest ~/csml_asset_parts/hk_etf_20260401 \
+  --mode copy \
+  --overwrite
+```
+
+如果要直接打成 GitHub Release 的 tarball：
+
+```bash
+uv run python -m csml.release_tools.release_assets \
+  --preset hk_etf \
+  --tag hk_etf_assets_20260401 \
+  --mode copy \
+  --overwrite \
+  --skip-upload
 ```
 
 如果你要直接打成 GitHub Release 资产，再用：
