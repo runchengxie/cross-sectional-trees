@@ -10,12 +10,8 @@ from collections.abc import Mapping
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-import numpy as np
-from ..compat import ensure_numpy_nan_alias
-
-ensure_numpy_nan_alias()
 import pandas as pd
 
 from ..artifacts import (
@@ -23,15 +19,8 @@ from ..artifacts import (
 )
 from ..data_interface import DataInterface
 from ..data_providers import fundamentals_provider_supported
-from ..metrics import (
-    bucket_ic_summary,
-    daily_ic_series,
-    summarize_ic,
-)
-from ..split import build_sample_weight, time_series_cv_ic
-from ..modeling import build_model, fit_model, feature_importance_frame
+from ..metrics import bucket_ic_summary
 from ..backtest import backtest_topk
-from ..transform import apply_score_postprocess
 from .config import (
     load_run_config,
     normalize_eval_settings,
@@ -41,35 +30,13 @@ from .config import (
     resolve_date_range_and_label_settings,
     resolve_universe_inputs,
 )
-from .support import (
-    _annotate_positions_window,
-    _ensure_symbol_alias,
-    _parse_window_config,
-    _prepare_panel_join_frame,
-    _select_panel_join_columns,
-    _summarize_walk_forward_feature_stability,
-    apply_universe_by_date,
-    parse_feature_windows,
-)
-from .dates import (
-    _slice_with_train_window,
-    build_walk_forward_windows,
-)
 from .data import _load_research_panel, _prepare_feature_dataset
-from .eval import (
-    _evaluate_period,
-    _evaluate_walk_forward_window,
-)
-from .live import _prepare_live_snapshot
+from .final_oos_stage import run_final_oos_stage
 from .output import persist_run_outputs
+from .output_context import build_output_context
 from .quality import run_quality_preflight
 from .runtime import _prepare_split_context
-from .stats import (
-    _compute_rolling_ic,
-    _compute_rolling_sharpe,
-    _ensure_execution_daily_fields,
-    _latest_rolling_stats,
-)
+from .train_eval_stage import run_train_eval_stage
 logger = logging.getLogger("csml")
 
 
@@ -135,39 +102,6 @@ def _load_benchmark_return_series(path: Path) -> pd.Series:
     )
     series.name = "benchmark_return"
     return series
-
-
-def _build_output_context(
-    *,
-    loaded: Mapping[str, Any],
-    universe_inputs: Mapping[str, Any],
-    date_label_settings: Mapping[str, Any],
-    eval_settings: Mapping[str, Any],
-    universe_filters: Mapping[str, Any],
-    runtime_settings: Mapping[str, Any],
-    run_artifacts: Mapping[str, Any],
-    panel_state: Mapping[str, Any],
-    dataset_state: Mapping[str, Any],
-    split_state: Mapping[str, Any],
-    extras: Mapping[str, Any],
-) -> dict[str, Any]:
-    context: dict[str, Any] = {}
-    for source in (
-        loaded,
-        universe_inputs,
-        date_label_settings,
-        eval_settings,
-        universe_filters,
-        runtime_settings,
-        run_artifacts,
-        panel_state,
-        dataset_state,
-        split_state,
-        extras,
-    ):
-        context.update(source)
-    return context
-
 
 def run(
     config_ref: str | Path | None = None,
@@ -484,10 +418,8 @@ def run(
 
     fundamentals_cols: list[str] = []
     industry_cols: list[str] = []
-    fund_cache_dir: Optional[Path] = None
     fundamentals_file_path: Optional[Path] = None
     industry_file_path: Optional[Path] = None
-    provider_overlay_cache_dir: Optional[Path] = None
     if FUNDAMENTALS_ENABLED:
         if FUNDAMENTALS_SOURCE == "provider" and not fundamentals_provider_supported(
             FUNDAMENTALS_PROVIDER, MARKET
@@ -622,8 +554,6 @@ def run(
     fundamentals_cols = panel_state["fundamentals_cols"]
     industry_cols = panel_state["industry_cols"]
     industry_source_df = panel_state["industry_source_df"]
-    fund_cache_dir = panel_state["fund_cache_dir"]
-    provider_overlay_cache_dir = panel_state["provider_overlay_cache_dir"]
     FEATURES = panel_state["features"]
     LABEL_HORIZON_MODE = panel_state["label_horizon_mode"]
     label_next_rebalance_map = panel_state["label_next_rebalance_map"]
@@ -726,650 +656,239 @@ def run(
         train_window_unit=TRAIN_WINDOW_UNIT,
     )
     FINAL_OOS_ENABLED = split_state["final_oos_enabled"]
-    df_model = split_state["df_model"]
-    df_model_oos = split_state["df_model_oos"]
     final_oos_dates = split_state["final_oos_dates"]
     final_oos_len = split_state["final_oos_len"]
     final_oos_start = split_state["final_oos_start"]
     final_oos_end = split_state["final_oos_end"]
     label_horizon_effective = split_state["label_horizon_effective"]
-    purge_days = split_state["purge_days"]
-    embargo_days = split_state["embargo_days"]
     PURGE_STEPS = split_state["purge_steps"]
     EMBARGO_STEPS = split_state["embargo_steps"]
     EFFECTIVE_GAP_STEPS = split_state["effective_gap_steps"]
-    rebalance_gap_days = split_state["rebalance_gap_days"]
     df_model_sorted = split_state["df_model_sorted"]
     all_dates = split_state["all_dates"]
     all_date_start_rows = split_state["all_date_start_rows"]
     all_date_end_rows = split_state["all_date_end_rows"]
     all_date_to_pos = split_state["all_date_to_pos"]
     train_df = split_state["train_df"]
-    train_dates = split_state["train_dates"]
-    train_dates_full = split_state["train_dates_full"]
     test_df = split_state["test_df"]
     test_dates = split_state["test_dates"]
 
     # -----------------------------------------------------------------------------
-    # 5. Cross-validation on dates (IC metric)
+    # 5. Train / eval / walk-forward stages
     # -----------------------------------------------------------------------------
-    logger.info("Time-series cross-validation (IC) ...")
-
-    walk_forward_importance_rows: list[dict[str, Any]] = []
-
-    cv_scores_raw = time_series_cv_ic(
-        train_df,
-        FEATURES,
-        TARGET,
-        N_SPLITS,
-        EMBARGO_STEPS,
-        PURGE_STEPS,
-        MODEL_CFG,
-        1.0,
+    train_eval_state = run_train_eval_stage(
+        train_df=train_df,
+        test_df=test_df,
+        test_dates=test_dates,
+        df_features=df_features,
+        df_full=df_full,
+        df_model_sorted=df_model_sorted,
+        all_dates=all_dates,
+        all_date_start_rows=all_date_start_rows,
+        all_date_end_rows=all_date_end_rows,
+        all_date_to_pos=all_date_to_pos,
+        features=FEATURES,
+        target=TARGET,
+        train_target=TRAIN_TARGET,
+        model_type=MODEL_TYPE,
+        model_params=MODEL_PARAMS,
+        model_cfg=MODEL_CFG,
         sample_weight_mode=SAMPLE_WEIGHT_MODE,
         sample_weight_params=SAMPLE_WEIGHT_PARAMS,
+        n_splits=N_SPLITS,
+        embargo_steps=EMBARGO_STEPS,
+        purge_steps=PURGE_STEPS,
         train_window_mode=TRAIN_WINDOW_MODE,
         train_window_size=TRAIN_WINDOW_SIZE,
         train_window_unit=TRAIN_WINDOW_UNIT,
-        fit_target_col=TRAIN_TARGET,
+        signal_direction_mode=SIGNAL_DIRECTION_MODE,
+        signal_direction=SIGNAL_DIRECTION,
+        min_abs_ic_to_flip=MIN_ABS_IC_TO_FLIP,
         score_postprocess_method=SCORE_POSTPROCESS_METHOD,
         score_postprocess_columns=SCORE_POSTPROCESS_COLUMNS,
         score_postprocess_strength=SCORE_POSTPROCESS_STRENGTH,
         score_postprocess_min_obs=SCORE_POSTPROCESS_MIN_OBS,
+        report_train_ic=REPORT_TRAIN_IC,
+        live_enabled=LIVE_ENABLED,
+        live_as_of=LIVE_AS_OF,
+        market=MARKET,
+        provider=provider,
+        live_train_mode=LIVE_TRAIN_MODE,
+        min_symbols_per_date=MIN_SYMBOLS_PER_DATE,
+        price_col=PRICE_COL,
+        backtest_top_k=BACKTEST_TOP_K,
+        label_shift_days=LABEL_SHIFT_DAYS,
+        backtest_weighting=BACKTEST_WEIGHTING,
+        backtest_buffer_exit=BACKTEST_BUFFER_EXIT,
+        backtest_buffer_entry=BACKTEST_BUFFER_ENTRY,
+        backtest_long_only=BACKTEST_LONG_ONLY,
+        backtest_short_k=BACKTEST_SHORT_K,
+        backtest_tradable_col=BACKTEST_TRADABLE_COL,
+        backtest_group_col=BACKTEST_GROUP_COL,
+        backtest_max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
+        execution_model=execution_model,
+        rebalance_frequency=REBALANCE_FREQUENCY,
+        sample_on_rebalance_dates=SAMPLE_ON_REBALANCE_DATES,
+        valid_dates_set=valid_dates_set,
+        perm_test_runs=PERM_TEST_RUNS,
+        perm_test_seed=PERM_TEST_SEED,
+        label_horizon_mode=LABEL_HORIZON_MODE,
+        label_horizon_effective=label_horizon_effective,
+        n_quantiles=N_QUANTILES,
+        top_k=TOP_K,
+        eval_buffer_exit=EVAL_BUFFER_EXIT,
+        eval_buffer_entry=EVAL_BUFFER_ENTRY,
+        transaction_cost_bps=TRANSACTION_COST_BPS,
+        bucket_ic_enabled=BUCKET_IC_ENABLED,
+        bucket_ic_schemes=BUCKET_IC_SCHEMES,
+        bucket_ic_method=BUCKET_IC_METHOD,
+        bucket_ic_min_count=BUCKET_IC_MIN_COUNT,
+        backtest_rebalance_frequency=BACKTEST_REBALANCE_FREQUENCY,
+        backtest_enabled=BACKTEST_ENABLED,
+        backtest_signal_direction_raw=BACKTEST_SIGNAL_DIRECTION_RAW,
+        backtest_cost_bps_effective=BACKTEST_COST_BPS_EFFECTIVE,
+        backtest_trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
+        backtest_exit_mode=BACKTEST_EXIT_MODE,
+        backtest_exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
+        backtest_pricing_df=backtest_pricing_df,
+        backtest_exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
+        backtest_exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
+        benchmark_df=benchmark_df,
+        benchmark_return_series=benchmark_return_series,
+        industry_source_df=industry_source_df,
+        fundamentals_mcap_col=FUNDAMENTALS_MCAP_COL,
+        passthrough_cols=passthrough_cols,
+        industry_keep_columns=INDUSTRY_KEEP_COLUMNS,
+        price_passthrough_cols=price_passthrough_cols,
+        bucket_cols=bucket_cols,
+        backtest_topk_fn=backtest_topk_fn,
+        bucket_ic_summary_fn=bucket_ic_summary_fn,
+        rolling_windows_months=ROLLING_WINDOWS_MONTHS,
+        wf_enabled=WF_ENABLED,
+        wf_n_windows=WF_N_WINDOWS,
+        wf_test_size=WF_TEST_SIZE if WF_TEST_SIZE is not None else TEST_SIZE,
+        wf_step_size=WF_STEP_SIZE,
+        effective_gap_steps=EFFECTIVE_GAP_STEPS,
+        wf_anchor_end=WF_ANCHOR_END,
+        wf_feature_top_k=WF_FEATURE_TOP_K,
+        wf_backtest_enabled=WF_BACKTEST_ENABLED,
+        wf_perm_test_enabled=WF_PERM_TEST_ENABLED,
+        wf_perm_test_runs=WF_PERM_TEST_RUNS,
+        wf_perm_test_seed=WF_PERM_TEST_SEED,
     )
-    if cv_scores_raw:
-        logger.info(
-            "CV IC (raw): mean=%.4f, std=%.4f", np.nanmean(cv_scores_raw), np.nanstd(cv_scores_raw)
-        )
-        logger.info("CV fold ICs (raw): %s", [f"{s:.4f}" for s in cv_scores_raw])
-    else:
-        logger.info("CV IC not available - insufficient data after embargo/purge.")
+    SIGNAL_DIRECTION = train_eval_state["signal_direction"]
+    model = train_eval_state["model"]
+    train_ic_raw_stats = train_eval_state["train_ic_raw_stats"]
+    train_ic_series = train_eval_state["train_ic_series"]
+    train_ic_stats = train_eval_state["train_ic_stats"]
+    train_pearson_ic_series = train_eval_state["train_pearson_ic_series"]
+    train_pearson_ic_stats = train_eval_state["train_pearson_ic_stats"]
+    live_as_of = train_eval_state["live_as_of"]
+    positions_by_rebalance_live = train_eval_state["positions_by_rebalance_live"]
+    BACKTEST_SIGNAL_DIRECTION = train_eval_state["backtest_signal_direction"]
+    period_eval_context = train_eval_state["period_eval_context"]
+    ic_series = train_eval_state["ic_series"]
+    ic_stats = train_eval_state["ic_stats"]
+    pearson_ic_series = train_eval_state["pearson_ic_series"]
+    pearson_ic_stats = train_eval_state["pearson_ic_stats"]
+    error_metrics = train_eval_state["error_metrics"]
+    hit_rate_stats = train_eval_state["hit_rate_stats"]
+    topk_positive_stats = train_eval_state["topk_positive_stats"]
+    bucket_ic_records = train_eval_state["bucket_ic_records"]
+    quantile_ts = train_eval_state["quantile_ts"]
+    quantile_mean = train_eval_state["quantile_mean"]
+    turnover_series = train_eval_state["turnover_series"]
+    eval_scored_data = train_eval_state["eval_scored_data"]
+    eval_rebalance_dates = train_eval_state["eval_rebalance_dates"]
+    backtest_rebalance_dates = train_eval_state["backtest_rebalance_dates"]
+    positions_by_rebalance = train_eval_state["positions_by_rebalance"]
+    bt_stats = train_eval_state["bt_stats"]
+    bt_net_series = train_eval_state["bt_net_series"]
+    bt_gross_series = train_eval_state["bt_gross_series"]
+    bt_turnover_series = train_eval_state["bt_turnover_series"]
+    bt_benchmark_series = train_eval_state["bt_benchmark_series"]
+    bt_active_series = train_eval_state["bt_active_series"]
+    bt_benchmark_stats = train_eval_state["bt_benchmark_stats"]
+    bt_active_stats = train_eval_state["bt_active_stats"]
+    bt_periods = train_eval_state["bt_periods"]
+    bt_style_exposure = train_eval_state["bt_style_exposure"]
+    bt_style_exposure_summary = train_eval_state["bt_style_exposure_summary"]
+    bt_industry_exposure = train_eval_state["bt_industry_exposure"]
+    bt_industry_exposure_summary = train_eval_state["bt_industry_exposure_summary"]
+    bt_active_exposure_summary = train_eval_state["bt_active_exposure_summary"]
+    perm_stats = train_eval_state["perm_stats"]
+    rolling_ic_results = train_eval_state["rolling_ic_results"]
+    rolling_ic_obs_per_year = train_eval_state["rolling_ic_obs_per_year"]
+    rolling_ic_latest = train_eval_state["rolling_ic_latest"]
+    rolling_sharpe_results = train_eval_state["rolling_sharpe_results"]
+    rolling_sharpe_latest = train_eval_state["rolling_sharpe_latest"]
+    cv_stats_raw = train_eval_state["cv_stats_raw"]
+    cv_stats = train_eval_state["cv_stats"]
+    walk_forward_results = train_eval_state["walk_forward_results"]
+    walk_forward_importance_df = train_eval_state["walk_forward_importance_df"]
+    walk_forward_feature_stability_df = train_eval_state["walk_forward_feature_stability_df"]
+    importance_df = train_eval_state["importance_df"]
+    importance_source = train_eval_state["importance_source"]
+    pred_nunique = train_eval_state["pred_nunique"]
+    constant_prediction = train_eval_state["constant_prediction"]
+    feature_importance_nonzero = train_eval_state["feature_importance_nonzero"]
+    zero_feature_importance = train_eval_state["zero_feature_importance"]
 
-    cv_scores_adj = None
-    if SIGNAL_DIRECTION_MODE == "cv_ic" and cv_scores_raw:
-        cv_mean = float(np.nanmean(cv_scores_raw))
-        if np.isfinite(cv_mean) and cv_mean != 0 and abs(cv_mean) >= MIN_ABS_IC_TO_FLIP:
-            SIGNAL_DIRECTION = float(np.sign(cv_mean))
-            logger.info("Signal direction set from CV IC: %s", SIGNAL_DIRECTION)
-        else:
-            logger.info(
-                "CV IC mean below threshold (|mean| < %.4f); keeping signal direction: %s",
-                MIN_ABS_IC_TO_FLIP,
-                SIGNAL_DIRECTION,
-            )
-
-    # -----------------------------------------------------------------------------
-    # 6. Fit final model
-    # -----------------------------------------------------------------------------
-    logger.info("Fitting model (%s) ...", MODEL_TYPE)
-    model = build_model(MODEL_TYPE, MODEL_PARAMS)
-    train_weights = build_sample_weight(
-        train_df,
-        SAMPLE_WEIGHT_MODE,
-        params=SAMPLE_WEIGHT_PARAMS,
-    )
-    fit_model(
-        model,
-        MODEL_TYPE,
-        train_df,
+    final_oos_state = run_final_oos_stage(
+        final_oos_enabled=FINAL_OOS_ENABLED,
+        final_oos_dates=final_oos_dates,
+        df_full=df_full,
+        df_model_sorted=df_model_sorted,
+        all_date_start_rows=all_date_start_rows,
+        all_date_end_rows=all_date_end_rows,
+        all_date_to_pos=all_date_to_pos,
+        all_dates=all_dates,
+        train_window_mode=TRAIN_WINDOW_MODE,
+        train_window_size=TRAIN_WINDOW_SIZE,
+        train_window_unit=TRAIN_WINDOW_UNIT,
+        model_type=MODEL_TYPE,
+        model_params=MODEL_PARAMS,
+        sample_weight_mode=SAMPLE_WEIGHT_MODE,
+        sample_weight_params=SAMPLE_WEIGHT_PARAMS,
         features=FEATURES,
-        target_col=TRAIN_TARGET,
-        sample_weight=train_weights,
+        train_target=TRAIN_TARGET,
+        period_eval_context=period_eval_context,
+        rolling_windows_months=ROLLING_WINDOWS_MONTHS,
     )
+    final_oos_eval = final_oos_state["final_oos_eval"]
+    ic_series_oos = final_oos_state["ic_series_oos"]
+    ic_stats_oos = final_oos_state["ic_stats_oos"]
+    pearson_ic_series_oos = final_oos_state["pearson_ic_series_oos"]
+    pearson_ic_stats_oos = final_oos_state["pearson_ic_stats_oos"]
+    error_metrics_oos = final_oos_state["error_metrics_oos"]
+    hit_rate_stats_oos = final_oos_state["hit_rate_stats_oos"]
+    topk_positive_stats_oos = final_oos_state["topk_positive_stats_oos"]
+    bucket_ic_records_oos = final_oos_state["bucket_ic_records_oos"]
+    quantile_ts_oos = final_oos_state["quantile_ts_oos"]
+    quantile_mean_oos = final_oos_state["quantile_mean_oos"]
+    turnover_series_oos = final_oos_state["turnover_series_oos"]
+    positions_by_rebalance_oos = final_oos_state["positions_by_rebalance_oos"]
+    bt_stats_oos = final_oos_state["bt_stats_oos"]
+    bt_net_series_oos = final_oos_state["bt_net_series_oos"]
+    bt_gross_series_oos = final_oos_state["bt_gross_series_oos"]
+    bt_turnover_series_oos = final_oos_state["bt_turnover_series_oos"]
+    bt_benchmark_series_oos = final_oos_state["bt_benchmark_series_oos"]
+    bt_active_series_oos = final_oos_state["bt_active_series_oos"]
+    bt_benchmark_stats_oos = final_oos_state["bt_benchmark_stats_oos"]
+    bt_active_stats_oos = final_oos_state["bt_active_stats_oos"]
+    bt_periods_oos = final_oos_state["bt_periods_oos"]
+    bt_style_exposure_oos = final_oos_state["bt_style_exposure_oos"]
+    bt_style_exposure_summary_oos = final_oos_state["bt_style_exposure_summary_oos"]
+    bt_industry_exposure_oos = final_oos_state["bt_industry_exposure_oos"]
+    bt_industry_exposure_summary_oos = final_oos_state["bt_industry_exposure_summary_oos"]
+    bt_active_exposure_summary_oos = final_oos_state["bt_active_exposure_summary_oos"]
+    rolling_ic_oos_results = final_oos_state["rolling_ic_oos_results"]
+    rolling_ic_oos_obs_per_year = final_oos_state["rolling_ic_oos_obs_per_year"]
+    rolling_ic_latest_oos = final_oos_state["rolling_ic_latest_oos"]
+    rolling_sharpe_oos_results = final_oos_state["rolling_sharpe_oos_results"]
+    rolling_sharpe_latest_oos = final_oos_state["rolling_sharpe_latest_oos"]
 
-    # -----------------------------------------------------------------------------
-    # 7. Evaluation (cross-sectional factor style)
-    # -----------------------------------------------------------------------------
-    logger.info("Evaluating model on train/test sets ...")
-
-    test_start = pd.to_datetime(test_dates[0])
-    test_end = pd.to_datetime(test_dates[-1])
-    test_df_full = df_full[
-        (df_full["trade_date"] >= test_start) & (df_full["trade_date"] <= test_end)
-    ].copy()
-    if test_df_full.empty:
-        sys.exit("Not enough test data after applying the split window.")
-
-    train_eval_df = train_df.copy()
-    train_eval_df["pred"] = model.predict(train_eval_df[FEATURES])
-    train_eval_df["pred"] = apply_score_postprocess(
-        train_eval_df,
-        "pred",
-        method=SCORE_POSTPROCESS_METHOD,
-        columns=SCORE_POSTPROCESS_COLUMNS,
-        strength=SCORE_POSTPROCESS_STRENGTH,
-        min_obs=SCORE_POSTPROCESS_MIN_OBS,
-    )
-    train_ic_raw_stats = {}
-    if SIGNAL_DIRECTION_MODE == "train_ic":
-        train_ic_raw_series = daily_ic_series(train_eval_df, TARGET, "pred")
-        train_ic_raw_stats = summarize_ic(train_ic_raw_series)
-        raw_mean = train_ic_raw_stats.get("mean", np.nan)
-        if np.isfinite(raw_mean) and raw_mean != 0:
-            SIGNAL_DIRECTION = float(np.sign(raw_mean))
-        else:
-            SIGNAL_DIRECTION = 1.0
-        logger.info("Signal direction set from Train IC: %s", SIGNAL_DIRECTION)
-
-    train_signal_col = "pred"
-    if SIGNAL_DIRECTION != 1.0:
-        train_eval_df["signal"] = train_eval_df["pred"] * SIGNAL_DIRECTION
-        train_signal_col = "signal"
-
-    if cv_scores_raw:
-        cv_scores_adj = [float(score) * SIGNAL_DIRECTION for score in cv_scores_raw]
-        if SIGNAL_DIRECTION != 1.0:
-            logger.info(
-                "CV IC (adj): mean=%.4f, std=%.4f",
-                np.nanmean(cv_scores_adj),
-                np.nanstd(cv_scores_adj),
-            )
-            logger.info("CV fold ICs (adj): %s", [f"{s:.4f}" for s in cv_scores_adj])
-
-    train_ic_series = pd.Series(dtype=float, name="ic")
-    train_ic_stats = {}
-    train_pearson_ic_series = pd.Series(dtype=float, name="ic_pearson")
-    train_pearson_ic_stats = {}
-    if REPORT_TRAIN_IC:
-        train_ic_series = daily_ic_series(train_eval_df, TARGET, train_signal_col)
-        train_ic_stats = summarize_ic(train_ic_series)
-        logger.info(
-            "Train Daily IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
-            train_ic_stats["mean"],
-            train_ic_stats["std"],
-            train_ic_stats["ir"],
-            train_ic_stats["t_stat"],
-            train_ic_stats["p_value"],
-            train_ic_stats["n"],
-        )
-        train_pearson_ic_series = daily_ic_series(
-            train_eval_df, TARGET, train_signal_col, method="pearson"
-        )
-        train_pearson_ic_stats = summarize_ic(train_pearson_ic_series)
-        logger.info(
-            "Train Daily Pearson IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
-            train_pearson_ic_stats["mean"],
-            train_pearson_ic_stats["std"],
-            train_pearson_ic_stats["ir"],
-            train_pearson_ic_stats["t_stat"],
-            train_pearson_ic_stats["p_value"],
-            train_pearson_ic_stats["n"],
-        )
-
-    live_state = _prepare_live_snapshot(
-        df_features,
-        model,
-        context={
-            "live_enabled": LIVE_ENABLED,
-            "live_as_of_token": LIVE_AS_OF,
-            "market": MARKET,
-            "provider": provider,
-            "target": TARGET,
-            "live_train_mode": LIVE_TRAIN_MODE,
-            "model_type": MODEL_TYPE,
-            "model_params": MODEL_PARAMS,
-            "train_window_mode": TRAIN_WINDOW_MODE,
-            "train_window_size": TRAIN_WINDOW_SIZE,
-            "train_window_unit": TRAIN_WINDOW_UNIT,
-            "sample_weight_mode": SAMPLE_WEIGHT_MODE,
-            "sample_weight_params": SAMPLE_WEIGHT_PARAMS,
-            "train_target": TRAIN_TARGET,
-            "features": FEATURES,
-            "signal_direction": SIGNAL_DIRECTION,
-            "score_postprocess_method": SCORE_POSTPROCESS_METHOD,
-            "score_postprocess_columns": SCORE_POSTPROCESS_COLUMNS,
-            "score_postprocess_strength": SCORE_POSTPROCESS_STRENGTH,
-            "score_postprocess_min_obs": SCORE_POSTPROCESS_MIN_OBS,
-            "backtest_rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,
-            "min_symbols_per_date": MIN_SYMBOLS_PER_DATE,
-            "price_col": PRICE_COL,
-            "backtest_top_k": BACKTEST_TOP_K,
-            "label_shift_days": LABEL_SHIFT_DAYS,
-            "backtest_weighting": BACKTEST_WEIGHTING,
-            "backtest_buffer_exit": BACKTEST_BUFFER_EXIT,
-            "backtest_buffer_entry": BACKTEST_BUFFER_ENTRY,
-            "backtest_long_only": BACKTEST_LONG_ONLY,
-            "backtest_short_k": BACKTEST_SHORT_K,
-            "backtest_tradable_col": BACKTEST_TRADABLE_COL,
-            "backtest_group_col": BACKTEST_GROUP_COL,
-            "backtest_max_names_per_group": BACKTEST_MAX_NAMES_PER_GROUP,
-            "execution_model": execution_model,
-        },
-    )
-    live_as_of = live_state["live_as_of"]
-    positions_by_rebalance_live = live_state["positions_by_rebalance_live"]
-    live_positions_ready = bool(live_state["live_positions_ready"])
-
-    if LIVE_ENABLED and not BACKTEST_ENABLED and not live_positions_ready:
-        raise SystemExit(
-            "live.enabled=true but no live positions were generated; "
-            "refusing to fall back to backtest holdings."
-        )
-
-    BACKTEST_SIGNAL_DIRECTION = (
-        SIGNAL_DIRECTION if BACKTEST_SIGNAL_DIRECTION_RAW is None else BACKTEST_SIGNAL_DIRECTION_RAW
-    )
-
-    period_eval_context = {
-        "features": FEATURES,
-        "target": TARGET,
-        "signal_direction": SIGNAL_DIRECTION,
-        "backtest_signal_direction": BACKTEST_SIGNAL_DIRECTION,
-        "sample_on_rebalance_dates": SAMPLE_ON_REBALANCE_DATES,
-        "score_postprocess_method": SCORE_POSTPROCESS_METHOD,
-        "score_postprocess_columns": SCORE_POSTPROCESS_COLUMNS,
-        "score_postprocess_strength": SCORE_POSTPROCESS_STRENGTH,
-        "score_postprocess_min_obs": SCORE_POSTPROCESS_MIN_OBS,
-        "rebalance_frequency": REBALANCE_FREQUENCY,
-        "valid_dates_set": valid_dates_set,
-        "perm_test_runs": PERM_TEST_RUNS,
-        "perm_test_seed": PERM_TEST_SEED,
-        "model_type": MODEL_TYPE,
-        "model_params": MODEL_PARAMS,
-        "train_target": TRAIN_TARGET,
-        "sample_weight_mode": SAMPLE_WEIGHT_MODE,
-        "sample_weight_params": SAMPLE_WEIGHT_PARAMS,
-        "label_horizon_mode": LABEL_HORIZON_MODE,
-        "label_horizon_effective": label_horizon_effective,
-        "n_quantiles": N_QUANTILES,
-        "top_k": TOP_K,
-        "eval_buffer_exit": EVAL_BUFFER_EXIT,
-        "eval_buffer_entry": EVAL_BUFFER_ENTRY,
-        "transaction_cost_bps": TRANSACTION_COST_BPS,
-        "bucket_ic_enabled": BUCKET_IC_ENABLED,
-        "bucket_ic_schemes": BUCKET_IC_SCHEMES,
-        "bucket_ic_method": BUCKET_IC_METHOD,
-        "bucket_ic_min_count": BUCKET_IC_MIN_COUNT,
-        "backtest_rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,
-        "backtest_enabled": BACKTEST_ENABLED,
-        "live_enabled": LIVE_ENABLED,
-        "backtest_top_k": BACKTEST_TOP_K,
-        "label_shift_days": LABEL_SHIFT_DAYS,
-        "backtest_weighting": BACKTEST_WEIGHTING,
-        "backtest_buffer_exit": BACKTEST_BUFFER_EXIT,
-        "backtest_buffer_entry": BACKTEST_BUFFER_ENTRY,
-        "backtest_long_only": BACKTEST_LONG_ONLY,
-        "backtest_short_k": BACKTEST_SHORT_K,
-        "backtest_tradable_col": BACKTEST_TRADABLE_COL,
-        "backtest_group_col": BACKTEST_GROUP_COL,
-        "backtest_max_names_per_group": BACKTEST_MAX_NAMES_PER_GROUP,
-        "execution_model": execution_model,
-        "positions_by_rebalance_live": positions_by_rebalance_live,
-        "backtest_cost_bps_effective": BACKTEST_COST_BPS_EFFECTIVE,
-        "backtest_trading_days_per_year": BACKTEST_TRADING_DAYS_PER_YEAR,
-        "backtest_exit_mode": BACKTEST_EXIT_MODE,
-        "backtest_exit_horizon_days": BACKTEST_EXIT_HORIZON_DAYS,
-        "backtest_pricing_df": backtest_pricing_df,
-        "backtest_exit_price_policy": BACKTEST_EXIT_PRICE_POLICY,
-        "backtest_exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
-        "benchmark_df": benchmark_df,
-        "benchmark_return_series": benchmark_return_series,
-        "exposure_source_df": df_full,
-        "industry_source_df": industry_source_df,
-        "fundamentals_mcap_col": FUNDAMENTALS_MCAP_COL,
-        "industry_columns": list(dict.fromkeys(passthrough_cols + INDUSTRY_KEEP_COLUMNS)),
-        "price_col": PRICE_COL,
-        "price_passthrough_cols": price_passthrough_cols,
-        "passthrough_cols": passthrough_cols,
-        "bucket_cols": bucket_cols,
-        "backtest_topk_fn": backtest_topk_fn,
-        "bucket_ic_summary_fn": bucket_ic_summary_fn,
-    }
-
-    eval_main = _evaluate_period(
-        "Test",
-        model,
-        test_df_full,
-        test_dates,
-        context=period_eval_context,
-        run_perm_test=PERM_TEST_ENABLED,
-        perm_train_df=train_df,
-        perm_test_df=test_df,
-        allow_live_fallback=True,
-    )
-
-    ic_series = eval_main["ic_series"]
-    ic_stats = eval_main["ic_stats"]
-    pearson_ic_series = eval_main["pearson_ic_series"]
-    pearson_ic_stats = eval_main["pearson_ic_stats"]
-    error_metrics = eval_main["error_metrics"]
-    hit_rate_stats = eval_main["hit_rate"]
-    topk_positive_stats = eval_main["topk_positive_ratio"]
-    bucket_ic_records = eval_main["bucket_ic"]
-    quantile_ts = eval_main["quantile_ts"]
-    quantile_mean = eval_main["quantile_mean"]
-    turnover_series = eval_main["turnover_series"]
-    eval_scored_data = eval_main["scored_data"]
-    eval_rebalance_dates = eval_main["eval_rebalance_dates"]
-    backtest_rebalance_dates = eval_main["backtest_rebalance_dates"]
-    positions_by_rebalance = eval_main["positions_by_rebalance"]
-    bt_stats = eval_main["bt_stats"]
-    bt_net_series = eval_main["bt_net_series"]
-    bt_gross_series = eval_main["bt_gross_series"]
-    bt_turnover_series = eval_main["bt_turnover_series"]
-    bt_benchmark_series = eval_main["bt_benchmark_series"]
-    bt_active_series = eval_main["bt_active_series"]
-    bt_benchmark_stats = eval_main["bt_benchmark_stats"]
-    bt_active_stats = eval_main["bt_active_stats"]
-    bt_periods = eval_main["bt_periods"]
-    bt_style_exposure = eval_main["bt_style_exposure"]
-    bt_style_exposure_summary = eval_main["bt_style_exposure_summary"]
-    bt_industry_exposure = eval_main["bt_industry_exposure"]
-    bt_industry_exposure_summary = eval_main["bt_industry_exposure_summary"]
-    bt_active_exposure_summary = eval_main["bt_active_exposure_summary"]
-    perm_stats = eval_main["perm_stats"]
-
-    rolling_ic_results, rolling_ic_obs_per_year = _compute_rolling_ic(
-        ic_series, ROLLING_WINDOWS_MONTHS
-    )
-    rolling_ic_latest = {
-        label: _latest_rolling_stats(frame, ["ic_mean", "ic_ir"])
-        for label, frame in rolling_ic_results.items()
-    }
-    rolling_sharpe_results = {}
-    rolling_sharpe_latest = {}
-    if bt_stats is not None and not bt_net_series.empty:
-        periods_per_year = bt_stats.get("periods_per_year", np.nan)
-        rolling_sharpe_results = _compute_rolling_sharpe(
-            bt_net_series, ROLLING_WINDOWS_MONTHS, periods_per_year
-        )
-        rolling_sharpe_latest = {
-            label: _latest_rolling_stats(frame, ["mean", "std", "sharpe"])
-            for label, frame in rolling_sharpe_results.items()
-        }
-
-    if positions_by_rebalance is not None and not positions_by_rebalance.empty:
-        positions_by_rebalance = _annotate_positions_window(positions_by_rebalance)
-    if positions_by_rebalance_live is not None and not positions_by_rebalance_live.empty:
-        positions_by_rebalance_live = _annotate_positions_window(positions_by_rebalance_live)
-    positions_by_rebalance_path: Optional[Path] = None
-    positions_current_path: Optional[Path] = None
-    positions_by_rebalance_live_path: Optional[Path] = None
-    positions_current_live_path: Optional[Path] = None
-    positions_diff_path: Optional[Path] = None
-    positions_diff_live_path: Optional[Path] = None
-
-    cv_stats_raw = None
-    cv_stats = None
-    if cv_scores_raw:
-        cv_stats_raw = {
-            "mean": float(np.nanmean(cv_scores_raw)),
-            "std": float(np.nanstd(cv_scores_raw)),
-            "scores": [float(score) for score in cv_scores_raw],
-        }
-        if cv_scores_adj is None:
-            cv_scores_adj = [float(score) * SIGNAL_DIRECTION for score in cv_scores_raw]
-        cv_stats = {
-            "mean": float(np.nanmean(cv_scores_adj)),
-            "std": float(np.nanstd(cv_scores_adj)),
-            "scores": [float(score) for score in cv_scores_adj],
-        }
-
-    walk_forward_results: list[dict] = []
-    if WF_ENABLED:
-        walk_forward_context = {
-            "df_model_sorted": df_model_sorted,
-            "all_date_start_rows": all_date_start_rows,
-            "all_date_end_rows": all_date_end_rows,
-            "all_date_to_pos": all_date_to_pos,
-            "train_window_mode": TRAIN_WINDOW_MODE,
-            "train_window_size": TRAIN_WINDOW_SIZE,
-            "train_window_unit": TRAIN_WINDOW_UNIT,
-            "signal_direction": SIGNAL_DIRECTION,
-            "signal_direction_mode": SIGNAL_DIRECTION_MODE,
-            "features": FEATURES,
-            "target": TARGET,
-            "n_splits": N_SPLITS,
-            "embargo_steps": EMBARGO_STEPS,
-            "purge_steps": PURGE_STEPS,
-            "model_cfg": MODEL_CFG,
-            "min_abs_ic_to_flip": MIN_ABS_IC_TO_FLIP,
-            "sample_weight_mode": SAMPLE_WEIGHT_MODE,
-            "sample_weight_params": SAMPLE_WEIGHT_PARAMS,
-            "train_target": TRAIN_TARGET,
-            "model_type": MODEL_TYPE,
-            "model_params": MODEL_PARAMS,
-            "report_train_ic": REPORT_TRAIN_IC,
-            "sample_on_rebalance_dates": SAMPLE_ON_REBALANCE_DATES,
-            "score_postprocess_method": SCORE_POSTPROCESS_METHOD,
-            "score_postprocess_columns": SCORE_POSTPROCESS_COLUMNS,
-            "score_postprocess_strength": SCORE_POSTPROCESS_STRENGTH,
-            "score_postprocess_min_obs": SCORE_POSTPROCESS_MIN_OBS,
-            "rebalance_frequency": REBALANCE_FREQUENCY,
-            "valid_dates_set": valid_dates_set,
-            "wf_perm_test_enabled": WF_PERM_TEST_ENABLED,
-            "wf_perm_test_runs": WF_PERM_TEST_RUNS,
-            "wf_perm_test_seed": WF_PERM_TEST_SEED,
-            "n_quantiles": N_QUANTILES,
-            "top_k": TOP_K,
-            "eval_buffer_exit": EVAL_BUFFER_EXIT,
-            "eval_buffer_entry": EVAL_BUFFER_ENTRY,
-            "wf_backtest_enabled": WF_BACKTEST_ENABLED,
-            "backtest_signal_direction_raw": BACKTEST_SIGNAL_DIRECTION_RAW,
-            "df_full": df_full,
-            "price_col": PRICE_COL,
-            "backtest_rebalance_frequency": BACKTEST_REBALANCE_FREQUENCY,
-            "label_shift_days": LABEL_SHIFT_DAYS,
-            "backtest_cost_bps_effective": BACKTEST_COST_BPS_EFFECTIVE,
-            "backtest_trading_days_per_year": BACKTEST_TRADING_DAYS_PER_YEAR,
-            "backtest_exit_mode": BACKTEST_EXIT_MODE,
-            "backtest_exit_horizon_days": BACKTEST_EXIT_HORIZON_DAYS,
-            "backtest_long_only": BACKTEST_LONG_ONLY,
-            "backtest_short_k": BACKTEST_SHORT_K,
-            "backtest_buffer_exit": BACKTEST_BUFFER_EXIT,
-            "backtest_buffer_entry": BACKTEST_BUFFER_ENTRY,
-            "backtest_group_col": BACKTEST_GROUP_COL,
-            "backtest_max_names_per_group": BACKTEST_MAX_NAMES_PER_GROUP,
-            "backtest_tradable_col": BACKTEST_TRADABLE_COL,
-            "backtest_exit_price_policy": BACKTEST_EXIT_PRICE_POLICY,
-            "backtest_exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
-            "execution_model": execution_model,
-            "backtest_pricing_df": backtest_pricing_df,
-            "benchmark_df": benchmark_df,
-            "benchmark_return_series": benchmark_return_series,
-            "backtest_top_k": BACKTEST_TOP_K,
-            "wf_feature_top_k": WF_FEATURE_TOP_K,
-            "backtest_topk_fn": backtest_topk_fn,
-        }
-        try:
-            wf_test_size = float(WF_TEST_SIZE)
-        except (TypeError, ValueError):
-            wf_test_size = TEST_SIZE
-        windows = build_walk_forward_windows(
-            all_dates,
-            wf_test_size,
-            WF_N_WINDOWS,
-            WF_STEP_SIZE,
-            EFFECTIVE_GAP_STEPS,
-            WF_ANCHOR_END,
-        )
-        if not windows:
-            logger.info("Walk-forward evaluation skipped: insufficient windows.")
-        else:
-            if len(windows) < WF_N_WINDOWS:
-                logger.warning(
-                    "Walk-forward requested %s windows but only %s fit "
-                    "(test_size=%s, step_size=%s, anchor_end=%s). "
-                    "Reduce eval.test_size / eval.walk_forward.test_size, "
-                    "set a smaller eval.walk_forward.step_size, or lower n_windows.",
-                    WF_N_WINDOWS,
-                    len(windows),
-                    wf_test_size,
-                    WF_STEP_SIZE,
-                    WF_ANCHOR_END,
-                )
-            logger.info("Walk-forward evaluation: %s windows.", len(windows))
-            for window_meta in windows:
-                window_result, window_importance_rows = _evaluate_walk_forward_window(
-                    window_meta,
-                    context=walk_forward_context,
-                )
-                walk_forward_results.append(window_result)
-                walk_forward_importance_rows.extend(window_importance_rows)
-    walk_forward_importance_df = pd.DataFrame(walk_forward_importance_rows)
-    walk_forward_feature_stability_df = _summarize_walk_forward_feature_stability(
-        walk_forward_importance_df,
-        WF_FEATURE_TOP_K,
-    )
-
-    final_oos_eval = None
-    ic_series_oos = pd.Series(dtype=float, name="ic")
-    ic_stats_oos = {}
-    pearson_ic_series_oos = pd.Series(dtype=float, name="ic_pearson")
-    pearson_ic_stats_oos = {}
-    error_metrics_oos = {}
-    hit_rate_stats_oos = {}
-    topk_positive_stats_oos = {}
-    bucket_ic_records_oos = []
-    quantile_ts_oos = pd.DataFrame()
-    quantile_mean_oos = pd.Series(dtype=float)
-    turnover_series_oos = pd.Series(dtype=float, name="turnover")
-    positions_by_rebalance_oos = None
-    bt_stats_oos = None
-    bt_net_series_oos = pd.Series(dtype=float, name="net_return")
-    bt_gross_series_oos = pd.Series(dtype=float, name="gross_return")
-    bt_turnover_series_oos = pd.Series(dtype=float, name="turnover")
-    bt_benchmark_series_oos = pd.Series(dtype=float, name="benchmark_return")
-    bt_active_series_oos = pd.Series(dtype=float, name="active_return")
-    bt_benchmark_stats_oos = None
-    bt_active_stats_oos = None
-    bt_periods_oos: list[dict] = []
-    bt_style_exposure_oos = pd.DataFrame()
-    bt_style_exposure_summary_oos: dict[str, Any] = {}
-    bt_industry_exposure_oos = pd.DataFrame()
-    bt_industry_exposure_summary_oos: dict[str, Any] = {}
-    bt_active_exposure_summary_oos = pd.DataFrame()
-    rolling_ic_oos_results: dict[str, pd.DataFrame] = {}
-    rolling_ic_oos_obs_per_year = np.nan
-    rolling_ic_latest_oos: dict[str, dict | None] = {}
-    rolling_sharpe_oos_results: dict[str, pd.DataFrame] = {}
-    rolling_sharpe_latest_oos: dict[str, dict | None] = {}
-    positions_by_rebalance_oos_path: Optional[Path] = None
-    positions_current_oos_path: Optional[Path] = None
-    positions_diff_oos_path: Optional[Path] = None
-    if FINAL_OOS_ENABLED and final_oos_dates.size > 0:
-        oos_start = pd.to_datetime(final_oos_dates[0])
-        oos_end = pd.to_datetime(final_oos_dates[-1])
-        oos_df_full = df_full[
-            (df_full["trade_date"] >= oos_start) & (df_full["trade_date"] <= oos_end)
-        ].copy()
-        if oos_df_full.empty:
-            logger.info(
-                "Final OOS evaluation skipped: no data between %s and %s.",
-                oos_start.date(),
-                oos_end.date(),
-            )
-        else:
-            logger.info("Fitting final model on all in-sample data for OOS evaluation ...")
-            final_model = build_model(MODEL_TYPE, MODEL_PARAMS)
-            (
-                df_oos_train,
-                _,
-            ) = _slice_with_train_window(
-                df_model_sorted,
-                all_date_start_rows,
-                all_date_end_rows,
-                all_date_to_pos,
-                all_dates,
-                label="final_oos fit",
-                train_window_mode=TRAIN_WINDOW_MODE,
-                train_window_size=TRAIN_WINDOW_SIZE,
-                train_window_unit=TRAIN_WINDOW_UNIT,
-            )
-            if df_oos_train.empty:
-                logger.info("Final OOS evaluation skipped: model.train_window left no in-sample data.")
-            else:
-                final_weights = build_sample_weight(
-                    df_oos_train,
-                    SAMPLE_WEIGHT_MODE,
-                    params=SAMPLE_WEIGHT_PARAMS,
-                )
-                fit_model(
-                    final_model,
-                    MODEL_TYPE,
-                    df_oos_train,
-                    features=FEATURES,
-                    target_col=TRAIN_TARGET,
-                    sample_weight=final_weights,
-                )
-                final_oos_eval = _evaluate_period(
-                    "Final OOS",
-                    final_model,
-                    oos_df_full,
-                    final_oos_dates,
-                    context=period_eval_context,
-                    run_perm_test=False,
-                    allow_live_fallback=False,
-                )
-                ic_series_oos = final_oos_eval["ic_series"]
-                ic_stats_oos = final_oos_eval["ic_stats"]
-                pearson_ic_series_oos = final_oos_eval["pearson_ic_series"]
-                pearson_ic_stats_oos = final_oos_eval["pearson_ic_stats"]
-                error_metrics_oos = final_oos_eval["error_metrics"]
-                hit_rate_stats_oos = final_oos_eval["hit_rate"]
-                topk_positive_stats_oos = final_oos_eval["topk_positive_ratio"]
-                bucket_ic_records_oos = final_oos_eval["bucket_ic"]
-                quantile_ts_oos = final_oos_eval["quantile_ts"]
-                quantile_mean_oos = final_oos_eval["quantile_mean"]
-                turnover_series_oos = final_oos_eval["turnover_series"]
-            if final_oos_eval is not None:
-                positions_by_rebalance_oos = final_oos_eval["positions_by_rebalance"]
-                bt_stats_oos = final_oos_eval["bt_stats"]
-                bt_net_series_oos = final_oos_eval["bt_net_series"]
-                bt_gross_series_oos = final_oos_eval["bt_gross_series"]
-                bt_turnover_series_oos = final_oos_eval["bt_turnover_series"]
-                bt_benchmark_series_oos = final_oos_eval["bt_benchmark_series"]
-                bt_active_series_oos = final_oos_eval["bt_active_series"]
-                bt_benchmark_stats_oos = final_oos_eval["bt_benchmark_stats"]
-                bt_active_stats_oos = final_oos_eval["bt_active_stats"]
-                bt_periods_oos = final_oos_eval["bt_periods"]
-                bt_style_exposure_oos = final_oos_eval["bt_style_exposure"]
-                bt_style_exposure_summary_oos = final_oos_eval["bt_style_exposure_summary"]
-                bt_industry_exposure_oos = final_oos_eval["bt_industry_exposure"]
-                bt_industry_exposure_summary_oos = final_oos_eval["bt_industry_exposure_summary"]
-                bt_active_exposure_summary_oos = final_oos_eval["bt_active_exposure_summary"]
-                if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
-                    positions_by_rebalance_oos = _annotate_positions_window(positions_by_rebalance_oos)
-
-    if final_oos_eval is not None:
-        rolling_ic_oos_results, rolling_ic_oos_obs_per_year = _compute_rolling_ic(
-            ic_series_oos, ROLLING_WINDOWS_MONTHS
-        )
-        rolling_ic_latest_oos = {
-            label: _latest_rolling_stats(frame, ["ic_mean", "ic_ir"])
-            for label, frame in rolling_ic_oos_results.items()
-        }
-        if bt_stats_oos is not None and not bt_net_series_oos.empty:
-            periods_per_year_oos = bt_stats_oos.get("periods_per_year", np.nan)
-            rolling_sharpe_oos_results = _compute_rolling_sharpe(
-                bt_net_series_oos, ROLLING_WINDOWS_MONTHS, periods_per_year_oos
-            )
-            rolling_sharpe_latest_oos = {
-                label: _latest_rolling_stats(frame, ["mean", "std", "sharpe"])
-                for label, frame in rolling_sharpe_oos_results.items()
-            }
-
-    # Feature importance
-    logger.info("Feature importance:")
-    importance_df, importance_source = feature_importance_frame(model, FEATURES)
-    logger.info("Feature importance source: %s", importance_source)
-    for _, row in importance_df.iterrows():
-        logger.info("  %-20s: %.4f", row["feature"], float(row["importance"]))
-
-    pred_nunique: Optional[int] = None
-    constant_prediction: Optional[bool] = None
-    if eval_scored_data is not None and not eval_scored_data.empty and "pred" in eval_scored_data.columns:
-        pred_nunique = int(eval_scored_data["pred"].nunique(dropna=True))
-        constant_prediction = pred_nunique <= 1
-
-    feature_importance_nonzero: Optional[int] = None
-    zero_feature_importance: Optional[bool] = None
-    if not importance_df.empty and "importance" in importance_df.columns:
-        importance_values = pd.to_numeric(importance_df["importance"], errors="coerce").fillna(0.0)
-        feature_importance_nonzero = int((importance_values.abs() > 0.0).sum())
-        zero_feature_importance = feature_importance_nonzero == 0
-
-    output_context = _build_output_context(
+    output_context = build_output_context(
         loaded=loaded,
         universe_inputs=universe_inputs,
         date_label_settings=date_label_settings,
@@ -1382,6 +901,8 @@ def run(
         split_state=split_state,
         extras={
             "MARKET": MARKET,
+            "ARTIFACTS_ROOT": ARTIFACTS_ROOT,
+            "CACHE_DIR": CACHE_DIR,
             "provider": provider,
             "quality_summary": quality_summary,
             "benchmark_symbol": benchmark_symbol,
