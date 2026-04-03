@@ -112,6 +112,7 @@ artifacts/
   live_runs/
   sweeps/
   snapshots/
+  reports/
 ```
 
 完整目录和字段见 `docs/outputs.md`。

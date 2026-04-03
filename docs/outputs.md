@@ -30,11 +30,18 @@ artifacts/
   live_runs/
   sweeps/
   snapshots/
+  reports/
 ```
 
 另有一类独立于 run 目录的 provider 资产镜像：
 
 `artifacts/assets/rqdata/hk/<dataset>/<snapshot>/`
+
+以及一类独立于 run 目录的检查 / 校准 / 健康报告：
+
+`artifacts/reports/`
+
+常见来源包括 `csml rqdata inspect-hk-*`、intraday slippage / health 分析，以及维护脚本串联后的健康检查输出。
 
 当前 `dataset` 包括：
 

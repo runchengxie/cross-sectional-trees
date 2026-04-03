@@ -155,7 +155,8 @@ csml rqdata mirror-hk-daily \
 * `data.rqdata.daily_asset_dir`
 * `data.rqdata.instruments_file`
 
-两者齐全时，pipeline 会直接读本地资产并跳过 `rqdatac.init`。  
+两者齐全时，pipeline 会直接读本地资产并跳过在线日线 / 基础信息初始化。  
+但如果同一份配置还启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，在 fundamentals cache miss 时仍可能 lazy init `rqdatac`。  
 只配一个通常不够，因为日线和 instrument 元数据是一套一起生效的离线路径。
 
 ### 3. 从 daily snapshot 反推全市场 universe

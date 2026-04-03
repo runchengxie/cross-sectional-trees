@@ -22,7 +22,7 @@ csml run --config default
 
 按 `data.provider` 配好鉴权变量，详见 `docs/providers.md`。
 
-注意：`default` 是内置别名，不等于 `configs/presets/default.yml`。
+注意：`default` 是内置别名，当前会解析到仓库 `configs/` 下的 `configs/presets/default.yml`。
 这些内置别名读取仓库根目录的 `configs/`，所以应在包含 `configs/` 的源码 checkout 或导出源码目录里运行。
 
 如果你只安装基础依赖：

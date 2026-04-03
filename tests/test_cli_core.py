@@ -99,6 +99,9 @@ def test_init_rqdatac_applies_adjust_price_patch(monkeypatch):
     monkeypatch.setitem(sys.modules, "rqdatac", fake_rqdatac)
     monkeypatch.setattr(cli_common, "load_dotenv", lambda: None)
     monkeypatch.setattr(cli_common, "load_config", lambda path: {})
+    monkeypatch.delenv("RQDATA_USERNAME", raising=False)
+    monkeypatch.delenv("RQDATA_USER", raising=False)
+    monkeypatch.delenv("RQDATA_PASSWORD", raising=False)
     monkeypatch.setattr(
         cli_common,
         "_patch_rqdatac_adjust_price_readonly",

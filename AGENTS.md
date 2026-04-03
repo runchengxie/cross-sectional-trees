@@ -13,6 +13,8 @@
 
 * 项目总览与快速开始：`README.md`
 * 文档首页与阅读顺序：`docs/README.md`
+* 最短跑通路径：`docs/get-started.md`
+* 项目能力地图与公开边界：`docs/capabilities.md`
 * CLI 参数：`docs/cli.md`
 * 配置键与默认行为：`docs/config.md`
 * 输出文件与字段：`docs/outputs.md`
@@ -52,6 +54,8 @@ uv sync --extra dev --extra rqdata
 如果你改了下面这些内容，请同步更新对应文档：
 
 * 新增或修改 CLI 命令：更新 `docs/cli.md`，必要时在 `README.md` 增补入口级示例。
+* 修改公开能力边界、主入口分层或 artifact 根目录：更新 `README.md`、`docs/capabilities.md`，必要时同步 `docs/outputs.md`。
+* 修改快速开始路径、默认 alias / preset 指向或最短示例：更新 `docs/get-started.md`，必要时同步 `README.md`。
 * 新增或修改配置键、默认值、兼容规则：更新 `docs/config.md`。
 * 修改输出目录、文件名、`summary.json` 结构或持仓字段：更新 `docs/outputs.md`。
 * 修改 provider、symbol 规则、日期 token 行为：更新 `docs/providers.md`，必要时补 `docs/troubleshooting.md`。
@@ -79,8 +83,14 @@ uv sync --extra dev --extra rqdata
 ## 数据目录约定
 
 * 原始数据缓存：`artifacts/cache/` - 运行时缓存，可删除重建
-* 元数据：`artifacts/metadata/` - universe membership、symbol 映射等
+* Provider 资产与 universe：`artifacts/assets/` - 可复用的原始 / 派生资产镜像
+* 元数据：`artifacts/metadata/` - universe membership、symbol 映射、catalog 等
+* 标准层：`artifacts/standardized/` - analysis-ready 查询层
 * 研究结果：`artifacts/runs/` - 实验运行输出
+* Live 运行结果：`artifacts/live_runs/`
+* 批跑汇总：`artifacts/sweeps/`
+* 数据 / 结果快照：`artifacts/snapshots/`
+* 检查 / 健康 / 校准报告：`artifacts/reports/`
 * 详见 `artifacts/metadata/dataset_registry.csv` 数据集索引。
 
 ## 编辑与验证

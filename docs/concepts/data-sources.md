@@ -64,7 +64,8 @@ data:
     instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
 ```
 
-这时 pipeline 会直接读本地 daily / instruments 文件，不再初始化 `rqdatac`。
+这时 pipeline 会直接读本地 daily / instruments 文件，并跳过在线日线 / 基础信息初始化。
+但如果你同时启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，在 fundamentals cache miss 时仍可能 lazy init `rqdatac`。
 
 ## 进一步阅读
 

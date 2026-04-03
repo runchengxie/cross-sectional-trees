@@ -78,6 +78,11 @@ EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "`python -m csml.research.hk_intraday_download`",
     "不是 `csml` CLI 子命令",
 ]
+EXPECTED_ARTIFACT_ROOT_TOKENS = [
+    "  metadata/",
+    "  standardized/",
+    "  reports/",
+]
 EXPECTED_RQDATA_OUTPUT_DATASETS = {
     "daily",
     "intraday",
@@ -93,6 +98,11 @@ EXPECTED_RQDATA_OUTPUT_DATASETS = {
     "instrument_industry",
     "industry_changes",
 }
+EXPECTED_LOCAL_ASSET_LAZY_INIT_TOKENS = [
+    "`fundamentals.source=provider`",
+    "`fundamentals.provider_overlay`",
+    "lazy init `rqdatac`",
+]
 EXPECTED_WORKFLOW_SMOKE_SNIPPETS = [
     'csml data query --sql "select 1 as value"',
     "alloc_hk_smoke.xlsx",
@@ -306,15 +316,45 @@ def test_readme_and_capabilities_cover_entrypoint_layers():
 
 def test_capabilities_doc_mentions_metadata_and_standardized_roots():
     capabilities = (_repo_root() / "docs" / "capabilities.md").read_text(encoding="utf-8")
+    outputs = (_repo_root() / "docs" / "outputs.md").read_text(encoding="utf-8")
 
-    assert "  metadata/" in capabilities
-    assert "  standardized/" in capabilities
+    missing_capabilities = sorted(token for token in EXPECTED_ARTIFACT_ROOT_TOKENS if token not in capabilities)
+    missing_outputs = sorted(token for token in EXPECTED_ARTIFACT_ROOT_TOKENS if token not in outputs)
+
+    assert missing_capabilities == []
+    assert missing_outputs == []
 
 
 def test_outputs_doc_lists_public_rqdata_output_datasets():
     outputs_text = (_repo_root() / "docs" / "outputs.md").read_text(encoding="utf-8")
     documented = _extract_outputs_dataset_bullets(outputs_text)
     assert documented == EXPECTED_RQDATA_OUTPUT_DATASETS
+
+
+def test_get_started_doc_describes_default_alias_correctly():
+    get_started = (_repo_root() / "docs" / "get-started.md").read_text(encoding="utf-8")
+
+    assert "不等于 `configs/presets/default.yml`" not in get_started
+    assert "会解析到仓库 `configs/` 下的 `configs/presets/default.yml`" in get_started
+
+
+def test_local_asset_docs_describe_lazy_rqdatac_init_boundary():
+    data_sources = (_repo_root() / "docs" / "concepts" / "data-sources.md").read_text(
+        encoding="utf-8"
+    )
+    hk_data_assets = (_repo_root() / "docs" / "playbooks" / "hk-data-assets.md").read_text(
+        encoding="utf-8"
+    )
+
+    missing_data_sources = sorted(
+        token for token in EXPECTED_LOCAL_ASSET_LAZY_INIT_TOKENS if token not in data_sources
+    )
+    missing_hk_data_assets = sorted(
+        token for token in EXPECTED_LOCAL_ASSET_LAZY_INIT_TOKENS if token not in hk_data_assets
+    )
+
+    assert missing_data_sources == []
+    assert missing_hk_data_assets == []
 
 
 def test_tests_workflow_uses_expected_jobs_and_run_tests_modes():
