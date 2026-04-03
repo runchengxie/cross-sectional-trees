@@ -283,7 +283,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 | `label` | 标签窗口、`shift_days`、标签模式 |
 | `split` | 训练/测试日期与 purge/embargo 信息 |
 | `eval` | IC、分位数、换手、错误指标、方向判定、滚动指标 |
-| `backtest` | 回测参数、绩效统计、基准/主动收益与滚动 Sharpe（含延迟退出 lag 统计） |
+| `backtest` | 回测参数、绩效统计、基准/主动收益、风格/行业暴露与滚动 Sharpe（含延迟退出 lag 统计） |
 | `final_oos` | 最终留出期（启用时）对应评估与回测摘要 |
 | `positions` | 回测持仓文件路径与窗口字段声明 |
 | `live` | live 模式状态、as_of 与 live 持仓文件路径 |
@@ -350,6 +350,49 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. 这里记录的是“实际生效值”，优先级高于你对默认行为的记忆。
 1. `summary.json -> backtest -> execution_source` 会标记这次 run 是沿用 `default_flat_cost`，还是显式启用了 `backtest.execution` 的 `explicit_execution_config`。
 1. `backtest.stats.avg_cost_drag` 现在表示总 execution drag；若需要拆分，查看同层 `avg_fee_drag` 与 `avg_slippage_drag`。
+
+`summary.json -> backtest -> exposure` 当前会记录一层 best-effort 暴露摘要：
+
+```json
+{
+  "style_file": "artifacts/runs/<run_dir>/backtest_style_exposure.csv",
+  "industry_file": "artifacts/runs/<run_dir>/backtest_industry_exposure.csv",
+  "active_summary_file": "artifacts/runs/<run_dir>/backtest_active_exposure_summary.csv",
+  "latest_rebalance_date": "20250425",
+  "latest_entry_date": "20250428",
+  "style_factors": {
+    "size": {"available": true, "source": "columns", "columns": ["log_mcap"]},
+    "value": {"available": true, "source": "columns", "columns": ["pb", "pe_ttm"]},
+    "quality": {"available": false, "source": null, "columns": []},
+    "momentum": {"available": true, "source": "columns", "columns": ["ret_20"]},
+    "low_vol": {"available": true, "source": "columns", "columns": ["rv_20"]},
+    "beta": {"available": true, "source": "columns", "columns": ["beta"]}
+  },
+  "latest_style": {
+    "size": {
+      "portfolio_net": 0.42,
+      "active_net_vs_equal": 0.42,
+      "source": "columns",
+      "source_columns": ["log_mcap"],
+      "weight_coverage": 1.0
+    }
+  },
+  "industry_column": "industry_name",
+  "latest_industry": {
+    "reference": "active_net_vs_cap_weight",
+    "top_absolute_active": [
+      {"industry": "银行", "portfolio_net_weight": 0.5, "active_net_vs_cap_weight": 0.18}
+    ]
+  }
+}
+```
+
+说明：
+
+1. 这层是“组合暴露摘要”，不是完整 Barra 风险模型，也不会自动改变回测权重。
+1. `style_factors[*].available=false` 表示当前 run 的 panel 里缺少可解析列；这是 best-effort 缺失，不是报错。
+1. `active_summary_file` 是一行一个调仓期的宽表，方便直接看每期风格主动暴露与最显著行业偏离。
+1. 若启用了 `final_oos`，同样结构会出现在 `summary.json -> final_oos -> backtest -> exposure`。
 
 `summary.json -> fundamentals` 当前会额外记录一层 `provider_overlay` 摘要：
 
@@ -499,6 +542,8 @@ best-effort（可能为空、缺失或未产出文件）：
 | `backtest_net.csv` / `backtest_gross.csv` | `backtest.enabled=true` 且回测成功 | 净/毛收益序列 |
 | `backtest_turnover.csv` / `backtest_periods.csv` | `backtest.enabled=true` 且回测成功 | 回测换手与周期收益 |
 | `backtest_benchmark.csv` / `backtest_active.csv` | 配置了 `backtest.benchmark_symbol` 或 `backtest.benchmark_returns_file`，且数据可用 | 基准与主动收益 |
+| `backtest_style_exposure.csv` / `backtest_industry_exposure.csv` | 生成了回测持仓且 panel 中存在可解析暴露列 | 风格与行业暴露时序 |
+| `backtest_active_exposure_summary.csv` | 生成了回测暴露结果时 | 一行一个调仓期的主动暴露汇总宽表 |
 | `positions_by_rebalance*.csv` / `positions_current*.csv` | 生成了持仓结果时 | 下游持仓消费/执行衔接 |
 | `rebalance_diff*.csv` | 对应 `positions_current*.csv` 存在至少两期时 | 最新一期调仓差异 |
 | `latest.json` | `live.enabled=true` 且 live 成功输出时 | 指向最新 live run 目录 |

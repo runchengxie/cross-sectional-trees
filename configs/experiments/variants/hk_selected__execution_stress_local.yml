@@ -23,6 +23,8 @@ eval:
   run_name: hk_sel_xgb_reg_exec_stress_adv20_local
 
 backtest:
+  benchmark_symbol: null
+  benchmark_returns_file: artifacts/benchmarks/hk_selected_pit_research_m_capw_open_close_20181101_20260202.csv
   execution:
     entry_policy:
       price_col: open

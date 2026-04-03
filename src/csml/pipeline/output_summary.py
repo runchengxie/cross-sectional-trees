@@ -11,6 +11,35 @@ from ..execution import describe_execution_model
 from .support import save_json
 
 
+def _build_backtest_exposure_summary(
+    *,
+    style_path: Any,
+    industry_path: Any,
+    active_summary_path: Any,
+    style_summary: Mapping[str, Any] | None,
+    industry_summary: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    style_meta = style_summary if isinstance(style_summary, Mapping) else {}
+    industry_meta = industry_summary if isinstance(industry_summary, Mapping) else {}
+    latest_rebalance_date = style_meta.get("latest_rebalance_date")
+    if latest_rebalance_date is None:
+        latest_rebalance_date = industry_meta.get("latest_rebalance_date")
+    latest_entry_date = style_meta.get("latest_entry_date")
+    if latest_entry_date is None:
+        latest_entry_date = industry_meta.get("latest_entry_date")
+    return {
+        "style_file": str(style_path) if style_path else None,
+        "industry_file": str(industry_path) if industry_path else None,
+        "active_summary_file": str(active_summary_path) if active_summary_path else None,
+        "latest_rebalance_date": latest_rebalance_date,
+        "latest_entry_date": latest_entry_date,
+        "style_factors": style_meta.get("factors", {}),
+        "latest_style": style_meta.get("latest", {}),
+        "industry_column": industry_meta.get("industry_column"),
+        "latest_industry": industry_meta.get("latest", {}),
+    }
+
+
 def build_run_summary(
     *,
     context: Mapping[str, Any],
@@ -193,6 +222,13 @@ def build_run_summary(
             "stats": ctx["bt_stats"],
             "benchmark": ctx["bt_benchmark_stats"],
             "active": ctx["bt_active_stats"],
+            "exposure": _build_backtest_exposure_summary(
+                style_path=art["backtest_style_exposure_path"],
+                industry_path=art["backtest_industry_exposure_path"],
+                active_summary_path=art["backtest_active_exposure_summary_path"],
+                style_summary=ctx.get("bt_style_exposure_summary"),
+                industry_summary=ctx.get("bt_industry_exposure_summary"),
+            ),
             "rolling_sharpe": {
                 "windows_months": ctx["ROLLING_WINDOWS_MONTHS"],
                 "latest": ctx["rolling_sharpe_latest"],
@@ -258,6 +294,13 @@ def build_run_summary(
                 "stats": ctx["bt_stats_oos"],
                 "benchmark": ctx["bt_benchmark_stats_oos"],
                 "active": ctx["bt_active_stats_oos"],
+                "exposure": _build_backtest_exposure_summary(
+                    style_path=art["backtest_style_exposure_oos_path"],
+                    industry_path=art["backtest_industry_exposure_oos_path"],
+                    active_summary_path=art["backtest_active_exposure_summary_oos_path"],
+                    style_summary=ctx.get("bt_style_exposure_summary_oos"),
+                    industry_summary=ctx.get("bt_industry_exposure_summary_oos"),
+                ),
                 "rolling_sharpe": {
                     "windows_months": ctx["ROLLING_WINDOWS_MONTHS"],
                     "latest": ctx["rolling_sharpe_latest_oos"],

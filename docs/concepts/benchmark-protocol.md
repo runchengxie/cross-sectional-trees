@@ -40,7 +40,7 @@ HK 研究默认用：
 
 | 层级 | 角色 | 官方配置 |
 | --- | --- | --- |
-| 市场 benchmark | 回测市场对照 | 所有 HK benchmark 配置默认使用 `02800.HK` |
+| 市场 benchmark | 回测市场对照 | 大多数 HK benchmark 配置默认使用 `02800.HK`；当前月频本地推荐入口改用 universe-aligned `benchmark_returns_file` |
 | 特征 benchmark 1 | 季度纯量价 floor | `configs/experiments/baseline/hk_selected__quarterly_price_only.yml` |
 | 特征 benchmark 2 | 季度 core PIT 增量 | `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml` |
 | 强 benchmark | 季度 core PIT + 慢量价，默认要被超越的对象 | `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml` |

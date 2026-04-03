@@ -34,6 +34,12 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
         "positions_diff_path": None,
         "positions_diff_oos_path": None,
         "positions_diff_live_path": None,
+        "backtest_style_exposure_path": None,
+        "backtest_industry_exposure_path": None,
+        "backtest_active_exposure_summary_path": None,
+        "backtest_style_exposure_oos_path": None,
+        "backtest_industry_exposure_oos_path": None,
+        "backtest_active_exposure_summary_oos_path": None,
         "live_positions_file": None,
         "live_current_file": None,
     }
@@ -190,6 +196,25 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
             )
         if ctx["bt_periods"]:
             save_frame(pd.DataFrame(ctx["bt_periods"]), run_dir / "backtest_periods.csv")
+        if not ctx["bt_style_exposure"].empty:
+            artifacts["backtest_style_exposure_path"] = run_dir / "backtest_style_exposure.csv"
+            save_frame(ctx["bt_style_exposure"], artifacts["backtest_style_exposure_path"])
+        if not ctx["bt_industry_exposure"].empty:
+            artifacts["backtest_industry_exposure_path"] = (
+                run_dir / "backtest_industry_exposure.csv"
+            )
+            save_frame(
+                ctx["bt_industry_exposure"],
+                artifacts["backtest_industry_exposure_path"],
+            )
+        if not ctx["bt_active_exposure_summary"].empty:
+            artifacts["backtest_active_exposure_summary_path"] = (
+                run_dir / "backtest_active_exposure_summary.csv"
+            )
+            save_frame(
+                ctx["bt_active_exposure_summary"],
+                artifacts["backtest_active_exposure_summary_path"],
+            )
 
     if ctx["bt_stats_oos"] is not None:
         save_series(
@@ -223,6 +248,30 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
             save_frame(
                 pd.DataFrame(ctx["bt_periods_oos"]),
                 run_dir / "backtest_periods_oos.csv",
+            )
+        if not ctx["bt_style_exposure_oos"].empty:
+            artifacts["backtest_style_exposure_oos_path"] = (
+                run_dir / "backtest_style_exposure_oos.csv"
+            )
+            save_frame(
+                ctx["bt_style_exposure_oos"],
+                artifacts["backtest_style_exposure_oos_path"],
+            )
+        if not ctx["bt_industry_exposure_oos"].empty:
+            artifacts["backtest_industry_exposure_oos_path"] = (
+                run_dir / "backtest_industry_exposure_oos.csv"
+            )
+            save_frame(
+                ctx["bt_industry_exposure_oos"],
+                artifacts["backtest_industry_exposure_oos_path"],
+            )
+        if not ctx["bt_active_exposure_summary_oos"].empty:
+            artifacts["backtest_active_exposure_summary_oos_path"] = (
+                run_dir / "backtest_active_exposure_summary_oos.csv"
+            )
+            save_frame(
+                ctx["bt_active_exposure_summary_oos"],
+                artifacts["backtest_active_exposure_summary_oos_path"],
             )
 
     _write_position_outputs(

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..backtest import backtest_topk, summarize_period_returns
+from ..exposure import compute_backtest_exposure_analysis
 from ..metrics import (
     assign_daily_quantile_bucket,
     bucket_ic_summary,
@@ -738,6 +739,8 @@ def _evaluate_period(
     backtest_exit_fallback_policy = context["backtest_exit_fallback_policy"]
     benchmark_df = context["benchmark_df"]
     benchmark_return_series = context["benchmark_return_series"]
+    fundamentals_mcap_col = context.get("fundamentals_mcap_col")
+    industry_columns = context.get("industry_columns", [])
     price_col = context["price_col"]
     price_passthrough_cols = context.get("price_passthrough_cols", [])
     passthrough_cols = context["passthrough_cols"]
@@ -770,6 +773,11 @@ def _evaluate_period(
         "bt_benchmark_stats": None,
         "bt_active_stats": None,
         "bt_periods": [],
+        "bt_style_exposure": default_frame,
+        "bt_style_exposure_summary": {},
+        "bt_industry_exposure": default_frame,
+        "bt_industry_exposure_summary": {},
+        "bt_active_exposure_summary": default_frame,
         "perm_stats": None,
         "scored_data": default_frame,
         "eval_rebalance_dates": [],
@@ -1168,4 +1176,21 @@ def _evaluate_period(
     if backtest_tradable_col and backtest_tradable_col in eval_df_full.columns:
         scored_cols.append(backtest_tradable_col)
     result["scored_data"] = eval_df_full[scored_cols].copy()
+
+    if backtest_enabled and positions_by_rebalance is not None and not positions_by_rebalance.empty:
+        exposure = compute_backtest_exposure_analysis(
+            eval_df_full,
+            positions_by_rebalance,
+            pricing_data=backtest_pricing_df,
+            price_col=price_col,
+            benchmark_df=benchmark_df,
+            benchmark_return_series=benchmark_return_series,
+            market_cap_col=fundamentals_mcap_col,
+            industry_columns=industry_columns,
+        )
+        result["bt_style_exposure"] = exposure["style"]
+        result["bt_style_exposure_summary"] = exposure["style_summary"]
+        result["bt_industry_exposure"] = exposure["industry"]
+        result["bt_industry_exposure_summary"] = exposure["industry_summary"]
+        result["bt_active_exposure_summary"] = exposure["active_summary"]
     return result

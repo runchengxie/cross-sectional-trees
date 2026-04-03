@@ -971,6 +971,8 @@ def run(
         "backtest_exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
         "benchmark_df": benchmark_df,
         "benchmark_return_series": benchmark_return_series,
+        "fundamentals_mcap_col": FUNDAMENTALS_MCAP_COL,
+        "industry_columns": list(dict.fromkeys(passthrough_cols + INDUSTRY_KEEP_COLUMNS)),
         "price_col": PRICE_COL,
         "price_passthrough_cols": price_passthrough_cols,
         "passthrough_cols": passthrough_cols,
@@ -1015,6 +1017,11 @@ def run(
     bt_benchmark_stats = eval_main["bt_benchmark_stats"]
     bt_active_stats = eval_main["bt_active_stats"]
     bt_periods = eval_main["bt_periods"]
+    bt_style_exposure = eval_main["bt_style_exposure"]
+    bt_style_exposure_summary = eval_main["bt_style_exposure_summary"]
+    bt_industry_exposure = eval_main["bt_industry_exposure"]
+    bt_industry_exposure_summary = eval_main["bt_industry_exposure_summary"]
+    bt_active_exposure_summary = eval_main["bt_active_exposure_summary"]
     perm_stats = eval_main["perm_stats"]
 
     rolling_ic_results, rolling_ic_obs_per_year = _compute_rolling_ic(
@@ -1192,6 +1199,11 @@ def run(
     bt_benchmark_stats_oos = None
     bt_active_stats_oos = None
     bt_periods_oos: list[dict] = []
+    bt_style_exposure_oos = pd.DataFrame()
+    bt_style_exposure_summary_oos: dict[str, Any] = {}
+    bt_industry_exposure_oos = pd.DataFrame()
+    bt_industry_exposure_summary_oos: dict[str, Any] = {}
+    bt_active_exposure_summary_oos = pd.DataFrame()
     rolling_ic_oos_results: dict[str, pd.DataFrame] = {}
     rolling_ic_oos_obs_per_year = np.nan
     rolling_ic_latest_oos: dict[str, dict | None] = {}
@@ -1276,6 +1288,11 @@ def run(
                 bt_benchmark_stats_oos = final_oos_eval["bt_benchmark_stats"]
                 bt_active_stats_oos = final_oos_eval["bt_active_stats"]
                 bt_periods_oos = final_oos_eval["bt_periods"]
+                bt_style_exposure_oos = final_oos_eval["bt_style_exposure"]
+                bt_style_exposure_summary_oos = final_oos_eval["bt_style_exposure_summary"]
+                bt_industry_exposure_oos = final_oos_eval["bt_industry_exposure"]
+                bt_industry_exposure_summary_oos = final_oos_eval["bt_industry_exposure_summary"]
+                bt_active_exposure_summary_oos = final_oos_eval["bt_active_exposure_summary"]
                 if positions_by_rebalance_oos is not None and not positions_by_rebalance_oos.empty:
                     positions_by_rebalance_oos = _annotate_positions_window(positions_by_rebalance_oos)
 

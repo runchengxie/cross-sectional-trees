@@ -44,7 +44,7 @@
 先看：
 
 1. [hk-selected.md](./hk-selected.md)
-   如果你本地 HK assets 已就绪，而且想直接走当前月频研究主线，优先从 `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml` 开始。
+   如果你本地 HK assets 已就绪，而且想直接走当前月频研究主线，优先从 `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml` 开始；这条入口默认使用 universe-aligned cap-weight benchmark 文件。
 2. 如果走 PIT 财务路线，再看 [hk-data-assets.md](./hk-data-assets.md)
 3. 如果要继续补 RQData 资产，先看 [hk-rqdata-status.md](./hk-rqdata-status.md)
 4. 如果已经落了 HK `5m`，再看 [hk-intraday-assets.md](./hk-intraday-assets.md)
