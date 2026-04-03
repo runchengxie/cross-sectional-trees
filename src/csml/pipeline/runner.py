@@ -589,6 +589,7 @@ def run(
     symbols_for_non_price = panel_state["symbols_for_non_price"]
     fundamentals_cols = panel_state["fundamentals_cols"]
     industry_cols = panel_state["industry_cols"]
+    industry_source_df = panel_state["industry_source_df"]
     fund_cache_dir = panel_state["fund_cache_dir"]
     provider_overlay_cache_dir = panel_state["provider_overlay_cache_dir"]
     FEATURES = panel_state["features"]
@@ -971,6 +972,8 @@ def run(
         "backtest_exit_fallback_policy": BACKTEST_EXIT_FALLBACK_POLICY,
         "benchmark_df": benchmark_df,
         "benchmark_return_series": benchmark_return_series,
+        "exposure_source_df": df_full,
+        "industry_source_df": industry_source_df,
         "fundamentals_mcap_col": FUNDAMENTALS_MCAP_COL,
         "industry_columns": list(dict.fromkeys(passthrough_cols + INDUSTRY_KEEP_COLUMNS)),
         "price_col": PRICE_COL,

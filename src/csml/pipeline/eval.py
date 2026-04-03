@@ -739,6 +739,8 @@ def _evaluate_period(
     backtest_exit_fallback_policy = context["backtest_exit_fallback_policy"]
     benchmark_df = context["benchmark_df"]
     benchmark_return_series = context["benchmark_return_series"]
+    exposure_source_df = context.get("exposure_source_df")
+    industry_source_df = context.get("industry_source_df")
     fundamentals_mcap_col = context.get("fundamentals_mcap_col")
     industry_columns = context.get("industry_columns", [])
     price_col = context["price_col"]
@@ -1179,7 +1181,7 @@ def _evaluate_period(
 
     if backtest_enabled and positions_by_rebalance is not None and not positions_by_rebalance.empty:
         exposure = compute_backtest_exposure_analysis(
-            eval_df_full,
+            exposure_source_df if exposure_source_df is not None else eval_df_full,
             positions_by_rebalance,
             pricing_data=backtest_pricing_df,
             price_col=price_col,
@@ -1187,6 +1189,7 @@ def _evaluate_period(
             benchmark_return_series=benchmark_return_series,
             market_cap_col=fundamentals_mcap_col,
             industry_columns=industry_columns,
+            industry_source_data=industry_source_df,
         )
         result["bt_style_exposure"] = exposure["style"]
         result["bt_style_exposure_summary"] = exposure["style_summary"]

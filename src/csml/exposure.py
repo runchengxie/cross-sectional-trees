@@ -74,6 +74,7 @@ _BETA_COLUMNS = (
 )
 
 _STYLE_FACTOR_ORDER = ("size", "value", "quality", "momentum", "low_vol", "beta")
+_MISSING_LABEL_TOKENS = frozenset({"", "nan", "none", "<na>", "nat", "null"})
 
 
 def _empty_style_summary() -> dict[str, Any]:
@@ -166,6 +167,14 @@ def _to_datetime_series(values: pd.Series) -> pd.Series:
     return parsed.dt.normalize()
 
 
+def _clean_categorical_labels(series: pd.Series) -> pd.Series:
+    if series.empty:
+        return pd.Series(dtype="object", index=series.index)
+    values = series.astype("string").str.strip()
+    values = values.mask(values.str.lower().isin(_MISSING_LABEL_TOKENS))
+    return values.astype("object")
+
+
 def _as_numeric(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan)
 
@@ -196,10 +205,8 @@ def _resolve_industry_column(
     for column in candidates:
         if column not in frame.columns:
             continue
-        cleaned = frame[column].dropna()
+        cleaned = _clean_categorical_labels(frame[column]).dropna()
         if cleaned.empty:
-            continue
-        if cleaned.astype(str).str.strip().eq("").all():
             continue
         return column
     return None
@@ -660,8 +667,8 @@ def _industry_exposure_rows(
     entry_date: pd.Timestamp | None,
 ) -> list[dict[str, Any]]:
     universe = day[["symbol", industry_col]].drop_duplicates(subset=["symbol"], keep="last").copy()
-    universe[industry_col] = universe[industry_col].astype(str).str.strip()
-    universe = universe[universe[industry_col].ne("")].copy()
+    universe[industry_col] = _clean_categorical_labels(universe[industry_col])
+    universe = universe.dropna(subset=[industry_col]).copy()
     if universe.empty:
         return []
 
@@ -695,8 +702,8 @@ def _industry_exposure_rows(
         cap = day[["symbol", industry_col, market_cap_col]].drop_duplicates(subset=["symbol"], keep="last").copy()
         cap[market_cap_col] = _as_numeric(cap[market_cap_col])
         cap = cap.loc[cap[market_cap_col] > 0]
-        cap[industry_col] = cap[industry_col].astype(str).str.strip()
-        cap = cap[cap[industry_col].ne("")]
+        cap[industry_col] = _clean_categorical_labels(cap[industry_col])
+        cap = cap.dropna(subset=[industry_col])
         if not cap.empty:
             universe_cap = cap.groupby(industry_col)[market_cap_col].sum()
             universe_cap = universe_cap / float(universe_cap.sum())
@@ -737,6 +744,60 @@ def _industry_exposure_rows(
     return rows
 
 
+def _build_industry_history(
+    frame: pd.DataFrame,
+    *,
+    industry_col: str,
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    history = frame[["symbol", "trade_date", industry_col]].copy()
+    history[industry_col] = _clean_categorical_labels(history[industry_col])
+    history = history.dropna(subset=["symbol", "trade_date", industry_col])
+    if history.empty:
+        return {}
+    history = history.sort_values(["symbol", "trade_date"]).drop_duplicates(
+        subset=["symbol", "trade_date"],
+        keep="last",
+    )
+
+    by_symbol: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for symbol, group in history.groupby("symbol", sort=False):
+        dates = group["trade_date"].to_numpy(dtype="datetime64[ns]")
+        labels = group[industry_col].to_numpy(dtype=object)
+        if len(dates) == 0:
+            continue
+        by_symbol[str(symbol)] = (dates, labels)
+    return by_symbol
+
+
+def _apply_industry_labels_asof(
+    day: pd.DataFrame,
+    *,
+    industry_col: str,
+    rebalance_date: pd.Timestamp,
+    industry_history: Mapping[str, tuple[np.ndarray, np.ndarray]],
+) -> pd.DataFrame:
+    work = day.copy()
+    if industry_col in work.columns:
+        industry_values = _clean_categorical_labels(work[industry_col])
+    else:
+        industry_values = pd.Series(pd.NA, index=work.index, dtype="object")
+
+    missing = industry_values.isna()
+    if missing.any():
+        rebalance_dt64 = rebalance_date.to_datetime64()
+        for idx, symbol in work.loc[missing, "symbol"].items():
+            history = industry_history.get(str(symbol))
+            if history is None:
+                continue
+            dates, labels = history
+            pos = int(np.searchsorted(dates, rebalance_dt64, side="right") - 1)
+            if pos >= 0:
+                industry_values.at[idx] = labels[pos]
+
+    work[industry_col] = industry_values
+    return work
+
+
 def compute_backtest_exposure_analysis(
     scored_data: pd.DataFrame | None,
     positions_by_rebalance: pd.DataFrame | None,
@@ -747,6 +808,7 @@ def compute_backtest_exposure_analysis(
     benchmark_return_series: pd.Series | None = None,
     market_cap_col: str | None = None,
     industry_columns: Sequence[str] | None = None,
+    industry_source_data: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     if scored_data is None or scored_data.empty or positions_by_rebalance is None or positions_by_rebalance.empty:
         return {
@@ -754,6 +816,7 @@ def compute_backtest_exposure_analysis(
             "style_summary": _empty_style_summary(),
             "industry": pd.DataFrame(),
             "industry_summary": _empty_industry_summary(),
+            "active_summary": pd.DataFrame(),
         }
 
     scored = scored_data.copy()
@@ -761,6 +824,19 @@ def compute_backtest_exposure_analysis(
     scored["trade_date"] = pd.to_datetime(scored["trade_date"], errors="coerce").dt.normalize()
     scored = scored.dropna(subset=["trade_date", "symbol"])
     scored = scored.drop_duplicates(subset=["trade_date", "symbol"], keep="last")
+
+    industry_source = pd.DataFrame()
+    if industry_source_data is not None and not industry_source_data.empty:
+        industry_source = industry_source_data.copy()
+        industry_source = canonicalize_symbol_columns(
+            industry_source,
+            context="Exposure industry source",
+        )
+        industry_source["trade_date"] = pd.to_datetime(
+            industry_source["trade_date"], errors="coerce"
+        ).dt.normalize()
+        industry_source = industry_source.dropna(subset=["trade_date", "symbol"])
+        industry_source = industry_source.drop_duplicates(subset=["trade_date", "symbol"], keep="last")
 
     positions = positions_by_rebalance.copy()
     positions = canonicalize_symbol_columns(positions, context="Exposure positions")
@@ -773,6 +849,7 @@ def compute_backtest_exposure_analysis(
             "style_summary": _empty_style_summary(),
             "industry": pd.DataFrame(),
             "industry_summary": _empty_industry_summary(),
+            "active_summary": pd.DataFrame(),
         }
 
     history = _price_history_tables(pricing_data, price_col=price_col)
@@ -784,6 +861,16 @@ def compute_backtest_exposure_analysis(
     beta_table = _build_beta_table(history["returns"], benchmark_returns)
 
     industry_col = _resolve_industry_column(scored, industry_columns=industry_columns)
+    if industry_col is None and not industry_source.empty:
+        industry_col = _resolve_industry_column(industry_source, industry_columns=industry_columns)
+    industry_history_source = (
+        industry_source if industry_col is not None and industry_col in industry_source.columns else scored
+    )
+    industry_history = (
+        _build_industry_history(industry_history_source, industry_col=industry_col)
+        if industry_col is not None
+        else {}
+    )
     style_rows: list[dict[str, Any]] = []
     industry_rows: list[dict[str, Any]] = []
     factor_meta: dict[str, dict[str, Any]] = {}
@@ -897,11 +984,17 @@ def compute_backtest_exposure_analysis(
             )
         )
 
-        if industry_col is not None and industry_col in day.columns:
+        if industry_col is not None:
+            industry_day = _apply_industry_labels_asof(
+                day,
+                industry_col=industry_col,
+                rebalance_date=rebalance_date,
+                industry_history=industry_history,
+            )
             industry_rows.extend(
                 _industry_exposure_rows(
                     positions=pos_day,
-                    day=day,
+                    day=industry_day,
                     industry_col=industry_col,
                     market_cap_col=market_cap_col,
                     rebalance_date=rebalance_date,

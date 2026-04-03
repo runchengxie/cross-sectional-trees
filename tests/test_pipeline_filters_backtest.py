@@ -674,3 +674,127 @@ def test_pipeline_backtest_outputs_style_and_industry_exposure_artifacts(
         "industry_top_1_name",
         "industry_top_1_active",
     }.issubset(active_summary.columns)
+
+
+@pytest.mark.slow
+def test_pipeline_backtest_industry_exposure_uses_prior_sparse_labels(
+    tmp_path, monkeypatch
+):
+    dates = pd.date_range("2025-01-02", periods=140, freq="B")
+    symbols = ["00005.HK", "00011.HK", "00700.HK", "00941.HK"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    basic_df = pd.DataFrame(
+        {
+            "symbol": symbols,
+            "name": ["HSBC", "Hang Seng", "Tencent", "China Mobile"],
+            "list_date": ["20000101"] * len(symbols),
+        }
+    )
+
+    industry_path = tmp_path / "industry_sparse_history.parquet"
+    industry_dates = dates[::20][:4]
+    industry_rows = []
+    for trade_date in industry_dates:
+        days_until_saturday = (5 - trade_date.weekday()) % 7
+        if days_until_saturday == 0:
+            days_until_saturday = 7
+        label_date = trade_date + pd.Timedelta(days=days_until_saturday)
+        for symbol in symbols:
+            industry_rows.append(
+                {
+                    "trade_date": label_date,
+                    "symbol": symbol,
+                    "industry_name": "银行" if symbol in {"00005.HK", "00011.HK"} else "传媒",
+                }
+            )
+    pd.DataFrame(industry_rows).to_parquet(industry_path, index=False)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20250102",
+            "end_date": "20250731",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 4,
+            "drop_suspended": False,
+        },
+        "fundamentals": {"enabled": False},
+        "industry": {
+            "enabled": True,
+            "source": "file",
+            "file": str(industry_path),
+            "keep_columns": ["industry_name"],
+            "required": True,
+            "ffill": False,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["vol"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 10,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.35,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "M",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_scored_artifact": True,
+            "save_dataset": False,
+            "output_dir": str(output_dir),
+            "run_name": "backtest_industry_sparse_history",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {
+            "enabled": True,
+            "top_k": 2,
+            "rebalance_frequency": "M",
+            "transaction_cost_bps": 0,
+            "long_only": True,
+            "exit_mode": "rebalance",
+            "exit_price_policy": "delay",
+        },
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    industry_output_path = run_dir / "backtest_industry_exposure.csv"
+    industry = pd.read_csv(industry_output_path)
+
+    assert industry_output_path.exists()
+    assert not industry.empty
+    assert set(industry["industry"]) == {"银行", "传媒"}
+    assert summary["backtest"]["exposure"]["industry_file"] == str(industry_output_path)
+    assert summary["backtest"]["exposure"]["industry_column"] == "industry_name"
+    assert summary["backtest"]["exposure"]["latest_industry"]["top_absolute_active"]

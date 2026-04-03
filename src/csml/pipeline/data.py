@@ -18,7 +18,11 @@ import pandas_ta as ta
 from ..artifacts import CACHE_DIR as DEFAULT_CACHE_DIR, resolve_repo_path
 from ..data_interface import DataInterface
 from ..data_providers import normalize_market
-from ..data_tools.symbols import canonicalize_symbol_columns
+from ..data_tools.symbols import (
+    DEFAULT_SYMBOL_PRIORITY,
+    PROVIDER_SYMBOL_PRIORITY,
+    canonicalize_symbol_columns,
+)
 from ..dataset import DatasetSchema, build_dataset
 from .dates import _build_trade_date_slices, _slice_trade_dates
 from .support import (
@@ -598,6 +602,7 @@ def _load_research_panel(
     features = list(requested_features)
     fundamentals_cols: list[str] = []
     industry_cols: list[str] = []
+    industry_source_df = pd.DataFrame()
     fund_cache_dir: Optional[Path] = None
     provider_overlay_cache_dir: Optional[Path] = None
 
@@ -622,6 +627,11 @@ def _load_research_panel(
                 fund_df,
                 fundamentals_cfg.get("column_map"),
                 item_label="Fundamentals",
+                symbol_priority=(
+                    DEFAULT_SYMBOL_PRIORITY
+                    if fundamentals_source == "file"
+                    else PROVIDER_SYMBOL_PRIORITY
+                ),
             )
             fund_df = _derive_requested_fundamental_fields(
                 fund_df, requested_feature_names
@@ -665,6 +675,11 @@ def _load_research_panel(
                     overlay_df,
                     provider_overlay_cfg.get("column_map"),
                     item_label="Provider overlay",
+                    symbol_priority=(
+                        DEFAULT_SYMBOL_PRIORITY
+                        if str(provider_overlay_cfg.get("source") or "").strip().lower() == "file"
+                        else PROVIDER_SYMBOL_PRIORITY
+                    ),
                 )
                 overlay_value_cols = [
                     col
@@ -728,12 +743,14 @@ def _load_research_panel(
                 industry_df,
                 industry_cfg.get("column_map"),
                 item_label="Industry",
+                symbol_priority=DEFAULT_SYMBOL_PRIORITY,
             )
             industry_df = _select_panel_join_columns(
                 industry_df,
                 keep_columns=industry_keep_columns,
                 item_label="Industry",
             )
+            industry_source_df = industry_df.copy()
             df, industry_cols = _merge_fundamentals_panel(
                 df,
                 industry_df,
@@ -787,6 +804,7 @@ def _load_research_panel(
         "symbols_for_non_price": symbols_for_non_price,
         "fundamentals_cols": fundamentals_cols,
         "industry_cols": industry_cols,
+        "industry_source_df": industry_source_df,
         "fund_cache_dir": fund_cache_dir,
         "provider_overlay_cache_dir": provider_overlay_cache_dir,
         "features": features,
@@ -1212,7 +1230,16 @@ def _prepare_feature_dataset(
     )
     dataset = build_dataset(df_features, dataset_schema)
     df_features = dataset.frame
-    df_full = df_features.dropna().reset_index(drop=True)
+    # Passthrough columns such as industry labels or optional price proxies are
+    # useful for diagnostics/backtests, but they should not enforce complete-case
+    # filtering for the modeling sample.
+    complete_case_cols = [price_col, target, *features]
+    if train_target != target:
+        complete_case_cols.append(train_target)
+    complete_case_cols = [
+        column for column in list(dict.fromkeys(complete_case_cols)) if column in df_features.columns
+    ]
+    df_full = df_features.dropna(subset=complete_case_cols).reset_index(drop=True)
     if eval_extra_df is not None and not eval_extra_df.empty:
         eval_extra_df = eval_extra_df.drop_duplicates(subset=["trade_date", "symbol"])
         extra_eval_cols = [

@@ -126,6 +126,7 @@ def test_pipeline_industry_file_join_preserves_labels_for_dataset_and_bucket_ic(
                 {
                     "trade_date": trade_date,
                     "symbol": symbol,
+                    "order_book_id": symbol.replace(".HK", ".XHKG"),
                     "industry_name": industry_name,
                     "first_industry_name": industry_name,
                 }
@@ -248,3 +249,118 @@ def test_pipeline_industry_file_join_preserves_labels_for_dataset_and_bucket_ic(
     assert summary["industry"]["enabled"] is True
     assert summary["industry"]["resolved_columns"] == ["industry_name", "first_industry_name"]
     assert bucket_ic["scheme"].eq("industry_name").any()
+
+
+@pytest.mark.slow
+def test_pipeline_industry_sparse_labels_do_not_collapse_model_dates(
+    tmp_path, monkeypatch
+):
+    dates = pd.date_range("2025-03-10", periods=45, freq="B")
+    symbols = ["00005.HK", "00011.HK", "00700.HK", "00941.HK"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    basic_df = pd.DataFrame(
+        {
+            "symbol": symbols,
+            "name": ["HSBC", "Hang Seng", "Tencent", "China Mobile"],
+            "list_date": ["20000101"] * len(symbols),
+        }
+    )
+
+    industry_path = tmp_path / "industry_labels_sparse.parquet"
+    sparse_dates = dates[::5]
+    industry_rows = []
+    for trade_date in sparse_dates:
+        for symbol in symbols:
+            industry_name = "银行" if symbol in {"00005.HK", "00011.HK"} else "传媒"
+            industry_rows.append(
+                {
+                    "trade_date": trade_date,
+                    "symbol": symbol,
+                    "industry_name": industry_name,
+                    "first_industry_name": industry_name,
+                }
+            )
+    pd.DataFrame(industry_rows).to_parquet(industry_path, index=False)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20250310",
+            "end_date": "20250531",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 4,
+            "drop_suspended": False,
+        },
+        "fundamentals": {"enabled": False},
+        "industry": {
+            "enabled": True,
+            "source": "file",
+            "file": str(industry_path),
+            "keep_columns": ["industry_name", "first_industry_name"],
+            "required": True,
+            "ffill": False,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["vol"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_scored_artifact": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "hk-industry-sparse",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
+    dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
+    eval_scored = pd.read_parquet(run_dir / "eval_scored.parquet")
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert {"industry_name", "first_industry_name"}.issubset(dataset.columns)
+    assert {"industry_name", "first_industry_name"}.issubset(eval_scored.columns)
+    assert dataset["industry_name"].isna().any()
+    assert dataset["trade_date"].nunique() >= 30
+    assert eval_scored["trade_date"].nunique() >= 5
+    assert summary["industry"]["enabled"] is True
+    assert summary["industry"]["resolved_columns"] == ["industry_name", "first_industry_name"]

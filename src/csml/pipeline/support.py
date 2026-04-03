@@ -23,6 +23,7 @@ def _prepare_panel_join_frame(
     column_map: dict[str, Any] | None = None,
     *,
     item_label: str,
+    symbol_priority: tuple[str, ...] | list[str] = PROVIDER_SYMBOL_PRIORITY,
 ) -> pd.DataFrame:
     join_df = frame.copy()
     column_map = column_map or {}
@@ -43,7 +44,7 @@ def _prepare_panel_join_frame(
     join_df = canonicalize_symbol_columns(
         join_df,
         context=f"{item_label} data",
-        priority=PROVIDER_SYMBOL_PRIORITY,
+        priority=symbol_priority,
     )
     if "trade_date" not in join_df.columns or "symbol" not in join_df.columns:
         sys.exit(f"{item_label} data must include trade_date and symbol columns.")
