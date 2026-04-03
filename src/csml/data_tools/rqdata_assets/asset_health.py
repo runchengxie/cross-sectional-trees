@@ -79,15 +79,18 @@ PLACEHOLDER_TOKENS = {
 }
 VALUATION_STALE_RUN_MIN_LENGTH = 5
 VALUATION_DELIST_BOUNDARY_MAX_DAYS = 5
+VALUATION_SHARES_EVENT_LEAD_DAYS = 2
 VALUATION_PROVIDER_LIKE_REASON_LABELS = {
     "no_daily_reference_window": "no_daily_reference_window",
     "no_finite_daily_close": "no_finite_daily_close",
+    "no_daily_trading_activity": "no_daily_trading_activity",
     "daily_reference_stale": "daily_reference_stale",
     "no_daily_price_change": "no_daily_price_change",
     "daily_price_changed": "daily_price_changed",
     "no_daily_reference": "no_daily_reference",
     "ex_factor_event_in_window": "ex_factor_event_in_window",
     "shares_event_in_window": "shares_event_in_window",
+    "shares_event_near_window": "shares_event_near_window",
     "delisted_instrument_boundary": "delisted_instrument_boundary",
 }
 VALUATION_FRESH_TARGET_GAP_REASON_LABELS = {
@@ -1005,6 +1008,15 @@ def _classify_valuation_reference_window(
                 "provider_like": True,
                 "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["shares_event_in_window"],
             }
+        near_window_start = start_ts - pd.Timedelta(days=VALUATION_SHARES_EVENT_LEAD_DAYS)
+        shares_near_window = shares_reference.loc[
+            (shares_reference["date"] >= near_window_start) & (shares_reference["date"] < start_ts)
+        ]
+        if not shares_near_window.empty:
+            return {
+                "provider_like": True,
+                "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["shares_event_near_window"],
+            }
 
     if daily_reference is None or daily_reference.empty:
         return {
@@ -1031,6 +1043,17 @@ def _classify_valuation_reference_window(
 
     reference_window = reference_window.loc[finite_mask].copy()
     close_values = close_values.loc[finite_mask]
+    if {"volume", "total_turnover"}.issubset(reference_window.columns):
+        volume_raw = pd.to_numeric(reference_window["volume"], errors="coerce")
+        turnover_raw = pd.to_numeric(reference_window["total_turnover"], errors="coerce")
+        has_trading_observations = bool(volume_raw.notna().any() or turnover_raw.notna().any())
+        volume_values = volume_raw.fillna(0.0)
+        turnover_values = turnover_raw.fillna(0.0)
+        if has_trading_observations and not bool(((volume_values > 0) | (turnover_values > 0)).any()):
+            return {
+                "provider_like": True,
+                "reason": VALUATION_PROVIDER_LIKE_REASON_LABELS["no_daily_trading_activity"],
+            }
     latest_trade_date = pd.to_datetime(reference_window["trade_date"], errors="coerce").max()
     if pd.notna(latest_trade_date) and latest_trade_date.normalize() < end_ts:
         return {
@@ -1360,7 +1383,7 @@ def _load_daily_reference_frame(daily_asset_dir: Path | None, symbol: str) -> pd
     if not daily_path.exists():
         return None
     try:
-        frame = pd.read_parquet(daily_path, columns=["trade_date", "close"])
+        frame = pd.read_parquet(daily_path, columns=["trade_date", "close", "volume", "total_turnover"])
     except Exception:
         frame = pd.read_parquet(daily_path)
     frame = _normalize_frame_columns(frame)
@@ -1368,13 +1391,19 @@ def _load_daily_reference_frame(daily_asset_dir: Path | None, symbol: str) -> pd
         return None
     if "close" not in frame.columns:
         frame["close"] = np.nan
+    if "volume" not in frame.columns:
+        frame["volume"] = np.nan
+    if "total_turnover" not in frame.columns:
+        frame["total_turnover"] = np.nan
     frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce").dt.normalize()
     frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
+    frame["volume"] = pd.to_numeric(frame["volume"], errors="coerce")
+    frame["total_turnover"] = pd.to_numeric(frame["total_turnover"], errors="coerce")
     frame = frame.dropna(subset=["trade_date"]).copy()
     if frame.empty:
         return None
     return (
-        frame[["trade_date", "close"]]
+        frame[["trade_date", "close", "volume", "total_turnover"]]
         .drop_duplicates(subset=["trade_date"], keep="last")
         .sort_values("trade_date")
         .reset_index(drop=True)
