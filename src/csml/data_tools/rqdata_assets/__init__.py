@@ -139,6 +139,10 @@ DEFAULT_MIRROR_MAX_ATTEMPTS = 3
 DEFAULT_MIRROR_BACKOFF_SECONDS = 1.0
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = 30.0
 
+# Keep this package focused on stable exports for tests and programmatic use.
+# New CLI command registration belongs in ``command_registry.py`` instead of
+# growing another layer of wrappers here.
+
 
 def _resolve_fields(args) -> tuple[list[str], dict]:
     return _resolve_fields_with_overrides(

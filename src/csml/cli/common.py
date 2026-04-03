@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from dotenv import load_dotenv
 
 from ..config_utils import resolve_pipeline_config
-from ..data_interface import _patch_rqdatac_adjust_price_readonly
+from ..rqdata_runtime import (
+    init_rqdatac as _init_rqdatac_runtime,
+    patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
+)
 
 
 def format_bytes(value: float) -> str:
@@ -180,35 +182,16 @@ def append_passthrough(argv: list[str], values) -> None:
 
 
 def init_rqdatac(args) -> object:
-    try:
-        import rqdatac
-    except ImportError as exc:
-        raise SystemExit(
-            "rqdatac is not installed. Install with: pip install '.[rqdata]'"
-        ) from exc
-
     load_dotenv()
-    init_kwargs: dict = {}
     cfg = load_config(args.config) if getattr(args, "config", None) else {}
-    rq_cfg = cfg.get("data", {}).get("rqdata", {}) if isinstance(cfg, dict) else {}
-    if isinstance(rq_cfg, dict) and isinstance(rq_cfg.get("init"), dict):
-        init_kwargs.update(rq_cfg.get("init"))
-
-    if getattr(args, "username", None):
-        init_kwargs["username"] = args.username
-    if getattr(args, "password", None):
-        init_kwargs["password"] = args.password
-
-    env_username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
-    env_password = os.getenv("RQDATA_PASSWORD")
-    if env_username and "username" not in init_kwargs:
-        init_kwargs["username"] = env_username
-    if env_password and "password" not in init_kwargs:
-        init_kwargs["password"] = env_password
-
-    try:
-        rqdatac.init(**init_kwargs)
-    except Exception as exc:
-        raise SystemExit(f"rqdatac.init failed: {exc}") from exc
-    _patch_rqdatac_adjust_price_readonly(logging.getLogger("csml.cli.rqdata"))
-    return rqdatac
+    data_cfg = cfg.get("data") if isinstance(cfg, dict) else None
+    return _init_rqdatac_runtime(
+        data_cfg=data_cfg,
+        username=getattr(args, "username", None),
+        password=getattr(args, "password", None),
+        logger=logging.getLogger("csml.cli.rqdata"),
+        load_env=False,
+        error_cls=SystemExit,
+        import_error_message="rqdatac is not installed. Install with: pip install '.[rqdata]'",
+        patch_fn=_patch_rqdatac_adjust_price_readonly,
+    )

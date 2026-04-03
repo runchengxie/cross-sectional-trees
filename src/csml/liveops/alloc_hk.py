@@ -1908,6 +1908,13 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--config", help="Pipeline config path or built-in name (default: default).")
     parser.add_argument("--run-dir", help="Explicit run directory to read (overrides --config).")
+    parser.add_argument(
+        "--artifacts-root",
+        help=(
+            "Optional artifacts root override used when resolving the default runs directory. "
+            "When omitted, alloc-hk uses paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/."
+        ),
+    )
     parser.add_argument("--positions-file", help="Explicit positions CSV path (overrides --config/--run-dir).")
     parser.add_argument("--top-k", type=int, help="Optional Top-K filter when selecting the latest run.")
     parser.add_argument(

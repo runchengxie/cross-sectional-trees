@@ -7,10 +7,20 @@ from ..config_utils import resolve_pipeline_filename, resolve_repo_preset_path
 
 
 def handle_run(args) -> int:
-    if getattr(args, "fail_on_quality", None) is None:
+    artifacts_root = getattr(args, "artifacts_root", None)
+    fail_on_quality = getattr(args, "fail_on_quality", None)
+    if fail_on_quality is None and artifacts_root is None:
         pipeline.run(args.config)
+    elif artifacts_root is None:
+        pipeline.run(args.config, fail_on_quality=fail_on_quality)
+    elif fail_on_quality is None:
+        pipeline.run(args.config, artifacts_root=artifacts_root)
     else:
-        pipeline.run(args.config, fail_on_quality=args.fail_on_quality)
+        pipeline.run(
+            args.config,
+            fail_on_quality=fail_on_quality,
+            artifacts_root=artifacts_root,
+        )
     return 0
 
 
@@ -59,6 +69,13 @@ def register_core_commands(subparsers) -> None:
         help=(
             "Optional quality gate threshold. Overrides quality.fail_on_severity in the config "
             "when provided."
+        ),
+    )
+    run.add_argument(
+        "--artifacts-root",
+        help=(
+            "Optional artifacts root override. When omitted, the pipeline uses paths.artifacts_root, "
+            "CSML_ARTIFACTS_ROOT, or the default artifacts/."
         ),
     )
     run.set_defaults(func=handle_run)

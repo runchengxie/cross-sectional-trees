@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
+import logging
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 
@@ -17,9 +17,14 @@ from .data_tools.symbols import (
     normalize_symbol_for_market,
     normalize_symbol_standard_name,
 )
+from .rqdata_runtime import (
+    init_rqdatac as _init_rqdatac_runtime,
+    resolve_rqdatac_init_kwargs as _resolve_rqdatac_init_kwargs_runtime,
+)
 
 
 SUPPORTED_MARKETS = {"hk"}
+logger = logging.getLogger("csml.data_providers")
 
 FUNDAMENTAL_COLUMN_CANDIDATES = {
     "trade_date": ["trade_date", "date", "trade_dt", "trade_day"],
@@ -56,22 +61,26 @@ REQUIRED_DAILY_COLUMNS = ("trade_date", "symbol", "close", "vol")
 _RQDATA_LISTED_DATE_CACHE: dict[tuple[str, str], pd.Timestamp | None] = {}
 
 
-def normalize_market(market: Optional[str]) -> str:
-    value = str(market or "hk").strip().lower()
-    return value if value else "hk"
+def normalize_market(market: Optional[str], *, default: Optional[str] = "hk") -> Optional[str]:
+    fallback = None if default is None else str(default).strip().lower() or None
+    value = str(market).strip().lower() if market is not None else None
+    return value or fallback
 
 
-def resolve_provider(data_cfg: Optional[Mapping]) -> str:
+def resolve_provider(data_cfg: Optional[Mapping], *, default: Optional[str] = "rqdata") -> Optional[str]:
     if not isinstance(data_cfg, Mapping):
-        return "rqdata"
-    value = str(data_cfg.get("provider", "rqdata")).strip().lower()
+        return default
+    raw = data_cfg.get("provider", default)
+    if raw is None:
+        return None
+    value = str(raw).strip().lower()
     if value in {"rqdatac", "rqdata"}:
         return "rqdata"
-    return value or "rqdata"
+    return value or default
 
 
 def fundamentals_provider_supported(provider: str, market: str) -> bool:
-    provider = resolve_provider({"provider": provider})
+    provider = resolve_provider({"provider": provider}, default="rqdata")
     market = normalize_market(market)
     return provider == "rqdata" and market == "hk"
 
@@ -135,34 +144,16 @@ def _prepare_rqdata_fundamentals_frame(df: pd.DataFrame, symbol: str) -> pd.Data
 
 
 def _resolve_rqdatac_init_kwargs(data_cfg: Mapping | None) -> dict[str, object]:
-    init_kwargs: dict[str, object] = {}
-    rq_cfg = data_cfg.get("rqdata") if isinstance(data_cfg, Mapping) else None
-    if isinstance(rq_cfg, Mapping) and isinstance(rq_cfg.get("init"), Mapping):
-        for key, value in rq_cfg.get("init", {}).items():
-            if value is None:
-                continue
-            init_kwargs[str(key)] = value
-    env_username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
-    env_password = os.getenv("RQDATA_PASSWORD")
-    if env_username and "username" not in init_kwargs:
-        init_kwargs["username"] = env_username
-    if env_password and "password" not in init_kwargs:
-        init_kwargs["password"] = env_password
-    return init_kwargs
+    return _resolve_rqdatac_init_kwargs_runtime(data_cfg)
 
 
 def _ensure_rqdatac_ready(data_cfg: Mapping | None):
-    try:
-        import rqdatac
-    except ImportError as exc:
-        raise RuntimeError(f"rqdatac is required for provider='rqdata' ({exc}).") from exc
-
-    init_kwargs = _resolve_rqdatac_init_kwargs(data_cfg)
-    try:
-        rqdatac.init(**init_kwargs)
-    except Exception as exc:
-        raise RuntimeError(f"rqdatac.init failed: {exc}") from exc
-    return rqdatac
+    return _init_rqdatac_runtime(
+        data_cfg=data_cfg,
+        logger=logger,
+        error_cls=RuntimeError,
+        import_error_message="rqdatac is required for provider='rqdata'.",
+    )
 
 
 def _rqdata_default_fields(rq_cfg: Optional[Mapping]) -> Optional[list[str]]:

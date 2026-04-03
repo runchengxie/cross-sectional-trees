@@ -16,11 +16,12 @@ import pandas as pd
 import yaml
 
 from ..artifacts import (
-    ARTIFACTS_ROOT,
-    METADATA_DIR as DEFAULT_METADATA_DIR,
-    STANDARDIZED_DIR as DEFAULT_STANDARDIZED_DIR,
     default_path_text,
+    resolve_artifacts_root,
+    resolve_metadata_db_path,
     resolve_repo_path,
+    resolve_warehouse_db_path,
+    standardized_dir_for,
 )
 from .symbols import resolve_symbol_series
 
@@ -658,10 +659,14 @@ def _write_catalog_summary_csv(conn: sqlite3.Connection, out_path: Path) -> None
 
 
 def refresh_catalog(args) -> int:
-    artifacts_root = resolve_repo_path(getattr(args, "artifacts_root", default_path_text(ARTIFACTS_ROOT)))
-    db_path = resolve_repo_path(getattr(args, "db_path", default_path_text(DEFAULT_METADATA_DIR / "catalog.sqlite")))
+    artifacts_root = resolve_artifacts_root(getattr(args, "artifacts_root", None))
+    db_path = resolve_metadata_db_path(
+        getattr(args, "db_path", None),
+        artifacts_root=artifacts_root,
+    )
     summary_out = resolve_repo_path(
-        getattr(args, "summary_out", default_path_text(DEFAULT_METADATA_DIR / "catalog_summary.csv"))
+        getattr(args, "summary_out", None)
+        or (db_path.parent / "catalog_summary.csv")
     )
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -765,7 +770,11 @@ def materialize_standardized(args) -> int:
     input_files, source_mode = _collect_input_files(asset_dir=asset_dir, file_path=file_path)
     source_manifest = _infer_source_manifest(asset_dir=asset_dir, file_path=file_path)
 
-    out_root = resolve_repo_path(getattr(args, "out_root", default_path_text(DEFAULT_STANDARDIZED_DIR)))
+    artifacts_root = resolve_artifacts_root(getattr(args, "artifacts_root", None))
+    out_root = resolve_repo_path(
+        getattr(args, "out_root", None)
+        or standardized_dir_for(artifacts_root)
+    )
     market = str(getattr(args, "market", "hk") or "hk").strip().lower()
     output_dir = out_root / market / dataset / name
     output_data_dir = output_dir / "data"
@@ -932,9 +941,14 @@ def _read_sql(args) -> str:
 
 def query_standardized(args) -> int:
     duckdb = _import_duckdb()
-    db_path = resolve_repo_path(getattr(args, "db_path", default_path_text(DEFAULT_METADATA_DIR / "warehouse.duckdb")))
+    artifacts_root = resolve_artifacts_root(getattr(args, "artifacts_root", None))
+    db_path = resolve_warehouse_db_path(
+        getattr(args, "db_path", None),
+        artifacts_root=artifacts_root,
+    )
     standardized_root = resolve_repo_path(
-        getattr(args, "standardized_root", default_path_text(DEFAULT_STANDARDIZED_DIR))
+        getattr(args, "standardized_root", None)
+        or standardized_dir_for(artifacts_root)
     )
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -987,22 +1001,27 @@ def query_standardized(args) -> int:
 def add_catalog_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--artifacts-root",
-        default=default_path_text(ARTIFACTS_ROOT),
-        help=f"Artifacts root to scan. Default: {default_path_text(ARTIFACTS_ROOT)}",
+        default=None,
+        help="Artifacts root to scan. Default: paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/.",
     )
     parser.add_argument(
         "--db-path",
-        default=default_path_text(DEFAULT_METADATA_DIR / "catalog.sqlite"),
-        help=f"SQLite catalog output path. Default: {default_path_text(DEFAULT_METADATA_DIR / 'catalog.sqlite')}",
+        default=None,
+        help="Optional SQLite catalog output path. Default: <artifacts_root>/metadata/catalog.sqlite.",
     )
     parser.add_argument(
         "--summary-out",
-        default=default_path_text(DEFAULT_METADATA_DIR / "catalog_summary.csv"),
-        help="Optional CSV export of catalog rows.",
+        default=None,
+        help="Optional CSV export of catalog rows. Default: <db_path parent>/catalog_summary.csv.",
     )
 
 
 def add_materialize_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--artifacts-root",
+        default=None,
+        help="Artifacts root used for default outputs. Default: paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/.",
+    )
     parser.add_argument(
         "--name",
         required=True,
@@ -1047,8 +1066,8 @@ def add_materialize_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--out-root",
-        default=default_path_text(DEFAULT_STANDARDIZED_DIR),
-        help=f"Standardized layer root. Default: {default_path_text(DEFAULT_STANDARDIZED_DIR)}",
+        default=None,
+        help="Standardized layer root. Default: <artifacts_root>/standardized.",
     )
     parser.add_argument(
         "--force",
@@ -1059,6 +1078,11 @@ def add_materialize_args(parser: argparse.ArgumentParser) -> None:
 
 def add_query_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
+        "--artifacts-root",
+        default=None,
+        help="Artifacts root used for default metadata and standardized paths. Default: paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/.",
+    )
+    parser.add_argument(
         "--sql",
         help="SQL statement executed against DuckDB after standardized views are refreshed.",
     )
@@ -1068,13 +1092,13 @@ def add_query_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--db-path",
-        default=default_path_text(DEFAULT_METADATA_DIR / "warehouse.duckdb"),
-        help=f"DuckDB database path. Default: {default_path_text(DEFAULT_METADATA_DIR / 'warehouse.duckdb')}",
+        default=None,
+        help="DuckDB database path. Default: <artifacts_root>/metadata/warehouse.duckdb.",
     )
     parser.add_argument(
         "--standardized-root",
-        default=default_path_text(DEFAULT_STANDARDIZED_DIR),
-        help=f"Standardized layer root scanned for manifest-backed views. Default: {default_path_text(DEFAULT_STANDARDIZED_DIR)}",
+        default=None,
+        help="Standardized layer root scanned for manifest-backed views. Default: <artifacts_root>/standardized.",
     )
     parser.add_argument(
         "--format",

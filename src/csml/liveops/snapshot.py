@@ -21,6 +21,13 @@ def main(argv: list[str] | None = None) -> None:
         help="Use an existing run directory (skips pipeline run).",
     )
     parser.add_argument(
+        "--artifacts-root",
+        help=(
+            "Optional artifacts root override used when resolving the default runs directory. "
+            "When omitted, snapshot uses paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/."
+        ),
+    )
+    parser.add_argument(
         "--as-of",
         default="t-1",
         help="As-of date for holdings output (YYYYMMDD, YYYY-MM-DD, today, t-1).",
@@ -67,12 +74,28 @@ def main(argv: list[str] | None = None) -> None:
         live_cfg = live_cfg if isinstance(live_cfg, dict) else {}
         if not bool(live_cfg.get("enabled", False)):
             raise SystemExit("snapshot requires live.enabled=true in the config.")
-        if args.fail_on_quality is None:
+        if args.fail_on_quality is None and args.artifacts_root is None:
             pipeline.run(args.config)
-        else:
+        elif args.fail_on_quality is None:
+            pipeline.run(args.config, artifacts_root=args.artifacts_root)
+        elif args.artifacts_root is None:
             pipeline.run(args.config, fail_on_quality=args.fail_on_quality)
+        else:
+            pipeline.run(
+                args.config,
+                fail_on_quality=args.fail_on_quality,
+                artifacts_root=args.artifacts_root,
+            )
     else:
-        resolved_run_dir = holdings._resolve_run_dir(args.config, args.run_dir, args.top_k)
+        if args.artifacts_root is None:
+            resolved_run_dir = holdings._resolve_run_dir(args.config, args.run_dir, args.top_k)
+        else:
+            resolved_run_dir = holdings._resolve_run_dir(
+                args.config,
+                args.run_dir,
+                args.top_k,
+                artifacts_root=args.artifacts_root,
+            )
         enforce_liveops_quality_gate(
             command_name="snapshot",
             run_dir=resolved_run_dir,
@@ -85,6 +108,8 @@ def main(argv: list[str] | None = None) -> None:
         hold_args += ["--config", args.config]
     if args.run_dir:
         hold_args += ["--run-dir", args.run_dir]
+    if args.artifacts_root:
+        hold_args += ["--artifacts-root", args.artifacts_root]
     if args.top_k is not None:
         hold_args += ["--top-k", str(args.top_k)]
     if args.format:

@@ -18,6 +18,7 @@
 | [pit-coverage.md](pit-coverage.md) | PIT 财务覆盖率体检怎么看 |
 | [universe-modes.md](universe-modes.md) | auto/pit/static 三种股票池模式的区别 |
 | [data-sources.md](data-sources.md) | 当前 HK + RQData 数据边界和本地资产模式怎么用 |
+| [external-artifacts-root.md](external-artifacts-root.md) | 怎么把 `artifacts/` 放到 repo 外，又不把研究主链搞复杂 |
 
 ## 什么时候该看这些文档
 
@@ -27,3 +28,4 @@
 - 做季度 PIT 研究 → 先看 [pit-coverage.md](pit-coverage.md)
 - 理解股票池模式的区别 → 看 [universe-modes.md](universe-modes.md)
 - 确认当前数据边界与本地资产模式 → 看 [data-sources.md](data-sources.md)
+- 想把数据目录放到 repo 外但不想改流程习惯 → 看 [external-artifacts-root.md](external-artifacts-root.md)

@@ -53,6 +53,7 @@ configs/
 | 块 | 作用 | 常见键 |
 |----|------|--------|
 | `market` | 市场 | `hk` |
+| `paths` | 产物根目录与 metadata / warehouse 默认路径 | `artifacts_root`, `metadata_db_path`, `warehouse_db_path` |
 | `data` | 数据源、日期、缓存 | `provider`, `start_date`, `end_date`, `cache_tag` |
 | `universe` | 股票池 | `mode`, `by_date_file`, `symbols` |
 | `fundamentals` | 基本面 | `enabled`, `source`, `features` |
@@ -65,6 +66,25 @@ configs/
 | `logging` | 日志输出 | `level`, `file` |
 
 ## 关键配置速查
+
+### `paths`
+
+默认情况下，仓库仍把产物写到工作区里的 `artifacts/`。如果你想把数据和代码 checkout 分开管理，可以只改这一层根目录，而不改各条研究链的显式输入路径。
+
+```yaml
+paths:
+  artifacts_root: "artifacts"
+  metadata_db_path: null
+  warehouse_db_path: null
+```
+
+补充：
+
+* `paths.artifacts_root` 只影响默认路径，不会覆盖你已经显式写在 config 里的 `eval.output_dir`、`data.cache_dir`、`fundamentals.file`、`data.rqdata.daily_asset_dir` 这类路径。
+* `metadata_db_path` 留空时，`csml data catalog` 默认写到 `<artifacts_root>/metadata/catalog.sqlite`。
+* `warehouse_db_path` 留空时，`csml data query` 默认写到 `<artifacts_root>/metadata/warehouse.duckdb`。
+* CLI 也支持 `--artifacts-root` 覆盖；优先级高于 config。
+* 环境变量 `CSML_ARTIFACTS_ROOT`、`CSML_METADATA_DB_PATH`、`CSML_WAREHOUSE_DB_PATH` 也可作为默认覆盖。
 
 ### 数据源
 

@@ -17,6 +17,7 @@
 | 我想查命令和参数 | `docs/cli.md` |
 | 我想查 metadata catalog、标准层物化或 DuckDB 查询 | `docs/cli.md` |
 | 我想查配置键、模板入口和默认行为 | `docs/config.md` |
+| 我想把 `artifacts/` 挪到 repo 外，或者统一改产物根目录 | `docs/concepts/external-artifacts-root.md` |
 | 我想理解成本、滑点、`tr_close` 和现金分红假设 | `docs/concepts/execution-costs.md` |
 | 我想查输出目录、文件和字段 | `docs/outputs.md` |
 | 我想查 provider 差异、凭证和日期 token | `docs/providers.md` |
@@ -31,6 +32,7 @@
 2. 我想先建立系统心智模型：`docs/pipeline-overview.md` → `docs/capabilities.md` → `docs/config.md` → `docs/outputs.md`
 3. 我想做正式研究：`docs/playbooks/README.md` → `docs/concepts/benchmark-protocol.md` → `docs/cookbook.md`
 4. 我想查某个细节：`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md`、`docs/rqdata/README.md`、`docs/playbooks/hk-intraday-assets.md`、`docs/concepts/`
+5. 我想把数据目录放到 repo 外但不改主流程：`docs/concepts/external-artifacts-root.md` → `docs/config.md` → `docs/outputs.md`
 
 ## 页面分工
 
@@ -40,6 +42,6 @@
 通用工作流速查：`docs/cookbook.md` \
 参考手册：`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md` \
 专题资料：`docs/rqdata/` \
-概念解释：`docs/concepts/`（包括 `docs/concepts/execution-costs.md`） \
+概念解释：`docs/concepts/`（包括 `docs/concepts/execution-costs.md`、`docs/concepts/external-artifacts-root.md`） \
 开发与内部：`docs/dev.md`、`docs/internal/` \
 研究笔记与论文精读：`docs/research/`

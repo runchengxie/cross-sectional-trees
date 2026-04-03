@@ -8,10 +8,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
+from ..compat import ensure_numpy_nan_alias
 
-if not hasattr(np, "NaN"):
-    np.NaN = np.nan
-
+ensure_numpy_nan_alias()
 import pandas as pd
 import pandas_ta as ta
 

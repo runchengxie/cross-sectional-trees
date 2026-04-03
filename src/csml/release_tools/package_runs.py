@@ -36,6 +36,7 @@ DATETIME_PARSE_FORMATS = (
 )
 DEFAULT_INCLUDE_GLOBS = (
     "summary.json",
+    "inputs.lock.json",
     "config.used.yml",
     "dropped_dates.csv",
     "positions*.csv",

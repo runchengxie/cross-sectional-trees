@@ -9,8 +9,10 @@ from typing import Any
 from dotenv import load_dotenv
 import numpy as np
 
-from ..artifacts import CACHE_DIR as DEFAULT_CACHE_DIR
+from ..artifacts import cache_dir_for
+from ..artifacts import resolve_configured_artifacts_root
 from ..artifacts import resolve_repo_path
+from ..artifacts import runs_dir_for
 from ..config_utils import resolve_pipeline_config
 from ..data_providers import normalize_market, resolve_provider
 from ..date_utils import is_relative_date_token as _is_relative_date_token
@@ -26,7 +28,8 @@ from .support import load_symbols_file, load_universe_by_date, normalize_symbol_
 def load_run_config(
     config_ref: str | Path | None,
     *,
-    default_cache_dir: Path = DEFAULT_CACHE_DIR,
+    default_cache_dir: Path | None = None,
+    artifacts_root_override: str | Path | None = None,
 ) -> dict[str, Any]:
     resolved = resolve_pipeline_config(config_ref)
     config = resolved.data
@@ -35,6 +38,10 @@ def load_run_config(
     config_source = resolved.source
     active_log_file = setup_logging(config)
 
+    artifacts_root = resolve_configured_artifacts_root(
+        config,
+        override=artifacts_root_override,
+    )
     data_cfg = config.get("data", {})
     market = normalize_market(config.get("market") or data_cfg.get("market"))
     universe_cfg = config.get("universe", {})
@@ -53,13 +60,15 @@ def load_run_config(
         live_cfg = {}
 
     load_dotenv()
-    cache_dir = resolve_repo_path(data_cfg.get("cache_dir", default_cache_dir.as_posix()))
+    cache_dir_default = default_cache_dir or cache_dir_for(artifacts_root)
+    cache_dir = resolve_repo_path(data_cfg.get("cache_dir", cache_dir_default.as_posix()))
     return {
         "config": config,
         "config_label": config_label,
         "config_path": config_path,
         "config_source": config_source,
         "active_log_file": active_log_file,
+        "artifacts_root": artifacts_root,
         "data_cfg": data_cfg,
         "market": market,
         "universe_cfg": universe_cfg,
@@ -71,6 +80,7 @@ def load_run_config(
         "backtest_cfg": backtest_cfg,
         "live_cfg": live_cfg,
         "cache_dir": cache_dir,
+        "runs_dir": runs_dir_for(artifacts_root),
     }
 
 
@@ -987,10 +997,11 @@ def prepare_run_artifacts(
     logger: logging.Logger,
 ) -> dict[str, Any]:
     output_root = output_dir or default_runs_dir.as_posix()
+    output_root_path = resolve_repo_path(output_root)
     run_name_text = str(run_name or config_label)
     run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_hash = config_hash(config)
-    run_dir = Path(output_root) / f"{run_name_text}_{run_stamp}_{run_hash}"
+    run_dir = output_root_path / f"{run_name_text}_{run_stamp}_{run_hash}"
 
     if save_artifacts:
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -998,7 +1009,7 @@ def prepare_run_artifacts(
         logger.info("Artifacts will be saved to %s", run_dir)
 
     return {
-        "OUTPUT_DIR": output_root,
+        "OUTPUT_DIR": str(output_root_path),
         "run_name": run_name_text,
         "run_stamp": run_stamp,
         "run_hash": run_hash,

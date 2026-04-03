@@ -234,8 +234,10 @@ class _FakeDuckDBModule:
     def __init__(self, result: pd.DataFrame):
         self.result = result
         self.connections: list[_FakeDuckDBConnection] = []
+        self.paths: list[str] = []
 
-    def connect(self, _path: str) -> _FakeDuckDBConnection:
+    def connect(self, path: str) -> _FakeDuckDBConnection:
+        self.paths.append(path)
         conn = _FakeDuckDBConnection(self.result)
         self.connections.append(conn)
         return conn
@@ -273,3 +275,78 @@ def test_query_standardized_registers_views_and_renders_json(tmp_path, monkeypat
     assert fake_duckdb.connections[0].closed is True
     assert any("CREATE OR REPLACE VIEW standardized.\"hk_daily_panel\"" in query for query in fake_duckdb.connections[0].queries)
     assert fake_duckdb.connections[0].queries[-1] == "select 1 as value"
+
+
+def test_materialize_standardized_defaults_follow_artifacts_root(tmp_path):
+    artifacts_root = tmp_path / "external-artifacts"
+    asset_dir = artifacts_root / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_latest"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    _write_yaml(
+        asset_dir / "manifest.yml",
+        {
+            "name": "hk_all_daily_latest",
+            "dataset": "daily",
+            "market": "hk",
+            "status": "completed",
+        },
+    )
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260105", "20260131"],
+            "symbol": ["00005.HK", "00005.HK"],
+            "close": [10.0, 12.0],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    args = SimpleNamespace(
+        artifacts_root=str(artifacts_root),
+        name="hk_daily_panel",
+        market="hk",
+        preset="rqdata-daily",
+        dataset_name="daily_panel",
+        asset_dir=str(asset_dir),
+        file=None,
+        date_col=None,
+        symbol_col=None,
+        frequency="M",
+        out_root=None,
+        force=False,
+    )
+
+    assert data_warehouse.materialize_standardized(args) == 0
+    output_dir = artifacts_root / "standardized" / "hk" / "daily_panel" / "hk_daily_panel"
+    assert (output_dir / "manifest.yml").exists()
+
+
+def test_query_standardized_defaults_follow_artifacts_root(tmp_path, monkeypatch, capsys):
+    artifacts_root = tmp_path / "external-artifacts"
+    manifest_path = artifacts_root / "standardized" / "hk" / "daily_panel" / "hk_daily_panel" / "manifest.yml"
+    _write_yaml(
+        manifest_path,
+        {
+            "name": "hk_daily_panel",
+            "layer": "standardized",
+            "view_name": "hk_daily_panel",
+            "output_glob": str(manifest_path.parent / "data" / "**" / "*.parquet"),
+        },
+    )
+
+    fake_duckdb = _FakeDuckDBModule(pd.DataFrame([{"value": 1}]))
+    monkeypatch.setattr(data_warehouse, "_import_duckdb", lambda: fake_duckdb)
+
+    args = SimpleNamespace(
+        artifacts_root=str(artifacts_root),
+        sql="select 1 as value",
+        sql_file=None,
+        db_path=None,
+        standardized_root=None,
+        format="json",
+        out=None,
+    )
+
+    assert data_warehouse.query_standardized(args) == 0
+    output = capsys.readouterr().out.strip()
+    assert '"value": 1' in output
+    assert fake_duckdb.paths == [str(artifacts_root / "metadata" / "warehouse.duckdb")]

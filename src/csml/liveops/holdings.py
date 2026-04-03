@@ -8,28 +8,19 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, resolve_repo_path
+from ..artifacts import resolve_configured_artifacts_root, resolve_repo_path, runs_dir_for
 from ..config_utils import resolve_pipeline_config
 from ..date_utils import resolve_date_token
+from ..data_providers import normalize_market, resolve_provider
 from ..data_tools.symbols import canonicalize_symbol_columns, normalize_symbol_for_market
 
 
 def _normalize_provider(value: object | None) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    if not text:
-        return None
-    if text in {"rqdata", "rqdatac"}:
-        return "rqdata"
-    return text
+    return resolve_provider({"provider": value}, default=None) if value is not None else None
 
 
 def _normalize_market(value: object | None) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    return text or None
+    return normalize_market(value, default=None)
 
 
 def _resolve_date_context(
@@ -89,14 +80,25 @@ def _resolve_as_of(
         raise SystemExit(f"Invalid --as-of date: {value}") from exc
 
 
-def _resolve_output_dir(config_path: str | None) -> tuple[Path, str]:
+def _resolve_output_dir(
+    config_path: str | None,
+    artifacts_root: str | Path | None = None,
+) -> tuple[Path, str]:
     resolved = resolve_pipeline_config(config_path)
     cfg = resolved.data
     eval_cfg = cfg.get("eval") if isinstance(cfg, dict) else None
     eval_cfg = eval_cfg if isinstance(eval_cfg, dict) else {}
-    output_dir = eval_cfg.get("output_dir", DEFAULT_RUNS_DIR.as_posix())
+    configured_artifacts_root = resolve_configured_artifacts_root(
+        cfg,
+        override=artifacts_root,
+    )
+    output_dir = eval_cfg.get("output_dir")
     run_name = eval_cfg.get("run_name") or resolved.label
-    output_path = resolve_repo_path(output_dir)
+    output_path = (
+        resolve_repo_path(output_dir)
+        if output_dir
+        else runs_dir_for(configured_artifacts_root)
+    )
     return output_path, str(run_name)
 
 
@@ -140,7 +142,12 @@ def _find_latest_summary(output_dir: Path, run_name: str, top_k: int | None) -> 
     return max(filtered, key=lambda p: p.stat().st_mtime)
 
 
-def _resolve_run_dir(config_path: str | None, run_dir: str | None, top_k: int | None) -> Path:
+def _resolve_run_dir(
+    config_path: str | None,
+    run_dir: str | None,
+    top_k: int | None,
+    artifacts_root: str | Path | None = None,
+) -> Path:
     if run_dir:
         candidate = Path(run_dir).expanduser()
         if not candidate.is_absolute():
@@ -149,7 +156,10 @@ def _resolve_run_dir(config_path: str | None, run_dir: str | None, top_k: int | 
             raise SystemExit(f"Run directory not found: {candidate}")
         return candidate
 
-    output_dir, run_name = _resolve_output_dir(config_path)
+    output_dir, run_name = _resolve_output_dir(
+        config_path,
+        artifacts_root=artifacts_root,
+    )
     if top_k is None:
         latest_path = output_dir / "latest.json"
         if latest_path.exists():
@@ -349,6 +359,13 @@ def main(argv: list[str] | None = None) -> None:
         help="Explicit run directory to read (overrides --config).",
     )
     parser.add_argument(
+        "--artifacts-root",
+        help=(
+            "Optional artifacts root override used when resolving the default runs directory. "
+            "When omitted, holdings uses paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/."
+        ),
+    )
+    parser.add_argument(
         "--top-k",
         type=int,
         help="Optional Top-K filter when selecting the latest run.",
@@ -376,7 +393,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    run_dir = _resolve_run_dir(args.config, args.run_dir, args.top_k)
+    run_dir = _resolve_run_dir(
+        args.config,
+        args.run_dir,
+        args.top_k,
+        artifacts_root=args.artifacts_root,
+    )
     if args.top_k is not None:
         summary_path = run_dir / "summary.json"
         if summary_path.exists():

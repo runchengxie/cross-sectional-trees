@@ -15,11 +15,16 @@ def run(
     config_ref: str | Path | None = None,
     *,
     fail_on_quality: str | None = None,
+    artifacts_root: str | Path | None = None,
 ) -> None:
-    if fail_on_quality is None:
+    if fail_on_quality is None and artifacts_root is None:
         _run(config_ref)
         return
-    _run(config_ref, fail_on_quality=fail_on_quality)
+    _run(
+        config_ref,
+        fail_on_quality=fail_on_quality,
+        artifacts_root=artifacts_root,
+    )
 
 
 def main(argv: list[str] | None = None) -> None:

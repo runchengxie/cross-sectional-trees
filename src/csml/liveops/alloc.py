@@ -5,7 +5,6 @@ import io
 import json
 import logging
 import math
-import os
 import unicodedata
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -15,8 +14,11 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from ..config_utils import resolve_pipeline_config
-from ..data_interface import _patch_rqdatac_adjust_price_readonly
-from ..data_providers import normalize_market
+from ..data_providers import normalize_market, resolve_provider
+from ..rqdata_runtime import (
+    init_rqdatac as _init_rqdatac_runtime,
+    patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
+)
 from . import holdings
 from ..data_tools.symbols import canonicalize_symbol_columns, ensure_symbol_columns, normalize_symbol_for_market
 
@@ -33,38 +35,19 @@ def _init_rqdatac(
     username: str | None,
     password: str | None,
 ):
-    try:
-        import rqdatac
-    except ImportError as exc:
-        raise SystemExit(
-            "rqdatac is not installed. Install with: pip install '.[rqdata]'"
-        ) from exc
-
     load_dotenv()
-    init_kwargs: dict = {}
     cfg = _load_config(config_path)
-    rq_cfg = cfg.get("data", {}).get("rqdata", {}) if isinstance(cfg, dict) else {}
-    if isinstance(rq_cfg, dict) and isinstance(rq_cfg.get("init"), dict):
-        init_kwargs.update(rq_cfg.get("init"))
-
-    if username:
-        init_kwargs["username"] = username
-    if password:
-        init_kwargs["password"] = password
-
-    env_username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
-    env_password = os.getenv("RQDATA_PASSWORD")
-    if env_username and "username" not in init_kwargs:
-        init_kwargs["username"] = env_username
-    if env_password and "password" not in init_kwargs:
-        init_kwargs["password"] = env_password
-
-    try:
-        rqdatac.init(**init_kwargs)
-    except Exception as exc:
-        raise SystemExit(f"rqdatac.init failed: {exc}") from exc
-    _patch_rqdatac_adjust_price_readonly(logging.getLogger("csml.liveops.alloc"))
-    return rqdatac
+    data_cfg = cfg.get("data") if isinstance(cfg, dict) else None
+    return _init_rqdatac_runtime(
+        data_cfg=data_cfg,
+        username=username,
+        password=password,
+        logger=logging.getLogger("csml.liveops.alloc"),
+        load_env=False,
+        error_cls=SystemExit,
+        import_error_message="rqdatac is not installed. Install with: pip install '.[rqdata]'",
+        patch_fn=_patch_rqdatac_adjust_price_readonly,
+    )
 
 
 def _resolve_market(cfg: dict, symbols: list[str]) -> str | None:
@@ -74,13 +57,13 @@ def _resolve_market(cfg: dict, symbols: list[str]) -> str | None:
 
     rq_market = rq_cfg.get("market") if isinstance(rq_cfg, dict) else None
     if rq_market:
-        return normalize_market(rq_market)
+        return normalize_market(rq_market, default=None)
     cfg_market = cfg.get("market") if isinstance(cfg, dict) else None
     if cfg_market:
-        return normalize_market(cfg_market)
+        return normalize_market(cfg_market, default=None)
     data_market = data_cfg.get("market") if isinstance(data_cfg, dict) else None
     if data_market:
-        return normalize_market(data_market)
+        return normalize_market(data_market, default=None)
 
     inferred: set[str] = set()
     for symbol in symbols:
@@ -95,15 +78,7 @@ def _resolve_market(cfg: dict, symbols: list[str]) -> str | None:
 def _resolve_provider(cfg: dict) -> str | None:
     data_cfg = cfg.get("data") if isinstance(cfg, dict) else None
     data_cfg = data_cfg if isinstance(data_cfg, dict) else {}
-    value = data_cfg.get("provider")
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    if not text:
-        return None
-    if text in {"rqdata", "rqdatac"}:
-        return "rqdata"
-    return text
+    return resolve_provider(data_cfg, default=None)
 
 
 def _to_rq_order_book_id(symbol: str, market: str | None) -> str:
@@ -359,6 +334,8 @@ def _load_holdings_payload(args) -> dict:
         argv += ["--config", args.config]
     if args.run_dir:
         argv += ["--run-dir", args.run_dir]
+    if getattr(args, "artifacts_root", None):
+        argv += ["--artifacts-root", args.artifacts_root]
     if args.top_k is not None:
         argv += ["--top-k", str(args.top_k)]
 
@@ -516,6 +493,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--run-dir",
         help="Explicit run directory to read (overrides --config).",
+    )
+    parser.add_argument(
+        "--artifacts-root",
+        help=(
+            "Optional artifacts root override used when resolving the default runs directory. "
+            "When omitted, alloc uses paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/."
+        ),
     )
     parser.add_argument(
         "--positions-file",

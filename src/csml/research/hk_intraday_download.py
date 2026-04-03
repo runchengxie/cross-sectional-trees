@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
 
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from csml.rqdata_runtime import init_rqdatac as _init_rqdatac_runtime
 from csml.data_tools.symbols import normalize_symbol_for_market
 
 
@@ -246,12 +248,12 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    try:
-        import rqdatac
-    except ImportError as exc:
-        raise SystemExit("rqdatac is required. Install with: uv sync --extra rqdata") from exc
-
-    rqdatac.init()
+    rqdatac = _init_rqdatac_runtime(
+        logger=logging.getLogger("csml.research.hk_intraday_download"),
+        load_env=True,
+        error_cls=SystemExit,
+        import_error_message="rqdatac is required. Install with: uv sync --extra rqdata",
+    )
 
     symbol_file = resolve_repo_path(args.symbols_file)
     if not symbol_file.exists():

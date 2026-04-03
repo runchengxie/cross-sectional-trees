@@ -1,5 +1,6 @@
 import json
 import unicodedata
+import yaml
 
 import pandas as pd
 
@@ -148,6 +149,69 @@ def test_holdings_accepts_order_book_id_column(tmp_path, capsys):
     assert "order_book_id" not in row
     assert "stock_ticker" not in row
     assert "ts_code" not in row
+
+
+def test_holdings_resolves_latest_run_under_artifacts_root_override(tmp_path, capsys):
+    artifacts_root = tmp_path / "external-artifacts"
+    run_dir = artifacts_root / "runs" / "demo_20260101_120000_deadbeef"
+    run_dir.mkdir(parents=True)
+    positions_path = run_dir / "positions_by_rebalance_live.csv"
+    _write_positions(positions_path)
+    summary = {
+        "data": {"end_date": "20200103"},
+        "live": {
+            "enabled": True,
+            "positions_file": str(positions_path),
+            "current_file": None,
+        },
+        "positions": {
+            "by_rebalance_file": str(positions_path),
+            "current_file": None,
+        },
+    }
+    (run_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (artifacts_root / "runs" / "latest.json").write_text(
+        json.dumps(
+            {
+                "pointer_type": "mutable_latest",
+                "run_dir": str(run_dir),
+                "run_name": "demo",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "paths": {"artifacts_root": "ignored-by-cli"},
+                "eval": {"run_name": "demo"},
+                "data": {"provider": "rqdata"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    holdings.main(
+        [
+            "--config",
+            str(config_path),
+            "--artifacts-root",
+            str(artifacts_root),
+            "--source",
+            "live",
+            "--as-of",
+            "2020-01-03",
+            "--format",
+            "json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["run_dir"] == str(run_dir)
+    assert payload["positions_file"] == str(positions_path)
 
 
 def test_holdings_format_table_keeps_alignment_with_cjk_headers():

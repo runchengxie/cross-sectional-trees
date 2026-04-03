@@ -9,6 +9,7 @@ def handle_holdings(args) -> int:
     argv: list[str] = []
     append_arg(argv, "--config", getattr(args, "config", None))
     append_arg(argv, "--run-dir", getattr(args, "run_dir", None))
+    append_arg(argv, "--artifacts-root", getattr(args, "artifacts_root", None))
     append_arg(argv, "--top-k", getattr(args, "top_k", None), formatter=str)
     append_arg(argv, "--as-of", getattr(args, "as_of", None))
     append_arg(argv, "--source", getattr(args, "source", None))
@@ -24,6 +25,7 @@ def handle_snapshot(args) -> int:
     argv: list[str] = []
     append_arg(argv, "--config", getattr(args, "config", None))
     append_arg(argv, "--run-dir", getattr(args, "run_dir", None))
+    append_arg(argv, "--artifacts-root", getattr(args, "artifacts_root", None))
     append_arg(argv, "--as-of", getattr(args, "as_of", None))
     append_bool_switch(argv, getattr(args, "skip_run", None), true_flag="--skip-run")
     append_arg(argv, "--top-k", getattr(args, "top_k", None), formatter=str)
@@ -40,6 +42,7 @@ def handle_alloc(args) -> int:
     argv: list[str] = []
     append_arg(argv, "--config", getattr(args, "config", None))
     append_arg(argv, "--run-dir", getattr(args, "run_dir", None))
+    append_arg(argv, "--artifacts-root", getattr(args, "artifacts_root", None))
     append_arg(argv, "--positions-file", getattr(args, "positions_file", None))
     append_arg(argv, "--top-k", getattr(args, "top_k", None), formatter=str)
     append_arg(argv, "--as-of", getattr(args, "as_of", None))
@@ -69,6 +72,7 @@ def handle_alloc_hk(args) -> int:
     argv: list[str] = []
     append_arg(argv, "--config", getattr(args, "config", None))
     append_arg(argv, "--run-dir", getattr(args, "run_dir", None))
+    append_arg(argv, "--artifacts-root", getattr(args, "artifacts_root", None))
     append_arg(argv, "--positions-file", getattr(args, "positions_file", None))
     append_arg(argv, "--top-k", getattr(args, "top_k", None), formatter=str)
     append_arg(argv, "--as-of", getattr(args, "as_of", None))
@@ -173,6 +177,10 @@ def register_liveops_commands(subparsers) -> None:
         help="Explicit run directory to read (overrides --config).",
     )
     holdings.add_argument(
+        "--artifacts-root",
+        help="Optional artifacts root override used when resolving the default runs directory.",
+    )
+    holdings.add_argument(
         "--top-k",
         type=int,
         help="Optional Top-K filter when selecting the latest run.",
@@ -214,6 +222,10 @@ def register_liveops_commands(subparsers) -> None:
     alloc.add_argument(
         "--run-dir",
         help="Explicit run directory to read (overrides --config).",
+    )
+    alloc.add_argument(
+        "--artifacts-root",
+        help="Optional artifacts root override used when resolving the default runs directory.",
     )
     alloc.add_argument(
         "--positions-file",
@@ -298,6 +310,10 @@ def register_liveops_commands(subparsers) -> None:
     alloc_hk.add_argument(
         "--run-dir",
         help="Explicit run directory to read (overrides --config).",
+    )
+    alloc_hk.add_argument(
+        "--artifacts-root",
+        help="Optional artifacts root override used when resolving the default runs directory.",
     )
     alloc_hk.add_argument(
         "--positions-file",
@@ -464,6 +480,10 @@ def register_liveops_commands(subparsers) -> None:
     snapshot.add_argument(
         "--run-dir",
         help="Use an existing run directory (skips pipeline run).",
+    )
+    snapshot.add_argument(
+        "--artifacts-root",
+        help="Optional artifacts root override used when resolving the default runs directory.",
     )
     snapshot.add_argument(
         "--as-of",

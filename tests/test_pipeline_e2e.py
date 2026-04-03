@@ -193,6 +193,116 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
+def test_pipeline_run_offline_uses_external_artifacts_root_and_writes_inputs_lock(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=60, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    frames = _build_daily_frames(symbols, dates)
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return frames[symbol].copy()
+
+    def fake_load_basic(self, symbols=None) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", fake_load_basic)
+
+    artifacts_root = tmp_path / "external-artifacts"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20200101",
+            "end_date": "20200331",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "next_rebalance",
+            "rebalance_frequency": "W",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5"],
+            "params": {"sma_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "run_name": "e2e_external_artifacts",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {
+            "enabled": True,
+            "top_k": 2,
+            "rebalance_frequency": "W",
+            "transaction_cost_bps": 0,
+            "long_only": True,
+            "exit_mode": "rebalance",
+            "exit_price_policy": "delay",
+        },
+    }
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    pipeline.run(str(config_path), artifacts_root=str(artifacts_root))
+
+    run_dirs = list((artifacts_root / "runs").glob("e2e_external_artifacts_*"))
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+
+    inputs_lock = json.loads((run_dir / "inputs.lock.json").read_text(encoding="utf-8"))
+    assert inputs_lock["artifacts_root"] == str(artifacts_root.resolve())
+    assert inputs_lock["run_dir"] == str(run_dir)
+    assert inputs_lock["resolved_dates"]["start_date"] == "20200101"
+    assert inputs_lock["resolved_dates"]["end_date"] == "20200331"
+    assert inputs_lock["inputs"]["cache_dir"] == str((tmp_path / "cache").resolve())
+    assert inputs_lock["mutable_inputs"]["used_relative_start_date"] is False
+    assert inputs_lock["mutable_inputs"]["used_relative_end_date"] is False
+    assert inputs_lock["mutable_inputs"]["used_latest_pointer"] is False
+
+
+@pytest.mark.integration
 def test_pipeline_run_offline_with_train_target_transform(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=60, freq="B")
     symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]

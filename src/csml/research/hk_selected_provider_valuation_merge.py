@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-import os
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +12,7 @@ from csml.config_utils import resolve_pipeline_config
 from csml import data_providers
 from csml.data_tools.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from csml.rqdata_runtime import init_rqdatac as _init_rqdatac_runtime
 
 
 REPO_ROOT = find_repo_root(__file__)
@@ -71,36 +72,19 @@ def load_provider_config(path_text: str) -> dict:
 
 
 def init_rqdatac(cfg: dict, username: str | None, password: str | None):
-    try:
-        import rqdatac
-    except ImportError as exc:
-        raise SystemExit(
-            "rqdatac is not installed. Run `uv sync --extra dev --extra rqdata` first."
-        ) from exc
-
     load_dotenv()
-    init_kwargs: dict[str, str] = {}
-    rq_cfg = cfg.get("data", {}).get("rqdata", {}) if isinstance(cfg.get("data"), dict) else {}
-    if isinstance(rq_cfg, dict) and isinstance(rq_cfg.get("init"), dict):
-        init_kwargs.update(rq_cfg.get("init"))
-
-    if username:
-        init_kwargs["username"] = username
-    if password:
-        init_kwargs["password"] = password
-
-    env_username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
-    env_password = os.getenv("RQDATA_PASSWORD")
-    if env_username and "username" not in init_kwargs:
-        init_kwargs["username"] = env_username
-    if env_password and "password" not in init_kwargs:
-        init_kwargs["password"] = env_password
-
-    try:
-        rqdatac.init(**init_kwargs)
-    except Exception as exc:
-        raise SystemExit(f"rqdatac.init failed: {exc}") from exc
-    return rqdatac
+    data_cfg = cfg.get("data") if isinstance(cfg, dict) else None
+    return _init_rqdatac_runtime(
+        data_cfg=data_cfg,
+        username=username,
+        password=password,
+        logger=logging.getLogger("csml.research.provider_valuation_merge"),
+        load_env=False,
+        error_cls=SystemExit,
+        import_error_message=(
+            "rqdatac is not installed. Run `uv sync --extra dev --extra rqdata` first."
+        ),
+    )
 
 
 def load_pit_frame(path: Path) -> pd.DataFrame:

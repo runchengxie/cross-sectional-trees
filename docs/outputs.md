@@ -16,6 +16,14 @@
 
 `live` 推荐单独目录，例如 `artifacts/live_runs/...`。
 
+如果你把产物根目录外置到 repo 之外，上面这些路径会整体跟着新根目录移动。当前支持三种入口：
+
+* 配置：`paths.artifacts_root`
+* 环境变量：`CSML_ARTIFACTS_ROOT`
+* CLI：`--artifacts-root`
+
+本页示例仍统一写成 `artifacts/...`，只是为了说明目录结构，不代表根目录必须留在仓库内。
+
 当前默认根目录结构：
 
 ```text
@@ -156,6 +164,8 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 这两份产物由 `csml data catalog` 生成。
 
+如果改了 `paths.artifacts_root`、`CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
+
 用途：
 
 * 用 SQLite 管理 manifest-backed 资产索引
@@ -181,6 +191,8 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 `artifacts/standardized/<market>/<dataset>/<name>/`
 
 这类目录由 `csml data materialize` 生成，目标是把 raw / derived 输入转成更适合横截面查询和聚合的分析层。
+
+如果改了 `paths.artifacts_root`、`CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认输出根目录会随新的产物根目录一起派生；只有显式传了 `--out-root` 时才会覆盖。
 
 目录结构：
 
@@ -531,12 +543,22 @@ best-effort（可能为空、缺失或未产出文件）：
 1. `dataset.parquet`、`eval_scored.parquet`、`backtest_*.csv` 等产物（取决于配置与数据可用性）。
 1. 任何依赖外部数据源补数/修订得到的统计值（同配置在不同日期可能变化）。
 
+## 复现入口
+
+如果你要复现、审计或把单个 run 交给下游系统，优先看同目录下这四类文件：
+
+1. `summary.json`：机器可读总摘要，包含关键指标和各类输出文件路径。
+1. `config.used.yml`：本次 run 实际生效配置；复现实验时优先读它，不要回退到原始模板猜测。
+1. `inputs.lock.json`：运行时解析后的输入锁定，包括实际产物根目录、绝对输入路径、推断到的 source manifest，以及相对日期 / `latest` 这类 mutable 输入标记。
+1. `latest.json`：仅在 live 输出场景写入，是一个 mutable 便利指针，不是长期审计入口；做发布、复现或归档时应落到具体 run 目录。
+
 ## run 目录文件索引（按生成条件）
 
 | 文件 | 生成条件 | 主要用途 |
 | --- | --- | --- |
 | `summary.json` | 默认 | 机器可读总摘要，包含路径指针与关键指标 |
 | `config.used.yml` | 默认 | 实际生效配置（复现优先读这个） |
+| `inputs.lock.json` | 默认 | 运行时解析后的输入锁定；优先用于审输入路径、日期展开结果和 mutable 输入标记 |
 | `run.log` | `eval.save_artifacts=true` 且未显式配置 `logging.file` | 本次 run 的默认本地日志 |
 | `quality/hk_pit_coverage_preflight.json` | `quality.fail_on_severity!=none` 或 `quality.save_report=true` 且当前 config 命中受支持 preflight | 主流程前置质量报告，供 liveops / 审计复用 |
 | `dropped_dates.csv` | 存在被 `min_symbols_per_date` 丢弃的日期时 | 排查样本不足与过滤影响 |
@@ -553,7 +575,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | `backtest_active_exposure_summary.csv` | 生成了回测暴露结果时 | 一行一个调仓期的主动暴露汇总宽表 |
 | `positions_by_rebalance*.csv` / `positions_current*.csv` | 生成了持仓结果时 | 下游持仓消费/执行衔接 |
 | `rebalance_diff*.csv` | 对应 `positions_current*.csv` 存在至少两期时 | 最新一期调仓差异 |
-| `latest.json` | `live.enabled=true` 且 live 成功输出时 | 指向最新 live run 目录 |
+| `latest.json` | `live.enabled=true` 且 live 成功输出时 | 指向最新 live run 目录的 mutable 便利指针 |
 | `feature_importance.csv` | 模型支持且成功训练时 | 解释性分析 |
 | `walk_forward_*.csv` | `eval.walk_forward.enabled=true` | 滚动窗口稳健性分析 |
 | `permutation_test.csv` | `eval.permutation_test.enabled=true` | 抗伪发现检验 |
@@ -810,7 +832,7 @@ artifacts/snapshots/<name>/
 1. `manifest.yml` 记录快照名、生成时间、来源路径、复制后的目标路径、`kind/file_count/total_bytes` 汇总，以及当前 git 提交信息（若可识别）。
 1. 默认会把 `artifacts/cache/` 和 `artifacts/assets/universe/` 一起复制；额外路径由 `--config` 和 `--include-path` 决定。
 1. 这是本地私有快照工具，不会重新向 provider 拉数。
-1. 若需要公开分享，请另做一份不含 `artifacts/cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、汇总 CSV 和简短说明。
+1. 若需要公开分享，请另做一份不含 `artifacts/cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、`inputs.lock.json`、汇总 CSV 和简短说明。
 
 ### 历史 run Release staging：`python -m csml.release_tools.package_runs`
 
@@ -826,6 +848,7 @@ artifacts/snapshots/<name>/
     manifest.yml
     summary.json
     config.used.yml
+    inputs.lock.json
     positions_current.csv
     positions_by_rebalance.csv
     rebalance_diff.csv
@@ -839,7 +862,7 @@ artifacts/snapshots/<name>/
 其中：
 
 1. 根目录 `manifest.yml` 记录这次打包选中了哪些 run、来源目录、文件数和字节数汇总；如果当前目录可识别为 git 仓库，还会写入 `commit/branch/is_dirty`。
-1. 默认 profile 是 `--profile light`：只打包轻量 run 结果，也就是 `summary.json`、`config.used.yml`、持仓、关键评估/回测 CSV、`feature_importance.csv`、`walk_forward_*.csv` 等。
+1. 默认 profile 是 `--profile light`：只打包轻量 run 结果，也就是 `summary.json`、`config.used.yml`、`inputs.lock.json`、持仓、关键评估/回测 CSV、`feature_importance.csv`、`walk_forward_*.csv` 等。
 1. `--profile milestone` 会在 light 的基础上再带上 `eval_scored.parquet` 和 `dataset.parquet`。
 1. `--profile full` 会直接归档整个 run 目录。
 1. `--include-scored`、`--include-dataset`、`--include-full-run-dir` 仍然可用，但现在是对当前 profile 的显式追加覆盖。

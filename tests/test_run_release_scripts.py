@@ -171,6 +171,20 @@ def _write_demo_run(
         },
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (run_dir / "inputs.lock.json").write_text(
+        json.dumps(
+            {
+                "artifacts_root": str(runs_root.parent),
+                "run_dir": str(run_dir),
+                "inputs": {
+                    "daily_asset_dir": str(asset_paths["daily_dir"]),
+                    "fundamentals_file": str(asset_paths["pipeline_file"]),
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     (run_dir / "config.used.yml").write_text(
         yaml.safe_dump(
             {
@@ -288,6 +302,7 @@ def test_package_runs_stages_curated_files_and_summary(tmp_path):
     alpha_dir = stage_root / "alpha_20260101_120000_deadbeef"
     assert alpha_dir.exists()
     assert (alpha_dir / "summary.json").exists()
+    assert (alpha_dir / "inputs.lock.json").exists()
     assert (alpha_dir / "positions_current.csv").exists()
     assert (alpha_dir / "backtest_net.csv").exists()
     assert (alpha_dir / "eval_scored.parquet").exists() is False

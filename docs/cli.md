@@ -44,6 +44,26 @@ csml <subcommand> --help
 >
 > 这些内置别名以及 `csml init-config` 都读取仓库根目录的 `configs/`。默认使用场景是源码 checkout 或包含 `configs/` 的导出源码目录。
 
+### 产物根目录
+
+下面这些命令支持 `--artifacts-root`，用于把默认产物根目录从仓库内的 `artifacts/` 挪到 repo 外路径：
+
+- `csml run`
+- `csml holdings`
+- `csml snapshot`
+- `csml alloc`
+- `csml alloc-hk`
+- `csml data catalog`
+- `csml data materialize`
+- `csml data query`
+
+优先级：`--artifacts-root` > `CSML_ARTIFACTS_ROOT` > `paths.artifacts_root` > 默认 `artifacts/`。
+
+说明：
+
+- 它只改默认派生路径，不会覆盖你已经显式写死的 `eval.output_dir`、`data.cache_dir`、`fundamentals.file`、`--db-path`、`--out-root` 这类更具体的路径。
+- 如果你只是想把 metadata catalog 或 standardized 输出单独改位置，也可以继续直接传 `--db-path`、`--summary-out`、`--out-root`、`--standardized-root`。
+
 ### 日期 token
 
 `holdings`、`snapshot`、`alloc`、`alloc-hk` 支持：
@@ -85,6 +105,7 @@ csml universe hk-connect --config configs/presets/universe/hk_connect.yml -- --m
 csml run --config default
 csml run --config hk
 csml run --config configs/presets/hk_quarterly_pit_hybrid.yml --fail-on-quality warning
+csml run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
 ```
 
 说明：
@@ -126,6 +147,7 @@ csml summarize --runs-dir artifacts/runs --run-name-prefix hk_grid --latest-n 1
 ```bash
 csml holdings --config configs/presets/hk.yml --as-of t-1
 csml holdings --run-dir artifacts/runs/<run_dir> --format csv
+csml holdings --config configs/presets/hk.yml --as-of t-1 --artifacts-root /data/csml-artifacts
 ```
 
 ### csml snapshot
@@ -142,6 +164,7 @@ csml snapshot --config path/to/live.yml
 csml snapshot --config path/to/live.yml --skip-run
 csml snapshot --run-dir artifacts/runs/<run_dir>
 csml snapshot --run-dir artifacts/runs/<run_dir> --fail-on-quality warning
+csml snapshot --config path/to/live.yml --artifacts-root /data/csml-artifacts
 ```
 
 补充：
@@ -155,6 +178,7 @@ csml snapshot --run-dir artifacts/runs/<run_dir> --fail-on-quality warning
 
 ```bash
 csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
+csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000 --artifacts-root /data/csml-artifacts
 ```
 
 ### csml alloc-hk
@@ -167,6 +191,7 @@ csml alloc-hk --positions-file artifacts/runs/<run_dir>/positions_current_live.c
 csml alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --format xlsx --out artifacts/exports/alloc_hk.xlsx
 csml alloc-hk --config path/to/live.yml --source live --scenario-capital 1000000,500000 --scenario-top-n 20,10 --method custom --format xlsx --out artifacts/exports/alloc_hk_grid.xlsx
 csml alloc-hk --run-dir artifacts/runs/<run_dir> --fail-on-quality warning --format json
+csml alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --artifacts-root /data/csml-artifacts
 ```
 
 说明：
@@ -188,17 +213,20 @@ csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants
 
 ### csml data catalog
 
-扫描 `artifacts/` 下 manifest-backed 资产，并写入 SQLite metadata catalog。
+扫描产物根目录下 manifest-backed 资产，并写入 SQLite metadata catalog。
 
 ```bash
 csml data catalog
 csml data catalog --db-path artifacts/metadata/catalog.sqlite
+csml data catalog --artifacts-root /data/csml-artifacts
 ```
 
 默认输出：
 
 * `artifacts/metadata/catalog.sqlite`
 * `artifacts/metadata/catalog_summary.csv`
+
+如果传了 `--artifacts-root`，默认值会跟着新根目录派生；显式传 `--db-path` / `--summary-out` 时以显式参数为准。
 
 ### csml data materialize
 
@@ -207,6 +235,7 @@ csml data catalog --db-path artifacts/metadata/catalog.sqlite
 ```bash
 csml data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
 csml data materialize --name hk_pit_panel --preset pit-fundamentals --file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+csml data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir /data/csml-artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --artifacts-root /data/csml-artifacts
 ```
 
 说明：
@@ -217,6 +246,8 @@ csml data materialize --name hk_pit_panel --preset pit-fundamentals --file artif
 默认输出根目录：
 
 * `artifacts/standardized/<market>/<dataset>/<name>/`
+
+如果传了 `--artifacts-root`，默认输出根目录会跟着新根目录派生；显式传 `--out-root` 时以显式参数为准。
 
 ### csml data query
 
@@ -231,6 +262,7 @@ uv sync --extra dev --extra duckdb
 ```bash
 csml data query --sql "select symbol, trade_date, close from standardized.hk_daily_panel limit 5"
 csml data query --sql-file queries/top_names.sql --format csv --out artifacts/metadata/top_names.csv
+csml data query --sql "select count(*) from standardized.hk_daily_panel" --artifacts-root /data/csml-artifacts
 ```
 
 ## 配置模板命令

@@ -13,15 +13,12 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-# Workaround for pandas_ta NaN import issue
-if not hasattr(np, "NaN"):
-    np.NaN = np.nan
+from ..compat import ensure_numpy_nan_alias
+
+ensure_numpy_nan_alias()
 import pandas as pd
-import warnings
 
 from ..artifacts import (
-    CACHE_DIR as DEFAULT_CACHE_DIR,
-    RUNS_DIR as DEFAULT_RUNS_DIR,
     resolve_repo_path,
 )
 from ..data_interface import DataInterface
@@ -73,9 +70,6 @@ from .stats import (
     _ensure_execution_daily_fields,
     _latest_rolling_stats,
 )
-
-warnings.filterwarnings("ignore")
-
 logger = logging.getLogger("csml")
 
 
@@ -143,10 +137,43 @@ def _load_benchmark_return_series(path: Path) -> pd.Series:
     return series
 
 
+def _build_output_context(
+    *,
+    loaded: Mapping[str, Any],
+    universe_inputs: Mapping[str, Any],
+    date_label_settings: Mapping[str, Any],
+    eval_settings: Mapping[str, Any],
+    universe_filters: Mapping[str, Any],
+    runtime_settings: Mapping[str, Any],
+    run_artifacts: Mapping[str, Any],
+    panel_state: Mapping[str, Any],
+    dataset_state: Mapping[str, Any],
+    split_state: Mapping[str, Any],
+    extras: Mapping[str, Any],
+) -> dict[str, Any]:
+    context: dict[str, Any] = {}
+    for source in (
+        loaded,
+        universe_inputs,
+        date_label_settings,
+        eval_settings,
+        universe_filters,
+        runtime_settings,
+        run_artifacts,
+        panel_state,
+        dataset_state,
+        split_state,
+        extras,
+    ):
+        context.update(source)
+    return context
+
+
 def run(
     config_ref: str | Path | None = None,
     *,
     fail_on_quality: str | None = None,
+    artifacts_root: str | Path | None = None,
 ) -> None:
     package_api = sys.modules.get(__package__)
     backtest_topk_fn = (
@@ -159,7 +186,10 @@ def run(
         if package_api is not None
         else bucket_ic_summary
     )
-    loaded = load_run_config(config_ref, default_cache_dir=DEFAULT_CACHE_DIR)
+    loaded = load_run_config(
+        config_ref,
+        artifacts_root_override=artifacts_root,
+    )
     config = loaded["config"]
     config_label = loaded["config_label"]
     config_path = loaded["config_path"]
@@ -175,7 +205,9 @@ def run(
     eval_cfg = loaded["eval_cfg"]
     backtest_cfg = loaded["backtest_cfg"]
     live_cfg = loaded["live_cfg"]
+    ARTIFACTS_ROOT = loaded["artifacts_root"]
     CACHE_DIR = loaded["cache_dir"]
+    DEFAULT_RUNS_DIR = loaded["runs_dir"]
     data_interface = DataInterface(MARKET, data_cfg, cache_dir=CACHE_DIR, logger=logger)
     provider = data_interface.provider
 
@@ -1337,7 +1369,112 @@ def run(
         feature_importance_nonzero = int((importance_values.abs() > 0.0).sum())
         zero_feature_importance = feature_importance_nonzero == 0
 
-    persist_run_outputs(context=dict(locals()))
+    output_context = _build_output_context(
+        loaded=loaded,
+        universe_inputs=universe_inputs,
+        date_label_settings=date_label_settings,
+        eval_settings=eval_settings,
+        universe_filters=universe_filters,
+        runtime_settings=runtime_settings,
+        run_artifacts=run_artifacts,
+        panel_state=panel_state,
+        dataset_state=dataset_state,
+        split_state=split_state,
+        extras={
+            "MARKET": MARKET,
+            "provider": provider,
+            "quality_summary": quality_summary,
+            "benchmark_symbol": benchmark_symbol,
+            "benchmark_returns_file_path": benchmark_returns_file_path,
+            "train_ic_raw_stats": train_ic_raw_stats,
+            "train_ic_series": train_ic_series,
+            "train_ic_stats": train_ic_stats,
+            "train_pearson_ic_series": train_pearson_ic_series,
+            "train_pearson_ic_stats": train_pearson_ic_stats,
+            "live_as_of": live_as_of,
+            "positions_by_rebalance_live": positions_by_rebalance_live,
+            "BACKTEST_SIGNAL_DIRECTION": BACKTEST_SIGNAL_DIRECTION,
+            "ic_series": ic_series,
+            "ic_stats": ic_stats,
+            "pearson_ic_series": pearson_ic_series,
+            "pearson_ic_stats": pearson_ic_stats,
+            "error_metrics": error_metrics,
+            "hit_rate_stats": hit_rate_stats,
+            "topk_positive_stats": topk_positive_stats,
+            "bucket_ic_records": bucket_ic_records,
+            "quantile_ts": quantile_ts,
+            "quantile_mean": quantile_mean,
+            "turnover_series": turnover_series,
+            "eval_scored_data": eval_scored_data,
+            "eval_rebalance_dates": eval_rebalance_dates,
+            "backtest_rebalance_dates": backtest_rebalance_dates,
+            "positions_by_rebalance": positions_by_rebalance,
+            "bt_stats": bt_stats,
+            "bt_net_series": bt_net_series,
+            "bt_gross_series": bt_gross_series,
+            "bt_turnover_series": bt_turnover_series,
+            "bt_benchmark_series": bt_benchmark_series,
+            "bt_active_series": bt_active_series,
+            "bt_benchmark_stats": bt_benchmark_stats,
+            "bt_active_stats": bt_active_stats,
+            "bt_periods": bt_periods,
+            "bt_style_exposure": bt_style_exposure,
+            "bt_style_exposure_summary": bt_style_exposure_summary,
+            "bt_industry_exposure": bt_industry_exposure,
+            "bt_industry_exposure_summary": bt_industry_exposure_summary,
+            "bt_active_exposure_summary": bt_active_exposure_summary,
+            "perm_stats": perm_stats,
+            "rolling_ic_results": rolling_ic_results,
+            "rolling_ic_obs_per_year": rolling_ic_obs_per_year,
+            "rolling_ic_latest": rolling_ic_latest,
+            "rolling_sharpe_results": rolling_sharpe_results,
+            "rolling_sharpe_latest": rolling_sharpe_latest,
+            "cv_stats_raw": cv_stats_raw,
+            "cv_stats": cv_stats,
+            "walk_forward_results": walk_forward_results,
+            "walk_forward_importance_df": walk_forward_importance_df,
+            "walk_forward_feature_stability_df": walk_forward_feature_stability_df,
+            "final_oos_eval": final_oos_eval,
+            "ic_series_oos": ic_series_oos,
+            "ic_stats_oos": ic_stats_oos,
+            "pearson_ic_series_oos": pearson_ic_series_oos,
+            "pearson_ic_stats_oos": pearson_ic_stats_oos,
+            "error_metrics_oos": error_metrics_oos,
+            "hit_rate_stats_oos": hit_rate_stats_oos,
+            "topk_positive_stats_oos": topk_positive_stats_oos,
+            "bucket_ic_records_oos": bucket_ic_records_oos,
+            "quantile_ts_oos": quantile_ts_oos,
+            "quantile_mean_oos": quantile_mean_oos,
+            "turnover_series_oos": turnover_series_oos,
+            "positions_by_rebalance_oos": positions_by_rebalance_oos,
+            "bt_stats_oos": bt_stats_oos,
+            "bt_net_series_oos": bt_net_series_oos,
+            "bt_gross_series_oos": bt_gross_series_oos,
+            "bt_turnover_series_oos": bt_turnover_series_oos,
+            "bt_benchmark_series_oos": bt_benchmark_series_oos,
+            "bt_active_series_oos": bt_active_series_oos,
+            "bt_benchmark_stats_oos": bt_benchmark_stats_oos,
+            "bt_active_stats_oos": bt_active_stats_oos,
+            "bt_periods_oos": bt_periods_oos,
+            "bt_style_exposure_oos": bt_style_exposure_oos,
+            "bt_style_exposure_summary_oos": bt_style_exposure_summary_oos,
+            "bt_industry_exposure_oos": bt_industry_exposure_oos,
+            "bt_industry_exposure_summary_oos": bt_industry_exposure_summary_oos,
+            "bt_active_exposure_summary_oos": bt_active_exposure_summary_oos,
+            "rolling_ic_oos_results": rolling_ic_oos_results,
+            "rolling_ic_oos_obs_per_year": rolling_ic_oos_obs_per_year,
+            "rolling_ic_latest_oos": rolling_ic_latest_oos,
+            "rolling_sharpe_oos_results": rolling_sharpe_oos_results,
+            "rolling_sharpe_latest_oos": rolling_sharpe_latest_oos,
+            "importance_df": importance_df,
+            "importance_source": importance_source,
+            "pred_nunique": pred_nunique,
+            "constant_prediction": constant_prediction,
+            "feature_importance_nonzero": feature_importance_nonzero,
+            "zero_feature_importance": zero_feature_importance,
+        },
+    )
+    persist_run_outputs(context=output_context)
 
     # Optional: save the model
     # from joblib import dump; dump(model, "xgb_factor_model.joblib")
@@ -1358,11 +1495,22 @@ def main(argv: list[str] | None = None) -> None:
             "when provided."
         ),
     )
+    parser.add_argument(
+        "--artifacts-root",
+        help=(
+            "Optional artifacts root override. When omitted, the pipeline uses paths.artifacts_root, "
+            "CSML_ARTIFACTS_ROOT, or the default artifacts/."
+        ),
+    )
     args = parser.parse_args(argv)
-    if args.fail_on_quality is None:
+    if args.fail_on_quality is None and args.artifacts_root is None:
         run(args.config)
         return
-    run(args.config, fail_on_quality=args.fail_on_quality)
+    run(
+        args.config,
+        fail_on_quality=args.fail_on_quality,
+        artifacts_root=args.artifacts_root,
+    )
 
 
 if __name__ == "__main__":
