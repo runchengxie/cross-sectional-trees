@@ -72,6 +72,12 @@ def handle_rqdata_inspect_hk_intraday_health(args) -> int:
     return int(rqdata_assets.inspect_hk_intraday_health(args) or 0)
 
 
+def handle_rqdata_build_hk_intraday_asset(args) -> int:
+    from ..data_tools import rqdata_assets
+
+    return int(rqdata_assets.build_hk_intraday_asset(args) or 0)
+
+
 def handle_rqdata_build_hk_daily_clean_layer(args) -> int:
     from ..data_tools import rqdata_assets
 
@@ -285,6 +291,13 @@ def register_rqdata_command(subparsers) -> None:
     )
     rqdata_assets.add_hk_intraday_health_args(rq_intraday_health)
     rq_intraday_health.set_defaults(func=handle_rqdata_inspect_hk_intraday_health)
+
+    rq_intraday_asset = rq_sub.add_parser(
+        "build-hk-intraday-asset",
+        help="Package local HK 5m parquet/cache files into a formal reusable asset snapshot",
+    )
+    rqdata_assets.add_hk_intraday_asset_build_args(rq_intraday_asset)
+    rq_intraday_asset.set_defaults(func=handle_rqdata_build_hk_intraday_asset)
 
     rq_daily_clean = rq_sub.add_parser(
         "build-hk-daily-clean-layer",

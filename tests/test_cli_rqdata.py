@@ -580,6 +580,33 @@ def test_cli_parses_rqdata_asset_commands():
     assert intraday_health.out == "artifacts/reports/hk_intraday_health.json"
     assert callable(intraday_health.func)
 
+    intraday_asset = parser.parse_args(
+        [
+            "rqdata",
+            "build-hk-intraday-asset",
+            "--input",
+            "artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet",
+            "--input",
+            "artifacts/cache/intraday/hk_connect_research_5m_20250317_20260317.parquet",
+            "--out-root",
+            "artifacts/assets/rqdata",
+            "--name",
+            "hk_intraday_formal_latest",
+            "--alias",
+            "artifacts/assets/rqdata/hk/intraday/hk_intraday_latest",
+        ]
+    )
+    assert intraday_asset.command == "rqdata"
+    assert intraday_asset.rq_command == "build-hk-intraday-asset"
+    assert intraday_asset.input == [
+        "artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet",
+        "artifacts/cache/intraday/hk_connect_research_5m_20250317_20260317.parquet",
+    ]
+    assert intraday_asset.out_root == "artifacts/assets/rqdata"
+    assert intraday_asset.name == "hk_intraday_formal_latest"
+    assert intraday_asset.alias == "artifacts/assets/rqdata/hk/intraday/hk_intraday_latest"
+    assert callable(intraday_asset.func)
+
     daily_clean = parser.parse_args(
         [
             "rqdata",

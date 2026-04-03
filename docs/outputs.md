@@ -39,6 +39,7 @@ artifacts/
 当前 `dataset` 包括：
 
 * `daily`
+* `intraday`
 * `pit_financials`
 * `financial_details`
 * `ex_factors`
@@ -51,7 +52,7 @@ artifacts/
 * `instrument_industry`
 * `industry_changes`
 
-这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-valuation`、`csml rqdata mirror-hk-exchange-rate`、`csml rqdata mirror-hk-announcement`、`csml rqdata mirror-hk-southbound`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
+这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata build-hk-intraday-asset`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-valuation`、`csml rqdata mirror-hk-exchange-rate`、`csml rqdata mirror-hk-announcement`、`csml rqdata mirror-hk-southbound`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
 如果你继续执行 `csml rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
 如果你继续执行 `csml rqdata build-hk-industry-labels`，默认还会在对应的 `industry_changes` 目录下生成一份本地行业标签文件。
 
@@ -83,6 +84,23 @@ artifacts/assets/rqdata/hk/<dataset>/<snapshot>/
 * `trading_types.txt`：仅 `southbound` 会写，表示本次实际查询的 `sh` / `sz` 渠道列表。
 * `industries.txt` / `industry_catalog.parquet`：仅 `industry_changes` 会写，表示本次枚举的行业代码和映射表。
 
+`intraday` 例外：
+
+```text
+artifacts/assets/rqdata/hk/intraday/<snapshot>/
+  manifest.yml
+  inputs.txt
+  fields.txt
+  data/
+    hk_all_5m_20250327_20260326.parquet
+    hk_all_5m_20250327_20260326.meta.json
+    hk_all_5m_20250327_20260326.parts/
+      batch_0001.parquet
+      ...
+```
+
+这类目录由本地 `5m` cache / parquet 复制打包而来，不会重新向 provider 拉数。
+
 `exchange_rate` 例外：
 
 ```text
@@ -100,6 +118,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 字段约定：
 
 * `daily` 保留 `rqdatac.get_price` 返回的日频字段名，并额外写入 `trade_date`、`symbol` 和 `order_book_id`。
+* `intraday` 保留本地 `5m` parquet 当前已有的列；新产物默认至少会包含 `trade_datetime`、`symbol`、`open`、`high`、`low`、`close`、`volume`、`amount`，并尽量保留 `rq_order_book_id`。`fields.txt` 记录的是当前可直接给下游消费的值列，不包含 symbol / datetime 元数据列。
 * `pit_financials` 保留 `rqdatac.get_pit_financials_ex` 的字段名，并额外写入 `symbol` 和 `order_book_id`。
 * `financial_details` 保留 `rqdatac.hk.get_detailed_financial_items` 的字段名，并额外写入 `symbol` 和 `order_book_id`。
   当前实测最有用的是长表列 `field`、`amount`、`subject`、`currency`；`manifest.yml` 里的 `field_coverage` 也按这组长表记录统计。
@@ -117,6 +136,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 * `manifest.yml` 的 `status` 会记录本次镜像是否完整完成。
 * 这类镜像目录供下游项目复用，不属于 `artifacts/cache/` 的 query cache。
+* `intraday` 的 `manifest.yml` 还会记录每个 block 的来源 cache 路径、是否存在 `.parts/`、原始 `adjust_type`、quota 字段和聚合后的日期范围。
 * 对 RQData 来说，原生标识是 `order_book_id`；raw asset 新输出默认也统一写 canonical `symbol`。旧快照里的 `ts_code` 仍会在读取时自动兼容到 `symbol`。
 * 本地 merge / patch 生成的新快照也遵循同一口径：输出 parquet 和 `manifest.yml -> columns` 会归一成 `symbol`，不再把 `ts_code` 继续写回新产物。
 

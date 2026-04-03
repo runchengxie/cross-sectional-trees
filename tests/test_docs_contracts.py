@@ -80,6 +80,7 @@ EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
 ]
 EXPECTED_RQDATA_OUTPUT_DATASETS = {
     "daily",
+    "intraday",
     "pit_financials",
     "financial_details",
     "ex_factors",

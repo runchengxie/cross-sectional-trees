@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from csml.data_tools.symbols import normalize_symbol_for_market
+from csml.intraday_paths import resolve_input_parquet_paths
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 
@@ -18,42 +19,6 @@ DEFAULT_REPORT_DIR = REPO_ROOT / "artifacts" / "reports"
 
 def resolve_repo_path(path_text: str | Path) -> Path:
     return resolve_repo_relative_path(path_text, repo_root=REPO_ROOT)
-
-
-def _default_parts_dir(input_path: Path) -> Path:
-    return input_path.parent / f"{input_path.stem}.parts"
-
-
-def resolve_input_parquet_paths(input_specs: list[str]) -> list[Path]:
-    resolved: list[Path] = []
-    for spec in input_specs:
-        input_path = resolve_repo_path(spec)
-        if not input_path.exists():
-            raise SystemExit(f"Input intraday path not found: {input_path}")
-
-        # Prefer batch checkpoints when they exist so we do not need to load one giant parquet.
-        if input_path.is_file():
-            parts_dir = _default_parts_dir(input_path)
-            if parts_dir.exists():
-                part_files = sorted(parts_dir.glob("batch_*.parquet"))
-                if part_files:
-                    resolved.extend(part_files)
-                    continue
-            resolved.append(input_path)
-            continue
-
-        if input_path.is_dir():
-            part_files = sorted(input_path.glob("batch_*.parquet"))
-            if not part_files:
-                part_files = sorted(input_path.glob("*.parquet"))
-            if not part_files:
-                raise SystemExit(f"No parquet files found under: {input_path}")
-            resolved.extend(part_files)
-            continue
-
-        raise SystemExit(f"Unsupported input path: {input_path}")
-
-    return resolved
 
 
 def _bps(move: pd.Series) -> pd.Series:
@@ -214,7 +179,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         required=True,
         help=(
-            "Input intraday parquet path or checkpoint directory. Repeatable. "
+            "Input intraday parquet path, .parts directory, cache directory, or formal intraday asset directory. "
+            "Repeatable. "
             "If <file_stem>.parts exists, batch parquet files are used automatically."
         ),
     )

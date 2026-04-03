@@ -454,15 +454,32 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valua
 ```bash
 csml rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet
 csml rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --format json --out artifacts/reports/hk_intraday_health_20260401.json
+csml rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intraday/hk_intraday_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
 ```
 
 说明：
 
-* `--input` 可以重复传多个 parquet；如果同名 `.parts/` 目录存在，命令会自动展开分片文件。
+* `--input` 可以重复传多个 parquet、`.parts/` 目录、缓存目录，或正式的 `intraday` 资产目录；如果同名 `.parts/` 目录存在，命令会自动展开分片文件。
 * HK `5m` 的默认 full-session bar 数是 `66`，命令会同时检查缺 bar、off-schedule bar 和 `bar_count != 66` 的 symbol-day。
 * 传入 `--daily-asset-dir` 后，会把 intraday 聚合后的 `open/high/low/close/volume/amount` 和本地 daily parquet 对账，方便定位是 intraday 本身漏 bar，还是 daily / intraday 之间有不一致。
 * 对账时，`close/volume/amount` 仍按严格数值比较；`open/high/low` 则会自动抑制一部分“close/volume/amount 已经对上、但只差轻微 tick / 集合竞价口径”的噪音 mismatch，真正留下来的 warning 会更偏向值得人工看的偏差。
 * JSON 输出会额外给出统一的 `quality_verdict`；需要阻断时可用 `--fail-on-severity none|info|warning|error`。
+
+### csml rqdata build-hk-intraday-asset
+
+把本地 HK `5m` cache / parquet / `.parts` 目录打包成正式 `intraday` 资产层，方便下游长期复用；命令只复制本地文件，不会重新向 provider 拉数。
+
+```bash
+csml rqdata build-hk-intraday-asset --input artifacts/cache/intraday/hk_all_5m_20250327_20260326.parquet --name hk_all_5m_20250327_20260326_latest
+csml rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk_intraday_latest --alias artifacts/assets/rqdata/hk/intraday/hk_intraday_latest
+```
+
+说明：
+
+* 输出目录固定落在 `artifacts/assets/rqdata/hk/intraday/<snapshot>/`，其中 `data/` 会保留原始 parquet、同名 `.meta.json`，以及同名 `.parts/` 分片目录。
+* 默认是独立复制，不依赖源 `artifacts/cache/intraday/` 继续存在；因此清 cache 后，这层正式资产仍可直接给下游用。
+* `manifest.yml` 会记录整体日期范围、字段、输入来源和每个 parquet block 的行数 / 字节数 / adjust_type / quota 元数据。
+* 之后 `inspect-hk-intraday-health` 和 `python -m csml.research.hk_intraday_slippage_report` 都可以直接把这个资产目录当 `--input` 读取。
 
 ### csml rqdata build-hk-daily-clean-layer
 

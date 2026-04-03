@@ -977,8 +977,8 @@ def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
         action="append",
         required=True,
         help=(
-            "Intraday parquet input path. Repeatable. "
-            "When a matching .parts directory exists, the command scans its part files automatically."
+            "Intraday parquet path, .parts directory, cache directory, or formal intraday asset directory. "
+            "Repeatable. When a matching .parts directory exists, the command scans its part files automatically."
         ),
     )
     parser.add_argument(
@@ -1023,6 +1023,35 @@ def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
         help="Optional output path. Default: print to stdout.",
     )
     _add_quality_gate_arg(parser)
+
+
+def add_hk_intraday_asset_build_args(
+    parser: argparse.ArgumentParser,
+    *,
+    default_out_root: str,
+) -> None:
+    parser.add_argument(
+        "--input",
+        action="append",
+        required=True,
+        help=(
+            "Local intraday parquet path, .parts directory, cache directory, or intraday asset directory. "
+            "Repeatable. All matching parquet/meta/parts files are copied into a formal asset snapshot."
+        ),
+    )
+    parser.add_argument(
+        "--out-root",
+        default=default_out_root,
+        help=f"Asset root directory. Default: {default_out_root}",
+    )
+    parser.add_argument(
+        "--name",
+        help="Optional snapshot folder name. Default: intraday_<start>_<end>_<timestamp>.",
+    )
+    parser.add_argument(
+        "--alias",
+        help="Optional alias/symlink path to repoint at the new intraday asset snapshot after build.",
+    )
 
 
 def add_hk_daily_clean_layer_args(parser: argparse.ArgumentParser) -> None:

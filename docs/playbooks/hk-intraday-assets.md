@@ -7,8 +7,8 @@
 相关页面：`docs/playbooks/hk-rqdata-status.md`、`docs/concepts/execution-costs.md`、`docs/rqdata/README.md`、`src/csml/research/hk_intraday_download.py`、`src/csml/research/hk_intraday_slippage_report.py`
 
 页面性质：`current-state`  
-最后核对时间：`2026-03-26`（Asia/Shanghai）  
-权威来源：`artifacts/cache/intraday/*.meta.json`、`artifacts/reports/*slippage*`、当前工作区脚本和真实 quota
+最后核对时间：`2026-04-03`（Asia/Shanghai）  
+权威来源：`artifacts/cache/intraday/*.meta.json`、`artifacts/assets/rqdata/hk/intraday/*/manifest.yml`、`artifacts/reports/*slippage*`、当前工作区脚本和真实 quota
 
 ## 先说结论
 
@@ -23,6 +23,22 @@
 * 全市场 `5m` 现在已经足够支持经验滑点校准，不需要再回到“先下数据再说”的状态。
 * provider 当前 HK 分钟线最早只能拿到 `2024-05-01`，所以“完整过去两年全市场 `5m`”在这个 provider 上并不存在。
 * 试用 quota `1GB/day` 足够做全市场 `5m` 的年度块，但不够继续舒适地做更重的 `1m` 全市场历史。
+
+## 正式资产层
+
+从 `2026-04-03` 开始，仓库也支持把本地 intraday cache 提升成正式资产层：
+
+```bash
+csml rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk_intraday_latest --alias artifacts/assets/rqdata/hk/intraday/hk_intraday_latest
+```
+
+这层和 `daily` 的区别是：
+
+* 正式入口在 `artifacts/assets/rqdata/hk/intraday/<snapshot>/`
+* 命令会把 parquet、同名 `.meta.json` 和 `.parts/` 一起复制到 `data/`
+* 之后即使你清掉 `artifacts/cache/intraday/`，正式资产仍然可直接被健康检查和滑点报告脚本复用
+
+如果你只是想临时保留一下本地状态，`artifacts/snapshots/` 仍然适合做冻结备份；如果你要给下游长期复用，优先用这里的正式资产层。
 
 ## 当前已经落盘的 intraday 入口
 
@@ -90,7 +106,7 @@
 这两点很重要：
 
 * 如果实例中途挂掉，现在可以从 part 目录继续，不需要整段重下。
-* `src/csml/research/hk_intraday_slippage_report.py` 现在会优先使用同名 `.parts/` 目录，而不是整块读取巨大的最终 parquet，所以不会再因为全市场大文件而轻易内存爆掉。
+* `src/csml/research/hk_intraday_slippage_report.py` 和 `csml rqdata inspect-hk-intraday-health` 现在都会优先使用同名 `.parts/` 目录，而不是整块读取巨大的最终 parquet，所以不会再因为全市场大文件而轻易内存爆掉。
 
 ## 当前已经产出的滑点校准结果
 
