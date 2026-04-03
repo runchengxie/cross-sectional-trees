@@ -6,34 +6,19 @@ Usage:
     # rqdatac auth may be required (RQDATA_USERNAME/RQDATA_PASSWORD)
 """
 import argparse
-from collections.abc import Mapping
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Optional
 
 import pandas as pd
 
-from ..artifacts import (
-    resolve_repo_path,
-)
-from ..data_interface import DataInterface
-from ..data_providers import fundamentals_provider_supported
-from ..metrics import bucket_ic_summary
 from ..backtest import backtest_topk
-from .config import (
-    load_run_config,
-    normalize_eval_settings,
-    normalize_universe_filters,
-    prepare_run_artifacts,
-    resolve_runtime_settings,
-    resolve_date_range_and_label_settings,
-    resolve_universe_inputs,
-)
+from ..metrics import bucket_ic_summary
+from .config import load_run_config
 from .data import _load_research_panel, _prepare_feature_dataset
 from .final_oos_stage import run_final_oos_stage
-from .output import persist_run_outputs
-from .output_context import build_output_context
+from .output_orchestration import persist_pipeline_outputs
+from .preflight import prepare_pipeline_setup, resolve_effective_data_inputs
 from .quality import run_quality_preflight
 from .runtime import _prepare_split_context
 from .train_eval_stage import run_train_eval_stage
@@ -124,27 +109,10 @@ def run(
         config_ref,
         artifacts_root_override=artifacts_root,
     )
-    config = loaded["config"]
-    config_label = loaded["config_label"]
-    config_path = loaded["config_path"]
-    config_source = loaded["config_source"]
-    active_log_file = loaded["active_log_file"]
     data_cfg = loaded["data_cfg"]
     MARKET = loaded["market"]
-    universe_cfg = loaded["universe_cfg"]
-    label_cfg = loaded["label_cfg"]
-    features_cfg = loaded["features_cfg"]
-    fundamentals_cfg = loaded["fundamentals_cfg"]
-    model_cfg = loaded["model_cfg"]
-    eval_cfg = loaded["eval_cfg"]
-    backtest_cfg = loaded["backtest_cfg"]
-    live_cfg = loaded["live_cfg"]
     ARTIFACTS_ROOT = loaded["artifacts_root"]
     CACHE_DIR = loaded["cache_dir"]
-    DEFAULT_RUNS_DIR = loaded["runs_dir"]
-    data_interface = DataInterface(MARKET, data_cfg, cache_dir=CACHE_DIR, logger=logger)
-    provider = data_interface.provider
-
     DEFAULT_SYMBOLS = [
         "00700.HK",
         "00005.HK",
@@ -152,12 +120,24 @@ def run(
         "00001.HK",
         "00388.HK",
     ]
-    universe_inputs = resolve_universe_inputs(
-        universe_cfg,
-        market=MARKET,
+    setup = prepare_pipeline_setup(
+        loaded=loaded,
+        fail_on_quality=fail_on_quality,
         logger=logger,
         default_symbols=DEFAULT_SYMBOLS,
+        quality_preflight_fn=run_quality_preflight,
     )
+    data_interface = setup["data_interface"]
+    provider = setup["provider"]
+    universe_inputs = setup["universe_inputs"]
+    date_label_settings = setup["date_label_settings"]
+    eval_settings = setup["eval_settings"]
+    universe_filters = setup["universe_filters"]
+    industry_cfg = setup["industry_cfg"]
+    runtime_settings = setup["runtime_settings"]
+    run_artifacts = setup["run_artifacts"]
+    quality_summary = setup["quality_summary"]
+
     UNIVERSE_MODE = universe_inputs["UNIVERSE_MODE"]
     REQUIRE_BY_DATE = universe_inputs["REQUIRE_BY_DATE"]
     symbols = universe_inputs["symbols"]
@@ -166,15 +146,6 @@ def run(
     universe_by_date = universe_inputs["universe_by_date"]
     universe_mode_effective = universe_inputs["universe_mode_effective"]
 
-    date_label_settings = resolve_date_range_and_label_settings(
-        data_cfg=data_cfg,
-        label_cfg=label_cfg,
-        eval_cfg=eval_cfg,
-        live_cfg=live_cfg,
-        market=MARKET,
-        provider=provider,
-        logger=logger,
-    )
     end_date = date_label_settings["end_date"]
     start_date = date_label_settings["start_date"]
     START_DATE = date_label_settings["START_DATE"]
@@ -189,7 +160,6 @@ def run(
     TRAIN_TARGET = date_label_settings["TRAIN_TARGET"]
     WINSORIZE_PCT = date_label_settings["WINSORIZE_PCT"]
 
-    eval_settings = normalize_eval_settings(eval_cfg, backtest_cfg=backtest_cfg)
     TEST_SIZE = eval_settings["TEST_SIZE"]
     N_SPLITS = eval_settings["N_SPLITS"]
     N_QUANTILES = eval_settings["N_QUANTILES"]
@@ -236,52 +206,23 @@ def run(
     SAVE_ARTIFACTS = eval_settings["SAVE_ARTIFACTS"]
     SAVE_SCORED_ARTIFACT = eval_settings["SAVE_SCORED_ARTIFACT"]
     SAVE_DATASET = eval_settings["SAVE_DATASET"]
-    OUTPUT_DIR = eval_settings["OUTPUT_DIR"] or DEFAULT_RUNS_DIR.as_posix()
-    RUN_NAME = eval_settings["RUN_NAME"]
-    if BUCKET_IC_ENABLED and not BUCKET_IC_SCHEMES:
-        logger.warning("eval.bucket_ic.enabled=true but no schemes configured.")
-
-    universe_filters = normalize_universe_filters(
-        universe_cfg,
-        n_quantiles=N_QUANTILES,
-    )
     MIN_SYMBOLS_PER_DATE = universe_filters["MIN_SYMBOLS_PER_DATE"]
     MIN_LISTED_DAYS = universe_filters["MIN_LISTED_DAYS"]
     MIN_TURNOVER = universe_filters["MIN_TURNOVER"]
     DROP_ST = universe_filters["DROP_ST"]
     DROP_SUSPENDED = universe_filters["DROP_SUSPENDED"]
     SUSPENDED_POLICY = universe_filters["SUSPENDED_POLICY"]
-    industry_cfg = config.get("industry") or {}
-
-    runtime_settings = resolve_runtime_settings(
-        data_cfg=data_cfg,
-        features_cfg=features_cfg,
-        fundamentals_cfg=fundamentals_cfg,
-        industry_cfg=industry_cfg,
-        model_cfg=model_cfg,
-        backtest_cfg=backtest_cfg,
-        live_cfg=live_cfg,
-        provider=provider,
+    data_inputs = resolve_effective_data_inputs(
+        runtime_settings=runtime_settings,
         market=MARKET,
-        price_col=PRICE_COL,
-        label_horizon_days=LABEL_HORIZON_DAYS,
-        label_shift_days=LABEL_SHIFT_DAYS,
-        label_horizon_mode=LABEL_HORIZON_MODE,
-        label_rebalance_frequency=LABEL_REBALANCE_FREQUENCY,
-        train_target=TRAIN_TARGET,
-        eval_top_k=TOP_K,
-        eval_rebalance_frequency=REBALANCE_FREQUENCY,
-        eval_transaction_cost_bps=TRANSACTION_COST_BPS,
-        eval_buffer_exit=EVAL_BUFFER_EXIT,
-        eval_buffer_entry=EVAL_BUFFER_ENTRY,
-        wf_feature_top_k=WF_FEATURE_TOP_K,
+        logger=logger,
+        load_benchmark_return_series=_load_benchmark_return_series,
     )
+    runtime_settings = data_inputs["runtime_settings"]
     fundamentals_cfg = runtime_settings["fundamentals_cfg"]
     provider_overlay_cfg = runtime_settings["provider_overlay_cfg"]
     FUNDAMENTALS_ENABLED = runtime_settings["FUNDAMENTALS_ENABLED"]
     FUNDAMENTALS_SOURCE = runtime_settings["FUNDAMENTALS_SOURCE"]
-    FUNDAMENTALS_FILE = runtime_settings["FUNDAMENTALS_FILE"]
-    FUNDAMENTALS_FEATURES = runtime_settings["FUNDAMENTALS_FEATURES"]
     FUNDAMENTALS_AUTO_ADD = runtime_settings["FUNDAMENTALS_AUTO_ADD"]
     FUNDAMENTALS_ALLOW_MISSING = runtime_settings["FUNDAMENTALS_ALLOW_MISSING"]
     FUNDAMENTALS_FFILL = runtime_settings["FUNDAMENTALS_FFILL"]
@@ -289,13 +230,8 @@ def run(
     FUNDAMENTALS_LOG_MCAP = runtime_settings["FUNDAMENTALS_LOG_MCAP"]
     FUNDAMENTALS_MCAP_COL = runtime_settings["FUNDAMENTALS_MCAP_COL"]
     FUNDAMENTALS_LOG_MCAP_COL = runtime_settings["FUNDAMENTALS_LOG_MCAP_COL"]
-    FUNDAMENTALS_REQUIRED = runtime_settings["FUNDAMENTALS_REQUIRED"]
-    FUNDAMENTALS_PROVIDER = runtime_settings["FUNDAMENTALS_PROVIDER"]
     FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = runtime_settings[
         "FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED"
-    ]
-    FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE = runtime_settings[
-        "FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE"
     ]
     FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES = runtime_settings[
         "FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES"
@@ -303,19 +239,10 @@ def run(
     FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD = runtime_settings[
         "FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD"
     ]
-    FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED = runtime_settings[
-        "FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED"
-    ]
-    FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER = runtime_settings[
-        "FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER"
-    ]
     INDUSTRY_ENABLED = runtime_settings["INDUSTRY_ENABLED"]
-    INDUSTRY_SOURCE = runtime_settings["INDUSTRY_SOURCE"]
-    INDUSTRY_FILE = runtime_settings["INDUSTRY_FILE"]
     INDUSTRY_KEEP_COLUMNS = runtime_settings["INDUSTRY_KEEP_COLUMNS"]
     INDUSTRY_FFILL = runtime_settings["INDUSTRY_FFILL"]
     INDUSTRY_FFILL_LIMIT = runtime_settings["INDUSTRY_FFILL_LIMIT"]
-    INDUSTRY_REQUIRED = runtime_settings["INDUSTRY_REQUIRED"]
     FEATURES = runtime_settings["FEATURES"]
     feature_params = runtime_settings["feature_params"]
     CS_METHOD = runtime_settings["CS_METHOD"]
@@ -337,13 +264,8 @@ def run(
     BACKTEST_ENABLED = runtime_settings["BACKTEST_ENABLED"]
     BACKTEST_TOP_K = runtime_settings["BACKTEST_TOP_K"]
     BACKTEST_REBALANCE_FREQUENCY = runtime_settings["BACKTEST_REBALANCE_FREQUENCY"]
-    BACKTEST_COST_BPS = runtime_settings["BACKTEST_COST_BPS"]
     BACKTEST_TRADING_DAYS_PER_YEAR = runtime_settings[
         "BACKTEST_TRADING_DAYS_PER_YEAR"
-    ]
-    BACKTEST_BENCHMARK = runtime_settings["BACKTEST_BENCHMARK"]
-    BACKTEST_BENCHMARK_RETURNS_FILE = runtime_settings[
-        "BACKTEST_BENCHMARK_RETURNS_FILE"
     ]
     BACKTEST_LONG_ONLY = runtime_settings["BACKTEST_LONG_ONLY"]
     BACKTEST_BUFFER_EXIT = runtime_settings["BACKTEST_BUFFER_EXIT"]
@@ -362,153 +284,16 @@ def run(
     execution_model = runtime_settings["execution_model"]
     EXECUTION_PRICING_COLS = runtime_settings["EXECUTION_PRICING_COLS"]
     BACKTEST_COST_BPS_EFFECTIVE = runtime_settings["BACKTEST_COST_BPS_EFFECTIVE"]
-    BACKTEST_COST_BPS_REPORT = runtime_settings["BACKTEST_COST_BPS_REPORT"]
-    BACKTEST_EXECUTION_SOURCE = runtime_settings["BACKTEST_EXECUTION_SOURCE"]
     BACKTEST_TRADABLE_COL = runtime_settings["BACKTEST_TRADABLE_COL"]
     LIVE_ENABLED = runtime_settings["LIVE_ENABLED"]
     LIVE_AS_OF = runtime_settings["LIVE_AS_OF"]
     LIVE_TRAIN_MODE = runtime_settings["LIVE_TRAIN_MODE"]
-    WF_FEATURE_TOP_K = runtime_settings["WF_FEATURE_TOP_K"]
-    if LIVE_ENABLED and not SAVE_ARTIFACTS:
-        raise SystemExit(
-            "live.enabled=true requires eval.save_artifacts=true to persist holdings."
-        )
-
-    run_artifacts = prepare_run_artifacts(
-        config=config,
-        config_label=config_label,
-        output_dir=OUTPUT_DIR,
-        run_name=RUN_NAME,
-        save_artifacts=SAVE_ARTIFACTS,
-        active_log_file=active_log_file,
-        default_runs_dir=DEFAULT_RUNS_DIR,
-        logger=logger,
-    )
-    OUTPUT_DIR = run_artifacts["OUTPUT_DIR"]
-    run_name = run_artifacts["run_name"]
-    run_stamp = run_artifacts["run_stamp"]
-    run_hash = run_artifacts["run_hash"]
+    fundamentals_file_path = data_inputs["fundamentals_file_path"]
+    industry_file_path = data_inputs["industry_file_path"]
+    benchmark_symbol = data_inputs["benchmark_symbol"]
+    benchmark_returns_file_path = data_inputs["benchmark_returns_file_path"]
+    benchmark_return_series = data_inputs["benchmark_return_series"]
     run_dir = run_artifacts["run_dir"]
-    active_log_file = run_artifacts["active_log_file"]
-    quality_preflight = run_quality_preflight(
-        config=config,
-        run_dir=run_dir if SAVE_ARTIFACTS else None,
-        save_artifacts=SAVE_ARTIFACTS,
-        fail_on_quality=fail_on_quality,
-        logger=logger,
-    )
-    quality_summary = {"preflight": quality_preflight}
-    quality_overall_verdict = (
-        quality_preflight.get("overall_verdict")
-        if isinstance(quality_preflight, Mapping)
-        and isinstance(quality_preflight.get("overall_verdict"), Mapping)
-        else None
-    )
-    if isinstance(quality_overall_verdict, Mapping) and bool(quality_overall_verdict.get("gate_triggered")):
-        quality_report = None
-        quality_checks = quality_preflight.get("checks") if isinstance(quality_preflight.get("checks"), list) else []
-        for item in quality_checks:
-            if isinstance(item, Mapping) and item.get("report_file"):
-                quality_report = str(item.get("report_file"))
-                break
-        detail = f" Report: {quality_report}" if quality_report else ""
-        raise SystemExit(
-            f"Pipeline quality gate failed: {quality_overall_verdict.get('message')}{detail}"
-        )
-
-    fundamentals_cols: list[str] = []
-    industry_cols: list[str] = []
-    fundamentals_file_path: Optional[Path] = None
-    industry_file_path: Optional[Path] = None
-    if FUNDAMENTALS_ENABLED:
-        if FUNDAMENTALS_SOURCE == "provider" and not fundamentals_provider_supported(
-            FUNDAMENTALS_PROVIDER, MARKET
-        ):
-            message = (
-                "Fundamentals provider mode currently supports only RQData market=hk; "
-                "use source=file instead."
-            )
-            if FUNDAMENTALS_REQUIRED:
-                sys.exit(message)
-            logger.warning("%s Fundamentals disabled.", message)
-            FUNDAMENTALS_ENABLED = False
-        if FUNDAMENTALS_SOURCE == "file" and not FUNDAMENTALS_FILE:
-            message = "fundamentals.file is required when fundamentals.source=file."
-            if FUNDAMENTALS_REQUIRED:
-                sys.exit(message)
-            logger.warning("%s Fundamentals disabled.", message)
-            FUNDAMENTALS_ENABLED = False
-        if FUNDAMENTALS_SOURCE == "file" and FUNDAMENTALS_ENABLED:
-            fundamentals_file_path = resolve_repo_path(FUNDAMENTALS_FILE)
-            if not fundamentals_file_path.exists():
-                message = f"Fundamentals file not found: {fundamentals_file_path}"
-                if FUNDAMENTALS_REQUIRED:
-                    sys.exit(message)
-                logger.warning("%s Fundamentals disabled.", message)
-                FUNDAMENTALS_ENABLED = False
-    if INDUSTRY_ENABLED:
-        if not INDUSTRY_FILE:
-            message = "industry.file is required when industry.enabled=true."
-            if INDUSTRY_REQUIRED:
-                sys.exit(message)
-            logger.warning("%s Industry join disabled.", message)
-            INDUSTRY_ENABLED = False
-        else:
-            industry_file_path = resolve_repo_path(INDUSTRY_FILE)
-            if not industry_file_path.exists():
-                message = f"Industry file not found: {industry_file_path}"
-                if INDUSTRY_REQUIRED:
-                    sys.exit(message)
-                logger.warning("%s Industry join disabled.", message)
-                INDUSTRY_ENABLED = False
-    if FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED:
-        if not FUNDAMENTALS_ENABLED or FUNDAMENTALS_SOURCE != "file":
-            message = (
-                "fundamentals.provider_overlay requires fundamentals.enabled=true "
-                "and fundamentals.source=file."
-            )
-            if FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED:
-                sys.exit(message)
-            logger.warning("%s Provider overlay disabled.", message)
-            FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = False
-        elif not fundamentals_provider_supported(
-            FUNDAMENTALS_PROVIDER_OVERLAY_PROVIDER, MARKET
-        ):
-            message = (
-                "fundamentals.provider_overlay currently supports only RQData market=hk."
-            )
-            if FUNDAMENTALS_PROVIDER_OVERLAY_REQUIRED:
-                sys.exit(message)
-            logger.warning("%s Provider overlay disabled.", message)
-            FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED = False
-
-    if not FUNDAMENTALS_ENABLED and FUNDAMENTALS_AUTO_ADD and FUNDAMENTALS_FEATURES:
-        FEATURES = [feat for feat in FEATURES if feat not in FUNDAMENTALS_FEATURES]
-    if (
-        not FUNDAMENTALS_PROVIDER_OVERLAY_ENABLED
-        and FUNDAMENTALS_PROVIDER_OVERLAY_AUTO_ADD
-        and FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES
-    ):
-        FEATURES = [
-            feat
-            for feat in FEATURES
-            if feat not in FUNDAMENTALS_PROVIDER_OVERLAY_FEATURES
-        ]
-
-    # -----------------------------------------------------------------------------
-    # 2. Data download
-    # -----------------------------------------------------------------------------
-    benchmark_symbol = str(BACKTEST_BENCHMARK).strip() if BACKTEST_BENCHMARK else None
-    benchmark_returns_file_path = (
-        resolve_repo_path(BACKTEST_BENCHMARK_RETURNS_FILE)
-        if BACKTEST_BENCHMARK_RETURNS_FILE
-        else None
-    )
-    benchmark_return_series = (
-        _load_benchmark_return_series(benchmark_returns_file_path)
-        if benchmark_returns_file_path is not None
-        else pd.Series(dtype=float, name="benchmark_return")
-    )
     panel_state = _load_research_panel(
         data_interface=data_interface,
         symbols=symbols,
@@ -776,63 +561,8 @@ def run(
         wf_perm_test_runs=WF_PERM_TEST_RUNS,
         wf_perm_test_seed=WF_PERM_TEST_SEED,
     )
-    SIGNAL_DIRECTION = train_eval_state["signal_direction"]
     model = train_eval_state["model"]
-    train_ic_raw_stats = train_eval_state["train_ic_raw_stats"]
-    train_ic_series = train_eval_state["train_ic_series"]
-    train_ic_stats = train_eval_state["train_ic_stats"]
-    train_pearson_ic_series = train_eval_state["train_pearson_ic_series"]
-    train_pearson_ic_stats = train_eval_state["train_pearson_ic_stats"]
-    live_as_of = train_eval_state["live_as_of"]
-    positions_by_rebalance_live = train_eval_state["positions_by_rebalance_live"]
-    BACKTEST_SIGNAL_DIRECTION = train_eval_state["backtest_signal_direction"]
     period_eval_context = train_eval_state["period_eval_context"]
-    ic_series = train_eval_state["ic_series"]
-    ic_stats = train_eval_state["ic_stats"]
-    pearson_ic_series = train_eval_state["pearson_ic_series"]
-    pearson_ic_stats = train_eval_state["pearson_ic_stats"]
-    error_metrics = train_eval_state["error_metrics"]
-    hit_rate_stats = train_eval_state["hit_rate_stats"]
-    topk_positive_stats = train_eval_state["topk_positive_stats"]
-    bucket_ic_records = train_eval_state["bucket_ic_records"]
-    quantile_ts = train_eval_state["quantile_ts"]
-    quantile_mean = train_eval_state["quantile_mean"]
-    turnover_series = train_eval_state["turnover_series"]
-    eval_scored_data = train_eval_state["eval_scored_data"]
-    eval_rebalance_dates = train_eval_state["eval_rebalance_dates"]
-    backtest_rebalance_dates = train_eval_state["backtest_rebalance_dates"]
-    positions_by_rebalance = train_eval_state["positions_by_rebalance"]
-    bt_stats = train_eval_state["bt_stats"]
-    bt_net_series = train_eval_state["bt_net_series"]
-    bt_gross_series = train_eval_state["bt_gross_series"]
-    bt_turnover_series = train_eval_state["bt_turnover_series"]
-    bt_benchmark_series = train_eval_state["bt_benchmark_series"]
-    bt_active_series = train_eval_state["bt_active_series"]
-    bt_benchmark_stats = train_eval_state["bt_benchmark_stats"]
-    bt_active_stats = train_eval_state["bt_active_stats"]
-    bt_periods = train_eval_state["bt_periods"]
-    bt_style_exposure = train_eval_state["bt_style_exposure"]
-    bt_style_exposure_summary = train_eval_state["bt_style_exposure_summary"]
-    bt_industry_exposure = train_eval_state["bt_industry_exposure"]
-    bt_industry_exposure_summary = train_eval_state["bt_industry_exposure_summary"]
-    bt_active_exposure_summary = train_eval_state["bt_active_exposure_summary"]
-    perm_stats = train_eval_state["perm_stats"]
-    rolling_ic_results = train_eval_state["rolling_ic_results"]
-    rolling_ic_obs_per_year = train_eval_state["rolling_ic_obs_per_year"]
-    rolling_ic_latest = train_eval_state["rolling_ic_latest"]
-    rolling_sharpe_results = train_eval_state["rolling_sharpe_results"]
-    rolling_sharpe_latest = train_eval_state["rolling_sharpe_latest"]
-    cv_stats_raw = train_eval_state["cv_stats_raw"]
-    cv_stats = train_eval_state["cv_stats"]
-    walk_forward_results = train_eval_state["walk_forward_results"]
-    walk_forward_importance_df = train_eval_state["walk_forward_importance_df"]
-    walk_forward_feature_stability_df = train_eval_state["walk_forward_feature_stability_df"]
-    importance_df = train_eval_state["importance_df"]
-    importance_source = train_eval_state["importance_source"]
-    pred_nunique = train_eval_state["pred_nunique"]
-    constant_prediction = train_eval_state["constant_prediction"]
-    feature_importance_nonzero = train_eval_state["feature_importance_nonzero"]
-    zero_feature_importance = train_eval_state["zero_feature_importance"]
 
     final_oos_state = run_final_oos_stage(
         final_oos_enabled=FINAL_OOS_ENABLED,
@@ -855,40 +585,7 @@ def run(
         period_eval_context=period_eval_context,
         rolling_windows_months=ROLLING_WINDOWS_MONTHS,
     )
-    final_oos_eval = final_oos_state["final_oos_eval"]
-    ic_series_oos = final_oos_state["ic_series_oos"]
-    ic_stats_oos = final_oos_state["ic_stats_oos"]
-    pearson_ic_series_oos = final_oos_state["pearson_ic_series_oos"]
-    pearson_ic_stats_oos = final_oos_state["pearson_ic_stats_oos"]
-    error_metrics_oos = final_oos_state["error_metrics_oos"]
-    hit_rate_stats_oos = final_oos_state["hit_rate_stats_oos"]
-    topk_positive_stats_oos = final_oos_state["topk_positive_stats_oos"]
-    bucket_ic_records_oos = final_oos_state["bucket_ic_records_oos"]
-    quantile_ts_oos = final_oos_state["quantile_ts_oos"]
-    quantile_mean_oos = final_oos_state["quantile_mean_oos"]
-    turnover_series_oos = final_oos_state["turnover_series_oos"]
-    positions_by_rebalance_oos = final_oos_state["positions_by_rebalance_oos"]
-    bt_stats_oos = final_oos_state["bt_stats_oos"]
-    bt_net_series_oos = final_oos_state["bt_net_series_oos"]
-    bt_gross_series_oos = final_oos_state["bt_gross_series_oos"]
-    bt_turnover_series_oos = final_oos_state["bt_turnover_series_oos"]
-    bt_benchmark_series_oos = final_oos_state["bt_benchmark_series_oos"]
-    bt_active_series_oos = final_oos_state["bt_active_series_oos"]
-    bt_benchmark_stats_oos = final_oos_state["bt_benchmark_stats_oos"]
-    bt_active_stats_oos = final_oos_state["bt_active_stats_oos"]
-    bt_periods_oos = final_oos_state["bt_periods_oos"]
-    bt_style_exposure_oos = final_oos_state["bt_style_exposure_oos"]
-    bt_style_exposure_summary_oos = final_oos_state["bt_style_exposure_summary_oos"]
-    bt_industry_exposure_oos = final_oos_state["bt_industry_exposure_oos"]
-    bt_industry_exposure_summary_oos = final_oos_state["bt_industry_exposure_summary_oos"]
-    bt_active_exposure_summary_oos = final_oos_state["bt_active_exposure_summary_oos"]
-    rolling_ic_oos_results = final_oos_state["rolling_ic_oos_results"]
-    rolling_ic_oos_obs_per_year = final_oos_state["rolling_ic_oos_obs_per_year"]
-    rolling_ic_latest_oos = final_oos_state["rolling_ic_latest_oos"]
-    rolling_sharpe_oos_results = final_oos_state["rolling_sharpe_oos_results"]
-    rolling_sharpe_latest_oos = final_oos_state["rolling_sharpe_latest_oos"]
-
-    output_context = build_output_context(
+    persist_pipeline_outputs(
         loaded=loaded,
         universe_inputs=universe_inputs,
         date_label_settings=date_label_settings,
@@ -899,103 +596,23 @@ def run(
         panel_state=panel_state,
         dataset_state=dataset_state,
         split_state=split_state,
-        extras={
-            "MARKET": MARKET,
-            "ARTIFACTS_ROOT": ARTIFACTS_ROOT,
-            "CACHE_DIR": CACHE_DIR,
-            "provider": provider,
-            "quality_summary": quality_summary,
-            "benchmark_symbol": benchmark_symbol,
-            "benchmark_returns_file_path": benchmark_returns_file_path,
-            "train_ic_raw_stats": train_ic_raw_stats,
-            "train_ic_series": train_ic_series,
-            "train_ic_stats": train_ic_stats,
-            "train_pearson_ic_series": train_pearson_ic_series,
-            "train_pearson_ic_stats": train_pearson_ic_stats,
-            "live_as_of": live_as_of,
-            "positions_by_rebalance_live": positions_by_rebalance_live,
-            "BACKTEST_SIGNAL_DIRECTION": BACKTEST_SIGNAL_DIRECTION,
-            "ic_series": ic_series,
-            "ic_stats": ic_stats,
-            "pearson_ic_series": pearson_ic_series,
-            "pearson_ic_stats": pearson_ic_stats,
-            "error_metrics": error_metrics,
-            "hit_rate_stats": hit_rate_stats,
-            "topk_positive_stats": topk_positive_stats,
-            "bucket_ic_records": bucket_ic_records,
-            "quantile_ts": quantile_ts,
-            "quantile_mean": quantile_mean,
-            "turnover_series": turnover_series,
-            "eval_scored_data": eval_scored_data,
-            "eval_rebalance_dates": eval_rebalance_dates,
-            "backtest_rebalance_dates": backtest_rebalance_dates,
-            "positions_by_rebalance": positions_by_rebalance,
-            "bt_stats": bt_stats,
-            "bt_net_series": bt_net_series,
-            "bt_gross_series": bt_gross_series,
-            "bt_turnover_series": bt_turnover_series,
-            "bt_benchmark_series": bt_benchmark_series,
-            "bt_active_series": bt_active_series,
-            "bt_benchmark_stats": bt_benchmark_stats,
-            "bt_active_stats": bt_active_stats,
-            "bt_periods": bt_periods,
-            "bt_style_exposure": bt_style_exposure,
-            "bt_style_exposure_summary": bt_style_exposure_summary,
-            "bt_industry_exposure": bt_industry_exposure,
-            "bt_industry_exposure_summary": bt_industry_exposure_summary,
-            "bt_active_exposure_summary": bt_active_exposure_summary,
-            "perm_stats": perm_stats,
-            "rolling_ic_results": rolling_ic_results,
-            "rolling_ic_obs_per_year": rolling_ic_obs_per_year,
-            "rolling_ic_latest": rolling_ic_latest,
-            "rolling_sharpe_results": rolling_sharpe_results,
-            "rolling_sharpe_latest": rolling_sharpe_latest,
-            "cv_stats_raw": cv_stats_raw,
-            "cv_stats": cv_stats,
-            "walk_forward_results": walk_forward_results,
-            "walk_forward_importance_df": walk_forward_importance_df,
-            "walk_forward_feature_stability_df": walk_forward_feature_stability_df,
-            "final_oos_eval": final_oos_eval,
-            "ic_series_oos": ic_series_oos,
-            "ic_stats_oos": ic_stats_oos,
-            "pearson_ic_series_oos": pearson_ic_series_oos,
-            "pearson_ic_stats_oos": pearson_ic_stats_oos,
-            "error_metrics_oos": error_metrics_oos,
-            "hit_rate_stats_oos": hit_rate_stats_oos,
-            "topk_positive_stats_oos": topk_positive_stats_oos,
-            "bucket_ic_records_oos": bucket_ic_records_oos,
-            "quantile_ts_oos": quantile_ts_oos,
-            "quantile_mean_oos": quantile_mean_oos,
-            "turnover_series_oos": turnover_series_oos,
-            "positions_by_rebalance_oos": positions_by_rebalance_oos,
-            "bt_stats_oos": bt_stats_oos,
-            "bt_net_series_oos": bt_net_series_oos,
-            "bt_gross_series_oos": bt_gross_series_oos,
-            "bt_turnover_series_oos": bt_turnover_series_oos,
-            "bt_benchmark_series_oos": bt_benchmark_series_oos,
-            "bt_active_series_oos": bt_active_series_oos,
-            "bt_benchmark_stats_oos": bt_benchmark_stats_oos,
-            "bt_active_stats_oos": bt_active_stats_oos,
-            "bt_periods_oos": bt_periods_oos,
-            "bt_style_exposure_oos": bt_style_exposure_oos,
-            "bt_style_exposure_summary_oos": bt_style_exposure_summary_oos,
-            "bt_industry_exposure_oos": bt_industry_exposure_oos,
-            "bt_industry_exposure_summary_oos": bt_industry_exposure_summary_oos,
-            "bt_active_exposure_summary_oos": bt_active_exposure_summary_oos,
-            "rolling_ic_oos_results": rolling_ic_oos_results,
-            "rolling_ic_oos_obs_per_year": rolling_ic_oos_obs_per_year,
-            "rolling_ic_latest_oos": rolling_ic_latest_oos,
-            "rolling_sharpe_oos_results": rolling_sharpe_oos_results,
-            "rolling_sharpe_latest_oos": rolling_sharpe_latest_oos,
-            "importance_df": importance_df,
-            "importance_source": importance_source,
-            "pred_nunique": pred_nunique,
-            "constant_prediction": constant_prediction,
-            "feature_importance_nonzero": feature_importance_nonzero,
-            "zero_feature_importance": zero_feature_importance,
-        },
+        market=MARKET,
+        artifacts_root=ARTIFACTS_ROOT,
+        cache_dir=CACHE_DIR,
+        provider=provider,
+        quality_summary=quality_summary,
+        benchmark_symbol=benchmark_symbol,
+        benchmark_returns_file_path=benchmark_returns_file_path,
+        label_horizon_mode=LABEL_HORIZON_MODE,
+        final_oos_enabled=FINAL_OOS_ENABLED,
+        final_oos_size_raw=FINAL_OOS_SIZE_RAW,
+        purge_steps=PURGE_STEPS,
+        embargo_steps=EMBARGO_STEPS,
+        effective_gap_steps=EFFECTIVE_GAP_STEPS,
+        backtest_group_col=BACKTEST_GROUP_COL,
+        train_eval_state=train_eval_state,
+        final_oos_state=final_oos_state,
     )
-    persist_run_outputs(context=output_context)
 
     # Optional: save the model
     # from joblib import dump; dump(model, "xgb_factor_model.joblib")
