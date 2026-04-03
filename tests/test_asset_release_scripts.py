@@ -21,6 +21,7 @@ def _prepare_demo_assets(repo_root: Path) -> None:
     daily_dir.mkdir(parents=True, exist_ok=True)
     (daily_dir / "00005.HK.parquet").write_text("daily", encoding="utf-8")
     _symlink(daily_dir, daily_dir.parent / "hk_all_daily_latest")
+    _symlink(daily_dir, daily_dir.parent / "hk_all_daily_clean_latest")
 
     etf_daily_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_etf_2000_20260401_daily_latest"
     etf_daily_dir.mkdir(parents=True, exist_ok=True)

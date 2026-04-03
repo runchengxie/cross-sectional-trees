@@ -110,7 +110,7 @@ PRESETS = {
             "industry",
             "universe",
         ),
-        "daily_snapshot": "hk_all_daily_latest",
+        "daily_snapshot": "hk_all_daily_clean_latest",
         "intraday_snapshot": "hk_intraday_latest",
         "etf_daily_snapshot": "hk_etf_daily_latest",
         "etf_instruments_file": "hk_etf_instruments_latest.parquet",
