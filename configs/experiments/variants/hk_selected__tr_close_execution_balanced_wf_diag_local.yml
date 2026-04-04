@@ -1,0 +1,18 @@
+## Monthly HK selected sidecar for walk-forward diagnostics. Keep the
+## strategy, execution, and benchmark path identical to the main local
+## tr_close balanced run, but shrink the walk-forward test window so the
+## requested windows can actually fit and remain interpretable.
+extends:
+  - configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
+
+eval:
+  run_name: hk_sel_xgb_reg_tr_close_exec_balanced_wf_diag_local
+  walk_forward:
+    enabled: true
+    n_windows: 4
+    test_size: 0.2
+    step_size: 0.1
+    anchor_end: true
+    backtest_enabled: true
+    permutation_test:
+      enabled: false

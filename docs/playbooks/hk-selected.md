@@ -159,6 +159,9 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 # 当前推荐的 HK selected 月频本地研究入口
 csml run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
 
+# walk-forward 稳定性诊断 sidecar
+csml run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_wf_diag_local.yml
+
 # 历史 benchmark 锚点 / 低依赖对照
 csml run --config configs/experiments/baseline/hk_selected.yml
 ```

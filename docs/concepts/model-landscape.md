@@ -1,12 +1,12 @@
 # 模型版图与当前选择
 
-本页解决什么：从更广的算法宇宙理解当前项目为什么只维护四个模型，以及下一步什么时候值得扩模型。
-本页不解决什么：不展开具体参数、CLI 用法或单次实验结果明细。
-适合谁：想判断某类算法是否值得纳入本项目，或想解释“为什么现在是这四个模型”的读者。
-读完你会得到什么：一套按任务结构组织的模型版图、当前四模型的角色分工、以及后续扩展的优先级。
-相关页面：`docs/concepts/model-selection.md`、`docs/concepts/benchmark-protocol.md`、`docs/playbooks/hk-selected.md`、`docs/research/notes/hk-quarterly-target-design-and-direction-20260324.md`、`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`
+本页解决什么：从更广的算法宇宙理解当前项目为什么只维护四个模型，以及下一步什么时候值得扩模型。\
+本页不解决什么：不展开具体参数、CLI 用法或单次实验结果明细。\
+适合谁：想判断某类算法是否值得纳入本项目，或想解释“为什么现在是这四个模型”的读者。\
+读完你会得到什么：一套按任务结构组织的模型版图、当前四模型的角色分工、以及后续扩展的优先级。\
+相关页面：`docs/concepts/model-selection.md`、`docs/concepts/benchmark-protocol.md`、`docs/playbooks/hk-selected.md`、`docs/research/notes/hk-quarterly-target-design-and-direction-20260324.md`、`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`\
 
-这个文档讨论的是“广义模型宇宙”和“当前仓库实际维护的模型集合”之间的关系。
+这个文档讨论的是“广义模型宇宙”和“当前仓库实际维护的模型集合”之间的关系。\
 如果你的问题已经缩小成“现有四个模型这次该选哪个”，直接回到 [model-selection.md](model-selection.md)；本页只讨论模型边界、角色分工和扩展优先级。
 
 先说结论：
