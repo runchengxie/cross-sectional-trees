@@ -74,10 +74,10 @@
 
 用你当前正在跟踪的月频 PIT 基线，不加行业处理。
 
-如果你只是想找最小可复用入口，仓库里现在先提供两份基于 core sidecar 的 overlay：
+如果你只是想找最小可复用入口，当前研究里已经固定了两类基于 core sidecar 的 overlay 命名约定：
 
-* `configs/local/hk_selected__m_pit_core_hybrid_sidecar_industry_observe_tr_close_exec_balanced.yml`
-* `configs/local/hk_selected__m_pit_core_hybrid_sidecar_industry_groupcap4_tr_close_exec_balanced.yml`
+* `industry_observe`
+* `industry_groupcap4`
 
 如果你当前实际跟踪的是 `no_ret` 候选或别的 monthly 派生配置，更稳的做法是把这些 overlay 文件里的 `extends` 改到你的当前基线上，而不是再造一套平行主线。
 
@@ -89,9 +89,7 @@
 * 只把行业标签接进 panel。
 * 用 `bucket_ic` 和行业暴露看“模型是不是主要在少数行业上有效”。
 
-当前仓库里直接可跑的入口就是：
-
-* `configs/local/hk_selected__m_pit_core_hybrid_sidecar_industry_observe_tr_close_exec_balanced.yml`
+当前仓库里直接复用的就是 `industry_observe` 这类 overlay。
 
 它做的事很克制：
 
@@ -113,9 +111,7 @@
 * 不动训练集、不动特征。
 * 只在组合层压一下一级行业集中度。
 
-当前仓库里直接可跑的入口是：
-
-* `configs/local/hk_selected__m_pit_core_hybrid_sidecar_industry_groupcap4_tr_close_exec_balanced.yml`
+当前仓库里直接复用的是 `industry_groupcap4` 这类 overlay。
 
 这份 overlay 只在 `R1` 基础上再加两行：
 
