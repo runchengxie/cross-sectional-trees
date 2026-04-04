@@ -17,6 +17,12 @@ from .build import (
     _pipeline_fundamentals_manifest_path,
     _resolve_build_fields,
 )
+from .health_shared import (
+    format_date as _format_date,
+    load_symbols_from_text as _load_symbols_from_text,
+    normalize_symbol_list as _normalize_symbol_list,
+    parse_compact_date as _parse_compact_date,
+)
 from .quality_gate import (
     append_quality_verdict_lines,
     normalize_fail_on_severity,
@@ -27,10 +33,7 @@ from .shared import (
     DEFAULT_PIPELINE_FUNDAMENTALS_NAME,
     DERIVED_PIT_FEATURES,
     _coerce_bool,
-    _dedupe_preserve_order,
     _load_manifest,
-    _load_text_list,
-    _normalize_absolute_date,
     _normalize_field_list,
     _normalize_frame_columns,
     _normalize_hk_symbol,
@@ -48,21 +51,6 @@ def _resolve_fields(args) -> tuple[list[str], dict]:
         load_hk_financial_fields_override=override,
     )
 
-
-def _parse_compact_date(value: object, *, label: str) -> pd.Timestamp:
-    normalized = _normalize_absolute_date(value, label=label)
-    return pd.to_datetime(normalized, format="%Y%m%d").normalize()
-
-
-def _format_date(value: object) -> str | None:
-    if value is None or pd.isna(value):
-        return None
-    timestamp = pd.to_datetime(value, errors="coerce")
-    if pd.isna(timestamp):
-        return None
-    return timestamp.normalize().strftime("%Y-%m-%d")
-
-
 def _round_pct(numerator: int, denominator: int) -> float:
     if denominator <= 0:
         return 0.0
@@ -76,16 +64,6 @@ def _quantile_or_none(values: Sequence[int], quantile: float) -> int | float | N
     if result.is_integer():
         return int(result)
     return round(result, 2)
-
-
-def _normalize_symbol_list(values: Sequence[object]) -> list[str]:
-    normalized = [_normalize_hk_symbol(value) for value in values]
-    return _dedupe_preserve_order([symbol for symbol in normalized if symbol], strip=True)
-
-
-def _load_symbols_from_text(path_text: str | Path) -> list[str]:
-    return _normalize_symbol_list(_load_text_list(path_text, label="Symbols file"))
-
 
 def _load_health_universe_by_date_frame(path_text: str | Path) -> tuple[Path, pd.DataFrame]:
     path = _resolve_path(path_text)

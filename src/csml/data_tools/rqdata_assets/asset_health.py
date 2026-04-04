@@ -13,14 +13,18 @@ from .quality_gate import (
     quality_gate_exit_code,
     summarize_quality_checks,
 )
+from .health_shared import (
+    format_date as _format_date,
+    load_symbols_from_text as _load_symbols_from_text,
+    normalize_symbol_list as _normalize_symbol_list,
+    parse_compact_date as _parse_compact_date,
+)
 from .shared import (
     DEFAULT_HK_DAILY_FIELDS,
     DEFAULT_HK_VALUATION_FIELDS,
     _coerce_bool,
     _dedupe_preserve_order,
     _load_manifest,
-    _load_text_list,
-    _normalize_absolute_date,
     _normalize_frame_columns,
     _normalize_hk_symbol,
     _resolve_path,
@@ -100,22 +104,6 @@ VALUATION_FRESH_TARGET_GAP_REASON_LABELS = {
 CONSTANT_CROSS_SECTION_FIELD_EXEMPTIONS = {
     "southbound": {"eligible", "trading_type"},
 }
-
-
-def _parse_compact_date(value: object, *, label: str) -> pd.Timestamp:
-    normalized = _normalize_absolute_date(value, label=label)
-    return pd.to_datetime(normalized, format="%Y%m%d").normalize()
-
-
-def _format_date(value: object) -> str | None:
-    text = str(value or "").strip()
-    if not text or text.lower() == "nan":
-        return None
-    timestamp = pd.to_datetime(text, errors="coerce")
-    if pd.isna(timestamp):
-        return None
-    return timestamp.normalize().strftime("%Y-%m-%d")
-
 
 def _clean_optional_text(value: object) -> str | None:
     if value is None or pd.isna(value):
@@ -531,16 +519,6 @@ def _build_latest_date_counts(audit: pd.DataFrame | None, data_files: Sequence[P
         if status:
             status_counts[status] += 1
     return latest_counts, status_counts
-
-
-def _normalize_symbol_list(values: Sequence[object]) -> list[str]:
-    normalized = [_normalize_hk_symbol(value) for value in values]
-    return _dedupe_preserve_order([symbol for symbol in normalized if symbol], strip=True)
-
-
-def _load_symbols_from_text(path_text: str | Path) -> list[str]:
-    return _normalize_symbol_list(_load_text_list(path_text, label="Symbols file"))
-
 
 def _load_symbols_from_by_date_target_date(path_text: str | Path, *, target_date: pd.Timestamp) -> list[str]:
     path = _resolve_path(path_text)
