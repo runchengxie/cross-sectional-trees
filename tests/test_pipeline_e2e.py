@@ -1176,8 +1176,167 @@ def test_pipeline_backtest_accepts_external_benchmark_returns_file(tmp_path, mon
     assert summary["backtest"]["benchmark_returns_file"] == str(benchmark_file.resolve())
     assert summary["backtest"]["benchmark"] is not None
     assert summary["backtest"]["active"] is not None
+    assert summary["backtest"]["report_file"] == str((run_dir / "backtest_report.csv").resolve())
     assert (run_dir / "backtest_benchmark.csv").exists()
     assert (run_dir / "backtest_active.csv").exists()
+    assert (run_dir / "backtest_report.csv").exists()
+
+
+def test_pipeline_backtest_writes_compare_benchmark_reports(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=320, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    frames = _build_daily_frames(symbols, dates)
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return frames[symbol].copy()
+
+    def fake_load_basic(self, symbols=None) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", fake_load_basic)
+
+    output_dir = tmp_path / "runs"
+    benchmark_primary_file = tmp_path / "benchmark_primary.csv"
+    benchmark_alt_file = tmp_path / "benchmark_alt.csv"
+    pd.DataFrame(
+        {
+            "trade_date": dates.strftime("%Y-%m-%d"),
+            "benchmark_return": np.linspace(-0.01, 0.02, len(dates)),
+        }
+    ).to_csv(benchmark_primary_file, index=False)
+    pd.DataFrame(
+        {
+            "trade_date": dates.strftime("%Y-%m-%d"),
+            "benchmark_return": np.linspace(-0.015, 0.015, len(dates)),
+        }
+    ).to_csv(benchmark_alt_file, index=False)
+
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20200101",
+            "end_date": "20210331",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "next_rebalance",
+            "rebalance_frequency": "W",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5", "ret_5"],
+            "params": {"sma_windows": [5], "ret_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": False,
+            "output_dir": str(output_dir),
+            "run_name": "e2e_benchmark_compare",
+            "walk_forward": {
+                "enabled": False,
+            },
+        },
+        "backtest": {
+            "enabled": True,
+            "top_k": 2,
+            "rebalance_frequency": "W",
+            "transaction_cost_bps": 0,
+            "long_only": True,
+            "exit_mode": "rebalance",
+            "benchmark_returns_file": str(benchmark_primary_file),
+            "benchmark_compare": [
+                {
+                    "name": "primary_capw",
+                    "returns_file": str(benchmark_primary_file),
+                },
+                {
+                    "name": "alt_capw",
+                    "returns_file": str(benchmark_alt_file),
+                },
+            ],
+        },
+    }
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    pipeline.run(str(config_path))
+
+    run_dirs = list(Path(output_dir).glob("e2e_benchmark_compare_*"))
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    benchmark_compare = summary["backtest"]["benchmark_compare"]
+    assert benchmark_compare["summary_file"] == str(
+        (run_dir / "backtest_benchmark_compare_summary.csv").resolve()
+    )
+    assert len(benchmark_compare["benchmarks"]) == 2
+    assert any(entry["is_primary"] for entry in benchmark_compare["benchmarks"])
+    assert all(Path(entry["report_file"]).exists() for entry in benchmark_compare["benchmarks"])
+
+    compare_report = pd.read_csv(run_dir / "backtest_benchmark_compare_primary_capw.csv")
+    assert {
+        "trade_date",
+        "strategy_return",
+        "strategy_nav",
+        "benchmark_return",
+        "benchmark_nav",
+        "active_return",
+        "relative_nav",
+        "strategy_rolling_cagr_1y",
+        "strategy_rolling_cagr_3y",
+        "strategy_rolling_cagr_5y",
+        "strategy_rolling_max_drawdown_1y",
+        "strategy_rolling_max_drawdown_3y",
+        "strategy_rolling_max_drawdown_5y",
+    }.issubset(compare_report.columns)
+    compare_summary = pd.read_csv(run_dir / "backtest_benchmark_compare_summary.csv")
+    assert {"name", "benchmark_ann_return", "active_information_ratio", "report_file"}.issubset(
+        compare_summary.columns
+    )
 
 
 @pytest.mark.integration

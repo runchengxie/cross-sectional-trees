@@ -817,6 +817,9 @@ def resolve_runtime_settings(
         raise SystemExit(
             "backtest.benchmark_symbol and backtest.benchmark_returns_file are mutually exclusive."
         )
+    backtest_benchmark_compare = _normalize_benchmark_compare(
+        backtest_cfg.get("benchmark_compare")
+    )
     backtest_long_only = bool(backtest_cfg.get("long_only", True))
     backtest_buffer_exit = int(backtest_cfg.get("buffer_exit", 0))
     backtest_buffer_entry = int(backtest_cfg.get("buffer_entry", 0))
@@ -960,6 +963,7 @@ def resolve_runtime_settings(
         "BACKTEST_TRADING_DAYS_PER_YEAR": backtest_trading_days_per_year,
         "BACKTEST_BENCHMARK": backtest_benchmark,
         "BACKTEST_BENCHMARK_RETURNS_FILE": backtest_benchmark_returns_file,
+        "BACKTEST_BENCHMARK_COMPARE": backtest_benchmark_compare,
         "BACKTEST_LONG_ONLY": backtest_long_only,
         "BACKTEST_BUFFER_EXIT": backtest_buffer_exit,
         "BACKTEST_BUFFER_ENTRY": backtest_buffer_entry,
@@ -983,6 +987,46 @@ def resolve_runtime_settings(
         "LIVE_TRAIN_MODE": live_train_mode,
         "WF_FEATURE_TOP_K": wf_feature_top_k,
     }
+
+
+def _normalize_benchmark_compare(raw_value: object | None) -> list[dict[str, str]]:
+    if raw_value is None:
+        return []
+    if not isinstance(raw_value, (list, tuple)):
+        raise SystemExit(
+            "backtest.benchmark_compare must be a list of returns files or mappings."
+        )
+
+    normalized: list[dict[str, str]] = []
+    for idx, item in enumerate(raw_value):
+        name: str | None = None
+        returns_file: str | None = None
+        if isinstance(item, str):
+            returns_file = str(item).strip() or None
+        elif isinstance(item, Mapping):
+            name_raw = item.get("name")
+            if name_raw is not None:
+                name = str(name_raw).strip() or None
+            returns_file_raw = (
+                item.get("returns_file")
+                or item.get("file")
+                or item.get("path")
+            )
+            if returns_file_raw is not None:
+                returns_file = str(returns_file_raw).strip() or None
+        else:
+            raise SystemExit(
+                "backtest.benchmark_compare entries must be either strings or mappings."
+            )
+
+        if not returns_file:
+            raise SystemExit(
+                f"backtest.benchmark_compare[{idx}] must provide returns_file."
+            )
+        if not name:
+            name = Path(returns_file).stem
+        normalized.append({"name": name, "returns_file": returns_file})
+    return normalized
 
 
 def prepare_run_artifacts(

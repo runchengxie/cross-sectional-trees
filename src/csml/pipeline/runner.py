@@ -293,6 +293,7 @@ def run(
     benchmark_symbol = data_inputs["benchmark_symbol"]
     benchmark_returns_file_path = data_inputs["benchmark_returns_file_path"]
     benchmark_return_series = data_inputs["benchmark_return_series"]
+    benchmark_compare_specs = data_inputs["benchmark_compare_specs"]
     run_dir = run_artifacts["run_dir"]
     panel_state = _load_research_panel(
         data_interface=data_interface,
@@ -603,6 +604,7 @@ def run(
         quality_summary=quality_summary,
         benchmark_symbol=benchmark_symbol,
         benchmark_returns_file_path=benchmark_returns_file_path,
+        benchmark_compare_specs=benchmark_compare_specs,
         label_horizon_mode=LABEL_HORIZON_MODE,
         final_oos_enabled=FINAL_OOS_ENABLED,
         final_oos_size_raw=FINAL_OOS_SIZE_RAW,

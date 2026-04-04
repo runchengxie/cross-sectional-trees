@@ -34,6 +34,18 @@ HK 研究默认用：
 * `backtest_benchmark.csv`
 * `backtest_active.csv`
 
+如果你想同时保留“市场 ETF 代理”和“更贴近 universe 的 alpha benchmark”，现在可以继续把主 benchmark 固定在其中一条，再把其他对照放进：
+
+* `backtest.benchmark_compare`
+
+这层是报告层附加对比，不会改变主 benchmark 的口径。配置后还会额外输出：
+
+* `summary.json -> backtest.report_file`
+* `summary.json -> backtest.benchmark_compare`
+* `backtest_report.csv`
+* `backtest_benchmark_compare_summary.csv`
+* `backtest_benchmark_compare_<name>.csv`
+
 ## 2. HK selected 默认 benchmark 阶梯
 
 当前仓库把 HK selected 的 benchmark protocol 定成下面这套：
@@ -41,6 +53,7 @@ HK 研究默认用：
 | 层级 | 角色 | 官方配置 |
 | --- | --- | --- |
 | 市场 benchmark | 回测市场对照 | 大多数 HK benchmark 配置默认使用 `02800.HK`；当前月频本地推荐入口改用 universe-aligned `benchmark_returns_file` |
+| 报告层 compare benchmark | 同一条 run 内并排看 ETF / selected cap-weight / connect cap-weight | 当前月频本地 execution variants 默认附带 `backtest.benchmark_compare` |
 | 特征 benchmark 1 | 季度纯量价 floor | `configs/experiments/baseline/hk_selected__quarterly_price_only.yml` |
 | 特征 benchmark 2 | 季度 core PIT 增量 | `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml` |
 | 强 benchmark | 季度 core PIT + 慢量价，默认要被超越的对象 | `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml` |

@@ -369,6 +369,33 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. 这里记录的是“实际生效值”，优先级高于你对默认行为的记忆。
 1. `summary.json -> backtest -> execution_source` 会标记这次 run 是沿用 `default_flat_cost`，还是显式启用了 `backtest.execution` 的 `explicit_execution_config`。
 1. `backtest.stats.avg_cost_drag` 现在表示总 execution drag；若需要拆分，查看同层 `avg_fee_drag` 与 `avg_slippage_drag`。
+1. `summary.json -> backtest -> report_file` 指向主回测报表 `backtest_report*.csv`；它会把策略收益、策略净值、benchmark 净值、相对净值，以及策略 rolling 1Y/3Y/5Y CAGR / max drawdown 放到一张表里。
+1. `summary.json -> backtest -> benchmark_compare` 是报告层的附加 benchmark 对比，不会替代主 benchmark；若启用了 `backtest.benchmark_compare`，这里会记录 summary CSV 和逐 benchmark 详细报表路径。
+
+`summary.json -> backtest -> benchmark_compare` 结构示意：
+
+```json
+{
+  "summary_file": "artifacts/runs/<run_dir>/backtest_benchmark_compare_summary.csv",
+  "benchmarks": [
+    {
+      "name": "hk_02800",
+      "returns_file": "/abs/path/to/hk_02800_open_close.csv",
+      "is_primary": false,
+      "aligned_periods": 26,
+      "benchmark": {"ann_return": 0.12, "max_drawdown": -0.18},
+      "active": {"information_ratio": 0.35, "beta": 0.91},
+      "report_file": "artifacts/runs/<run_dir>/backtest_benchmark_compare_hk_02800.csv"
+    }
+  ]
+}
+```
+
+说明：
+
+1. `benchmark_compare` 只是额外报表层；`summary.json -> backtest.benchmark` / `backtest.active` 仍然只对应主 benchmark。
+1. `is_primary=true` 表示这条 compare benchmark 与主 `benchmark_returns_file` 是同一份文件。
+1. 若启用了 `final_oos`，同样结构会出现在 `summary.json -> final_oos -> backtest -> benchmark_compare`，并写出 `_oos` 版本 CSV。
 
 `summary.json -> backtest -> exposure` 当前会记录一层 best-effort 暴露摘要：
 
@@ -571,6 +598,9 @@ best-effort（可能为空、缺失或未产出文件）：
 | `backtest_net.csv` / `backtest_gross.csv` | `backtest.enabled=true` 且回测成功 | 净/毛收益序列 |
 | `backtest_turnover.csv` / `backtest_periods.csv` | `backtest.enabled=true` 且回测成功 | 回测换手与周期收益 |
 | `backtest_benchmark.csv` / `backtest_active.csv` | 配置了 `backtest.benchmark_symbol` 或 `backtest.benchmark_returns_file`，且数据可用 | 基准与主动收益 |
+| `backtest_report.csv` | `backtest.enabled=true` 且回测成功 | 主回测综合报表：策略净值、相对净值、rolling 1Y/3Y/5Y CAGR / max drawdown |
+| `backtest_benchmark_compare_summary.csv` | 配置了 `backtest.benchmark_compare` | 附加 benchmark 对比摘要 |
+| `backtest_benchmark_compare_<name>.csv` | 配置了 `backtest.benchmark_compare` | 单个附加 benchmark 的详细对比报表 |
 | `backtest_style_exposure.csv` / `backtest_industry_exposure.csv` | 生成了回测持仓且 panel 中存在可解析暴露列 | 风格与行业暴露时序 |
 | `backtest_active_exposure_summary.csv` | 生成了回测暴露结果时 | 一行一个调仓期的主动暴露汇总宽表 |
 | `positions_by_rebalance*.csv` / `positions_current*.csv` | 生成了持仓结果时 | 下游持仓消费/执行衔接 |

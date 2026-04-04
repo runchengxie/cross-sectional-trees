@@ -220,6 +220,15 @@ def build_run_summary_sections(
             "stats": ctx["bt_stats"],
             "benchmark": ctx["bt_benchmark_stats"],
             "active": ctx["bt_active_stats"],
+            "report_file": str(art["backtest_report_path"])
+            if art["backtest_report_path"]
+            else None,
+            "benchmark_compare": {
+                "summary_file": str(art["backtest_benchmark_compare_summary_path"])
+                if art["backtest_benchmark_compare_summary_path"]
+                else None,
+                "benchmarks": art["backtest_benchmark_compare_entries"],
+            },
             "exposure": _build_backtest_exposure_summary(
                 style_path=art["backtest_style_exposure_path"],
                 industry_path=art["backtest_industry_exposure_path"],
@@ -292,6 +301,15 @@ def build_run_summary_sections(
                 "stats": ctx["bt_stats_oos"],
                 "benchmark": ctx["bt_benchmark_stats_oos"],
                 "active": ctx["bt_active_stats_oos"],
+                "report_file": str(art["backtest_report_oos_path"])
+                if art["backtest_report_oos_path"]
+                else None,
+                "benchmark_compare": {
+                    "summary_file": str(art["backtest_benchmark_compare_summary_oos_path"])
+                    if art["backtest_benchmark_compare_summary_oos_path"]
+                    else None,
+                    "benchmarks": art["backtest_benchmark_compare_oos_entries"],
+                },
                 "exposure": _build_backtest_exposure_summary(
                     style_path=art["backtest_style_exposure_oos_path"],
                     industry_path=art["backtest_industry_exposure_oos_path"],

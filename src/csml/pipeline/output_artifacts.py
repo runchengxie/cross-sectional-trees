@@ -6,6 +6,12 @@ from typing import Any, Optional
 
 import pandas as pd
 
+from .backtest_reporting import (
+    build_backtest_report,
+    build_benchmark_compare_entry,
+    build_benchmark_compare_summary_frame,
+    slugify_report_name,
+)
 from .support import _build_rebalance_diff, save_frame, save_parquet, save_series
 
 
@@ -37,9 +43,15 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
         "backtest_style_exposure_path": None,
         "backtest_industry_exposure_path": None,
         "backtest_active_exposure_summary_path": None,
+        "backtest_report_path": None,
+        "backtest_benchmark_compare_summary_path": None,
+        "backtest_benchmark_compare_entries": [],
         "backtest_style_exposure_oos_path": None,
         "backtest_industry_exposure_oos_path": None,
         "backtest_active_exposure_summary_oos_path": None,
+        "backtest_report_oos_path": None,
+        "backtest_benchmark_compare_summary_oos_path": None,
+        "backtest_benchmark_compare_oos_entries": [],
         "live_positions_file": None,
         "live_current_file": None,
     }
@@ -215,6 +227,28 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
                 ctx["bt_active_exposure_summary"],
                 artifacts["backtest_active_exposure_summary_path"],
             )
+        primary_report = build_backtest_report(
+            strategy_returns=ctx["bt_net_series"],
+            periods_per_year=ctx["bt_stats"].get("periods_per_year", float("nan")),
+            benchmark_returns=ctx["bt_benchmark_series"]
+            if not ctx["bt_benchmark_series"].empty
+            else None,
+        )
+        artifacts["backtest_report_path"] = run_dir / "backtest_report.csv"
+        save_frame(primary_report.reset_index(), artifacts["backtest_report_path"])
+        (
+            artifacts["backtest_benchmark_compare_entries"],
+            artifacts["backtest_benchmark_compare_summary_path"],
+        ) = _write_benchmark_compare_outputs(
+            compare_specs=ctx.get("benchmark_compare_specs") or [],
+            strategy_returns=ctx["bt_net_series"],
+            period_info=ctx["bt_periods"],
+            trading_days_per_year=ctx["BACKTEST_TRADING_DAYS_PER_YEAR"],
+            primary_returns_file_path=ctx.get("benchmark_returns_file_path"),
+            run_dir=run_dir,
+            summary_filename="backtest_benchmark_compare_summary.csv",
+            report_prefix="backtest_benchmark_compare",
+        )
 
     if ctx["bt_stats_oos"] is not None:
         save_series(
@@ -273,6 +307,28 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
                 ctx["bt_active_exposure_summary_oos"],
                 artifacts["backtest_active_exposure_summary_oos_path"],
             )
+        primary_report_oos = build_backtest_report(
+            strategy_returns=ctx["bt_net_series_oos"],
+            periods_per_year=ctx["bt_stats_oos"].get("periods_per_year", float("nan")),
+            benchmark_returns=ctx["bt_benchmark_series_oos"]
+            if not ctx["bt_benchmark_series_oos"].empty
+            else None,
+        )
+        artifacts["backtest_report_oos_path"] = run_dir / "backtest_report_oos.csv"
+        save_frame(primary_report_oos.reset_index(), artifacts["backtest_report_oos_path"])
+        (
+            artifacts["backtest_benchmark_compare_oos_entries"],
+            artifacts["backtest_benchmark_compare_summary_oos_path"],
+        ) = _write_benchmark_compare_outputs(
+            compare_specs=ctx.get("benchmark_compare_specs") or [],
+            strategy_returns=ctx["bt_net_series_oos"],
+            period_info=ctx["bt_periods_oos"],
+            trading_days_per_year=ctx["BACKTEST_TRADING_DAYS_PER_YEAR"],
+            primary_returns_file_path=ctx.get("benchmark_returns_file_path"),
+            run_dir=run_dir,
+            summary_filename="backtest_benchmark_compare_summary_oos.csv",
+            report_prefix="backtest_benchmark_compare_oos",
+        )
 
     _write_position_outputs(
         positions=ctx["positions_by_rebalance"],
@@ -363,3 +419,58 @@ def _write_position_outputs(
         diff_path = run_dir / diff_name
         save_frame(diff_frame, diff_path)
         artifacts[diff_key] = diff_path
+
+
+def _write_benchmark_compare_outputs(
+    *,
+    compare_specs: list[dict[str, Any]],
+    strategy_returns: pd.Series,
+    period_info: list[dict[str, Any]],
+    trading_days_per_year: int,
+    primary_returns_file_path: Path | None,
+    run_dir: Path,
+    summary_filename: str,
+    report_prefix: str,
+) -> tuple[list[dict[str, Any]], Path | None]:
+    if not compare_specs:
+        return [], None
+
+    report_entries: list[dict[str, Any]] = []
+    used_slugs: set[str] = set()
+    for spec in compare_specs:
+        entry = build_benchmark_compare_entry(
+            name=spec["name"],
+            returns_file=str(spec["returns_file_path"]),
+            benchmark_return_series=spec["series"],
+            strategy_returns=strategy_returns,
+            period_info=period_info,
+            trading_days_per_year=trading_days_per_year,
+        )
+        slug = slugify_report_name(str(spec["name"]))
+        if slug in used_slugs:
+            suffix = 2
+            while f"{slug}_{suffix}" in used_slugs:
+                suffix += 1
+            slug = f"{slug}_{suffix}"
+        used_slugs.add(slug)
+
+        report_path = run_dir / f"{report_prefix}_{slug}.csv"
+        save_frame(entry["report_frame"].reset_index(), report_path)
+        report_entries.append(
+            {
+                "name": entry["name"],
+                "returns_file": entry["returns_file"],
+                "is_primary": bool(
+                    primary_returns_file_path is not None
+                    and Path(entry["returns_file"]) == primary_returns_file_path
+                ),
+                "aligned_periods": entry["aligned_periods"],
+                "benchmark": entry["benchmark"],
+                "active": entry["active"],
+                "report_file": str(report_path),
+            }
+        )
+
+    summary_path = run_dir / summary_filename
+    save_frame(build_benchmark_compare_summary_frame(report_entries), summary_path)
+    return report_entries, summary_path

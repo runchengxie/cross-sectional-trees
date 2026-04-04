@@ -1,0 +1,272 @@
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from ..backtest import summarize_period_returns
+from ..metrics import summarize_active_returns
+from .eval import build_benchmark_series
+
+_ROLLING_REPORT_YEARS: tuple[int, ...] = (1, 3, 5)
+_SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
+
+
+def slugify_report_name(name: str) -> str:
+    text = str(name).strip().lower()
+    if not text:
+        return "benchmark"
+    slug = _SLUG_PATTERN.sub("_", text).strip("_")
+    return slug or "benchmark"
+
+
+def build_backtest_report(
+    *,
+    strategy_returns: pd.Series,
+    periods_per_year: float,
+    benchmark_returns: pd.Series | None = None,
+) -> pd.DataFrame:
+    strategy = _prepare_series(strategy_returns, "strategy_return")
+    if strategy.empty:
+        return pd.DataFrame(
+            columns=[
+                "trade_date",
+                "strategy_return",
+                "strategy_nav",
+                "benchmark_return",
+                "benchmark_nav",
+                "active_return",
+                "relative_nav",
+                *[
+                    column
+                    for years in _ROLLING_REPORT_YEARS
+                    for column in (
+                        f"strategy_rolling_cagr_{years}y",
+                        f"strategy_rolling_max_drawdown_{years}y",
+                    )
+                ],
+            ]
+        )
+
+    frame = pd.DataFrame(index=strategy.index)
+    frame["strategy_return"] = strategy
+    frame["strategy_nav"] = (1.0 + strategy).cumprod()
+
+    if benchmark_returns is not None:
+        benchmark = _prepare_series(benchmark_returns, "benchmark_return")
+        if not benchmark.empty:
+            frame["benchmark_return"] = benchmark.reindex(frame.index)
+            benchmark_nav = (1.0 + benchmark).cumprod()
+            frame["benchmark_nav"] = benchmark_nav.reindex(frame.index)
+            frame["active_return"] = frame["strategy_return"] - frame["benchmark_return"]
+            frame["relative_nav"] = frame["strategy_nav"] / frame["benchmark_nav"]
+    for column in ("benchmark_return", "benchmark_nav", "active_return", "relative_nav"):
+        if column not in frame.columns:
+            frame[column] = np.nan
+
+    for years in _ROLLING_REPORT_YEARS:
+        cagr_col = f"strategy_rolling_cagr_{years}y"
+        mdd_col = f"strategy_rolling_max_drawdown_{years}y"
+        frame[cagr_col] = _rolling_cagr(strategy, periods_per_year=periods_per_year, years=years)
+        frame[mdd_col] = _rolling_max_drawdown(
+            strategy,
+            periods_per_year=periods_per_year,
+            years=years,
+        )
+
+    frame.index.name = "trade_date"
+    return frame
+
+
+def build_benchmark_compare_entry(
+    *,
+    name: str,
+    returns_file: str,
+    benchmark_return_series: pd.Series,
+    strategy_returns: pd.Series,
+    period_info: list[dict[str, Any]],
+    trading_days_per_year: int,
+) -> dict[str, Any]:
+    benchmark_series, benchmark_periods = build_benchmark_series(
+        benchmark_df=None,
+        entry_price_col="",
+        exit_price_col="",
+        period_info=period_info,
+        benchmark_return_series=benchmark_return_series,
+    )
+    benchmark_series = _prepare_series(benchmark_series, "benchmark_return")
+
+    benchmark_stats = (
+        summarize_period_returns(
+            benchmark_series,
+            benchmark_periods,
+            trading_days_per_year,
+        )
+        if not benchmark_series.empty
+        else None
+    )
+    periods_per_year = _extract_periods_per_year(benchmark_stats)
+    if not np.isfinite(periods_per_year):
+        periods_per_year = _infer_periods_per_year(strategy_returns, period_info)
+
+    active_stats, active_series = summarize_active_returns(
+        strategy_returns,
+        benchmark_series,
+        periods_per_year,
+    )
+    report_frame = build_backtest_report(
+        strategy_returns=strategy_returns,
+        periods_per_year=periods_per_year,
+        benchmark_returns=benchmark_series,
+    )
+
+    return {
+        "name": str(name),
+        "returns_file": str(returns_file),
+        "aligned_periods": int(benchmark_series.shape[0]),
+        "benchmark": benchmark_stats,
+        "active": active_stats,
+        "report_frame": report_frame,
+        "active_series": active_series,
+    }
+
+
+def build_benchmark_compare_summary_frame(
+    entries: Sequence[Mapping[str, Any]],
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for entry in entries:
+        benchmark_stats = entry.get("benchmark")
+        active_stats = entry.get("active")
+        rows.append(
+            {
+                "name": entry.get("name"),
+                "returns_file": entry.get("returns_file"),
+                "is_primary": bool(entry.get("is_primary", False)),
+                "aligned_periods": entry.get("aligned_periods"),
+                "benchmark_total_return": _metric_value(benchmark_stats, "total_return"),
+                "benchmark_ann_return": _metric_value(benchmark_stats, "ann_return"),
+                "benchmark_ann_vol": _metric_value(benchmark_stats, "ann_vol"),
+                "benchmark_sharpe": _metric_value(benchmark_stats, "sharpe"),
+                "benchmark_max_drawdown": _metric_value(benchmark_stats, "max_drawdown"),
+                "active_tracking_error": _metric_value(active_stats, "tracking_error"),
+                "active_information_ratio": _metric_value(active_stats, "information_ratio"),
+                "active_beta": _metric_value(active_stats, "beta"),
+                "active_alpha": _metric_value(active_stats, "alpha"),
+                "active_corr": _metric_value(active_stats, "corr"),
+                "active_total_return": _metric_value(active_stats, "active_total_return"),
+                "report_file": entry.get("report_file"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _prepare_series(series: pd.Series | None, name: str) -> pd.Series:
+    if series is None:
+        return pd.Series(dtype=float, name=name)
+    work = series.copy()
+    work.index = pd.to_datetime(work.index, errors="coerce")
+    work = work[work.index.notna()]
+    work = work.sort_index()
+    work = pd.to_numeric(work, errors="coerce")
+    work = work[work.notna()].astype(float)
+    work.name = name
+    return work
+
+
+def _rolling_window_obs(*, periods_per_year: float, years: int) -> int | None:
+    if not np.isfinite(periods_per_year) or periods_per_year <= 0:
+        return None
+    window_obs = int(round(float(periods_per_year) * float(years)))
+    if window_obs <= 0:
+        return None
+    return window_obs
+
+
+def _rolling_cagr(
+    returns: pd.Series,
+    *,
+    periods_per_year: float,
+    years: int,
+) -> pd.Series:
+    window_obs = _rolling_window_obs(periods_per_year=periods_per_year, years=years)
+    if window_obs is None or returns.empty:
+        return pd.Series(np.nan, index=returns.index, dtype=float)
+    growth = (1.0 + returns).rolling(window_obs, min_periods=window_obs).apply(
+        np.prod,
+        raw=True,
+    )
+    annualization = float(periods_per_year) / float(window_obs)
+    values = growth.pow(annualization) - 1.0
+    return values.astype(float)
+
+
+def _rolling_max_drawdown(
+    returns: pd.Series,
+    *,
+    periods_per_year: float,
+    years: int,
+) -> pd.Series:
+    window_obs = _rolling_window_obs(periods_per_year=periods_per_year, years=years)
+    if window_obs is None or returns.empty:
+        return pd.Series(np.nan, index=returns.index, dtype=float)
+    return returns.rolling(window_obs, min_periods=window_obs).apply(
+        _window_max_drawdown,
+        raw=True,
+    )
+
+
+def _window_max_drawdown(values: np.ndarray) -> float:
+    if values.size == 0:
+        return np.nan
+    nav = np.cumprod(1.0 + values)
+    running_max = np.maximum.accumulate(nav)
+    drawdown = nav / running_max - 1.0
+    return float(np.min(drawdown))
+
+
+def _extract_periods_per_year(stats: Mapping[str, Any] | None) -> float:
+    if not isinstance(stats, Mapping):
+        return np.nan
+    value = stats.get("periods_per_year")
+    try:
+        periods_per_year = float(value)
+    except (TypeError, ValueError):
+        return np.nan
+    return periods_per_year if np.isfinite(periods_per_year) and periods_per_year > 0 else np.nan
+
+
+def _infer_periods_per_year(
+    strategy_returns: pd.Series,
+    period_info: list[dict[str, Any]],
+) -> float:
+    strategy = _prepare_series(strategy_returns, "strategy_return")
+    if strategy.empty:
+        return np.nan
+    if period_info:
+        holding_lengths = [
+            float(info["exit_idx"] - info["entry_idx"])
+            for info in period_info
+            if info.get("entry_idx") is not None and info.get("exit_idx") is not None
+        ]
+        if holding_lengths:
+            avg_holding = float(np.mean(holding_lengths))
+            if np.isfinite(avg_holding) and avg_holding > 0:
+                return float(252.0 / avg_holding)
+    if strategy.shape[0] < 2:
+        return np.nan
+    start = strategy.index.min()
+    end = strategy.index.max()
+    total_days = float((end - start).days)
+    if total_days <= 0:
+        return np.nan
+    return float(strategy.shape[0] / (total_days / 365.25))
+
+
+def _metric_value(stats: Mapping[str, Any] | None, key: str) -> Any:
+    if not isinstance(stats, Mapping):
+        return None
+    return stats.get(key)

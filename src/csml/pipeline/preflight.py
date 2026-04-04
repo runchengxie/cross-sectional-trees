@@ -184,6 +184,7 @@ def resolve_effective_data_inputs(
     features = list(runtime_settings["FEATURES"])
     backtest_benchmark = runtime_settings["BACKTEST_BENCHMARK"]
     backtest_benchmark_returns_file = runtime_settings["BACKTEST_BENCHMARK_RETURNS_FILE"]
+    backtest_benchmark_compare = runtime_settings["BACKTEST_BENCHMARK_COMPARE"]
 
     fundamentals_file_path: Path | None = None
     industry_file_path: Path | None = None
@@ -266,6 +267,22 @@ def resolve_effective_data_inputs(
         if benchmark_returns_file_path is not None
         else pd.Series(dtype=float, name="benchmark_return")
     )
+    benchmark_compare_specs: list[dict[str, Any]] = []
+    for spec in backtest_benchmark_compare:
+        returns_file_path = resolve_repo_path(spec["returns_file"])
+        series = (
+            benchmark_return_series.copy()
+            if benchmark_returns_file_path is not None
+            and returns_file_path == benchmark_returns_file_path
+            else load_benchmark_return_series(returns_file_path)
+        )
+        benchmark_compare_specs.append(
+            {
+                "name": spec["name"],
+                "returns_file_path": returns_file_path,
+                "series": series,
+            }
+        )
 
     effective_runtime_settings.update(
         {
@@ -282,4 +299,5 @@ def resolve_effective_data_inputs(
         "benchmark_symbol": benchmark_symbol,
         "benchmark_returns_file_path": benchmark_returns_file_path,
         "benchmark_return_series": benchmark_return_series,
+        "benchmark_compare_specs": benchmark_compare_specs,
     }

@@ -51,6 +51,16 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
     eval_cfg = ctx.get("eval_cfg") if isinstance(ctx.get("eval_cfg"), Mapping) else {}
     live_cfg = ctx.get("live_cfg") if isinstance(ctx.get("live_cfg"), Mapping) else {}
     rq_cfg = data_cfg.get("rqdata") if isinstance(data_cfg.get("rqdata"), Mapping) else {}
+    benchmark_compare_cfg = (
+        ctx.get("BACKTEST_BENCHMARK_COMPARE")
+        if isinstance(ctx.get("BACKTEST_BENCHMARK_COMPARE"), list)
+        else []
+    )
+    benchmark_compare_files = [
+        item.get("returns_file")
+        for item in benchmark_compare_cfg
+        if isinstance(item, Mapping) and item.get("returns_file")
+    ]
 
     raw_inputs = {
         "cache_dir": ctx.get("CACHE_DIR"),
@@ -80,6 +90,16 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         )
         if path is not None
     }
+    if benchmark_compare_files:
+        resolved_compare_files = [
+            str(path)
+            for path in (
+                _resolve_input_path(value) for value in benchmark_compare_files
+            )
+            if path is not None
+        ]
+        if resolved_compare_files:
+            resolved_inputs["benchmark_compare_returns_files"] = resolved_compare_files
     return {
         "artifacts_root": str(ctx.get("ARTIFACTS_ROOT")) if ctx.get("ARTIFACTS_ROOT") else None,
         "run_dir": str(ctx["run_dir"]),
