@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import logging
 import math
 import re
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Sequence
@@ -18,7 +17,24 @@ import pandas as pd
 from ..data_tools.symbols import ensure_symbol_columns
 from ..pipeline.quality import enforce_liveops_quality_gate
 from . import alloc as base_alloc
+from . import alloc_hk_reporting as reporting
 from . import holdings
+from .alloc_hk_settings import (
+    dedupe_preserve_order as _dedupe_preserve_order,
+    nested_mapping as _nested_mapping,
+    parse_args as _parse_args,
+    parse_bool as _parse_bool,
+    parse_float_list as _parse_float_list,
+    parse_int_list as _parse_int_list,
+    resolve_scenarios as _resolve_scenarios,
+    resolve_settings as _resolve_settings,
+)
+from .alloc_hk_types import (
+    HkAllocSettings,
+    MarketDataBundle,
+    ScenarioReport,
+    SelectedTicker,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,243 +71,7 @@ STOCK_CONNECT_FALSE_VALUES: set[str] = {
 }
 
 
-VALUATION_CN_MAP: dict[str, str] = {
-    "LOW": "偏低",
-    "NEUTRAL": "中性",
-    "HIGH": "偏高",
-    "EXTREME": "极高",
-    "NA": "NA",
-}
-
-PRICE_SOURCE_CN_MAP: dict[str, str] = {
-    "snapshot": "快照最新价",
-    "1m_close": "1分钟收盘",
-    "1d_close": "日线收盘",
-    "mixed": "混合",
-}
-
-SIDE_CN_MAP: dict[str, str] = {
-    "long": "多头",
-    "short": "空头",
-    "all": "全部",
-}
-
-ALLOCATION_METHOD_CN_MAP: dict[str, str] = {
-    "equal": "等权",
-    "custom": "自定义权重",
-}
-
-ALLOCATION_EXPORT_ORDER: list[str] = [
-    "symbol",
-    "name",
-    "side",
-    "rank",
-    "signal",
-    "weight",
-    "lots",
-    "price",
-    "valuation",
-    "overpriced_high",
-    "order_book_id",
-    "tradable",
-    "stock_connect",
-    "price_source",
-    "pricing_date",
-    "round_lot",
-    "lot_cost",
-    "target_value",
-    "lots_base",
-    "lots_extra",
-    "shares",
-    "est_value",
-    "gap_to_target",
-    "gap_ratio",
-    "pct_1y",
-    "z_1y",
-    "overpriced_low",
-    "overpriced_range",
-]
-
-ALLOCATION_EXPORT_RENAME: dict[str, str] = {
-    "symbol": "股票代码",
-    "name": "名称",
-    "side": "方向",
-    "rank": "信号排名",
-    "signal": "信号强度",
-    "weight": "权重",
-    "order_book_id": "查询代码",
-    "tradable": "可交易",
-    "stock_connect": "港股通",
-    "price_source": "价格来源",
-    "pricing_date": "定价日期",
-    "price": "当前价格",
-    "round_lot": "每手股数",
-    "lot_cost": "每手成本",
-    "target_value": "目标金额",
-    "lots_base": "初始手数",
-    "lots_extra": "补仓手数",
-    "lots": "合计手数",
-    "shares": "股数",
-    "est_value": "预计金额",
-    "gap_to_target": "与目标差额",
-    "gap_ratio": "偏离比例",
-    "valuation": "估值分层",
-    "pct_1y": "1年分位",
-    "z_1y": "1年Z分",
-    "overpriced_low": "统计高位下沿(未复权)",
-    "overpriced_high": "统计高位上沿(未复权)",
-    "overpriced_range": "统计高位区间(未复权)",
-}
-
-SUMMARY_EXPORT_ORDER: list[str] = [
-    "scenario_id",
-    "scenario_capital",
-    "scenario_top_n",
-    "as_of",
-    "pricing_date",
-    "pricing_source",
-    "pricing_source_detail",
-    "selected_n",
-    "total_capital",
-    "allocation_method",
-    "require_stock_connect",
-    "total_est_value",
-    "total_gap",
-    "cash_used_ratio",
-    "secondary_fill_enabled",
-    "secondary_fill_steps",
-    "secondary_fill_spent",
-    "secondary_fill_fee_spent",
-    "secondary_fill_cash_buffer",
-    "secondary_fill_budget_after_buffer",
-    "cash_remaining_after_fill",
-]
-
-SUMMARY_EXPORT_RENAME: dict[str, str] = {
-    "scenario_id": "场景",
-    "scenario_capital": "场景资金",
-    "scenario_top_n": "场景TopN",
-    "as_of": "统计日期",
-    "pricing_date": "定价日期",
-    "pricing_source": "价格来源",
-    "pricing_source_detail": "价格来源明细",
-    "selected_n": "标的数量",
-    "total_capital": "总资金",
-    "allocation_method": "分配方式",
-    "require_stock_connect": "要求港股通",
-    "total_est_value": "预计总金额",
-    "total_gap": "总差额",
-    "cash_used_ratio": "资金使用率",
-    "secondary_fill_enabled": "启用二次补仓",
-    "secondary_fill_steps": "补仓步数",
-    "secondary_fill_spent": "补仓金额",
-    "secondary_fill_fee_spent": "补仓估算费用",
-    "secondary_fill_cash_buffer": "补仓现金缓冲",
-    "secondary_fill_budget_after_buffer": "补仓可用资金",
-    "cash_remaining_after_fill": "补仓后剩余现金",
-}
-
-SELL_SIGNALS_EXPORT_ORDER: list[str] = [
-    "symbol",
-    "name",
-    "side",
-    "rank",
-    "signal",
-    "weight",
-    "close_pre",
-    "valuation",
-    "sell_trigger",
-    "extreme_trigger",
-    "last_sell_signal_date",
-    "pct_1y",
-    "z_1y",
-    "order_book_id",
-    "as_of",
-]
-
-SELL_SIGNALS_EXPORT_RENAME: dict[str, str] = {
-    "symbol": "股票代码",
-    "name": "名称",
-    "side": "方向",
-    "rank": "信号排名",
-    "signal": "信号强度",
-    "weight": "权重",
-    "order_book_id": "查询代码",
-    "as_of": "统计日期",
-    "close_pre": "前复权收盘价",
-    "pct_1y": "1年分位",
-    "z_1y": "1年Z分",
-    "sell_trigger": "偏高阈值",
-    "extreme_trigger": "极高阈值",
-    "last_sell_signal_date": "最近卖出信号日期",
-    "valuation": "估值分层",
-}
-
-
-@dataclass(frozen=True)
-class HkAllocSettings:
-    cash: float = 1_000_000.0
-    method: str = "equal"
-    require_stock_connect: bool = True
-    history_years: int = 3
-    roll_window: int = 252
-    sell_quantile: float = 0.95
-    extreme_quantile: float = 0.99
-    secondary_fill_enabled: bool = True
-    secondary_fill_avoid_high_valuation: bool = True
-    secondary_fill_avoid_high_valuation_strict: bool = False
-    secondary_fill_max_steps: int = 5000
-    secondary_fill_allow_over_alloc: bool = False
-    secondary_fill_max_over_alloc_ratio: float = 0.0
-    secondary_fill_max_over_alloc_amount: float = 0.0
-    secondary_fill_max_over_alloc_lots_per_ticker: int = 1
-    secondary_fill_cash_buffer_ratio: float = 0.0
-    secondary_fill_cash_buffer_amount: float = 0.0
-    secondary_fill_estimated_fee_per_order: float = 0.0
-
-
-@dataclass(frozen=True)
-class SelectedTicker:
-    symbol: str
-    name: str | None = None
-    weight: float | None = None
-    rank: int | None = None
-    signal: float | None = None
-    side: str = "long"
-
-
-@dataclass(frozen=True)
-class ScenarioReport:
-    scenario_id: str
-    allocation_df: pd.DataFrame
-    summary_df: pd.DataFrame
-    sell_signals_df: pd.DataFrame
-
-
-@dataclass(frozen=True)
-class MarketDataBundle:
-    symbols: tuple[str, ...]
-    order_book_ids: tuple[str, ...]
-    symbol_to_oid: dict[str, str]
-    instruments_df: pd.DataFrame
-    latest_prices: pd.DataFrame
-    close_none: pd.DataFrame
-    close_pre: pd.DataFrame
-
-
-def _parse_bool(value: Any, default: bool) -> bool:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    text = str(value).strip().lower()
-    if text in {"true", "1", "yes", "y", "是"}:
-        return True
-    if text in {"false", "0", "no", "n", "否"}:
-        return False
-    return default
+VALUATION_CN_MAP = reporting.VALUATION_CN_MAP
 
 
 def safe_float(value: Any) -> float:
@@ -384,222 +164,6 @@ def _to_date(value: Any) -> date:
     if isinstance(value, date):
         return value
     return pd.to_datetime(value).date()
-
-
-def _nested_mapping(mapping: Any, *keys: str) -> dict[str, Any]:
-    current = mapping if isinstance(mapping, dict) else {}
-    for key in keys:
-        next_value = current.get(key) if isinstance(current, dict) else {}
-        current = next_value if isinstance(next_value, dict) else {}
-    return current
-
-
-def _parse_float_list(values: Sequence[Any] | None) -> list[float]:
-    if values is None:
-        return []
-    items: list[float] = []
-    for entry in values:
-        if isinstance(entry, str):
-            parts: Sequence[Any] = entry.split(",")
-        else:
-            parts = [entry]
-        for part in parts:
-            text = str(part).strip()
-            if not text:
-                continue
-            items.append(float(text))
-    return items
-
-
-def _parse_int_list(values: Sequence[Any] | None) -> list[int]:
-    if values is None:
-        return []
-    items: list[int] = []
-    for entry in values:
-        if isinstance(entry, str):
-            parts: Sequence[Any] = entry.split(",")
-        else:
-            parts = [entry]
-        for part in parts:
-            text = str(part).strip()
-            if not text:
-                continue
-            items.append(int(text))
-    return items
-
-
-def _dedupe_preserve_order(values: Sequence[Any]) -> list[Any]:
-    return list(dict.fromkeys(values))
-
-
-def _resolve_settings(args: argparse.Namespace) -> tuple[dict[str, Any], HkAllocSettings]:
-    cfg = base_alloc._load_config(getattr(args, "config", None))
-    hk_cfg = _nested_mapping(cfg, "live", "alloc_hk")
-    valuation_cfg = hk_cfg.get("valuation") if isinstance(hk_cfg.get("valuation"), dict) else {}
-    fill_cfg = hk_cfg.get("secondary_fill") if isinstance(hk_cfg.get("secondary_fill"), dict) else {}
-
-    settings = HkAllocSettings(
-        cash=float(args.cash) if args.cash is not None else float(hk_cfg.get("cash", 1_000_000.0)),
-        method=str(args.method or hk_cfg.get("method", "equal")).strip().lower(),
-        require_stock_connect=(
-            _parse_bool(args.require_stock_connect, True)
-            if args.require_stock_connect is not None
-            else _parse_bool(hk_cfg.get("require_stock_connect"), True)
-        ),
-        history_years=(
-            int(args.history_years)
-            if args.history_years is not None
-            else int(valuation_cfg.get("history_years", 3))
-        ),
-        roll_window=(
-            int(args.roll_window)
-            if args.roll_window is not None
-            else int(valuation_cfg.get("roll_window", 252))
-        ),
-        sell_quantile=(
-            float(args.sell_quantile)
-            if args.sell_quantile is not None
-            else float(valuation_cfg.get("sell_quantile", 0.95))
-        ),
-        extreme_quantile=(
-            float(args.extreme_quantile)
-            if args.extreme_quantile is not None
-            else float(valuation_cfg.get("extreme_quantile", 0.99))
-        ),
-        secondary_fill_enabled=(
-            _parse_bool(args.secondary_fill_enabled, True)
-            if args.secondary_fill_enabled is not None
-            else _parse_bool(fill_cfg.get("enabled"), True)
-        ),
-        secondary_fill_avoid_high_valuation=(
-            _parse_bool(args.avoid_high_valuation, True)
-            if args.avoid_high_valuation is not None
-            else _parse_bool(fill_cfg.get("avoid_high_valuation"), True)
-        ),
-        secondary_fill_avoid_high_valuation_strict=(
-            _parse_bool(args.avoid_high_valuation_strict, False)
-            if args.avoid_high_valuation_strict is not None
-            else _parse_bool(fill_cfg.get("avoid_high_valuation_strict"), False)
-        ),
-        secondary_fill_max_steps=(
-            int(args.max_steps)
-            if args.max_steps is not None
-            else int(fill_cfg.get("max_steps", 5000))
-        ),
-        secondary_fill_allow_over_alloc=(
-            _parse_bool(args.allow_over_alloc, False)
-            if args.allow_over_alloc is not None
-            else _parse_bool(fill_cfg.get("allow_over_alloc"), False)
-        ),
-        secondary_fill_max_over_alloc_ratio=(
-            float(args.max_over_alloc_ratio)
-            if args.max_over_alloc_ratio is not None
-            else float(fill_cfg.get("max_over_alloc_ratio", 0.0))
-        ),
-        secondary_fill_max_over_alloc_amount=(
-            float(args.max_over_alloc_amount)
-            if args.max_over_alloc_amount is not None
-            else float(fill_cfg.get("max_over_alloc_amount", 0.0))
-        ),
-        secondary_fill_max_over_alloc_lots_per_ticker=(
-            int(args.max_over_alloc_lots_per_ticker)
-            if args.max_over_alloc_lots_per_ticker is not None
-            else int(fill_cfg.get("max_over_alloc_lots_per_ticker", 1))
-        ),
-        secondary_fill_cash_buffer_ratio=(
-            float(args.cash_buffer_ratio)
-            if args.cash_buffer_ratio is not None
-            else float(fill_cfg.get("cash_buffer_ratio", 0.0))
-        ),
-        secondary_fill_cash_buffer_amount=(
-            float(args.cash_buffer_amount)
-            if args.cash_buffer_amount is not None
-            else float(fill_cfg.get("cash_buffer_amount", 0.0))
-        ),
-        secondary_fill_estimated_fee_per_order=(
-            float(args.estimated_fee_per_order)
-            if args.estimated_fee_per_order is not None
-            else float(fill_cfg.get("estimated_fee_per_order", 0.0))
-        ),
-    )
-
-    if settings.cash <= 0:
-        raise SystemExit("--cash must be positive.")
-    if settings.method not in {"equal", "custom"}:
-        raise SystemExit("--method must be one of: equal, custom.")
-    if settings.history_years <= 0:
-        raise SystemExit("history_years must be > 0.")
-    if settings.roll_window <= 1:
-        raise SystemExit("roll_window must be > 1.")
-    if not (0.0 < settings.sell_quantile < 1.0):
-        raise SystemExit("sell_quantile must be in (0, 1).")
-    if not (0.0 < settings.extreme_quantile < 1.0):
-        raise SystemExit("extreme_quantile must be in (0, 1).")
-    if settings.sell_quantile >= settings.extreme_quantile:
-        raise SystemExit("sell_quantile must be less than extreme_quantile.")
-    if settings.secondary_fill_max_steps <= 0:
-        raise SystemExit("secondary_fill.max_steps must be > 0.")
-    if settings.secondary_fill_max_over_alloc_ratio < 0:
-        raise SystemExit("secondary_fill.max_over_alloc_ratio must be >= 0.")
-    if settings.secondary_fill_max_over_alloc_amount < 0:
-        raise SystemExit("secondary_fill.max_over_alloc_amount must be >= 0.")
-    if settings.secondary_fill_max_over_alloc_lots_per_ticker < 0:
-        raise SystemExit("secondary_fill.max_over_alloc_lots_per_ticker must be >= 0.")
-    if settings.secondary_fill_cash_buffer_ratio < 0:
-        raise SystemExit("secondary_fill.cash_buffer_ratio must be >= 0.")
-    if settings.secondary_fill_cash_buffer_amount < 0:
-        raise SystemExit("secondary_fill.cash_buffer_amount must be >= 0.")
-    if settings.secondary_fill_estimated_fee_per_order < 0:
-        raise SystemExit("secondary_fill.estimated_fee_per_order must be >= 0.")
-    if (
-        settings.secondary_fill_allow_over_alloc
-        and settings.secondary_fill_max_over_alloc_lots_per_ticker == 0
-    ):
-        raise SystemExit(
-            "secondary_fill.max_over_alloc_lots_per_ticker must be > 0 when allow_over_alloc=true."
-        )
-
-    return cfg, settings
-
-
-def _resolve_scenarios(
-    args: argparse.Namespace,
-    *,
-    cfg: dict[str, Any],
-    settings: HkAllocSettings,
-) -> tuple[tuple[float, ...], tuple[int, ...]]:
-    scenarios_cfg = _nested_mapping(cfg, "live", "alloc_hk", "scenarios")
-    raw_capitals: Sequence[Any] | None = args.scenario_capital
-    raw_top_ns: Sequence[Any] | None = args.scenario_top_n
-
-    if raw_capitals is None:
-        cfg_capitals = scenarios_cfg.get("capitals")
-        if isinstance(cfg_capitals, (list, tuple)):
-            raw_capitals = list(cfg_capitals)
-    if raw_top_ns is None:
-        cfg_top_ns = scenarios_cfg.get("top_ns")
-        if isinstance(cfg_top_ns, (list, tuple)):
-            raw_top_ns = list(cfg_top_ns)
-
-    capitals = _parse_float_list(raw_capitals) if raw_capitals is not None else [settings.cash]
-    top_ns = _parse_int_list(raw_top_ns) if raw_top_ns is not None else [args.top_n]
-
-    if not capitals:
-        capitals = [settings.cash]
-    if not top_ns:
-        top_ns = [args.top_n]
-
-    capitals = _dedupe_preserve_order(capitals)
-    top_ns = _dedupe_preserve_order(top_ns)
-
-    for idx, capital in enumerate(capitals):
-        if capital <= 0:
-            raise SystemExit(f"scenario capital at index {idx} must be > 0.")
-    for idx, top_n in enumerate(top_ns):
-        if top_n <= 0:
-            raise SystemExit(f"scenario top_n at index {idx} must be > 0.")
-
-    return tuple(float(value) for value in capitals), tuple(int(value) for value in top_ns)
 
 
 def _selection_to_tickers(selection: pd.DataFrame) -> list[SelectedTicker]:
@@ -1578,121 +1142,64 @@ def build_sell_signals(
 
 
 def _to_yes_no(value: Any) -> str:
-    if isinstance(value, bool):
-        return "是" if value else "否"
-    if _is_missing_value(value):
-        return "否"
-    text = str(value).strip().lower()
-    if text in {"true", "1", "yes", "y", "是"}:
-        return "是"
-    if text in {"false", "0", "no", "n", "否"}:
-        return "否"
-    return str(value)
+    return reporting.to_yes_no(value, is_missing_value_fn=_is_missing_value)
 
 
 def _format_stock_connect(value: Any) -> str:
-    if isinstance(value, (list, tuple, set)):
-        tokens = {str(item).strip().lower() for item in value if not _is_missing_value(item)}
-        if "sh" in tokens and "sz" in tokens:
-            return "沪/深"
-        if "sh" in tokens:
-            return "沪"
-        if "sz" in tokens:
-            return "深"
-        return "是" if len(tokens) > 0 else "否"
-    return "是" if _is_stock_connect_tradable(value) else "否"
+    return reporting.format_stock_connect(
+        value,
+        is_missing_value_fn=_is_missing_value,
+        is_stock_connect_tradable_fn=_is_stock_connect_tradable,
+    )
 
 
 def _localize_price_source(value: Any) -> str:
-    text = str(value).strip() if not _is_missing_value(value) else ""
-    return PRICE_SOURCE_CN_MAP.get(text, text or "未知")
+    return reporting.localize_price_source(value, is_missing_value_fn=_is_missing_value)
 
 
 def _localize_side(value: Any) -> str:
-    text = str(value).strip().lower() if not _is_missing_value(value) else ""
-    return SIDE_CN_MAP.get(text, text or "")
+    return reporting.localize_side(value, is_missing_value_fn=_is_missing_value)
 
 
 def _localize_allocation_method(value: Any) -> str:
-    text = str(value).strip().lower() if not _is_missing_value(value) else ""
-    return ALLOCATION_METHOD_CN_MAP.get(text, text or "")
+    return reporting.localize_allocation_method(
+        value,
+        is_missing_value_fn=_is_missing_value,
+    )
 
 
 def _prepare_allocation_export_df(allocation_df: pd.DataFrame) -> pd.DataFrame:
-    out = allocation_df.copy()
-    if "tradable" in out.columns:
-        out["tradable"] = out["tradable"].map(_to_yes_no)
-    if "stock_connect" in out.columns:
-        out["stock_connect"] = out["stock_connect"].map(_format_stock_connect)
-    if "valuation" in out.columns:
-        out["valuation"] = out["valuation"].map(lambda x: VALUATION_CN_MAP.get(str(x), str(x)))
-    if "price_source" in out.columns:
-        out["price_source"] = out["price_source"].map(_localize_price_source)
-    if "side" in out.columns:
-        out["side"] = out["side"].map(_localize_side)
-
-    ordered_cols = [col for col in ALLOCATION_EXPORT_ORDER if col in out.columns]
-    extra_cols = [col for col in out.columns if col not in ordered_cols]
-    out = out[ordered_cols + extra_cols]
-    return out.rename(columns=ALLOCATION_EXPORT_RENAME)
+    return reporting.prepare_allocation_export_df(
+        allocation_df,
+        to_yes_no_fn=_to_yes_no,
+        format_stock_connect_fn=_format_stock_connect,
+        localize_price_source_fn=_localize_price_source,
+        localize_side_fn=_localize_side,
+    )
 
 
 def _prepare_summary_export_df(summary_df: pd.DataFrame) -> pd.DataFrame:
-    out = summary_df.copy()
-    if "pricing_source" in out.columns:
-        out["pricing_source"] = out["pricing_source"].map(_localize_price_source)
-    if "secondary_fill_enabled" in out.columns:
-        out["secondary_fill_enabled"] = out["secondary_fill_enabled"].map(_to_yes_no)
-    if "require_stock_connect" in out.columns:
-        out["require_stock_connect"] = out["require_stock_connect"].map(_to_yes_no)
-    if "allocation_method" in out.columns:
-        out["allocation_method"] = out["allocation_method"].map(_localize_allocation_method)
-
-    ordered_cols = [col for col in SUMMARY_EXPORT_ORDER if col in out.columns]
-    extra_cols = [col for col in out.columns if col not in ordered_cols]
-    out = out[ordered_cols + extra_cols]
-    return out.rename(columns=SUMMARY_EXPORT_RENAME)
+    return reporting.prepare_summary_export_df(
+        summary_df,
+        to_yes_no_fn=_to_yes_no,
+        localize_price_source_fn=_localize_price_source,
+        localize_allocation_method_fn=_localize_allocation_method,
+    )
 
 
 def _prepare_sell_signals_export_df(sell_signals_df: pd.DataFrame) -> pd.DataFrame:
-    out = sell_signals_df.copy()
-    if "valuation" in out.columns:
-        out["valuation"] = out["valuation"].map(lambda x: VALUATION_CN_MAP.get(str(x), str(x)))
-    if "side" in out.columns:
-        out["side"] = out["side"].map(_localize_side)
-
-    ordered_cols = [col for col in SELL_SIGNALS_EXPORT_ORDER if col in out.columns]
-    extra_cols = [col for col in out.columns if col not in ordered_cols]
-    out = out[ordered_cols + extra_cols]
-    return out.rename(columns=SELL_SIGNALS_EXPORT_RENAME)
+    return reporting.prepare_sell_signals_export_df(
+        sell_signals_df,
+        localize_side_fn=_localize_side,
+    )
 
 
 def _import_openpyxl() -> Any:
-    try:
-        return importlib.import_module("openpyxl")
-    except ImportError as exc:
-        raise SystemExit(
-            "openpyxl is required for --format xlsx. Install with: uv sync --extra liveops-hk"
-        ) from exc
+    return reporting.import_openpyxl()
 
 
 def _make_unique_sheet_name(raw_name: str, existing: set[str]) -> str:
-    safe = re.sub(r"[:\\\\/?*\\[\\]]", "_", str(raw_name)).strip()
-    safe = safe or "Sheet"
-    safe = safe[:31]
-    if safe not in existing:
-        existing.add(safe)
-        return safe
-
-    base = safe
-    counter = 2
-    while True:
-        suffix = f"_{counter}"
-        candidate = f"{base[: max(31 - len(suffix), 1)]}{suffix}"
-        if candidate not in existing:
-            existing.add(candidate)
-            return candidate
-        counter += 1
+    return reporting.make_unique_sheet_name(raw_name, existing)
 
 
 def write_xlsx_report(
@@ -1701,154 +1208,56 @@ def write_xlsx_report(
     summary_df: pd.DataFrame,
     sell_signals_df: pd.DataFrame,
 ) -> Path:
-    _import_openpyxl()
-    allocation_export = _prepare_allocation_export_df(allocation_df)
-    summary_export = _prepare_summary_export_df(summary_df)
-    sell_signals_export = _prepare_sell_signals_export_df(sell_signals_df)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        allocation_export.to_excel(writer, sheet_name="分配", index=False)
-        summary_export.to_excel(writer, sheet_name="汇总", index=False)
-        sell_signals_export.to_excel(writer, sheet_name="卖出信号", index=False)
-    return output_path
+    return reporting.write_xlsx_report(
+        output_path,
+        allocation_df,
+        summary_df,
+        sell_signals_df,
+        import_openpyxl_fn=_import_openpyxl,
+        prepare_allocation_export_df_fn=_prepare_allocation_export_df,
+        prepare_summary_export_df_fn=_prepare_summary_export_df,
+        prepare_sell_signals_export_df_fn=_prepare_sell_signals_export_df,
+    )
 
 
 def write_scenario_grid_report(
     output_path: Path,
     scenario_reports: Sequence[ScenarioReport],
 ) -> Path:
-    if len(scenario_reports) == 0:
-        raise SystemExit("scenario_reports must not be empty.")
-
-    _import_openpyxl()
-    overview_df = pd.concat([item.summary_df for item in scenario_reports], ignore_index=True)
-    overview_export = _prepare_summary_export_df(overview_df)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    used_sheet_names: set[str] = set()
-    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        overview_sheet = _make_unique_sheet_name("场景总览", used_sheet_names)
-        overview_export.to_excel(writer, sheet_name=overview_sheet, index=False)
-
-        for report in scenario_reports:
-            allocation_export = _prepare_allocation_export_df(report.allocation_df)
-            summary_export = _prepare_summary_export_df(report.summary_df)
-            sell_signals_export = _prepare_sell_signals_export_df(report.sell_signals_df)
-
-            allocation_sheet = _make_unique_sheet_name(f"{report.scenario_id}_分配", used_sheet_names)
-            summary_sheet = _make_unique_sheet_name(f"{report.scenario_id}_汇总", used_sheet_names)
-            sell_sheet = _make_unique_sheet_name(f"{report.scenario_id}_卖出", used_sheet_names)
-
-            allocation_export.to_excel(writer, sheet_name=allocation_sheet, index=False)
-            summary_export.to_excel(writer, sheet_name=summary_sheet, index=False)
-            sell_signals_export.to_excel(writer, sheet_name=sell_sheet, index=False)
-    return output_path
+    return reporting.write_scenario_grid_report(
+        output_path,
+        scenario_reports,
+        import_openpyxl_fn=_import_openpyxl,
+        prepare_allocation_export_df_fn=_prepare_allocation_export_df,
+        prepare_summary_export_df_fn=_prepare_summary_export_df,
+        prepare_sell_signals_export_df_fn=_prepare_sell_signals_export_df,
+    )
 
 
 def _render_text(payload: dict[str, Any], allocation_df: pd.DataFrame) -> str:
-    summary = payload["summary"]
-    lines = [
-        f"截至日期: {payload['as_of']}",
-        f"建仓日期: {payload['entry_date']}",
-        f"定价日期: {payload['pricing_date']}",
-        f"来源: {payload['source']}",
-        f"方向: {payload['side']}",
-        f"Top-N 请求/实际: {payload['requested_top_n']} / {payload['selected_n']}",
-        f"总资金: {base_alloc._money(float(payload['cash']))}",
-        f"分配方式: {payload['allocation_method']}",
-        f"港股通约束: {_to_yes_no(payload['require_stock_connect'])}",
-        f"价格来源: {_localize_price_source(summary['pricing_source'])}",
-        f"预计持仓金额: {base_alloc._money(float(summary['total_est_value']))}",
-        f"目标缺口合计: {base_alloc._money(float(summary['total_gap']))}",
-        f"补仓后剩余现金: {base_alloc._money(float(summary['cash_remaining_after_fill']))}",
-    ]
-    if payload.get("run_dir"):
-        lines.append(f"运行目录: {payload['run_dir']}")
-    if payload.get("positions_file"):
-        lines.append(f"持仓文件: {payload['positions_file']}")
-    lines.append("")
-
-    table_headers = [
-        "symbol",
-        "lots",
-        "价格",
-        "估值分层",
-        "港股通",
-        "目标金额",
-        "预计金额",
-        "目标缺口",
-    ]
-    table_rows: list[list[str]] = []
-    for _, row in allocation_df.iterrows():
-        table_rows.append(
-            [
-                str(row["symbol"]),
-                str(int(row["lots"])),
-                f"{float(row['price']):.4f}" if pd.notna(row["price"]) else "nan",
-                VALUATION_CN_MAP.get(str(row["valuation"]), str(row["valuation"])),
-                _format_stock_connect(row.get("stock_connect")),
-                base_alloc._money(float(row["target_value"])),
-                base_alloc._money(float(row["est_value"])),
-                base_alloc._money(float(row["gap_to_target"])),
-            ]
-        )
-    lines.append(base_alloc._format_table(table_rows, table_headers))
-    return "\n".join(lines)
+    return reporting.render_text(
+        payload,
+        allocation_df,
+        to_yes_no_fn=_to_yes_no,
+        format_stock_connect_fn=_format_stock_connect,
+        localize_price_source_fn=_localize_price_source,
+    )
 
 
 def _render_grid_text(root_payload: dict[str, Any], overview_df: pd.DataFrame) -> str:
-    lines = [
-        f"截至日期: {root_payload['as_of']}",
-        f"建仓日期: {root_payload['entry_date']}",
-        f"来源: {root_payload['source']}",
-        f"方向: {root_payload['side']}",
-        f"场景数量: {len(root_payload['scenarios'])}",
-        f"资金列表: {', '.join(base_alloc._money(float(value)) for value in root_payload['scenario_capitals'])}",
-        f"Top-N 列表: {', '.join(str(value) for value in root_payload['scenario_top_ns'])}",
-    ]
-    if root_payload.get("run_dir"):
-        lines.append(f"运行目录: {root_payload['run_dir']}")
-    if root_payload.get("positions_file"):
-        lines.append(f"持仓文件: {root_payload['positions_file']}")
-    lines.append("")
-
-    table_headers = [
-        "场景",
-        "资金",
-        "Top-N",
-        "价格来源",
-        "预计持仓金额",
-        "目标缺口",
-        "剩余现金",
-    ]
-    table_rows: list[list[str]] = []
-    for _, row in overview_df.iterrows():
-        table_rows.append(
-            [
-                str(row.get("scenario_id", "")),
-                base_alloc._money(float(row["total_capital"])),
-                str(int(row["scenario_top_n"])),
-                _localize_price_source(row.get("pricing_source")),
-                base_alloc._money(float(row["total_est_value"])),
-                base_alloc._money(float(row["total_gap"])),
-                base_alloc._money(float(row["cash_remaining_after_fill"])),
-            ]
-        )
-    lines.append(base_alloc._format_table(table_rows, table_headers))
-    return "\n".join(lines)
+    return reporting.render_grid_text(
+        root_payload,
+        overview_df,
+        localize_price_source_fn=_localize_price_source,
+    )
 
 
 def _format_capital_tag(capital: float) -> str:
-    if float(capital).is_integer() and int(capital) % 10_000 == 0:
-        return f"{int(capital) // 10_000}w"
-    if float(capital).is_integer():
-        return str(int(capital))
-    return str(capital).replace(".", "p")
+    return reporting.format_capital_tag(capital)
 
 
 def _build_scenario_id(capital: float, top_n: int) -> str:
-    return f"C{_format_capital_tag(capital)}_N{int(top_n)}"
+    return reporting.build_scenario_id(capital, top_n)
 
 
 def _build_payload(
@@ -1869,193 +1278,23 @@ def _build_payload(
     scenario_cash: float | None = None,
     scenario_top_n: int | None = None,
 ) -> dict[str, Any]:
-    summary = summary_df.iloc[0].to_dict()
-    payload = {
-        "as_of": as_of.strftime("%Y-%m-%d"),
-        "entry_date": entry_date.strftime("%Y-%m-%d"),
-        "pricing_date": str(summary["pricing_date"]),
-        "source": source,
-        "side": side,
-        "run_dir": str(run_dir) if run_dir is not None else None,
-        "positions_file": str(positions_path) if positions_path is not None else None,
-        "market": market,
-        "requested_top_n": int(requested_top_n),
-        "selected_n": int(len(allocation_df)),
-        "cash": float(settings.cash),
-        "allocation_method": settings.method,
-        "require_stock_connect": bool(settings.require_stock_connect),
-        "pricing_source": summary["pricing_source"],
-        "pricing_source_detail": summary["pricing_source_detail"],
-        "estimated_value": float(summary["total_est_value"]),
-        "cash_left": float(summary["cash_remaining_after_fill"]),
-        "total_gap_to_target": float(summary["total_gap"]),
-        "summary": summary,
-        "allocations": allocation_df.to_dict(orient="records"),
-        "sell_signals": sell_signals_df.to_dict(orient="records"),
-    }
-    if scenario_id is not None:
-        payload["scenario_id"] = scenario_id
-    if scenario_cash is not None:
-        payload["scenario_capital"] = float(scenario_cash)
-    if scenario_top_n is not None:
-        payload["scenario_top_n"] = int(scenario_top_n)
-    return payload
-
-
-def _parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Compute HK pre-trade lot sizing and valuation diagnostics from latest holdings.",
+    return reporting.build_payload(
+        allocation_df=allocation_df,
+        summary_df=summary_df,
+        sell_signals_df=sell_signals_df,
+        as_of=as_of,
+        entry_date=entry_date,
+        source=source,
+        side=side,
+        run_dir=run_dir,
+        positions_path=positions_path,
+        market=market,
+        requested_top_n=requested_top_n,
+        settings=settings,
+        scenario_id=scenario_id,
+        scenario_cash=scenario_cash,
+        scenario_top_n=scenario_top_n,
     )
-    parser.add_argument("--config", help="Pipeline config path or built-in name (default: default).")
-    parser.add_argument("--run-dir", help="Explicit run directory to read (overrides --config).")
-    parser.add_argument(
-        "--artifacts-root",
-        help=(
-            "Optional artifacts root override used when resolving the default runs directory. "
-            "When omitted, alloc-hk uses paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/."
-        ),
-    )
-    parser.add_argument("--positions-file", help="Explicit positions CSV path (overrides --config/--run-dir).")
-    parser.add_argument("--top-k", type=int, help="Optional Top-K filter when selecting the latest run.")
-    parser.add_argument(
-        "--as-of",
-        default="t-1",
-        help=(
-            "As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1, last_trading_day, "
-            "last_completed_trading_day). Default: t-1."
-        ),
-    )
-    parser.add_argument(
-        "--source",
-        default="auto",
-        choices=["auto", "backtest", "live"],
-        help="Positions source (auto/backtest/live). Default: auto.",
-    )
-    parser.add_argument(
-        "--side",
-        default="long",
-        choices=["long", "short", "all"],
-        help="Select side for allocation (long/short/all). Default: long.",
-    )
-    parser.add_argument(
-        "--top-n",
-        type=int,
-        default=20,
-        help="Number of names to allocate from sorted holdings. Default: 20.",
-    )
-    parser.add_argument(
-        "--scenario-capital",
-        action="append",
-        default=None,
-        help="Scenario capital list (repeatable, supports comma-separated values).",
-    )
-    parser.add_argument(
-        "--scenario-top-n",
-        action="append",
-        default=None,
-        help="Scenario Top-N list (repeatable, supports comma-separated values).",
-    )
-    parser.add_argument("--cash", type=float, help="Total portfolio cash for sizing. Overrides live.alloc_hk.cash.")
-    parser.add_argument(
-        "--method",
-        choices=["equal", "custom"],
-        help="Sizing method. custom uses holdings weight. Overrides live.alloc_hk.method.",
-    )
-    parser.add_argument(
-        "--require-stock-connect",
-        dest="require_stock_connect",
-        action="store_true",
-        default=None,
-        help="Require stock_connect eligibility for tradable names.",
-    )
-    parser.add_argument(
-        "--allow-non-stock-connect",
-        dest="require_stock_connect",
-        action="store_false",
-        help="Allow non-stock-connect names to remain tradable.",
-    )
-    parser.add_argument("--history-years", type=int, help="Lookback years for valuation history.")
-    parser.add_argument("--roll-window", type=int, help="Rolling window used for valuation thresholds.")
-    parser.add_argument("--sell-quantile", type=float, help="Quantile used for HIGH valuation threshold.")
-    parser.add_argument("--extreme-quantile", type=float, help="Quantile used for EXTREME valuation threshold.")
-    parser.add_argument(
-        "--secondary-fill",
-        dest="secondary_fill_enabled",
-        action="store_true",
-        default=None,
-        help="Enable secondary fill after base lot sizing.",
-    )
-    parser.add_argument(
-        "--no-secondary-fill",
-        dest="secondary_fill_enabled",
-        action="store_false",
-        help="Disable secondary fill after base lot sizing.",
-    )
-    parser.add_argument(
-        "--avoid-high-valuation",
-        dest="avoid_high_valuation",
-        action="store_true",
-        default=None,
-        help="Prefer LOW/NEUTRAL names first during secondary fill.",
-    )
-    parser.add_argument(
-        "--allow-high-valuation",
-        dest="avoid_high_valuation",
-        action="store_false",
-        help="Do not prefer LOW/NEUTRAL names during secondary fill.",
-    )
-    parser.add_argument(
-        "--avoid-high-valuation-strict",
-        dest="avoid_high_valuation_strict",
-        action="store_true",
-        default=None,
-        help="Hard-block HIGH/EXTREME names during secondary fill.",
-    )
-    parser.add_argument(
-        "--allow-over-alloc",
-        dest="allow_over_alloc",
-        action="store_true",
-        default=None,
-        help="Allow bounded over-allocation during secondary fill.",
-    )
-    parser.add_argument("--max-steps", type=int, help="Maximum secondary fill steps.")
-    parser.add_argument("--max-over-alloc-ratio", type=float, help="Over-allocation cap as a ratio of cash.")
-    parser.add_argument("--max-over-alloc-amount", type=float, help="Over-allocation cap as an absolute amount.")
-    parser.add_argument(
-        "--max-over-alloc-lots-per-ticker",
-        type=int,
-        help="Per-ticker cap for over-allocation lots.",
-    )
-    parser.add_argument("--cash-buffer-ratio", type=float, help="Cash buffer ratio reserved before fill.")
-    parser.add_argument("--cash-buffer-amount", type=float, help="Cash buffer amount reserved before fill.")
-    parser.add_argument(
-        "--estimated-fee-per-order",
-        type=float,
-        help="Estimated fee added to each secondary fill step.",
-    )
-    parser.add_argument("--username", help="Override RQData username.")
-    parser.add_argument("--password", help="Override RQData password.")
-    parser.add_argument(
-        "--fail-on-quality",
-        choices=["none", "info", "warning", "error"],
-        default=None,
-        help=(
-            "Optional quality gate threshold. When omitted, alloc-hk reuses the threshold stored "
-            "in the resolved run summary or from the config."
-        ),
-    )
-    parser.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "csv", "json", "xlsx"],
-        help="Output format (text/csv/json/xlsx). Default: text.",
-    )
-    parser.add_argument("--out", help="Optional output path (default: stdout; required for xlsx).")
-    args = parser.parse_args(argv)
-
-    if args.top_n <= 0:
-        raise SystemExit("--top-n must be a positive integer.")
-    return args
 
 
 def main(argv: list[str] | None = None) -> None:

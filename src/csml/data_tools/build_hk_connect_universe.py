@@ -17,6 +17,7 @@ from ..artifacts import (
     UNIVERSE_META_FILE,
 )
 from ..config_utils import repo_config_search_paths, resolve_config
+from ..rqdata_runtime import init_rqdatac as _init_rqdatac_runtime
 
 DEFAULTS = {
     "mode": "backtest",
@@ -154,24 +155,15 @@ def coerce_trading_dates(dates) -> list[pd.Timestamp]:
 
 def require_rqdata(username: str | None, password: str | None):
     try:
-        import rqdatac
-    except ImportError as exc:
-        raise SystemExit(f"rqdatac is required ({exc}).")
-    try:
         import rqdatac_hk  # noqa: F401
     except ImportError as exc:
         raise SystemExit(f"rqdatac_hk is required ({exc}).")
-
-    init_kwargs = {}
-    if username:
-        init_kwargs["username"] = username
-    if password:
-        init_kwargs["password"] = password
-    try:
-        rqdatac.init(**init_kwargs)
-    except Exception as exc:
-        raise SystemExit(f"rqdatac.init failed: {exc}")
-    return rqdatac
+    return _init_rqdatac_runtime(
+        username=username,
+        password=password,
+        error_cls=SystemExit,
+        import_error_message="rqdatac is required for HK Connect universe build.",
+    )
 
 
 def resolve_last_trading_date(
