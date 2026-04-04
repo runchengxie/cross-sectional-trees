@@ -75,6 +75,9 @@
 1. 从现有基线复制到 `configs/local/` 或你自己的实验目录。
 2. 只改本次实验真的需要改的字段。
 3. 用稳定的 `run_name` 前缀，方便后续 `summarize`。
+4. 如果改动的是特征簇而不是模型参数，默认按
+   `docs/concepts/benchmark-protocol.md` 里的“同一研究单元里的特征研究 protocol”
+   去做 family ablation、raw/log dedup 和 coverage probe，再决定是否沉淀模板。
 
 例如：
 
