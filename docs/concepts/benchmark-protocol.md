@@ -1,9 +1,9 @@
 # Benchmark Protocol
 
-本页解决什么：把这个项目里的 benchmark / baseline 分层说清楚，并给出 HK selected 的默认协议。
-本页不解决什么：不展开参数定义、资产准备细节或具体指标解释。
-适合谁：准备做正式研究、想让对比结果可解释的人。
-读完你会得到什么：一套可直接执行的 benchmark 阶梯与对应配置入口。
+本页解决什么：把这个项目里的 benchmark / baseline 分层说清楚，并给出 HK selected 的默认协议。\
+本页不解决什么：不展开参数定义、资产准备细节或具体指标解释。\
+适合谁：准备做正式研究、想让对比结果可解释的人。\
+读完你会得到什么：一套可直接执行的 benchmark 阶梯与对应配置入口。\
 相关页面：`docs/playbooks/hk-selected.md`、`docs/concepts/model-selection.md`、`docs/metrics.md`、`docs/outputs.md`
 
 目前该项目最多允许三层 benchmark 的设置：
@@ -127,7 +127,6 @@ HK 研究默认用：
 * 你还在同一个研究矩阵单元里
 * 这次要回答的是“当前特征空间够不够用”或“该加哪一组特征”
 
-它不是运行时硬约束，也不是所有配置都必须逐条执行的审查清单。
 它的作用是统一研究口径，避免后续配置一会儿靠直觉加列、一会儿随手删列，最后没人能解释为什么结果变化。
 
 ### 5.1 先按特征簇组织，而不是按单列组织
@@ -169,7 +168,7 @@ HK selected 当前常见 family 可以按下面理解：
 
 ### 5.3 默认顺序二：对单调变换对先做 raw/log dedup
 
-如果当前配置在建模前已经做每期横截面 `rank` 或 `zscore`，默认优先检查这类单调变换对，而不是直接删看起来“中等重要”的列：
+如果当前配置在建模前已经做每期横截面 `rank` 或 `zscore`，默认优先检查这类单调变换对：
 
 * `market_cap` / `log_mcap`
 * `vol` / `log_vol`
@@ -183,9 +182,7 @@ HK selected 当前常见 family 可以按下面理解：
 
 ### 5.4 默认顺序三：新增稀疏 PIT 因子前先做 coverage probe
 
-对资产负债表风险、杠杆、营运资本这类 PIT 因子，默认不要直接整块并入主线。
-
-推荐顺序：
+对资产负债表风险、杠杆、营运资本这类 PIT 因子的推荐处理顺序：
 
 1. 先加 coverage-safe 的小探针，例如 `operating_margin`
 2. 再加 debt / structure block，例如 `debt`、`debt_to_assets`、`debt_to_equity`、`net_debt_to_assets`
@@ -198,7 +195,7 @@ HK selected 当前常见 family 可以按下面理解：
 * 是否出现 `flag_zero_feature_importance=true`
 * 是否出现 `flag_constant_prediction=true`
 
-如果新特征把历史压缩到很短窗口，就先回退到 coverage-safe 版本，不要因为“经济含义更完整”而强行留在主线。
+如果新特征把历史压缩到很短窗口，就先回退到 coverage-safe 版本。
 
 ### 5.5 默认顺序四：不要默认打开 missing indicators
 

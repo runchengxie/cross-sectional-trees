@@ -269,20 +269,24 @@ def resolve_effective_data_inputs(
     )
     benchmark_compare_specs: list[dict[str, Any]] = []
     for spec in backtest_benchmark_compare:
-        returns_file_path = resolve_repo_path(spec["returns_file"])
-        series = (
-            benchmark_return_series.copy()
-            if benchmark_returns_file_path is not None
-            and returns_file_path == benchmark_returns_file_path
-            else load_benchmark_return_series(returns_file_path)
-        )
-        benchmark_compare_specs.append(
-            {
-                "name": spec["name"],
-                "returns_file_path": returns_file_path,
-                "series": series,
-            }
-        )
+        source_type = str(spec.get("source_type") or "returns_file")
+        compare_spec: dict[str, Any] = {
+            "name": spec["name"],
+            "source_type": source_type,
+        }
+        if source_type == "symbol":
+            compare_spec["symbol"] = str(spec["symbol"]).strip()
+        else:
+            returns_file_path = resolve_repo_path(spec["returns_file"])
+            series = (
+                benchmark_return_series.copy()
+                if benchmark_returns_file_path is not None
+                and returns_file_path == benchmark_returns_file_path
+                else load_benchmark_return_series(returns_file_path)
+            )
+            compare_spec["returns_file_path"] = returns_file_path
+            compare_spec["series"] = series
+        benchmark_compare_specs.append(compare_spec)
 
     effective_runtime_settings.update(
         {

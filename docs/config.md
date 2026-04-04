@@ -382,7 +382,7 @@ logging:
 * `backtest.benchmark_symbol` 和 `backtest.benchmark_returns_file` 二选一；前者适合 ETF / 指数代理，后者适合自建 universe benchmark。
 * `backtest.benchmark_returns_file` 目前支持 `csv` / `parquet`；日期列可叫 `trade_date` / `date` / `exit_date` / `rebalance_date`，收益列可叫 `benchmark_return` / `return` / `net_return`。
 * `backtest.benchmark_compare` 是报告层附加对比，不会改变 `summary.json -> backtest.benchmark` / `backtest.active` 的主 benchmark 口径，也不会影响训练或选股。
-* `backtest.benchmark_compare` 每项支持两种写法：直接给收益文件字符串，或写成 `{name, returns_file}`；未显式写 `name` 时默认取文件名 stem。
+* `backtest.benchmark_compare` 每项支持三种写法：直接给收益文件字符串，写成 `{name, returns_file}`，或写成 `{name, symbol}`；未显式写 `name` 时默认取文件名 stem 或 symbol 本身。
 * 配了 `backtest.benchmark_compare` 后，run 会额外写 `backtest_benchmark_compare_summary*.csv`、`backtest_benchmark_compare_<name>*.csv`，并把路径沉到 `summary.json -> backtest.benchmark_compare`。
 * 主回测现在还会额外写一份 `backtest_report*.csv`，包含策略净值、相对净值、rolling 1Y/3Y/5Y CAGR 和 rolling max drawdown。
 * 成本、滑点、`tr_close` 与现金分红账本的关系，单独见 `docs/concepts/execution-costs.md`。
@@ -393,6 +393,8 @@ logging:
 backtest:
   benchmark_returns_file: artifacts/benchmarks/hk_selected_pit_research_m_capw_open_close_20181101_20260202.csv
   benchmark_compare:
+    - name: hk_3432
+      symbol: 3432.HK
     - name: hk_02800
       returns_file: artifacts/benchmarks/hk_02800_open_close_20181101_20260202.csv
     - name: hk_connect_full_capw

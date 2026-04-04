@@ -244,6 +244,9 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
             strategy_returns=ctx["bt_net_series"],
             period_info=ctx["bt_periods"],
             trading_days_per_year=ctx["BACKTEST_TRADING_DAYS_PER_YEAR"],
+            entry_price_col=ctx["execution_model"].entry_policy.price_col,
+            exit_price_col=ctx["execution_model"].exit_policy.price_col,
+            primary_benchmark_symbol=ctx.get("benchmark_symbol"),
             primary_returns_file_path=ctx.get("benchmark_returns_file_path"),
             run_dir=run_dir,
             summary_filename="backtest_benchmark_compare_summary.csv",
@@ -324,6 +327,9 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
             strategy_returns=ctx["bt_net_series_oos"],
             period_info=ctx["bt_periods_oos"],
             trading_days_per_year=ctx["BACKTEST_TRADING_DAYS_PER_YEAR"],
+            entry_price_col=ctx["execution_model"].entry_policy.price_col,
+            exit_price_col=ctx["execution_model"].exit_policy.price_col,
+            primary_benchmark_symbol=ctx.get("benchmark_symbol"),
             primary_returns_file_path=ctx.get("benchmark_returns_file_path"),
             run_dir=run_dir,
             summary_filename="backtest_benchmark_compare_summary_oos.csv",
@@ -427,6 +433,9 @@ def _write_benchmark_compare_outputs(
     strategy_returns: pd.Series,
     period_info: list[dict[str, Any]],
     trading_days_per_year: int,
+    entry_price_col: str,
+    exit_price_col: str,
+    primary_benchmark_symbol: str | None,
     primary_returns_file_path: Path | None,
     run_dir: Path,
     summary_filename: str,
@@ -440,11 +449,20 @@ def _write_benchmark_compare_outputs(
     for spec in compare_specs:
         entry = build_benchmark_compare_entry(
             name=spec["name"],
-            returns_file=str(spec["returns_file_path"]),
-            benchmark_return_series=spec["series"],
+            source_type=str(spec.get("source_type") or "returns_file"),
+            returns_file=(
+                str(spec["returns_file_path"])
+                if spec.get("returns_file_path") is not None
+                else None
+            ),
+            symbol=str(spec["symbol"]).strip() if spec.get("symbol") else None,
+            benchmark_df=spec.get("benchmark_df"),
+            benchmark_return_series=spec.get("series"),
             strategy_returns=strategy_returns,
             period_info=period_info,
             trading_days_per_year=trading_days_per_year,
+            entry_price_col=entry_price_col,
+            exit_price_col=exit_price_col,
         )
         slug = slugify_report_name(str(spec["name"]))
         if slug in used_slugs:
@@ -459,10 +477,20 @@ def _write_benchmark_compare_outputs(
         report_entries.append(
             {
                 "name": entry["name"],
+                "source_type": entry["source_type"],
                 "returns_file": entry["returns_file"],
+                "symbol": entry["symbol"],
                 "is_primary": bool(
-                    primary_returns_file_path is not None
-                    and Path(entry["returns_file"]) == primary_returns_file_path
+                    (
+                        primary_returns_file_path is not None
+                        and entry["returns_file"] is not None
+                        and Path(entry["returns_file"]) == primary_returns_file_path
+                    )
+                    or (
+                        primary_benchmark_symbol is not None
+                        and entry["symbol"] is not None
+                        and entry["symbol"] == primary_benchmark_symbol
+                    )
                 ),
                 "aligned_periods": entry["aligned_periods"],
                 "benchmark": entry["benchmark"],

@@ -138,6 +138,28 @@ def test_pipeline_backtest_rejects_multiple_benchmark_sources(tmp_path, no_clien
         pipeline.run(str(config_path))
 
 
+@pytest.mark.parametrize(
+    "benchmark_compare",
+    [
+        [{"name": "bad"}],
+        [{"name": "bad", "symbol": "3432.HK", "returns_file": "foo.csv"}],
+    ],
+)
+def test_pipeline_backtest_rejects_invalid_compare_benchmark_specs(
+    tmp_path,
+    no_client,
+    benchmark_compare,
+):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["backtest"]["benchmark_compare"] = benchmark_compare
+    config_path = _write_config(tmp_path, config)
+    with pytest.raises(
+        SystemExit,
+        match="backtest.benchmark_compare\\[0\\] must provide exactly one of returns_file or symbol.",
+    ):
+        pipeline.run(str(config_path))
+
+
 def test_load_benchmark_return_series_accepts_yyyymmdd_csv(tmp_path):
     benchmark_file = tmp_path / "benchmark.csv"
     benchmark_file.write_text(

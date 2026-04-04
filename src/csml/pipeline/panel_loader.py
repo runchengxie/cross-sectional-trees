@@ -142,6 +142,7 @@ def _load_research_panel(
     execution_pricing_cols: set[str],
     price_col: str,
     benchmark_symbol: str | None,
+    benchmark_compare_symbols: list[str] | None,
     drop_st: bool,
     min_listed_days: int,
     drop_suspended: bool,
@@ -173,9 +174,17 @@ def _load_research_panel(
     label_rebalance_frequency: str,
 ) -> dict[str, Any]:
     benchmark_symbol = str(benchmark_symbol).strip() if benchmark_symbol else None
+    compare_symbols = [
+        str(symbol).strip()
+        for symbol in (benchmark_compare_symbols or [])
+        if str(symbol).strip()
+    ]
     symbols_for_data = symbols[:]
     if benchmark_symbol and benchmark_symbol not in symbols_for_data:
         symbols_for_data.append(benchmark_symbol)
+    for symbol in compare_symbols:
+        if symbol not in symbols_for_data:
+            symbols_for_data.append(symbol)
 
     frames = []
     tr_close_symbol_metas: list[dict[str, Any]] = []
@@ -224,8 +233,29 @@ def _load_research_panel(
                 "Benchmark symbol %s returned no daily data; benchmark and active-return outputs will be skipped.",
                 benchmark_symbol,
             )
+    benchmark_compare_dfs: dict[str, pd.DataFrame] = {}
+    for symbol in compare_symbols:
+        if benchmark_symbol and symbol == benchmark_symbol:
+            compare_df = benchmark_df.copy() if benchmark_df is not None else pd.DataFrame()
+        else:
+            compare_df = df[df["symbol"] == symbol].copy()
+            if symbol in symbols:
+                logger.info(
+                    "Compare benchmark symbol %s removed from modeling universe.",
+                    symbol,
+                )
+            if not compare_df.empty:
+                df = df[df["symbol"] != symbol].copy()
+        if compare_df.empty:
+            logger.warning(
+                "Compare benchmark symbol %s returned no daily data; compare report for this symbol will be skipped.",
+                symbol,
+            )
+        benchmark_compare_dfs[symbol] = compare_df
     symbols_for_non_price = [
-        symbol for symbol in symbols_for_data if not benchmark_symbol or symbol != benchmark_symbol
+        symbol
+        for symbol in symbols_for_data
+        if (not benchmark_symbol or symbol != benchmark_symbol) and symbol not in compare_symbols
     ]
     modeling_symbol_set = set(symbols_for_non_price)
     price_col_diagnostics = _build_price_col_diagnostics(
@@ -408,6 +438,7 @@ def _load_research_panel(
     return {
         "df": df,
         "benchmark_df": benchmark_df,
+        "benchmark_compare_dfs": benchmark_compare_dfs,
         "symbols_for_non_price": symbols_for_non_price,
         "fundamentals_cols": fundamentals_cols,
         "industry_cols": industry_cols,

@@ -379,8 +379,21 @@ artifacts/standardized/<market>/<dataset>/<name>/
   "summary_file": "artifacts/runs/<run_dir>/backtest_benchmark_compare_summary.csv",
   "benchmarks": [
     {
+      "source_type": "symbol",
+      "symbol": "3432.HK",
+      "returns_file": null,
+      "name": "hk_3432",
+      "is_primary": false,
+      "aligned_periods": 26,
+      "benchmark": {"ann_return": 0.10, "max_drawdown": -0.20},
+      "active": {"information_ratio": 0.28, "beta": 0.88},
+      "report_file": "artifacts/runs/<run_dir>/backtest_benchmark_compare_hk_3432.csv"
+    },
+    {
+      "source_type": "returns_file",
       "name": "hk_02800",
       "returns_file": "/abs/path/to/hk_02800_open_close.csv",
+      "symbol": null,
       "is_primary": false,
       "aligned_periods": 26,
       "benchmark": {"ann_return": 0.12, "max_drawdown": -0.18},
@@ -394,7 +407,8 @@ artifacts/standardized/<market>/<dataset>/<name>/
 说明：
 
 1. `benchmark_compare` 只是额外报表层；`summary.json -> backtest.benchmark` / `backtest.active` 仍然只对应主 benchmark。
-1. `is_primary=true` 表示这条 compare benchmark 与主 `benchmark_returns_file` 是同一份文件。
+1. `source_type` 会标记这条 compare benchmark 是来自 `returns_file` 还是 `symbol`。
+1. `is_primary=true` 表示这条 compare benchmark 与主 `benchmark_returns_file` 是同一份文件，或与主 `benchmark_symbol` 是同一个 symbol。
 1. 若启用了 `final_oos`，同样结构会出现在 `summary.json -> final_oos -> backtest -> benchmark_compare`，并写出 `_oos` 版本 CSV。
 
 `summary.json -> backtest -> exposure` 当前会记录一层 best-effort 暴露摘要：

@@ -47,7 +47,9 @@ def test_build_benchmark_compare_summary_frame_flattens_metrics():
         [
             {
                 "name": "hk_02800",
+                "source_type": "returns_file",
                 "returns_file": "/tmp/hk_02800.csv",
+                "symbol": None,
                 "is_primary": False,
                 "aligned_periods": 24,
                 "benchmark": {
@@ -72,6 +74,7 @@ def test_build_benchmark_compare_summary_frame_flattens_metrics():
 
     row = summary.iloc[0]
     assert row["name"] == "hk_02800"
+    assert row["source_type"] == "returns_file"
     assert row["benchmark_ann_return"] == pytest.approx(0.12)
     assert row["active_information_ratio"] == pytest.approx(0.4)
     assert row["report_file"] == "/tmp/report.csv"

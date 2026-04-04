@@ -994,13 +994,14 @@ def _normalize_benchmark_compare(raw_value: object | None) -> list[dict[str, str
         return []
     if not isinstance(raw_value, (list, tuple)):
         raise SystemExit(
-            "backtest.benchmark_compare must be a list of returns files or mappings."
+            "backtest.benchmark_compare must be a list of compare benchmark specs."
         )
 
     normalized: list[dict[str, str]] = []
     for idx, item in enumerate(raw_value):
         name: str | None = None
         returns_file: str | None = None
+        symbol: str | None = None
         if isinstance(item, str):
             returns_file = str(item).strip() or None
         elif isinstance(item, Mapping):
@@ -1014,18 +1015,28 @@ def _normalize_benchmark_compare(raw_value: object | None) -> list[dict[str, str
             )
             if returns_file_raw is not None:
                 returns_file = str(returns_file_raw).strip() or None
+            symbol_raw = item.get("symbol") or item.get("benchmark_symbol")
+            if symbol_raw is not None:
+                symbol = str(symbol_raw).strip() or None
         else:
             raise SystemExit(
                 "backtest.benchmark_compare entries must be either strings or mappings."
             )
 
-        if not returns_file:
+        if bool(returns_file) == bool(symbol):
             raise SystemExit(
-                f"backtest.benchmark_compare[{idx}] must provide returns_file."
+                f"backtest.benchmark_compare[{idx}] must provide exactly one of returns_file or symbol."
             )
         if not name:
-            name = Path(returns_file).stem
-        normalized.append({"name": name, "returns_file": returns_file})
+            name = Path(returns_file).stem if returns_file else str(symbol)
+        spec = {"name": name}
+        if returns_file:
+            spec["source_type"] = "returns_file"
+            spec["returns_file"] = returns_file
+        else:
+            spec["source_type"] = "symbol"
+            spec["symbol"] = str(symbol)
+        normalized.append(spec)
     return normalized
 
 

@@ -84,16 +84,21 @@ def build_backtest_report(
 def build_benchmark_compare_entry(
     *,
     name: str,
-    returns_file: str,
-    benchmark_return_series: pd.Series,
+    source_type: str,
+    returns_file: str | None,
+    symbol: str | None,
+    benchmark_df: pd.DataFrame | None,
+    benchmark_return_series: pd.Series | None,
     strategy_returns: pd.Series,
     period_info: list[dict[str, Any]],
     trading_days_per_year: int,
+    entry_price_col: str,
+    exit_price_col: str,
 ) -> dict[str, Any]:
     benchmark_series, benchmark_periods = build_benchmark_series(
-        benchmark_df=None,
-        entry_price_col="",
-        exit_price_col="",
+        benchmark_df=benchmark_df,
+        entry_price_col=entry_price_col,
+        exit_price_col=exit_price_col,
         period_info=period_info,
         benchmark_return_series=benchmark_return_series,
     )
@@ -125,7 +130,9 @@ def build_benchmark_compare_entry(
 
     return {
         "name": str(name),
-        "returns_file": str(returns_file),
+        "source_type": str(source_type),
+        "returns_file": str(returns_file) if returns_file else None,
+        "symbol": str(symbol) if symbol else None,
         "aligned_periods": int(benchmark_series.shape[0]),
         "benchmark": benchmark_stats,
         "active": active_stats,
@@ -144,7 +151,9 @@ def build_benchmark_compare_summary_frame(
         rows.append(
             {
                 "name": entry.get("name"),
+                "source_type": entry.get("source_type"),
                 "returns_file": entry.get("returns_file"),
+                "symbol": entry.get("symbol"),
                 "is_primary": bool(entry.get("is_primary", False)),
                 "aligned_periods": entry.get("aligned_periods"),
                 "benchmark_total_return": _metric_value(benchmark_stats, "total_return"),

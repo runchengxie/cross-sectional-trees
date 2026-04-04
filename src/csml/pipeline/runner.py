@@ -294,6 +294,11 @@ def run(
     benchmark_returns_file_path = data_inputs["benchmark_returns_file_path"]
     benchmark_return_series = data_inputs["benchmark_return_series"]
     benchmark_compare_specs = data_inputs["benchmark_compare_specs"]
+    benchmark_compare_symbols = [
+        str(spec["symbol"]).strip()
+        for spec in benchmark_compare_specs
+        if str(spec.get("source_type") or "") == "symbol" and spec.get("symbol")
+    ]
     run_dir = run_artifacts["run_dir"]
     panel_state = _load_research_panel(
         data_interface=data_interface,
@@ -304,6 +309,7 @@ def run(
         execution_pricing_cols=EXECUTION_PRICING_COLS,
         price_col=PRICE_COL,
         benchmark_symbol=benchmark_symbol,
+        benchmark_compare_symbols=benchmark_compare_symbols,
         drop_st=DROP_ST,
         min_listed_days=MIN_LISTED_DAYS,
         drop_suspended=DROP_SUSPENDED,
@@ -336,6 +342,7 @@ def run(
     )
     df = panel_state["df"]
     benchmark_df = panel_state["benchmark_df"]
+    benchmark_compare_dfs = panel_state["benchmark_compare_dfs"]
     symbols_for_non_price = panel_state["symbols_for_non_price"]
     fundamentals_cols = panel_state["fundamentals_cols"]
     industry_cols = panel_state["industry_cols"]
@@ -586,6 +593,14 @@ def run(
         period_eval_context=period_eval_context,
         rolling_windows_months=ROLLING_WINDOWS_MONTHS,
     )
+    resolved_benchmark_compare_specs: list[dict[str, Any]] = []
+    for spec in benchmark_compare_specs:
+        resolved = dict(spec)
+        if str(spec.get("source_type") or "") == "symbol":
+            symbol = str(spec["symbol"]).strip()
+            resolved["benchmark_df"] = benchmark_compare_dfs.get(symbol, pd.DataFrame())
+            resolved["series"] = pd.Series(dtype=float, name="benchmark_return")
+        resolved_benchmark_compare_specs.append(resolved)
     persist_pipeline_outputs(
         loaded=loaded,
         universe_inputs=universe_inputs,
@@ -604,7 +619,7 @@ def run(
         quality_summary=quality_summary,
         benchmark_symbol=benchmark_symbol,
         benchmark_returns_file_path=benchmark_returns_file_path,
-        benchmark_compare_specs=benchmark_compare_specs,
+        benchmark_compare_specs=resolved_benchmark_compare_specs,
         label_horizon_mode=LABEL_HORIZON_MODE,
         final_oos_enabled=FINAL_OOS_ENABLED,
         final_oos_size_raw=FINAL_OOS_SIZE_RAW,

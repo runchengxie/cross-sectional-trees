@@ -61,6 +61,11 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         for item in benchmark_compare_cfg
         if isinstance(item, Mapping) and item.get("returns_file")
     ]
+    benchmark_compare_symbols = [
+        str(item.get("symbol")).strip()
+        for item in benchmark_compare_cfg
+        if isinstance(item, Mapping) and item.get("symbol")
+    ]
 
     raw_inputs = {
         "cache_dir": ctx.get("CACHE_DIR"),
@@ -100,6 +105,8 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         ]
         if resolved_compare_files:
             resolved_inputs["benchmark_compare_returns_files"] = resolved_compare_files
+    if benchmark_compare_symbols:
+        resolved_inputs["benchmark_compare_symbols"] = benchmark_compare_symbols
     return {
         "artifacts_root": str(ctx.get("ARTIFACTS_ROOT")) if ctx.get("ARTIFACTS_ROOT") else None,
         "run_dir": str(ctx["run_dir"]),
