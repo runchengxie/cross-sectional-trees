@@ -2,7 +2,7 @@
 ## Keep model training unchanged, then use bucket IC and exposure artifacts to
 ## inspect whether the apparent alpha is concentrated in a few industries.
 extends:
-  - configs/local/hk_selected__m_pit_core_hybrid_sidecar_tr_close_exec_balanced.yml
+  - configs/local/hk_selected__m_pit_core_hybrid_sidecar_diag_slow_bx20_be10_no_ret_latest_ratio_tr_close_exec_balanced.yml
 
 industry:
   enabled: true
