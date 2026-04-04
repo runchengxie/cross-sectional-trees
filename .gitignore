@@ -250,3 +250,7 @@ full_project_source.txt
 config/hk_selected_live.yml
 config/local/
 configs/local/
+!configs/local/
+configs/local/*
+!configs/local/hk_selected__m_pit_core_hybrid_sidecar_industry_observe_tr_close_exec_balanced.yml
+!configs/local/hk_selected__m_pit_core_hybrid_sidecar_industry_groupcap4_tr_close_exec_balanced.yml

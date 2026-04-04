@@ -4,7 +4,7 @@
 本页不解决什么：不展开参数定义、资产整备细节或专题研究流水账。  
 适合谁：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。  
 读完你会得到什么：一条按当前仓库模板和最新研究结论整理过的可执行路线图。  
-相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/cli.md`、`docs/config.md`
+相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-industry-treatment-20260404.md`、`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/cli.md`、`docs/config.md`
 
 页面性质：`current-state`  
 最后核对时间：`2026-03-31`  
@@ -106,6 +106,8 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 * `configs/experiments/baseline/hk_selected.yml`：历史 benchmark 锚点，也是低依赖的回退入口。
 
 如果你现在的目标只是“先把四种模型都跑一遍看看差距”，月度 `M` + provider 基本面仍然是最顺手的入口；但那更接近模型 PK 入口，不再是默认研究口径入口。
+
+如果你已经确认要做“财报驱动 + 月频”的 PIT / hybrid 研究，而且开始担心行业异质性，不要直接把样本切成很多行业模型；先看 `docs/research/notes/hk-monthly-industry-treatment-20260404.md` 里的“观察 -> 约束 -> 金融剔除/单列 -> 最后才拆模型”顺序。
 
 ### 4.1 Monthly Time-Split Policy
 

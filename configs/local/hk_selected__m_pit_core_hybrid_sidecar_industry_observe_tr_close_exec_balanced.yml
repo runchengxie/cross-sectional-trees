@@ -1,0 +1,26 @@
+## Monthly PIT sidecar with industry labels joined for diagnostics only.
+## Keep model training unchanged, then use bucket IC and exposure artifacts to
+## inspect whether the apparent alpha is concentrated in a few industries.
+extends:
+  - configs/local/hk_selected__m_pit_core_hybrid_sidecar_tr_close_exec_balanced.yml
+
+industry:
+  enabled: true
+  source: file
+  file: artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet
+  keep_columns:
+    - industry_name
+    - first_industry_name
+  ffill: false
+  required: true
+
+eval:
+  run_name: hk_sel_m_pit_core_hybrid_sidecar_industry_observe_tr_close_exec_balanced
+  save_scored_artifact: true
+  bucket_ic:
+    enabled: true
+    schemes:
+      - industry_name
+
+data:
+  cache_tag: hk_sel_m_pit_core_hybrid_sidecar_industry_observe_tr_close_exec_balanced_v1

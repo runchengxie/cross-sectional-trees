@@ -38,7 +38,8 @@
 6. `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
 7. `notes/hk-monthly-provider-vs-pit-20260330.md`
 8. `notes/hk-monthly-provider-factor-probes-20260330.md`
-9. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
+9. `notes/hk-monthly-industry-treatment-20260404.md`
+10. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
 
 如果你现在要重新进入 HK quarterly 研究，当前更合理的阅读顺序是：
 
@@ -68,6 +69,7 @@
 | `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md` | `R0-R4` 首轮实跑已说明：`2025-12-31` cutoff recut 仍为正 `IC`，`2026-03-27` cutoff recut 已转负，因此 monthly 这轮转弱更像 recent months / latest regime，而不是 split 本身 | 否，当前作为 monthly 稳定性拆解页保留 |
 | `notes/hk-monthly-provider-vs-pit-20260330.md` | `M-PIT` 更适合当月频研究主线，`M-provider rebalance-only` 更适合当正式月频 comparator / 实现候选；provider 的强 OOS 更像 `small-cap + 短周期价格结构` 在发力，而不是纯 value 或纯中期 momentum | 否，当前作为 monthly 线路解释页保留 |
 | `notes/hk-monthly-provider-factor-probes-20260330.md` | provider baseline 的强 OOS 明显依赖 size 倾斜；`no-size`、`hard-cap` 和 `soft size control` 都没有把它洗成更干净的排序器，所以这条线当前更适合当实现 comparator，而不是研究主线 | 否，当前作为 monthly provider probe 汇总页保留 |
+| `notes/hk-monthly-industry-treatment-20260404.md` | 对当前 monthly PIT / hybrid 线，行业处理更适合按“观察 -> 约束 -> 金融剔除/单列 -> 最后才拆模型”推进；仓库当前已支持行业 join、`bucket_ic` 和组合层 group cap，但还没有把行业列自动接进训练主线 | 否，当前作为 monthly 行业处理设计页保留 |
 | `notes/hk-quarterly-holdings-analysis-20260329.md` | `raw-scale dedup` 的价值主要在于更低换手和更稳定的测试段持仓，`reg_zscore + tr_close` 的最近 OOS 亮点则更集中、更像少数名字驱动 | 否，当前作为组合层解释页保留 |
 | `notes/hk-quarterly-construction-grid-20260329.md` | 第一轮 fixed-signal construction sweep 已经表明 `buffer_exit` 比 `buffer_entry` 更值得继续扫；下一步更像是固定 `bx = 2` 后比较 `top_k`，而不是继续扩特征 | 否，当前作为组合构造 follow-up 页保留 |
 | `notes/hk-quarterly-next-step-configs-20260329.md` | 当前 quarterly 下一阶段更适合收口到少数几个窗口和特征探针，并统一到 balanced execution 口径下继续比较 | 否，当前作为下一阶段执行建议页保留 |
@@ -120,6 +122,7 @@
 * `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
 * `notes/hk-monthly-provider-vs-pit-20260330.md`
 * `notes/hk-monthly-provider-factor-probes-20260330.md`
+* `notes/hk-monthly-industry-treatment-20260404.md`
 * `notes/hk-quarterly-current-state-20260329.md`
 * `notes/hk-quarterly-holdings-analysis-20260329.md`
 * `notes/hk-quarterly-construction-grid-20260329.md`
