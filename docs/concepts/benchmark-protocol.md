@@ -143,7 +143,7 @@ HK selected 当前常见 family 可以按下面理解：
 * 新鲜度 / 时效性：`days_since_report`、`valuation_age_days`
 * 行业 / 状态：当前更适合先做 diagnostics、`bucket_ic` 或组合约束；要升成训练特征时，单独记录假设
 
-如果当前研究线刻意不包含某一类，例如 monthly `no_ret` 候选不再直接使用 trailing-return 动量，这种“留白”本身就是研究假设，后续不要无意间再补回去。
+如果当前研究线刻意不包含某一类，例如 monthly `no_ret` 候选不再直接使用 trailing-return 动量，这种“留白”本身就是研究假设。
 
 ### 5.2 默认顺序一：先做 feature family ablation
 
