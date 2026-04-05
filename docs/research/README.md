@@ -28,10 +28,10 @@
 
 ### 月度调仓港股通选股策略
 
-Current-State：
+当前状态：
 `notes/hk-monthly-current-state-20260330.md`
 
-Active Deep-Dive：
+当前研究方向：
 `notes/hk-monthly-time-window-design-20260330.md`
 `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`
 `notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`
@@ -40,23 +40,23 @@ Active Deep-Dive：
 `notes/hk-monthly-provider-vs-pit-20260330.md`
 `notes/hk-monthly-industry-treatment-20260404.md`
 
-Historical Provenance：
+历史备份：
 `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
 `notes/hk-monthly-provider-factor-probes-20260330.md`
 
 建议顺序：
-1. 先读 current-state。
+1. 先读当前状态。
 2. 再读 `time-window`、`frozen-vs-latest` 和 `benchmark-ladder`。
 3. 如果你关心慢执行和去动量，再读 `slow-sleeve` 和 `no-ret`。
-4. 如果你关心 comparator 和行业处理，再读 `provider-vs-pit` 和 `industry-treatment`。
-5. 只有追溯降级路线时，再回 provenance。
+4. 如果你关心控制对照对比和行业处理，再读 `provider-vs-pit` 和 `industry-treatment`。
+5. 只有追溯降级路线时，再回历史备份。
 
 ### 季度调仓港股通选股策略
 
-Current-State：
+当前状态：
 `notes/hk-quarterly-current-state-20260329.md`
 
-Active Deep-Dive：
+当前研究方向：
 `notes/hk-quarterly-benchmark-and-interpretation-20260405.md`
 `notes/hk-quarterly-holdings-analysis-20260329.md`
 `notes/hk-quarterly-construction-grid-20260329.md`
@@ -64,29 +64,29 @@ Active Deep-Dive：
 `notes/hk-quarterly-oos-evidence-20260329.md`
 `notes/hk-quarterly-pure-fundamentals-20260329.md`
 
-Historical Provenance：
+历史备份：
 `notes/hk-quarterly-pit-regime-shift-202603.md`
 `notes/hk-h12-w16-target-transform-review-20260324.md`
 `notes/hk-quarterly-target-design-and-direction-20260324.md`
 `notes/hk-quarterly-price-col-ab-20260325.md`
 
 建议顺序：
-1. 先读 current-state。
-2. 再读 `benchmark-and-interpretation`，把主线、challenger、结构解释和 pure fundamentals sidecar 的角色看清楚。
+1. 先读当前状态。
+2. 再读 `benchmark-and-interpretation`，把主线、潜在备选、结构解释和作为控制变量对比的纯基本面策略的状态看清楚。
 3. 然后读 `holdings-analysis`、`construction-grid`、`next-step-configs`。
 4. 如果你要给最近 OOS 亮点定证据等级，再读 `oos-evidence`。
-5. 只有要追溯旧结论出处时，再回 provenance。
+5. 只有要追溯旧结论出处时，再回历史备份。
 
 详细结论状态和沉淀情况见下方表格。
 
-#### Current-State
+#### 当前状态
 
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
 | `notes/hk-monthly-current-state-20260330.md` | 当前 monthly 线最合理的分工应理解成：`M-PIT baseline` 当研究锚点，`M-PIT + no_ret + bx20 / be10` 当 current monthly PIT candidate，`M-provider rebalance-only` 当正式月频 comparator / 实现候选；`R0-R4` 已说明 old baseline 的转弱更像 recent months / latest regime，而不是 split 本身 | 否，当前应作为 monthly notes 的总入口 |
 | `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 线的现行口径、哪些旧结论仍保留、哪些已降级成 provenance、以及现在该从哪两条路线继续往前推 | 是，当前应作为 quarterly notes 的总入口 |
 
-#### Active Deep-Dive
+#### 当前研究方向
 
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ Historical Provenance：
 | `notes/hk-quarterly-oos-evidence-20260329.md` | 最近 `Final OOS` 很亮不等于模型已验证；当前两条 balanced execution 候选更适合当下一轮前瞻验证对象，而不是已确认赢家 | 否，当前作为“线索 vs 证据”边界说明页保留 |
 | `notes/hk-quarterly-pure-fundamentals-20260329.md` | 纯 PIT 基本面值得作为独立 benchmark / challenger 线，但第一波应先跑 `ridge -> small xgb_regressor -> xgb_ranker`，而不是直接回头救 `elasticnet` | 否，当前作为独立纯基本面路线说明页保留 |
 
-#### Historical Provenance
+#### 历史备份
 
 | 页面 | 当前有效结论 | 是否已沉淀到主线文档 |
 | --- | --- | --- |
