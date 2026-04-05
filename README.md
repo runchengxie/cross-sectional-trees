@@ -38,7 +38,7 @@ cp .env.example .env
 
 ## 这仓库还有哪些入口
 
-* 研究汇总与敏感性分析：`csml summarize` / `csml grid` / `csml sweep-linear`
+* 研究汇总与调参：`csml summarize` / `csml grid` / `csml tune` / `csml sweep-linear`
 * live 结果查看与分配：`csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk`（含 HK 执行前场景矩阵）
 * 数据与运维工具：`csml rqdata ...` / `csml universe ...`
 * 数据分层与查询：`csml data catalog` / `csml data materialize` / `csml data query`
@@ -51,7 +51,7 @@ cp .env.example .env
 
 | 层级 | 典型入口 | 当前定位 |
 | --- | --- | --- |
-| 公开主线 CLI | `csml run` / `csml summarize` / `csml grid` / `csml sweep-linear` / `csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk` / `csml data ...` / `csml rqdata ...` / `csml universe ...` | 当前正式对外说明、持续维护的用户入口 |
+| 公开主线 CLI | `csml run` / `csml summarize` / `csml grid` / `csml tune` / `csml sweep-linear` / `csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk` / `csml data ...` / `csml rqdata ...` / `csml universe ...` | 当前正式对外说明、持续维护的用户入口 |
 | 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets` / `release_assets` / `package_runs` / `release_runs` | 已在文档中说明的打包 / 分发工具，但它们不是 `csml` 子命令 |
 | 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details` / `hk_selected_provider_valuation_audit` / `hk_intraday_download` / `hk_asset_patch_merge` | 只在对应 playbook 或专题页里按场景使用；可复用，但不属于新手默认主线 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 前者服务开发与 CI；后者是维护者私有工具，不属于公开研究工作流 |

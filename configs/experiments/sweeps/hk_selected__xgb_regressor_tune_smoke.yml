@@ -1,0 +1,54 @@
+base_config: configs/experiments/variants/hk_selected__xgb_regressor.yml
+run_name_prefix: hk_tune_
+tag: hk_xgb_regressor_tune_smoke
+sampler: random
+n_trials: 8
+seed: 42
+
+objective:
+  eval_ic_ir_weight: 1.0
+  walk_forward_test_ic_mean_weight: 1.0
+  backtest_sharpe_weight: 0.5
+  drawdown_penalty_weight: 0.25
+  cost_drag_penalty_weight: 5.0
+  turnover_penalty_weight: 0.1
+  drop_degenerate: true
+
+search_space:
+  - name: sample_weight
+    values:
+      - label: date_equal
+        overrides:
+          model.sample_weight_mode: date_equal
+          model.sample_weight_params: null
+      - label: exp_h12
+        overrides:
+          model.sample_weight_mode: exp_decay
+          model.sample_weight_params.halflife: 12
+  - name: train_window
+    values:
+      - label: full
+        overrides:
+          model.train_window.mode: full
+          model.train_window.size: null
+          model.train_window.unit: dates
+      - label: roll60
+        overrides:
+          model.train_window.mode: rolling
+          model.train_window.size: 60
+          model.train_window.unit: dates
+  - name: learning_rate
+    path: model.params.learning_rate
+    values:
+      - 0.03
+      - 0.05
+  - name: max_depth
+    path: model.params.max_depth
+    values:
+      - 2
+      - 3
+  - name: reg_lambda
+    path: model.params.reg_lambda
+    values:
+      - 1
+      - 3

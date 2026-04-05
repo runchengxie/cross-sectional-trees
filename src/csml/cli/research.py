@@ -24,6 +24,43 @@ def handle_grid(args) -> int:
     return 0
 
 
+def handle_tune(args) -> int:
+    from ..commands import tune
+
+    argv: list[str] = []
+    append_arg(argv, "--tune-config", getattr(args, "tune_config", None))
+    append_arg(argv, "--config", getattr(args, "config", None))
+    append_arg(argv, "--run-name-prefix", getattr(args, "run_name_prefix", None))
+    append_arg(argv, "--sweeps-dir", getattr(args, "sweeps_dir", None))
+    append_arg(argv, "--tag", getattr(args, "tag", None))
+    append_arg(argv, "--runs-dir", getattr(args, "runs_dir", None))
+    append_arg(argv, "--sampler", getattr(args, "sampler", None))
+    append_arg(argv, "--n-trials", getattr(args, "n_trials", None))
+    append_arg(argv, "--seed", getattr(args, "seed", None))
+    append_bool_switch(
+        argv,
+        getattr(args, "dry_run", None),
+        true_flag="--dry-run",
+        false_flag="--no-dry-run",
+    )
+    append_bool_switch(
+        argv,
+        getattr(args, "continue_on_error", None),
+        true_flag="--continue-on-error",
+        false_flag="--no-continue-on-error",
+    )
+    append_bool_switch(
+        argv,
+        getattr(args, "skip_summarize", None),
+        true_flag="--skip-summarize",
+        false_flag="--no-skip-summarize",
+    )
+    append_arg(argv, "--summary-output", getattr(args, "summary_output", None))
+    append_arg(argv, "--log-level", getattr(args, "log_level", None))
+    tune.main(argv)
+    return 0
+
+
 def handle_sweep_linear(args) -> int:
     from ..commands import linear_sweep
 
@@ -104,7 +141,7 @@ def handle_backup_data(args) -> int:
 
 
 def register_research_commands(subparsers) -> None:
-    from ..commands import linear_sweep, run_grid
+    from ..commands import linear_sweep, run_grid, tune
     from ..data_tools import backup_data as backup_data_tool
     from ..research import summarize_runs
 
@@ -114,6 +151,13 @@ def register_research_commands(subparsers) -> None:
     )
     run_grid.add_grid_args(grid)
     grid.set_defaults(func=handle_grid)
+
+    tune_cmd = subparsers.add_parser(
+        "tune",
+        help="Run repo-native model tuning trials from a search spec and auto summarize",
+    )
+    tune.add_tune_args(tune_cmd)
+    tune_cmd.set_defaults(func=handle_tune)
 
     sweep_linear = subparsers.add_parser(
         "sweep-linear",

@@ -1,6 +1,7 @@
 from csml import cli
 from csml.commands import linear_sweep as sweep_tool
 from csml.commands import run_grid as grid_tool
+from csml.commands import tune as tune_tool
 from csml.data_tools import backup_data as backup_data_tool
 from csml.research import summarize_runs as summarize_tool
 
@@ -31,6 +32,35 @@ def test_cli_parses_research_commands():
     assert grid.buffer_exit == ["6"]
     assert grid.buffer_entry == ["3"]
     assert grid.weighting == ["equal,signal"]
+
+    tune_cmd = parser.parse_args(
+        [
+            "tune",
+            "--tune-config",
+            "configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml",
+            "--config",
+            "configs/experiments/baseline/hk_selected.yml",
+            "--run-name-prefix",
+            "hk_tune_",
+            "--tag",
+            "exp_tune",
+            "--sampler",
+            "random",
+            "--n-trials",
+            "8",
+            "--seed",
+            "7",
+            "--dry-run",
+        ]
+    )
+    assert tune_cmd.command == "tune"
+    assert tune_cmd.tune_config == "configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml"
+    assert tune_cmd.run_name_prefix == "hk_tune_"
+    assert tune_cmd.tag == "exp_tune"
+    assert tune_cmd.sampler == "random"
+    assert tune_cmd.n_trials == 8
+    assert tune_cmd.seed == 7
+    assert tune_cmd.dry_run is True
 
     sweep = parser.parse_args(
         [
@@ -278,6 +308,74 @@ def test_cli_main_sweep_linear_passes_through_args(monkeypatch):
             "--no-skip-summarize",
             "--summary-output",
             "artifacts/sweeps/exp_1/runs_summary.csv",
+            "--log-level",
+            "DEBUG",
+        ]
+    ]
+
+
+def test_cli_main_tune_passes_through_args(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(tune_tool, "main", lambda argv: calls.append(argv))
+
+    assert (
+        cli.main(
+            [
+                "tune",
+                "--tune-config",
+                "configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml",
+                "--config",
+                "configs/experiments/baseline/hk_selected.yml",
+                "--run-name-prefix",
+                "hk_tune_",
+                "--sweeps-dir",
+                "artifacts/sweeps",
+                "--tag",
+                "exp_tune",
+                "--runs-dir",
+                "artifacts/runs",
+                "--sampler",
+                "random",
+                "--n-trials",
+                "8",
+                "--seed",
+                "7",
+                "--dry-run",
+                "--continue-on-error",
+                "--no-skip-summarize",
+                "--summary-output",
+                "artifacts/sweeps/exp_tune/runs_summary.csv",
+                "--log-level",
+                "DEBUG",
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        [
+            "--tune-config",
+            "configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml",
+            "--config",
+            "configs/experiments/baseline/hk_selected.yml",
+            "--run-name-prefix",
+            "hk_tune_",
+            "--sweeps-dir",
+            "artifacts/sweeps",
+            "--tag",
+            "exp_tune",
+            "--runs-dir",
+            "artifacts/runs",
+            "--sampler",
+            "random",
+            "--n-trials",
+            "8",
+            "--seed",
+            "7",
+            "--dry-run",
+            "--continue-on-error",
+            "--no-skip-summarize",
+            "--summary-output",
+            "artifacts/sweeps/exp_tune/runs_summary.csv",
             "--log-level",
             "DEBUG",
         ]

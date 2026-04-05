@@ -17,6 +17,7 @@
 | `csml run` | 跑主流程 | `artifacts/runs/<run>/` |
 | `csml summarize` | 聚合历史 run，对比指标 | `runs_summary.csv` |
 | `csml grid` | 在已有评分结果上做 Top-K / 成本 / buffer 敏感性分析 | `grid_summary.csv` |
+| `csml tune` | 按 YAML 搜索空间批量生成 trial config、跑 pipeline、打分并自动汇总 | `artifacts/sweeps/<tag>/` |
 | `csml sweep-linear` | 批量跑 HK selected 路线的 `ridge` / `elasticnet` 并自动汇总 | `artifacts/sweeps/<tag>/` |
 | `csml holdings` | 读取当前持仓 | text / csv / json |
 | `csml snapshot` | 跑 live 快照，或从现有 run 导出快照 | text / csv / json |
@@ -43,7 +44,7 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `csml run`、`csml summarize`、`csml grid`、`csml sweep-linear`、`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`、`csml init-config`、`csml backup-data`、`csml data ...`、`csml rqdata ...`、`csml universe ...` | 当前正式用户入口；文档、测试和 README 会持续跟随 |
+| 公开主线 CLI | `csml run`、`csml summarize`、`csml grid`、`csml tune`、`csml sweep-linear`、`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`、`csml init-config`、`csml backup-data`、`csml data ...`、`csml rqdata ...`、`csml universe ...` | 当前正式用户入口；文档、测试和 README 会持续跟随 |
 | 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets`、`python -m csml.release_tools.release_assets`、`python -m csml.release_tools.package_runs`、`python -m csml.release_tools.release_runs` | 已文档化、可复用，但不是 `csml` CLI 子命令 |
 | 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details`、`python -m csml.research.hk_selected_provider_valuation_audit`、`python -m csml.research.hk_intraday_download`、`python -m csml.research.hk_asset_patch_merge` | 只在专题页或 playbook 里按场景引用；可用，但不当作默认新手入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | `run_tests.sh` 服务开发与 CI；`scripts/internal/` 属于维护者私有工具 |
@@ -78,7 +79,7 @@ provider 差异见 `docs/providers.md`。
 * 模型：`xgb_regressor`、`xgb_ranker`、`ridge`、`elasticnet`
 * 评估：IC、分位数收益、换手、训练期对照、rolling、bucket IC
 * 稳健性：permutation test、walk-forward、final OOS
-* 研究编排：`summarize`、`grid`、`sweep-linear`
+* 研究编排：`summarize`、`grid`、`tune`、`sweep-linear`
 
 指标说明见 `docs/metrics.md`。
 

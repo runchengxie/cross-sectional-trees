@@ -13,6 +13,7 @@
 | 跑主流程 | `csml run --config <>` |
 | 汇总结果 | `csml summarize --runs-dir artifacts/runs` |
 | 敏感性分析 | `csml grid --config <> --top-k 10,20` |
+| 模型调参 | `csml tune --tune-config <>` |
 | 线性模型搜索 | `csml sweep-linear --sweep-config <>` |
 | 查看持仓 | `csml holdings --config <> --as-of t-1` |
 | 生成快照 | `csml snapshot --config <live.yml>` |
@@ -120,6 +121,24 @@ Top-K × 成本 × buffer × weighting 敏感性分析。
 ```bash
 csml grid --config configs/presets/hk.yml --top-k 5,10 --cost-bps 15,25
 ```
+
+### csml tune
+
+按 YAML 搜索空间批量生成 trial config、执行 pipeline、读取 `summary.json` 打分，并把 best trial 固化回 sweep 目录。
+
+```bash
+csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml
+csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml --dry-run
+```
+
+说明：
+
+* `--tune-config` 里需要提供 `base_config` 和 `search_space`。
+* `search_space` 每一维都要给 `name` 和 `values`；如果是标量搜索，再额外给 `path`。
+* `values` 既可以是简单标量，也可以是 `{label, value}` 或 `{label, overrides}` 这种组合覆盖。
+* `--sampler grid|random` 决定是全量组合还是随机抽样；`random` 下可配 `--n-trials` 和 `--seed`。
+* v1 更适合扫 `model.params`、`model.sample_weight_*`、`model.train_window.*` 这类训练结构；Top-K / 成本 / buffer 这类 construction 敏感性仍优先用 `csml grid`。
+* 默认会在 `artifacts/sweeps/<tag>/` 下写 `jobs.csv`、`trial_results.csv`、`best_trial.json`、`best_config.yml` 和 `runs_summary.csv`；传 `--skip-summarize` 或 `--dry-run` 时会跳过自动汇总。
 
 ### csml sweep-linear
 

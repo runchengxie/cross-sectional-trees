@@ -18,6 +18,7 @@ EXPECTED_CAPABILITY_TOKENS = [
     "`csml run`",
     "`csml summarize`",
     "`csml grid`",
+    "`csml tune`",
     "`csml sweep-linear`",
     "`csml holdings`",
     "`csml snapshot`",

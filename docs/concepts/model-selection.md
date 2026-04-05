@@ -98,6 +98,28 @@ csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_
 
 注意：这里的"线性模型搜索"只覆盖 `ridge` 和 `elasticnet`，不包括普通的最小二乘回归。
 
+## XGB / 训练结构调参（tune）
+
+如果你想对 `xgb_regressor`、`xgb_ranker`，或者它们外层的训练结构参数做自动化搜索，用 `csml tune`：
+
+```bash
+csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml
+```
+
+这个命令会：
+
+1. 从 `base_config` 出发，按 `search_space` 生成 trial config
+2. 逐个执行 `csml run`
+3. 读取每个 trial 的 `summary.json` 算 objective score
+4. 写出 `best_trial.json` 和 `best_config.yml`
+
+更推荐的边界是：
+
+1. 用 `csml tune` 扫 `model.params`、`sample_weight`、`train_window` 这类训练侧参数
+2. 再用 `csml grid` 在 best signal 上扫 `top_k / cost / buffer / weighting`
+
+不要一开始就把模型参数和 construction 参数混在同一锅里做大网格；这两层在仓库里本来就是分开的。
+
 ## 跑完后要检查什么
 
 无论选哪个模型，跑完后都建议检查 `summary.json`：
