@@ -785,9 +785,10 @@ artifacts/sweeps/<tag>/
 其中：
 
 1. `jobs.csv` 固定前缀列为 `order,run_name,config_path`，后面按 `search_space.name` 展开每个维度列，最后带 `overrides_json`。
-1. `trial_results.csv` 固定前缀列为 `order,run_name,config_path`，后面按 `search_space.name` 展开维度列，再写 `summary_path,objective_score,eval_ic_ir,walk_forward_test_ic_mean,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,flag_constant_prediction,flag_zero_feature_importance,status,error,dimensions_json`。
+1. `trial_results.csv` 固定前缀列为 `order,run_name,config_path`，后面按 `search_space.name` 展开维度列，再写 `summary_path,objective_score,eval_ic_ir,eval_cv_ic_mean,eval_cv_ic_valid_folds,eval_cv_ic_total_folds,walk_forward_test_ic_mean,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,flag_constant_prediction,flag_zero_feature_importance,flag_cv_ic_insufficient,status,error,dimensions_json`。
 1. `objective_score` 当前是 repo-native 组合分数：以 `eval.ic.ir`、walk-forward `test_ic.mean` 和 backtest Sharpe 为正向项，对 `max_drawdown`、`avg_cost_drag`、`avg_turnover` 加惩罚；权重可在 tune spec 的 `objective` 段覆盖。
 1. 若命中 `flag_constant_prediction=true` 或 `flag_zero_feature_importance=true` 且 `objective.drop_degenerate=true`，该 trial 会保留结果行，但 `objective_score` 留空，不参与 best trial 选择。
+1. 若 tune spec 里设置了 `objective.min_cv_ic_valid_folds`，则 `eval.cv_ic.scores` 里有效折数不足的 trial 会标成 `flag_cv_ic_insufficient=true`；这类 trial 同样会保留结果行，但 `objective_score` 留空，不参与 best trial 选择。
 1. `best_trial.json` 当前记录 `run_name`、`config_path`、`summary_path`、`objective_score`、`dimensions` 和同一份度量快照。
 1. `best_config.yml` 是 `best_trial.json` 对应的 trial config 副本，方便后续直接复跑或继续做 construction grid。
 1. `--dry-run` 只会生成 `configs/`、`jobs.csv` 和一个空表头的 `trial_results.csv`，不会调用 `pipeline.run` 或 `summarize`。

@@ -137,6 +137,7 @@ csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tu
 * `search_space` 每一维都要给 `name` 和 `values`；如果是标量搜索，再额外给 `path`。
 * `values` 既可以是简单标量，也可以是 `{label, value}` 或 `{label, overrides}` 这种组合覆盖。
 * `--sampler grid|random` 决定是全量组合还是随机抽样；`random` 下可配 `--n-trials` 和 `--seed`。
+* `objective` 段现在支持 `min_cv_ic_valid_folds`；当 monthly / 小样本研究里想把 `cv_ic` 可判分性纳入筛选时，可以要求 trial 至少有若干个有效 CV folds，否则该 trial 会保留结果行，但不参与 best trial 选择。
 * v1 更适合扫 `model.params`、`model.sample_weight_*`、`model.train_window.*` 这类训练结构；Top-K / 成本 / buffer 这类 construction 敏感性仍优先用 `csml grid`。
 * 默认会在 `artifacts/sweeps/<tag>/` 下写 `jobs.csv`、`trial_results.csv`、`best_trial.json`、`best_config.yml` 和 `runs_summary.csv`；传 `--skip-summarize` 或 `--dry-run` 时会跳过自动汇总。
 

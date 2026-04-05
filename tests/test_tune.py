@@ -15,8 +15,18 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def _write_fake_summary(run_dir: Path, run_name: str, *, eval_ic_ir: float, wf_test_ic: float, backtest_sharpe: float) -> None:
+def _write_fake_summary(
+    run_dir: Path,
+    run_name: str,
+    *,
+    eval_ic_ir: float,
+    wf_test_ic: float,
+    backtest_sharpe: float,
+    cv_ic_scores: list[float | None] | None = None,
+) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
+    scores = cv_ic_scores if cv_ic_scores is not None else [0.02, 0.01, 0.03]
+    mean = [float(value) for value in scores if value is not None]
     payload = {
         "run": {
             "name": run_name,
@@ -24,6 +34,11 @@ def _write_fake_summary(run_dir: Path, run_name: str, *, eval_ic_ir: float, wf_t
         },
         "eval": {
             "ic": {"ir": eval_ic_ir},
+            "cv_ic": {
+                "mean": sum(mean) / len(mean) if mean else None,
+                "std": 0.0 if mean else None,
+                "scores": scores,
+            },
             "constant_prediction": False,
             "zero_feature_importance": False,
         },
@@ -253,6 +268,78 @@ def test_tune_dry_run_skips_pipeline_and_summarize(tmp_path, monkeypatch):
 
     trial_results = _read_csv(tmp_path / "sweeps" / "dry_case" / "trial_results.csv")
     assert trial_results == []
+
+
+def test_tune_filters_best_trial_by_min_cv_ic_valid_folds(tmp_path, monkeypatch):
+    base_cfg = {
+        "model": {"type": "xgb_regressor", "params": {"learning_rate": 0.05}},
+        "eval": {"output_dir": str(tmp_path / "runs"), "run_name": "base"},
+    }
+    base_config_path = tmp_path / "base.yml"
+    base_config_path.write_text(yaml.safe_dump(base_cfg, sort_keys=False), encoding="utf-8")
+
+    tune_spec = {
+        "base_config": str(base_config_path),
+        "tag": "cv_gate_case",
+        "sweeps_dir": str(tmp_path / "sweeps"),
+        "skip_summarize": True,
+        "objective": {
+            "min_cv_ic_valid_folds": 2,
+        },
+        "search_space": [
+            {"name": "lr", "path": "model.params.learning_rate", "values": [0.03, 0.05]},
+        ],
+    }
+    tune_spec_path = tmp_path / "tune.yml"
+    tune_spec_path.write_text(yaml.safe_dump(tune_spec, sort_keys=False), encoding="utf-8")
+
+    def fake_pipeline_run(cfg_path: str) -> None:
+        cfg = yaml.safe_load(Path(cfg_path).read_text(encoding="utf-8"))
+        run_name = cfg["eval"]["run_name"]
+        run_dir = (tmp_path / "runs") / f"{run_name}_20260101_000000_deadbeef"
+        learning_rate = float(cfg["model"]["params"]["learning_rate"])
+        if learning_rate < 0.05:
+            _write_fake_summary(
+                run_dir,
+                run_name,
+                eval_ic_ir=0.50,
+                wf_test_ic=0.10,
+                backtest_sharpe=1.20,
+                cv_ic_scores=[None, None, None],
+            )
+            return
+        _write_fake_summary(
+            run_dir,
+            run_name,
+            eval_ic_ir=0.25,
+            wf_test_ic=0.06,
+            backtest_sharpe=0.80,
+            cv_ic_scores=[0.02, None, 0.01],
+        )
+
+    monkeypatch.setattr(pipeline_mod, "run", fake_pipeline_run)
+
+    tune.main(["--tune-config", str(tune_spec_path)])
+
+    results = _read_csv(tmp_path / "sweeps" / "cv_gate_case" / "trial_results.csv")
+    assert len(results) == 2
+
+    first = results[0]
+    second = results[1]
+
+    assert first["eval_cv_ic_valid_folds"] == "0"
+    assert first["flag_cv_ic_insufficient"] == "True"
+    assert first["objective_score"] == ""
+
+    assert second["eval_cv_ic_valid_folds"] == "2"
+    assert second["flag_cv_ic_insufficient"] == "False"
+    assert second["objective_score"] != ""
+
+    best_trial = json.loads(
+        (tmp_path / "sweeps" / "cv_gate_case" / "best_trial.json").read_text(encoding="utf-8")
+    )
+    assert best_trial["run_name"] == "base_tune_cv_gate_case_trial_002"
+    assert best_trial["metrics"]["eval_cv_ic_valid_folds"] == 2
 
 
 def test_repo_tune_spec_points_to_existing_base_config():

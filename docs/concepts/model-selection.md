@@ -113,6 +113,8 @@ csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tu
 3. 读取每个 trial 的 `summary.json` 算 objective score
 4. 写出 `best_trial.json` 和 `best_config.yml`
 
+如果你在 monthly / 小样本时序问题上想避免 “账面很强，但 `cv_ic` 根本不可判分” 的 winner，可以在 tune spec 的 `objective` 段加 `min_cv_ic_valid_folds`，把 `eval.cv_ic.scores` 里有效折数不足的 trial 直接排除出 best trial 选择。
+
 更推荐的边界是：
 
 1. 用 `csml tune` 扫 `model.params`、`sample_weight`、`train_window` 这类训练侧参数

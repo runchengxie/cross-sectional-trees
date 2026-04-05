@@ -56,6 +56,7 @@ class ObjectiveSpec:
     cost_drag_penalty_weight: float = 5.0
     turnover_penalty_weight: float = 0.1
     drop_degenerate: bool = True
+    min_cv_ic_valid_folds: int = 0
 
 
 def _resolve_path(path_text: str | Path) -> Path:
@@ -355,6 +356,9 @@ def _write_trial_results_csv(path: Path, rows: list[dict[str, Any]], dimension_n
         "summary_path",
         "objective_score",
         "eval_ic_ir",
+        "eval_cv_ic_mean",
+        "eval_cv_ic_valid_folds",
+        "eval_cv_ic_total_folds",
         "walk_forward_test_ic_mean",
         "backtest_sharpe",
         "backtest_max_drawdown",
@@ -362,6 +366,7 @@ def _write_trial_results_csv(path: Path, rows: list[dict[str, Any]], dimension_n
         "backtest_avg_cost_drag",
         "flag_constant_prediction",
         "flag_zero_feature_importance",
+        "flag_cv_ic_insufficient",
         "status",
         "error",
         "dimensions_json",
@@ -413,6 +418,14 @@ def _mean(values: list[float]) -> float | None:
     return float(sum(values) / len(values))
 
 
+def _to_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number
+
+
 def _extract_walk_forward_test_ic_mean(summary: dict[str, Any]) -> float | None:
     results = _get_nested(summary, "walk_forward", "results")
     if not isinstance(results, list):
@@ -429,6 +442,18 @@ def _extract_walk_forward_test_ic_mean(summary: dict[str, Any]) -> float | None:
     return _mean(values)
 
 
+def _extract_cv_ic_stats(summary: dict[str, Any]) -> tuple[float | None, int | None, int | None]:
+    cv_ic_mean = _to_float(_get_nested(summary, "eval", "cv_ic", "mean"))
+    cv_scores = _get_nested(summary, "eval", "cv_ic", "scores")
+    if isinstance(cv_scores, list):
+        total_folds = len(cv_scores)
+        valid_folds = sum(1 for score in cv_scores if _to_float(score) is not None)
+        return cv_ic_mean, valid_folds, total_folds
+    if cv_ic_mean is not None:
+        return cv_ic_mean, 1, None
+    return None, 0, None
+
+
 def _parse_objective_spec(spec: dict[str, Any]) -> ObjectiveSpec:
     objective_cfg = spec.get("objective")
     if objective_cfg is None:
@@ -443,6 +468,14 @@ def _parse_objective_spec(spec: dict[str, Any]) -> ObjectiveSpec:
         except (TypeError, ValueError) as exc:
             raise SystemExit(f"objective.{key} must be a number.") from exc
 
+    min_cv_ic_valid_folds_raw = objective_cfg.get("min_cv_ic_valid_folds", 0)
+    try:
+        min_cv_ic_valid_folds = int(min_cv_ic_valid_folds_raw)
+    except (TypeError, ValueError) as exc:
+        raise SystemExit("objective.min_cv_ic_valid_folds must be an integer.") from exc
+    if min_cv_ic_valid_folds < 0:
+        raise SystemExit("objective.min_cv_ic_valid_folds must be >= 0.")
+
     return ObjectiveSpec(
         eval_ic_ir_weight=_get_number("eval_ic_ir_weight", 1.0),
         walk_forward_test_ic_mean_weight=_get_number("walk_forward_test_ic_mean_weight", 0.5),
@@ -454,11 +487,13 @@ def _parse_objective_spec(spec: dict[str, Any]) -> ObjectiveSpec:
             objective_cfg.get("drop_degenerate", True),
             field_name="objective.drop_degenerate",
         ),
+        min_cv_ic_valid_folds=min_cv_ic_valid_folds,
     )
 
 
 def _score_summary(summary: dict[str, Any], objective: ObjectiveSpec) -> dict[str, Any]:
     eval_ic_ir = _to_float(_get_nested(summary, "eval", "ic", "ir"))
+    eval_cv_ic_mean, eval_cv_ic_valid_folds, eval_cv_ic_total_folds = _extract_cv_ic_stats(summary)
     walk_forward_test_ic_mean = _extract_walk_forward_test_ic_mean(summary)
     backtest_sharpe = _to_float(_get_nested(summary, "backtest", "stats", "sharpe"))
     backtest_max_drawdown = _to_float(_get_nested(summary, "backtest", "stats", "max_drawdown"))
@@ -466,9 +501,16 @@ def _score_summary(summary: dict[str, Any], objective: ObjectiveSpec) -> dict[st
     backtest_avg_cost_drag = _to_float(_get_nested(summary, "backtest", "stats", "avg_cost_drag"))
     flag_constant_prediction = bool(_get_nested(summary, "eval", "constant_prediction") or False)
     flag_zero_feature_importance = bool(_get_nested(summary, "eval", "zero_feature_importance") or False)
+    flag_cv_ic_insufficient = (
+        objective.min_cv_ic_valid_folds > 0
+        and (eval_cv_ic_valid_folds or 0) < objective.min_cv_ic_valid_folds
+    )
 
     objective_score: float | None = None
-    if not (objective.drop_degenerate and (flag_constant_prediction or flag_zero_feature_importance)):
+    if (
+        not (objective.drop_degenerate and (flag_constant_prediction or flag_zero_feature_importance))
+        and not flag_cv_ic_insufficient
+    ):
         if eval_ic_ir is not None:
             objective_score = (
                 objective.eval_ic_ir_weight * eval_ic_ir
@@ -482,6 +524,9 @@ def _score_summary(summary: dict[str, Any], objective: ObjectiveSpec) -> dict[st
     return {
         "objective_score": objective_score,
         "eval_ic_ir": eval_ic_ir,
+        "eval_cv_ic_mean": eval_cv_ic_mean,
+        "eval_cv_ic_valid_folds": eval_cv_ic_valid_folds,
+        "eval_cv_ic_total_folds": eval_cv_ic_total_folds,
         "walk_forward_test_ic_mean": walk_forward_test_ic_mean,
         "backtest_sharpe": backtest_sharpe,
         "backtest_max_drawdown": backtest_max_drawdown,
@@ -489,6 +534,7 @@ def _score_summary(summary: dict[str, Any], objective: ObjectiveSpec) -> dict[st
         "backtest_avg_cost_drag": backtest_avg_cost_drag,
         "flag_constant_prediction": flag_constant_prediction,
         "flag_zero_feature_importance": flag_zero_feature_importance,
+        "flag_cv_ic_insufficient": flag_cv_ic_insufficient,
     }
 
 
@@ -516,6 +562,9 @@ def _write_best_trial_files(
         "dimensions": best_row.get("dimensions", {}),
         "metrics": {
             "eval_ic_ir": _to_float(best_row.get("eval_ic_ir")),
+            "eval_cv_ic_mean": _to_float(best_row.get("eval_cv_ic_mean")),
+            "eval_cv_ic_valid_folds": _to_int(best_row.get("eval_cv_ic_valid_folds")),
+            "eval_cv_ic_total_folds": _to_int(best_row.get("eval_cv_ic_total_folds")),
             "walk_forward_test_ic_mean": _to_float(best_row.get("walk_forward_test_ic_mean")),
             "backtest_sharpe": _to_float(best_row.get("backtest_sharpe")),
             "backtest_max_drawdown": _to_float(best_row.get("backtest_max_drawdown")),
@@ -523,6 +572,7 @@ def _write_best_trial_files(
             "backtest_avg_cost_drag": _to_float(best_row.get("backtest_avg_cost_drag")),
             "flag_constant_prediction": bool(best_row.get("flag_constant_prediction")),
             "flag_zero_feature_importance": bool(best_row.get("flag_zero_feature_importance")),
+            "flag_cv_ic_insufficient": bool(best_row.get("flag_cv_ic_insufficient")),
         },
     }
     best_trial_path = sweep_dir / "best_trial.json"
@@ -790,6 +840,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "summary_path": None,
                 "objective_score": None,
                 "eval_ic_ir": None,
+                "eval_cv_ic_mean": None,
+                "eval_cv_ic_valid_folds": None,
+                "eval_cv_ic_total_folds": None,
                 "walk_forward_test_ic_mean": None,
                 "backtest_sharpe": None,
                 "backtest_max_drawdown": None,
@@ -797,6 +850,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "backtest_avg_cost_drag": None,
                 "flag_constant_prediction": None,
                 "flag_zero_feature_importance": None,
+                "flag_cv_ic_insufficient": None,
                 "status": "ok",
                 "error": "",
                 "dimensions": dict(job.dimension_labels),
