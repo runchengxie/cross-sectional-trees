@@ -26,7 +26,7 @@
 
 如果你只是要重新接手，不必先看下面的大表，先按这组短入口读。
 
-### HK Monthly
+### 月度调仓港股通选股策略
 
 Current-State：
 `notes/hk-monthly-current-state-20260330.md`
@@ -51,7 +51,7 @@ Historical Provenance：
 4. 如果你关心 comparator 和行业处理，再读 `provider-vs-pit` 和 `industry-treatment`。
 5. 只有追溯降级路线时，再回 provenance。
 
-### HK Quarterly
+### 季度调仓港股通选股策略
 
 Current-State：
 `notes/hk-quarterly-current-state-20260329.md`
