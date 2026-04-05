@@ -197,9 +197,9 @@ HK selected 当前常见 family 可以按下面理解：
 
 如果新特征把历史压缩到很短窗口，就先回退到 coverage-safe 版本。
 
-### 5.5 默认顺序四：不要默认打开 missing indicators
+### 5.5 默认顺序四：默认不开启的 missing indicators
 
-`features.missing.add_indicators` 目前应视为专项假设，不是默认增强项。
+`features.missing.add_indicators` 目前应视为专项假设。
 
 只有在下面两种情况才建议打开：
 
