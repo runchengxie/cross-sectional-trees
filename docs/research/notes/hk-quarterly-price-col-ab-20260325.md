@@ -9,6 +9,7 @@
 相关页面：`docs/research/notes/hk-quarterly-target-design-and-direction-20260324.md`、`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`、`docs/config.md`、`docs/providers.md`
 
 页面性质：`research-note`
+状态：`historical provenance`，本页保留 `close / tr_close` 专题 A/B 的原始结论和可追溯 run，不再作为 quarterly 线默认入口
 最后核对时间：`2026-03-25`
 权威来源：本页列出的 6 个本地配置、对应 run 目录、`summary.json`、`config.used.yml` 和 `provider_overlay` 审计结果
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与后续总收口页冲突，以后续总收口页为准

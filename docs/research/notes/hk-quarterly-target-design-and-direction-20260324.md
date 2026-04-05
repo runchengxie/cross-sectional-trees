@@ -9,6 +9,7 @@
 相关页面：`docs/research/notes/hk-quarterly-pit-regime-shift-202603.md`、`docs/research/notes/hk-h12-w16-target-transform-review-20260324.md`、`docs/research/notes/hk-quarterly-oos-evidence-20260329.md`、`docs/research/notes/hk-quarterly-next-step-configs-20260329.md`、`docs/concepts/model-selection.md`、`docs/concepts/benchmark-protocol.md`
 
 页面性质：`research-note`
+状态：`historical provenance`，本页保留 `ranker` 与 `reg_zscore` 主副线关系的阶段性总结，不再作为 quarterly 线默认入口
 最后核对时间：`2026-03-25`
 权威来源：当前研究 run、follow-up 配置和本页引用的汇总结果
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与当前 playbook 冲突，以 playbook 的最新收口为准

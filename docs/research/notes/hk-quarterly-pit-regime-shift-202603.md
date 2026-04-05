@@ -7,6 +7,7 @@
 截至 `2026-03-25`，本文已经纳入 `2026-03-22` 的抗漂移参数网格结果、`2026-03-24` 的 `label transform / signal direction` follow-up，以及 `2026-03-25` 的 `close / tr_close` 价格口径 A/B。后续如果再跑出新实验，应先更新这页，再让其他文档引用它。
 
 页面性质：`research-note`
+状态：`historical provenance`，本页保留 quarterly overlay 线走向 anti-drift 的由来说明，不再作为 quarterly 线默认入口
 最后核对时间：`2026-03-25`
 权威来源：本页引用的实验配置、run 结果和当前 playbook 收口
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与 `docs/playbooks/hk-selected.md` 的最新主线收口冲突，以 playbook 为准

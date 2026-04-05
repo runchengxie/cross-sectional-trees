@@ -7,6 +7,7 @@
 本文件记录 `hk_sel_q_g4_fixed_pit_overlay` 研究单元在 `halflife=12`、`rolling train_window=16` 下的一次对照实验。
 
 页面性质：`research-note`
+状态：`historical provenance`，本页保留 `h12_w16` 下 `target transform` 对照实验的中间证据链，不再作为 quarterly 线默认入口
 最后核对时间：`2026-03-24`
 权威来源：本页列出的公共基线配置、本地派生配置名、对应 run 目录和汇总指标
 冲突优先级：如果与具体 run 的 `config.used.yml` / `summary.json` 冲突，以 run 产物为准；如果与后续总结页冲突，以后续总结页为准
