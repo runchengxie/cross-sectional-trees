@@ -1,5 +1,7 @@
 # HK Monthly Provider vs PIT 对比笔记（2026-03-30）
 
+> 状态提示：本页属于 active deep-dive，用于解释 monthly 线里 `provider vs PIT` 的语义差异和当前分工。它不替代 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)。
+
 本页解决什么：解释 `M-provider rebalance-only` 和 `M-PIT sidecar` 分别是什么，记录这轮月频 head-to-head 的结果，并回答 provider 那条更强 OOS 曲线更像吃到了什么风格暴露。  
 本页不解决什么：不把这轮 OOS 当成最终验证，也不把风格相关性包装成严格因果归因。  
 适合谁：已经看过三线框架，准备决定“月频正式主线”和“月频实现候选”该怎么分工的人。  
@@ -7,6 +9,7 @@
 相关页面：`docs/research/notes/hk-monthly-provider-factor-probes-20260330.md`、`docs/playbooks/hk-selected.md`、`docs/research/README.md`
 
 页面性质：`research-note`  
+状态：`active deep-dive`，这页只保留 `provider vs PIT` 的 head-to-head 解释层，不作为 monthly 线默认入口  
 最后核对时间：`2026-03-30`  
 权威来源：两条 run 的 `summary.json` / `config.used.yml` / `positions_by_rebalance_oos.csv`、HK selected PIT universe by-date 文件、provider valuation cache、本地 daily `tr_close` cache  
 冲突优先级：如果与具体 run 产物冲突，以 run 目录下的 `summary.json` / `config.used.yml` 为准；如果与更晚样本冲突，以更晚样本为准

@@ -1,7 +1,9 @@
 # HK Monthly PIT Valuation Overlay Probes (2026-03-30)
 
+> 状态提示：本页保留为 historical provenance，用于追溯 monthly 线里 `valuation overlay` 为什么被降级。当前默认研究入口请先读 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)。
+
 页面性质：`research-note`  
-状态：`active deep-dive`，这页只收这批 `M-PIT + provider valuation overlay` probe 的结果，不替代 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)  
+状态：`historical provenance`，这页只保留这批 `M-PIT + provider valuation overlay` probe 的证据链，不再作为 monthly 线默认阅读入口  
 最后核对时间：`2026-03-30`  
 权威来源：6 条 run 的 `summary.json` / `config.used.yml` / `positions_by_rebalance_oos.csv`，以及对应的 `provider_valuation_audit.csv`  
 冲突优先级：如果和具体 run 产物冲突，以 run 目录下的 `summary.json` / `config.used.yml` 为准；如果和更晚样本冲突，以更晚样本为准

@@ -1,5 +1,7 @@
 # HK Monthly Provider Factor Probes（2026-03-30）
 
+> 状态提示：本页保留为 historical provenance，用于追溯 provider 线里 `size-neutral`、`hard-cap` 和 `soft size control` probes 为什么被降级。当前默认研究入口请先读 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)。
+
 本页解决什么：把 `M-provider rebalance-only` 这条月频实现候选的字段拆解、`size-neutral` probe 和 `soft size control` probe 单独收成一页，避免主对比页继续膨胀成实验流水账。  
 本页不解决什么：不重新解释 `provider` 和 `PIT` 的基本语义，也不替代 monthly 现行口径总入口。  
 适合谁：已经知道 `M-provider` 和 `M-PIT` 的区别，准备继续追问“provider 那条强 OOS 到底主要来自哪里”的读者。  
@@ -7,6 +9,7 @@
 相关页面：`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-provider-vs-pit-20260330.md`、`docs/research/README.md`
 
 页面性质：`research-note`  
+状态：`historical provenance`，这页保留 provider 线字段拆解和 size 相关 probes 的证据链，不再作为 monthly 线默认阅读入口  
 最后核对时间：`2026-03-30`  
 权威来源：本页列出的各 run 目录下 `summary.json` / `config.used.yml` / `positions_by_rebalance_oos.csv`，以及相关本地 style 标签文件  
 冲突优先级：如果与具体 run 产物冲突，以 run 目录下的 `summary.json` / `config.used.yml` 为准；如果与更晚样本冲突，以更晚样本为准

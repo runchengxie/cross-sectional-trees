@@ -28,6 +28,9 @@ HK 研究默认用：
 `by_date universe + backtest_periods + local daily/valuation assets` 生成这类收益文件。
 如果你想把“universe 选得好”与“cap-weight 吃到大票”拆开看，同一个 builder 也支持
 `--weighting equal`，可额外生成同 universe 的 equal-weight benchmark 做报告层对照。
+如果你还想继续拆 benchmark 为什么强，可以再用
+`python -m csml.research.hk_benchmark_attribution ...`
+按同一套 periods / universe / daily / valuation / industry labels 生成成分贡献、行业贡献和集中度报表。
 
 配置后，run 会额外输出：
 

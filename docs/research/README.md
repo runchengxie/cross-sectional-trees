@@ -8,17 +8,11 @@
 
 ## 当前内容分组
 
-当前目录已经按两类页面拆成两个子目录：
+当前目录当前主要维护的是：
 
-* `docs/research/papers/`：外部论文精读和背景材料
 * `docs/research/notes/`：仓库内研究记录、阶段性结论和 follow-up 总结
 
-### 论文精读
-
-| 页面 | 定位 | 是否已沉淀到主线文档 |
-| --- | --- | --- |
-| `papers/fundamental-analysis-via-machine-learning-digest.md` | 外部论文背景材料，回答“财报细项 + 非线性模型”为什么值得研究 | 否，属于背景阅读 |
-| `papers/predicting-future-earnings-changes-using-machine-learning.md` | 外部论文背景材料，回答“未来盈利变化方向预测 + 细粒度财务数据”这条路线为什么值得关注 | 否，属于背景阅读 |
+外部论文精读，建议继续放到单独的 `papers/` 子目录。
 
 ### 研究笔记与结论沉淀
 
@@ -35,21 +29,23 @@
 3. `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`
 4. `notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`
 5. `notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
-6. `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
+6. `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`
 7. `notes/hk-monthly-provider-vs-pit-20260330.md`
-8. `notes/hk-monthly-provider-factor-probes-20260330.md`
-9. `notes/hk-monthly-industry-treatment-20260404.md`
-10. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
+8. `notes/hk-monthly-industry-treatment-20260404.md`
+9. 如果你要追溯已降级路线，再看 `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
+10. 如果你要追溯 provider 线里被降级的 size 相关 probes，再看 `notes/hk-monthly-provider-factor-probes-20260330.md`
+11. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
 
 如果你现在要重新进入 HK quarterly 研究，当前更合理的阅读顺序是：
 
 1. `notes/hk-quarterly-current-state-20260329.md`
-2. `notes/hk-quarterly-holdings-analysis-20260329.md`
-3. `notes/hk-quarterly-construction-grid-20260329.md`
-4. `notes/hk-quarterly-next-step-configs-20260329.md`
-5. `notes/hk-quarterly-oos-evidence-20260329.md`
-6. 如果你要单开“不用量价指标”的独立路线，再看 `notes/hk-quarterly-pure-fundamentals-20260329.md`
-7. 只有当你要追溯结论出处时，再回去看更早的专题页
+2. `notes/hk-quarterly-benchmark-and-interpretation-20260405.md`
+3. `notes/hk-quarterly-holdings-analysis-20260329.md`
+4. `notes/hk-quarterly-construction-grid-20260329.md`
+5. `notes/hk-quarterly-next-step-configs-20260329.md`
+6. `notes/hk-quarterly-oos-evidence-20260329.md`
+7. 如果你要单开“不用量价指标”的独立路线，再看 `notes/hk-quarterly-pure-fundamentals-20260329.md`
+8. 只有当你要追溯结论出处时，再回去看更早的专题页
 
 #### Current-State
 
@@ -65,11 +61,11 @@
 | `notes/hk-monthly-time-window-design-20260330.md` | 当前 monthly 线应把 `asof` 边界、完整 labeled 月点、effective model dates 和 `train/test/final_oos` 切分明确拆开；对这批 overlay probe，更合理的默认口径是 `data.end_date=20260327`、`eval.test_size=0.5`、`eval.final_oos.size=24` | 部分沉淀，当前 monthly time-split policy 摘要已进入 `docs/playbooks/hk-selected.md`，推导细节仍保留在本页 |
 | `notes/hk-monthly-pit-slow-sleeve-probes-20260330.md` | 如果想把 `M-PIT` 做得更像“季度看看、平时少动”的主观投资模板，当前更高信息比的做法是保留月频评分，再用更强的 `buffer` 降低换手；首轮 probe 里 `bx20 / be10` 是最平衡的 slow-sleeve 候选 | 否，当前作为 monthly 慢执行 probe 汇总页保留 |
 | `notes/hk-monthly-pit-no-ret-follow-up-20260330.md` | 在 `slow_bx20 / be10` 的基础上去掉直接 trailing-return 特征后，`no_ret` 已经在 latest fixed-`24m`、latest ratio 和 frozen fixed-`24m` 三条口径下同时验证出正 `IC`；后续 local construction probe 说明 `top15` 更适合当激进 sidecar，`bx20 / be12` 在当前窗口基本无新信息 | 否，当前作为 monthly `no_ret` follow-up 汇总页保留 |
-| `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md` | 修复 overlay 和 split 之后，`M-PIT + 轻量 valuation overlay` 并没有在 `asof_20260327 + 24m final OOS` 上给出干净增量；`pe_only` 最多保留为实现 comparator，下一步更值得做的是 `M-PIT` 的 `frozen vs latest` 稳定性拆解 | 否，当前作为 monthly overlay probe 汇总页保留 |
 | `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md` | `R0-R4` 首轮实跑已说明：`2025-12-31` cutoff recut 仍为正 `IC`，`2026-03-27` cutoff recut 已转负，因此 monthly 这轮转弱更像 recent months / latest regime，而不是 split 本身 | 否，当前作为 monthly 稳定性拆解页保留 |
 | `notes/hk-monthly-provider-vs-pit-20260330.md` | `M-PIT` 更适合当月频研究主线，`M-provider rebalance-only` 更适合当正式月频 comparator / 实现候选；provider 的强 OOS 更像 `small-cap + 短周期价格结构` 在发力，而不是纯 value 或纯中期 momentum | 否，当前作为 monthly 线路解释页保留 |
-| `notes/hk-monthly-provider-factor-probes-20260330.md` | provider baseline 的强 OOS 明显依赖 size 倾斜；`no-size`、`hard-cap` 和 `soft size control` 都没有把它洗成更干净的排序器，所以这条线当前更适合当实现 comparator，而不是研究主线 | 否，当前作为 monthly provider probe 汇总页保留 |
+| `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md` | 当前 monthly 策略几乎打平 `selected_eqw`、但明显落后 `selected_capw`；自制 benchmark 的强势更像同一 research universe 里的 cap-weight / mega-cap 集中度，而不是 signal direction 反了 | 否，当前作为 monthly benchmark 解释层保留 |
 | `notes/hk-monthly-industry-treatment-20260404.md` | 对当前 monthly PIT / hybrid 线，行业处理更适合按“观察 -> 约束 -> 金融剔除/单列 -> 最后才拆模型”推进；仓库当前已支持行业 join、`bucket_ic` 和组合层 group cap，但还没有把行业列自动接进训练主线 | 否，当前作为 monthly 行业处理设计页保留 |
+| `notes/hk-quarterly-benchmark-and-interpretation-20260405.md` | quarterly 线当前更需要把主线、结构 challenger、最近 OOS 亮点和纯基本面 sidecar 放回同一解释框架；它们回答的是不同问题，不该互相替代 | 否，当前作为 quarterly benchmark / 解释层保留 |
 | `notes/hk-quarterly-holdings-analysis-20260329.md` | `raw-scale dedup` 的价值主要在于更低换手和更稳定的测试段持仓，`reg_zscore + tr_close` 的最近 OOS 亮点则更集中、更像少数名字驱动 | 否，当前作为组合层解释页保留 |
 | `notes/hk-quarterly-construction-grid-20260329.md` | 第一轮 fixed-signal construction sweep 已经表明 `buffer_exit` 比 `buffer_entry` 更值得继续扫；下一步更像是固定 `bx = 2` 后比较 `top_k`，而不是继续扩特征 | 否，当前作为组合构造 follow-up 页保留 |
 | `notes/hk-quarterly-next-step-configs-20260329.md` | 当前 quarterly 下一阶段更适合收口到少数几个窗口和特征探针，并统一到 balanced execution 口径下继续比较 | 否，当前作为下一阶段执行建议页保留 |
@@ -84,6 +80,8 @@
 | `notes/hk-h12-w16-target-transform-review-20260324.md` | `zscore target` 是当前更值得跟踪的 regressor challenger，但还不能替代 ranker 主基线 | 部分沉淀，摘要已被后续总结页吸收 |
 | `notes/hk-quarterly-target-design-and-direction-20260324.md` | 相对化 label 已升级成正式研究副线，但方向切换问题仍需单独验证 | 是，当前是这组 follow-up 的汇总结论页 |
 | `notes/hk-quarterly-price-col-ab-20260325.md` | `tr_close` 不足以让 ranker 主线改默认，但对 `reg_zscore` challenger 是正向加成 | 部分沉淀，当前作为价格口径 A/B 的独立汇总页保留 |
+| `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md` | 修复 overlay 和 split 之后，`M-PIT + 轻量 valuation overlay` 并没有在 `asof_20260327 + 24m final OOS` 上给出干净增量；`pe_only` 最多保留为实现 comparator，下一步更值得做的是 `M-PIT` 的 `frozen vs latest` 稳定性拆解 | 部分沉淀，当前更适合作为被降级 monthly overlay 路线的 provenance |
+| `notes/hk-monthly-provider-factor-probes-20260330.md` | provider baseline 的强 OOS 明显依赖 size 倾斜；`no-size`、`hard-cap` 和 `soft size control` 都没有把它洗成更干净的排序器，所以这条线当前更适合当实现 comparator，而不是研究主线 | 部分沉淀，当前更适合作为 provider size probes 的 provenance |
 
 ## 时点型页面头部模板
 
@@ -108,11 +106,6 @@
 
 ## 当前文件
 
-论文精读：
-
-* `papers/fundamental-analysis-via-machine-learning-digest.md`
-* `papers/predicting-future-earnings-changes-using-machine-learning.md`
-
 研究笔记：
 
 * `notes/hk-monthly-current-state-20260330.md`
@@ -122,8 +115,10 @@
 * `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
 * `notes/hk-monthly-provider-vs-pit-20260330.md`
 * `notes/hk-monthly-provider-factor-probes-20260330.md`
+* `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`
 * `notes/hk-monthly-industry-treatment-20260404.md`
 * `notes/hk-quarterly-current-state-20260329.md`
+* `notes/hk-quarterly-benchmark-and-interpretation-20260405.md`
 * `notes/hk-quarterly-holdings-analysis-20260329.md`
 * `notes/hk-quarterly-construction-grid-20260329.md`
 * `notes/hk-h12-w16-target-transform-review-20260324.md`

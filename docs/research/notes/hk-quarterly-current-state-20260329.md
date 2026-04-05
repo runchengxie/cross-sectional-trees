@@ -196,11 +196,12 @@
 如果你今天才重新进入 quarterly 研究，建议按下面顺序读：
 
 1. 本页：先把现行口径和边界看对。
-2. [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)：看现在为什么更该先做组合层解释，而不是继续盲扫 config。
-3. [`hk-quarterly-construction-grid-20260329.md`](./hk-quarterly-construction-grid-20260329.md)：看清当前为什么优先做组合构造，而不是继续加新因子。
-4. [`hk-quarterly-next-step-configs-20260329.md`](./hk-quarterly-next-step-configs-20260329.md)：看下一步具体跑什么。
-5. [`hk-quarterly-oos-evidence-20260329.md`](./hk-quarterly-oos-evidence-20260329.md)：看为什么最近 OOS 亮点不能直接当证据。
-6. 需要追溯时，再回去翻更早的专题页。
+2. `docs/research/notes/hk-quarterly-benchmark-and-interpretation-20260405.md`：先把主线、结构 challenger、最近 OOS 亮点和纯基本面 sidecar 分别在回答什么看清楚。
+3. [`hk-quarterly-holdings-analysis-20260329.md`](./hk-quarterly-holdings-analysis-20260329.md)：看现在为什么更该先做组合层解释，而不是继续盲扫 config。
+4. [`hk-quarterly-construction-grid-20260329.md`](./hk-quarterly-construction-grid-20260329.md)：看清当前为什么优先做组合构造，而不是继续加新因子。
+5. [`hk-quarterly-next-step-configs-20260329.md`](./hk-quarterly-next-step-configs-20260329.md)：看下一步具体跑什么。
+6. [`hk-quarterly-oos-evidence-20260329.md`](./hk-quarterly-oos-evidence-20260329.md)：看为什么最近 OOS 亮点不能直接当证据。
+7. 需要追溯时，再回去翻更早的专题页。
 
 ## 10. 一句话结论
 
