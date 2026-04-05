@@ -22,30 +22,62 @@
 * `active deep-dive`：当前仍有信息价值的专题分析或 probe 汇总
 * `historical provenance`：保留追溯路径
 
-如果你现在要重新进入 HK monthly 研究，更合理的阅读顺序是：
+## 快速入口
 
-1. `notes/hk-monthly-current-state-20260330.md`
-2. `notes/hk-monthly-time-window-design-20260330.md`
-3. `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`
-4. `notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`
-5. `notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
-6. `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`
-7. `notes/hk-monthly-provider-vs-pit-20260330.md`
-8. `notes/hk-monthly-industry-treatment-20260404.md`
-9. 如果你要追溯已降级路线，再看 `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
-10. 如果你要追溯 provider 线里被降级的 size 相关 probes，再看 `notes/hk-monthly-provider-factor-probes-20260330.md`
-11. 再去看对应 run 目录下的 `summary.json` / `config.used.yml`
+如果你只是要重新接手，不必先看下面的大表，先按这组短入口读。
 
-如果你现在要重新进入 HK quarterly 研究，当前更合理的阅读顺序是：
+### HK Monthly
 
-1. `notes/hk-quarterly-current-state-20260329.md`
-2. `notes/hk-quarterly-benchmark-and-interpretation-20260405.md`
-3. `notes/hk-quarterly-holdings-analysis-20260329.md`
-4. `notes/hk-quarterly-construction-grid-20260329.md`
-5. `notes/hk-quarterly-next-step-configs-20260329.md`
-6. `notes/hk-quarterly-oos-evidence-20260329.md`
-7. 如果你要单开“不用量价指标”的独立路线，再看 `notes/hk-quarterly-pure-fundamentals-20260329.md`
-8. 只有当你要追溯结论出处时，再回去看更早的专题页
+Current-State：
+`notes/hk-monthly-current-state-20260330.md`
+
+Active Deep-Dive：
+`notes/hk-monthly-time-window-design-20260330.md`
+`notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`
+`notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`
+`notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
+`notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`
+`notes/hk-monthly-provider-vs-pit-20260330.md`
+`notes/hk-monthly-industry-treatment-20260404.md`
+
+Historical Provenance：
+`notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
+`notes/hk-monthly-provider-factor-probes-20260330.md`
+
+建议顺序：
+1. 先读 current-state。
+2. 再读 `time-window`、`frozen-vs-latest` 和 `benchmark-ladder`。
+3. 如果你关心慢执行和去动量，再读 `slow-sleeve` 和 `no-ret`。
+4. 如果你关心 comparator 和行业处理，再读 `provider-vs-pit` 和 `industry-treatment`。
+5. 只有追溯降级路线时，再回 provenance。
+
+### HK Quarterly
+
+Current-State：
+`notes/hk-quarterly-current-state-20260329.md`
+
+Active Deep-Dive：
+`notes/hk-quarterly-benchmark-and-interpretation-20260405.md`
+`notes/hk-quarterly-holdings-analysis-20260329.md`
+`notes/hk-quarterly-construction-grid-20260329.md`
+`notes/hk-quarterly-next-step-configs-20260329.md`
+`notes/hk-quarterly-oos-evidence-20260329.md`
+`notes/hk-quarterly-pure-fundamentals-20260329.md`
+
+Historical Provenance：
+`notes/hk-quarterly-pit-regime-shift-202603.md`
+`notes/hk-h12-w16-target-transform-review-20260324.md`
+`notes/hk-quarterly-target-design-and-direction-20260324.md`
+`notes/hk-quarterly-price-col-ab-20260325.md`
+
+建议顺序：
+1. 先读 current-state。
+2. 再读 `benchmark-and-interpretation`，把主线、challenger、结构解释和 pure fundamentals sidecar 的角色看清楚。
+3. 然后读 `holdings-analysis`、`construction-grid`、`next-step-configs`。
+4. 如果你要给最近 OOS 亮点定证据等级，再读 `oos-evidence`。
+5. 只有要追溯旧结论出处时，再回 provenance。
+
+详细结论状态和沉淀情况见下方表格。
 
 #### Current-State
 
