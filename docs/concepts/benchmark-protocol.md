@@ -26,6 +26,8 @@ HK 研究默认用：
 接入同一条回测，而不是强行用单一 ETF 近似。
 当前仓库可用 `python -m csml.research.hk_connect_cap_weight_benchmark ...` 从
 `by_date universe + backtest_periods + local daily/valuation assets` 生成这类收益文件。
+如果你想把“universe 选得好”与“cap-weight 吃到大票”拆开看，同一个 builder 也支持
+`--weighting equal`，可额外生成同 universe 的 equal-weight benchmark 做报告层对照。
 
 配置后，run 会额外输出：
 

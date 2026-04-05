@@ -30,6 +30,8 @@ backtest:
       returns_file: artifacts/benchmarks/hk_03432_open_close_20240902_20260401.csv
     - name: hk_02800
       returns_file: artifacts/benchmarks/hk_02800_open_close_20181101_20260202.csv
+    - name: hk_selected_pit_research_eqw
+      returns_file: artifacts/benchmarks/hk_selected_pit_research_m_eqw_open_close_20181101_20260202.csv
     - name: hk_selected_pit_research_capw
       returns_file: artifacts/benchmarks/hk_selected_pit_research_m_capw_open_close_20181101_20260202.csv
     - name: hk_connect_full_capw

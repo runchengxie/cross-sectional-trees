@@ -131,3 +131,107 @@ def test_hk_connect_cap_weight_benchmark_builder(tmp_path):
     assert benchmark["benchmark_return"].iloc[0] == pytest.approx(-0.05)
     assert benchmark["benchmark_return"].iloc[1] == pytest.approx(0.065)
     assert benchmark["coverage_pct"].tolist() == [100.0, 100.0]
+
+
+def test_hk_connect_equal_weight_benchmark_builder(tmp_path):
+    periods_path = tmp_path / "periods.csv"
+    periods_path.write_text(
+        "\n".join(
+            [
+                "rebalance_date,entry_date,exit_date",
+                "20200131,20200203,20200228",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    by_date_path = tmp_path / "universe.csv"
+    by_date_path.write_text(
+        "\n".join(
+            [
+                "trade_date,symbol,selected",
+                "20200131,AAA,1",
+                "20200131,BBB,1",
+                "20200131,CCC,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    daily_root = tmp_path / "daily"
+    _write_symbol_parquet(
+        daily_root,
+        "AAA",
+        pd.DataFrame(
+            {
+                "trade_date": ["20200203", "20200228"],
+                "open": [100.0, 110.0],
+                "close": [100.0, 110.0],
+            }
+        ),
+    )
+    _write_symbol_parquet(
+        daily_root,
+        "BBB",
+        pd.DataFrame(
+            {
+                "trade_date": ["20200203", "20200228"],
+                "open": [200.0, 180.0],
+                "close": [200.0, 180.0],
+            }
+        ),
+    )
+    _write_symbol_parquet(
+        daily_root,
+        "CCC",
+        pd.DataFrame(
+            {
+                "trade_date": ["20200203", "20200228"],
+                "open": [50.0, 60.0],
+                "close": [50.0, 60.0],
+            }
+        ),
+    )
+
+    valuation_root = tmp_path / "valuation"
+    _write_symbol_parquet(
+        valuation_root,
+        "AAA",
+        pd.DataFrame({"trade_date": ["20200131"], "hk_total_market_val": [100.0]})
+    )
+    _write_symbol_parquet(
+        valuation_root,
+        "BBB",
+        pd.DataFrame({"trade_date": ["20200131"], "hk_total_market_val": [300.0]})
+    )
+    _write_symbol_parquet(
+        valuation_root,
+        "CCC",
+        pd.DataFrame({"trade_date": ["20200131"], "hk_total_market_val": [600.0]})
+    )
+
+    out_path = tmp_path / "benchmark_eqw.csv"
+    result = main(
+        [
+            "--periods-file",
+            str(periods_path),
+            "--by-date-file",
+            str(by_date_path),
+            "--daily-asset-dir",
+            str(daily_root),
+            "--valuation-asset-dir",
+            str(valuation_root),
+            "--weighting",
+            "equal",
+            "--out",
+            str(out_path),
+        ]
+    )
+    assert result == 0
+
+    benchmark = pd.read_csv(out_path)
+    # Equal weight of +10%, -10%, +20%.
+    assert benchmark["benchmark_return"].iloc[0] == pytest.approx((0.10 - 0.10 + 0.20) / 3.0)
+    assert benchmark["n_used"].iloc[0] == 3

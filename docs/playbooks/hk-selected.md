@@ -102,7 +102,7 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 
 当前把月度入口分成两个角色更清楚：
 
-* `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml`：当前本地研究推荐入口，适合直接进入更合理的价格和执行近似口径；主 benchmark 默认改用 `hk_selected_pit_research` 的 cap-weight 文件，避免 local daily snapshot 缺 `02800.HK` 时 benchmark / active 摘要中断；同一条 run 还会默认附带 `02800 + hk_selected cap-weight + hk_connect_full cap-weight` 的报告层对比。
+* `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml`：当前本地研究推荐入口，适合直接进入更合理的价格和执行近似口径；主 benchmark 默认改用 `hk_selected_pit_research` 的 cap-weight 文件，避免 local daily snapshot 缺 `02800.HK` 时 benchmark / active 摘要中断；同一条 run 还会默认附带 `3432 + 02800 + hk_selected equal-weight + hk_selected cap-weight + hk_connect_full cap-weight` 的报告层对比。
 * `configs/experiments/baseline/hk_selected.yml`：历史 benchmark 锚点，也是低依赖的回退入口。
 
 如果你现在的目标只是“先把四种模型都跑一遍看看差距”，月度 `M` + provider 基本面仍然是最顺手的入口；但那更接近模型 PK 入口，不再是默认研究口径入口。

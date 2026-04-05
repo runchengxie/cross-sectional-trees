@@ -17,6 +17,7 @@ DEFAULT_VALUATION_ASSET_DIR = "artifacts/assets/rqdata/hk/valuation/hk_all_valua
 DEFAULT_WEIGHT_COL = "hk_total_market_val"
 DEFAULT_ENTRY_PRICE_COL = "open"
 DEFAULT_EXIT_PRICE_COL = "close"
+DEFAULT_WEIGHTING = "cap"
 
 
 def resolve_repo_path(path_text: str | Path) -> Path:
@@ -182,7 +183,11 @@ def build_cap_weight_benchmark(
     weight_col: str,
     entry_price_col: str,
     exit_price_col: str,
+    weighting: str = DEFAULT_WEIGHTING,
 ) -> pd.DataFrame:
+    weighting_mode = str(weighting).strip().lower()
+    if weighting_mode not in {"cap", "equal"}:
+        raise SystemExit(f"Unsupported --weighting={weighting!r}; expected 'cap' or 'equal'.")
     universe_map = {
         trade_date: sorted(group["symbol"].tolist())
         for trade_date, group in universe_by_date.groupby("trade_date", sort=True)
@@ -229,11 +234,12 @@ def build_cap_weight_benchmark(
             if np.isfinite(entry_price) and entry_price > 0 and np.isfinite(exit_price) and exit_price > 0:
                 n_with_price += 1
 
-            if not (np.isfinite(weight) and weight > 0):
+            if weighting_mode == "cap" and not (np.isfinite(weight) and weight > 0):
                 continue
             if not (np.isfinite(entry_price) and entry_price > 0 and np.isfinite(exit_price) and exit_price > 0):
                 continue
-            usable_rows.append((weight, exit_price / entry_price - 1.0))
+            effective_weight = weight if weighting_mode == "cap" else 1.0
+            usable_rows.append((effective_weight, exit_price / entry_price - 1.0))
 
         if usable_rows:
             weights = np.array([item[0] for item in usable_rows], dtype=float)
@@ -307,6 +313,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Valuation column used as benchmark weight. Default: {DEFAULT_WEIGHT_COL}",
     )
     parser.add_argument(
+        "--weighting",
+        default=DEFAULT_WEIGHTING,
+        choices=["cap", "equal"],
+        help="Benchmark weighting mode. 'cap' uses --weight-col; 'equal' gives each usable member the same weight.",
+    )
+    parser.add_argument(
         "--entry-price-col",
         default=DEFAULT_ENTRY_PRICE_COL,
         help=f"Entry price column from daily assets. Default: {DEFAULT_ENTRY_PRICE_COL}",
@@ -345,6 +357,7 @@ def main(argv: list[str] | None = None) -> int:
         weight_col=str(args.weight_col).strip(),
         entry_price_col=str(args.entry_price_col).strip(),
         exit_price_col=str(args.exit_price_col).strip(),
+        weighting=str(args.weighting).strip(),
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
