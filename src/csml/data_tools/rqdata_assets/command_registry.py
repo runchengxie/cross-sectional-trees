@@ -17,6 +17,15 @@ from .industry_ops import (
 )
 from .intraday_asset import build_hk_intraday_asset
 from .intraday_health import inspect_hk_intraday_health
+from .intraday_sync import (
+    DEFAULT_INTRADAY_ASSET_ALIAS,
+    DEFAULT_INTRADAY_DAILY_ASSET_DIR,
+    DEFAULT_INTRADAY_DISTRIBUTION_NAME,
+    DEFAULT_PACKAGE_DAILY_SNAPSHOT,
+    DEFAULT_PACKAGE_INSTRUMENTS_FILE,
+    DEFAULT_PACKAGE_PRESET,
+    sync_hk_intraday,
+)
 from .mirror_daily import mirror_hk_daily
 from .mirror_dated import (
     mirror_hk_announcement,
@@ -228,6 +237,19 @@ def _add_hk_intraday_asset_build_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_hk_intraday_sync_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_intraday_sync_args(
+        parser,
+        default_out_root=DEFAULT_OUT_ROOT,
+        default_daily_asset_dir=DEFAULT_INTRADAY_DAILY_ASSET_DIR,
+        default_asset_alias=DEFAULT_INTRADAY_ASSET_ALIAS,
+        default_package_preset=DEFAULT_PACKAGE_PRESET,
+        default_package_daily_snapshot=DEFAULT_PACKAGE_DAILY_SNAPSHOT,
+        default_package_instruments_file=DEFAULT_PACKAGE_INSTRUMENTS_FILE,
+        default_distribution_name=DEFAULT_INTRADAY_DISTRIBUTION_NAME,
+    )
+
+
 def _add_hk_daily_clean_layer_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_daily_clean_layer_args(parser)
 
@@ -366,6 +388,13 @@ def rqdata_asset_command_specs() -> Sequence[RQDataAssetCommandSpec]:
             help="Package local HK 5m parquet/cache files into a formal reusable asset snapshot",
             add_args=_add_hk_intraday_asset_build_args,
             runner=build_hk_intraday_asset,
+        ),
+        RQDataAssetCommandSpec(
+            name="sync-hk-intraday",
+            help="Download HK intraday cache, inspect it, repoint the formal asset alias, and optionally package/release it",
+            add_args=_add_hk_intraday_sync_args,
+            runner=sync_hk_intraday,
+            requires_client=True,
         ),
         RQDataAssetCommandSpec(
             name="build-hk-daily-clean-layer",

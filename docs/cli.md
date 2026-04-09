@@ -499,6 +499,26 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valua
 * 对 `valuation` 资产，如果同时传 `--daily-asset-dir`，历史 stale-run 检查会用本地 `daily close` 做去噪：只有在对应 run 期间 `close` 发生变化的常数段才继续报出来，长期停牌 / 无交易导致的平价常数段会被抑制。
 * JSON 输出会额外给出统一的 `quality_verdict`；需要阻断时可用 `--fail-on-severity none|info|warning|error`。
 
+### csml rqdata sync-hk-intraday
+
+串起 HK `5m` 的常用维护路径：先下载本地 intraday cache，再跑健康检查，通过后把这批 cache 提升成正式 `intraday` 资产并更新 `hk_intraday_latest`；只有显式加 `--package` / `--release` 时，才继续做 tarball / GitHub Release。
+
+```bash
+csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --resume
+csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --inspect-fail-on-severity error
+csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --verify-full-asset --full-inspect-fail-on-severity none
+csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --package
+```
+
+说明：
+
+* 默认会依次执行 `download -> inspect(new patch only) -> build asset + alias`；其中 inspect 默认 gate 是 `warning`，命中后会停止，不会推进 `hk_intraday_latest`。
+* `--resume` 会继续复用 `<output_stem>.parts/` 里已经存在的 batch parquet，适合 WSL / 长任务中断后续跑。
+* `--skip-inspect` 允许你在确认风险的情况下直接推进正式资产层；否则建议保留默认检查。
+* 整包 `hk_intraday_latest` 回扫默认不会执行；只有显式加 `--verify-full-asset` 才会在 alias 更新后扫描整包。这一步 I/O 很重，更适合单独后台跑。
+* `--package` 会基于新 intraday snapshot 打一个仅含 `intraday` part 的 release stage 和 tarball；`--release` 会在此基础上继续调用 `gh release` 上传。
+* `--package` / `--release` 仍复用 `package_assets` 的仓库级约束，所以它会要求当前 `daily` 和 `instruments` 基础快照可用。
+
 ### csml rqdata inspect-hk-intraday-health
 
 检查本地 HK `5m` parquet 是否有重复时间戳、缺 bar、session bar count 异常、负成交量 / 成交额，以及和本地 `daily` 快照是否能对账。

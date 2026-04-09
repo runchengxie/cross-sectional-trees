@@ -1054,6 +1054,191 @@ def add_hk_intraday_asset_build_args(
     )
 
 
+def add_hk_intraday_sync_args(
+    parser: argparse.ArgumentParser,
+    *,
+    default_out_root: str,
+    default_daily_asset_dir: str,
+    default_asset_alias: str,
+    default_package_preset: str,
+    default_package_daily_snapshot: str,
+    default_package_instruments_file: str,
+    default_distribution_name: str,
+) -> None:
+    _add_rqdata_credentials_args(
+        parser,
+        config_help="Optional config path or alias for rqdata.init.",
+    )
+    parser.add_argument("--symbols-file", required=True, help="TXT/CSV/Parquet file containing HK symbols.")
+    parser.add_argument("--start-date", required=True, help="Start date, e.g. 20260402.")
+    parser.add_argument("--end-date", required=True, help="End date, e.g. 20260409.")
+    parser.add_argument("--frequency", default="5m", help="Intraday frequency. Default: 5m.")
+    parser.add_argument(
+        "--adjust-type",
+        default="pre",
+        choices=["none", "pre", "post", "pre_volume", "post_volume"],
+        help="RQData adjust_type for intraday bars. Default: pre.",
+    )
+    parser.add_argument(
+        "--fields",
+        nargs="+",
+        default=["open", "high", "low", "close", "volume", "total_turnover"],
+        help="RQData fields. Default: open high low close volume total_turnover.",
+    )
+    parser.add_argument("--batch-size", type=int, default=100, help="Symbols per get_price call.")
+    parser.add_argument(
+        "--output",
+        help=(
+            "Optional intraday cache parquet path. "
+            "Defaults to artifacts/cache/intraday/hk_intraday_<frequency>_<start>_<end>.parquet."
+        ),
+    )
+    parser.add_argument(
+        "--meta-output",
+        help="Optional metadata JSON path. Defaults to <output>.meta.json beside the parquet.",
+    )
+    parser.add_argument(
+        "--parts-dir",
+        help="Optional batch checkpoint directory. Defaults to <output_stem>.parts beside the output parquet.",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip batch files that already exist under --parts-dir and only download missing batches.",
+    )
+    parser.add_argument(
+        "--skip-inspect",
+        action="store_true",
+        help="Skip intraday health inspection before publishing the new asset alias.",
+    )
+    parser.add_argument(
+        "--daily-asset-dir",
+        default=default_daily_asset_dir,
+        help=f"HK daily asset snapshot used for 5m-vs-daily reconciliation. Default: {default_daily_asset_dir}",
+    )
+    parser.add_argument(
+        "--health-out",
+        help="Optional health report JSON path. Defaults to artifacts/reports/<output_stem>_health.json.",
+    )
+    parser.add_argument(
+        "--sample-limit",
+        type=int,
+        default=5,
+        help="Number of sample rows or symbol-days shown per issue. Default: 5.",
+    )
+    parser.add_argument(
+        "--expected-bars-per-day",
+        type=int,
+        default=66,
+        help="Expected HK 5m bars per full session. Default: 66.",
+    )
+    parser.add_argument(
+        "--numeric-rtol",
+        type=float,
+        default=1e-6,
+        help="Relative tolerance used for daily reconciliation. Default: 1e-6.",
+    )
+    parser.add_argument(
+        "--numeric-atol",
+        type=float,
+        default=1e-8,
+        help="Absolute tolerance used for daily reconciliation. Default: 1e-8.",
+    )
+    parser.add_argument(
+        "--inspect-fail-on-severity",
+        default="warning",
+        choices=["none", "info", "warning", "error"],
+        help=(
+            "Quality gate threshold for the inspection step. "
+            "When triggered, the command stops before repointing the intraday latest alias. "
+            "Default: warning."
+        ),
+    )
+    parser.add_argument(
+        "--verify-full-asset",
+        action="store_true",
+        help=(
+            "After the new asset alias is repointed, also scan the full formal intraday asset. "
+            "This is much heavier than the default patch-only inspection."
+        ),
+    )
+    parser.add_argument(
+        "--full-health-out",
+        help=(
+            "Optional JSON path for the explicit full-asset inspection report. "
+            "Only used with --verify-full-asset."
+        ),
+    )
+    parser.add_argument(
+        "--full-inspect-fail-on-severity",
+        default="warning",
+        choices=["none", "info", "warning", "error"],
+        help=(
+            "Quality gate threshold for the optional full-asset inspection step. "
+            "Only used with --verify-full-asset. Default: warning."
+        ),
+    )
+    parser.add_argument(
+        "--out-root",
+        default=default_out_root,
+        help=f"Formal intraday asset root directory. Default: {default_out_root}",
+    )
+    parser.add_argument(
+        "--asset-name",
+        help="Optional snapshot folder name for the formal intraday asset.",
+    )
+    parser.add_argument(
+        "--asset-alias",
+        default=default_asset_alias,
+        help=f"Alias/symlink path to repoint at the new intraday asset snapshot. Default: {default_asset_alias}",
+    )
+    parser.add_argument(
+        "--package",
+        action="store_true",
+        help="Stage the refreshed intraday asset into release tarballs under artifacts/releases/.",
+    )
+    parser.add_argument(
+        "--release",
+        action="store_true",
+        help="Create or update a GitHub Release for the refreshed intraday asset. Implies --package.",
+    )
+    parser.add_argument(
+        "--preset",
+        default=default_package_preset,
+        help=f"Preset forwarded to package_assets when --package/--release is used. Default: {default_package_preset}",
+    )
+    parser.add_argument(
+        "--distribution-name",
+        default=default_distribution_name,
+        help="Distribution name used in staged manifests, tarballs, and release notes.",
+    )
+    parser.add_argument("--package-dest", help="Optional staged package root for the intraday release part.")
+    parser.add_argument("--tar-dir", help="Optional tarball output directory.")
+    parser.add_argument(
+        "--package-daily-snapshot",
+        default=default_package_daily_snapshot,
+        help=(
+            "Daily snapshot forwarded to package_assets. "
+            f"Default: {default_package_daily_snapshot}"
+        ),
+    )
+    parser.add_argument(
+        "--package-instruments-file",
+        default=default_package_instruments_file,
+        help=(
+            "Instruments file forwarded to package_assets. "
+            f"Default: {default_package_instruments_file}"
+        ),
+    )
+    parser.add_argument("--repo", help="Target GitHub repo in owner/name format when --release is used.")
+    parser.add_argument("--tag", help="Optional GitHub release tag override.")
+    parser.add_argument("--title", help="Optional GitHub release title override.")
+    parser.add_argument("--draft", action="store_true", help="Create the GitHub release as draft.")
+    parser.add_argument("--prerelease", action="store_true", help="Mark the GitHub release as prerelease.")
+    parser.add_argument("--latest", action="store_true", help="Mark the GitHub release as latest.")
+    parser.add_argument("--clobber", action="store_true", help="Overwrite existing release assets if needed.")
+
+
 def add_hk_daily_clean_layer_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--asset-dir",

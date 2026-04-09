@@ -218,6 +218,15 @@ from .asset_health import inspect_hk_asset_health
 from .clean_daily import build_hk_daily_clean_layer
 from .intraday_health import inspect_hk_intraday_health
 from .intraday_asset import build_hk_intraday_asset
+from .intraday_sync import (
+    DEFAULT_INTRADAY_ASSET_ALIAS,
+    DEFAULT_INTRADAY_DAILY_ASSET_DIR,
+    DEFAULT_INTRADAY_DISTRIBUTION_NAME,
+    DEFAULT_PACKAGE_DAILY_SNAPSHOT,
+    DEFAULT_PACKAGE_INSTRUMENTS_FILE,
+    DEFAULT_PACKAGE_PRESET,
+    sync_hk_intraday,
+)
 
 
 def add_list_hk_financial_fields_args(parser: argparse.ArgumentParser) -> None:
@@ -408,6 +417,19 @@ def add_hk_intraday_asset_build_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_hk_intraday_sync_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_intraday_sync_args(
+        parser,
+        default_out_root=DEFAULT_OUT_ROOT,
+        default_daily_asset_dir=DEFAULT_INTRADAY_DAILY_ASSET_DIR,
+        default_asset_alias=DEFAULT_INTRADAY_ASSET_ALIAS,
+        default_package_preset=DEFAULT_PACKAGE_PRESET,
+        default_package_daily_snapshot=DEFAULT_PACKAGE_DAILY_SNAPSHOT,
+        default_package_instruments_file=DEFAULT_PACKAGE_INSTRUMENTS_FILE,
+        default_distribution_name=DEFAULT_INTRADAY_DISTRIBUTION_NAME,
+    )
+
+
 def add_hk_daily_clean_layer_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_daily_clean_layer_args(parser)
 
@@ -422,6 +444,12 @@ __all__ = [
     "DEFAULT_HK_INSTRUMENT_INDUSTRY_LEVEL",
     "DEFAULT_HK_SHARES_FIELDS",
     "DEFAULT_HK_SOUTHBOUND_TRADING_TYPES",
+    "DEFAULT_INTRADAY_ASSET_ALIAS",
+    "DEFAULT_INTRADAY_DAILY_ASSET_DIR",
+    "DEFAULT_INTRADAY_DISTRIBUTION_NAME",
+    "DEFAULT_PACKAGE_DAILY_SNAPSHOT",
+    "DEFAULT_PACKAGE_INSTRUMENTS_FILE",
+    "DEFAULT_PACKAGE_PRESET",
     "DEFAULT_HK_VALUATION_FIELDS",
     "DEFAULT_MIRROR_BACKOFF_SECONDS",
     "DEFAULT_MIRROR_MAX_ATTEMPTS",
@@ -444,6 +472,7 @@ __all__ = [
     "add_hk_instruments_export_args",
     "add_hk_asset_health_args",
     "add_hk_intraday_asset_build_args",
+    "add_hk_intraday_sync_args",
     "add_hk_intraday_health_args",
     "add_hk_pit_coverage_args",
     "add_hk_pit_fundamentals_build_args",
@@ -472,4 +501,5 @@ __all__ = [
     "mirror_hk_shares",
     "mirror_hk_southbound",
     "mirror_hk_valuation",
+    "sync_hk_intraday",
 ]

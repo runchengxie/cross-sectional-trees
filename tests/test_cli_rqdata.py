@@ -607,6 +607,57 @@ def test_cli_parses_rqdata_asset_commands():
     assert intraday_asset.alias == "artifacts/assets/rqdata/hk/intraday/hk_intraday_latest"
     assert callable(intraday_asset.func)
 
+    intraday_sync = parser.parse_args(
+        [
+            "rqdata",
+            "sync-hk-intraday",
+            "--config",
+            "configs/presets/hk.yml",
+            "--symbols-file",
+            "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt",
+            "--start-date",
+            "20260402",
+            "--end-date",
+            "20260409",
+            "--output",
+            "artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet",
+            "--resume",
+            "--inspect-fail-on-severity",
+            "error",
+            "--verify-full-asset",
+            "--full-health-out",
+            "artifacts/reports/hk_intraday_latest_health.json",
+            "--full-inspect-fail-on-severity",
+            "none",
+            "--asset-name",
+            "hk_all_5m_20260402_20260409_latest",
+            "--package",
+            "--release",
+            "--repo",
+            "owner/name",
+            "--tag",
+            "hk-intraday-20260409",
+        ]
+    )
+    assert intraday_sync.command == "rqdata"
+    assert intraday_sync.rq_command == "sync-hk-intraday"
+    assert intraday_sync.config == "configs/presets/hk.yml"
+    assert intraday_sync.symbols_file == "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt"
+    assert intraday_sync.start_date == "20260402"
+    assert intraday_sync.end_date == "20260409"
+    assert intraday_sync.output == "artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet"
+    assert intraday_sync.resume is True
+    assert intraday_sync.inspect_fail_on_severity == "error"
+    assert intraday_sync.verify_full_asset is True
+    assert intraday_sync.full_health_out == "artifacts/reports/hk_intraday_latest_health.json"
+    assert intraday_sync.full_inspect_fail_on_severity == "none"
+    assert intraday_sync.asset_name == "hk_all_5m_20260402_20260409_latest"
+    assert intraday_sync.package is True
+    assert intraday_sync.release is True
+    assert intraday_sync.repo == "owner/name"
+    assert intraday_sync.tag == "hk-intraday-20260409"
+    assert callable(intraday_sync.func)
+
     daily_clean = parser.parse_args(
         [
             "rqdata",
