@@ -202,6 +202,116 @@ def merge_batch_parts(parts_dir: Path, output_path: Path) -> tuple[int, int]:
     return total_rows, len(total_symbols)
 
 
+def download_hk_intraday_cache(args, rqdatac) -> dict[str, object]:
+    symbol_file = resolve_repo_path(args.symbols_file)
+    if not symbol_file.exists():
+        raise SystemExit(f"Symbol file not found: {symbol_file}")
+
+    symbols = _read_symbol_file(symbol_file)
+    if not symbols:
+        raise SystemExit(f"No symbols found in: {symbol_file}")
+
+    order_book_ids = normalize_hk_symbols(symbols)
+    order_book_to_symbol = {
+        _to_rq_order_book_id(symbol): symbol
+        for symbol in symbols
+    }
+
+    output_path = resolve_repo_path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path = (
+        resolve_repo_path(args.meta_output)
+        if getattr(args, "meta_output", None)
+        else output_path.with_suffix(".meta.json")
+    )
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    parts_dir = (
+        resolve_repo_path(args.parts_dir)
+        if getattr(args, "parts_dir", None)
+        else _default_parts_dir(output_path)
+    )
+    parts_dir.mkdir(parents=True, exist_ok=True)
+
+    quota_before = rqdatac.user.get_quota()
+    batch_rows: list[dict[str, int | str]] = []
+    total = len(order_book_ids)
+    for start in range(0, total, int(args.batch_size)):
+        batch_index = start // int(args.batch_size) + 1
+        batch = order_book_ids[start : start + int(args.batch_size)]
+        part_path = _batch_part_path(parts_dir, batch_index)
+        status = "downloaded"
+        if getattr(args, "resume", False) and part_path.exists():
+            rows = _count_part_rows(part_path)
+            status = "reused"
+        else:
+            payload = rqdatac.get_price(
+                batch,
+                args.start_date,
+                args.end_date,
+                frequency=args.frequency,
+                fields=list(args.fields),
+                adjust_type=args.adjust_type,
+                market="hk",
+                expect_df=True,
+            )
+            frame = flatten_intraday_payload(payload, order_book_to_symbol=order_book_to_symbol)
+            frame.to_parquet(part_path, index=False)
+            rows = int(len(frame))
+        batch_rows.append(
+            {
+                "batch": batch_index,
+                "symbols": len(batch),
+                "rows": rows,
+                "status": status,
+                "part_file": _display_path(part_path),
+            }
+        )
+        print(
+            f"batch {batch_index}: "
+            f"{start + len(batch)}/{total} symbols, {rows} rows, {status}"
+        )
+
+    total_rows, total_symbols = merge_batch_parts(parts_dir, output_path)
+    quota_after = rqdatac.user.get_quota()
+    merged_columns = list(pq.ParquetFile(output_path).schema.names)
+
+    meta = {
+        "dataset": "hk_intraday_cache",
+        "symbols_file": _display_path(symbol_file),
+        "symbols_requested": int(len(symbols)),
+        "symbols_downloaded": int(total_symbols),
+        "start_date": str(args.start_date),
+        "end_date": str(args.end_date),
+        "frequency": str(args.frequency),
+        "adjust_type": str(args.adjust_type),
+        "fields": list(args.fields),
+        "rows": int(total_rows),
+        "columns": merged_columns,
+        "parts_dir": _display_path(parts_dir),
+        "resume": bool(getattr(args, "resume", False)),
+        "quota_before": quota_before,
+        "quota_after": quota_after,
+        "bytes_used_delta": float(quota_after["bytes_used"] - quota_before["bytes_used"]),
+        "file_size_bytes": int(output_path.stat().st_size),
+        "batches": batch_rows,
+    }
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print(f"saved parquet: {output_path}")
+    print(f"saved meta: {meta_path}")
+    print(f"rows={total_rows} quota_delta={meta['bytes_used_delta']}")
+
+    return {
+        "output_path": output_path,
+        "meta_path": meta_path,
+        "parts_dir": parts_dir,
+        "rows": int(total_rows),
+        "symbols_requested": int(len(symbols)),
+        "symbols_downloaded": int(total_symbols),
+        "meta": meta,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Download HK intraday bars from RQData and save a flat parquet cache."
@@ -255,103 +365,7 @@ def main() -> None:
         import_error_message="rqdatac is required. Install with: uv sync --extra rqdata",
     )
 
-    symbol_file = resolve_repo_path(args.symbols_file)
-    if not symbol_file.exists():
-        raise SystemExit(f"Symbol file not found: {symbol_file}")
-
-    symbols = _read_symbol_file(symbol_file)
-    if not symbols:
-        raise SystemExit(f"No symbols found in: {symbol_file}")
-
-    order_book_ids = normalize_hk_symbols(symbols)
-    order_book_to_symbol = {
-        _to_rq_order_book_id(symbol): symbol
-        for symbol in symbols
-    }
-
-    output_path = resolve_repo_path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    meta_path = (
-        resolve_repo_path(args.meta_output)
-        if args.meta_output
-        else output_path.with_suffix(".meta.json")
-    )
-    meta_path.parent.mkdir(parents=True, exist_ok=True)
-    parts_dir = (
-        resolve_repo_path(args.parts_dir)
-        if args.parts_dir
-        else _default_parts_dir(output_path)
-    )
-    parts_dir.mkdir(parents=True, exist_ok=True)
-
-    quota_before = rqdatac.user.get_quota()
-    batch_rows: list[dict[str, int | str]] = []
-    total = len(order_book_ids)
-    for start in range(0, total, int(args.batch_size)):
-        batch_index = start // int(args.batch_size) + 1
-        batch = order_book_ids[start : start + int(args.batch_size)]
-        part_path = _batch_part_path(parts_dir, batch_index)
-        status = "downloaded"
-        if args.resume and part_path.exists():
-            rows = _count_part_rows(part_path)
-            status = "reused"
-        else:
-            payload = rqdatac.get_price(
-                batch,
-                args.start_date,
-                args.end_date,
-                frequency=args.frequency,
-                fields=list(args.fields),
-                adjust_type=args.adjust_type,
-                market="hk",
-                expect_df=True,
-            )
-            frame = flatten_intraday_payload(payload, order_book_to_symbol=order_book_to_symbol)
-            frame.to_parquet(part_path, index=False)
-            rows = int(len(frame))
-        batch_rows.append(
-            {
-                "batch": batch_index,
-                "symbols": len(batch),
-                "rows": rows,
-                "status": status,
-                "part_file": _display_path(part_path),
-            }
-        )
-        print(
-            f"batch {batch_index}: "
-            f"{start + len(batch)}/{total} symbols, {rows} rows, {status}"
-        )
-
-    total_rows, total_symbols = merge_batch_parts(parts_dir, output_path)
-    quota_after = rqdatac.user.get_quota()
-    merged_columns = list(pq.ParquetFile(output_path).schema.names)
-
-    meta = {
-        "dataset": "hk_intraday_cache",
-        "symbols_file": _display_path(symbol_file),
-        "symbols_requested": int(len(symbols)),
-        "symbols_downloaded": int(total_symbols),
-        "start_date": str(args.start_date),
-        "end_date": str(args.end_date),
-        "frequency": str(args.frequency),
-        "adjust_type": str(args.adjust_type),
-        "fields": list(args.fields),
-        "rows": int(total_rows),
-        "columns": merged_columns,
-        "parts_dir": _display_path(parts_dir),
-        "resume": bool(args.resume),
-        "quota_before": quota_before,
-        "quota_after": quota_after,
-        "bytes_used_delta": float(quota_after["bytes_used"] - quota_before["bytes_used"]),
-        "file_size_bytes": int(output_path.stat().st_size),
-        "batches": batch_rows,
-    }
-    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    print(f"saved parquet: {output_path}")
-    print(f"saved meta: {meta_path}")
-    print(f"rows={total_rows} quota_delta={meta['bytes_used_delta']}")
+    download_hk_intraday_cache(args, rqdatac)
 
 
 if __name__ == "__main__":
