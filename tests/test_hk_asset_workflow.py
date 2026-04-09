@@ -438,3 +438,145 @@ def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatc
         },
     ]
     assert len(report["steps"]) == 3
+
+
+def test_hk_asset_workflow_repair_phase_uses_report_candidates_to_build_subset_patch(tmp_path, monkeypatch):
+    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _configure_repo_roots(workflow, repo_root)
+
+    daily_base = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_2000_20260402_daily_clean"
+    (daily_base / "data").mkdir(parents=True, exist_ok=True)
+    (daily_base / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily",
+                "status": "completed",
+                "output_dir": str(daily_base),
+                "query": {"start_date": "20000101", "end_date": "20260402"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    daily_current = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_latest"
+    daily_current.parent.mkdir(parents=True, exist_ok=True)
+    daily_current.symlink_to(daily_base.name, target_is_directory=True)
+
+    source_report = repo_root / "artifacts" / "reports" / "hk_asset_refresh_20260402.json"
+    source_report.parent.mkdir(parents=True, exist_ok=True)
+    source_report.write_text(
+        json.dumps(
+            {
+                "inspect": {
+                    "assets": {
+                        "daily": {
+                            "repair_candidates": [
+                                {
+                                    "symbol": "00005.HK",
+                                    "trade_date": None,
+                                    "start_date": "2026-03-28",
+                                    "end_date": "2026-04-02",
+                                    "max_severity": "warning",
+                                },
+                                {
+                                    "symbol": "00011.HK",
+                                    "trade_date": "2026-04-01",
+                                    "start_date": None,
+                                    "end_date": None,
+                                    "max_severity": "error",
+                                },
+                                {
+                                    "symbol": "00700.HK",
+                                    "trade_date": "2026-04-02",
+                                    "start_date": None,
+                                    "end_date": None,
+                                    "max_severity": "info",
+                                },
+                            ]
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], *, dry_run: bool):
+        calls.append(cmd)
+        if "mirror-hk-daily" in cmd:
+            patch_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / cmd[cmd.index("--name") + 1]
+            (patch_dir / "data").mkdir(parents=True, exist_ok=True)
+            (patch_dir / "manifest.yml").write_text(
+                yaml.safe_dump(
+                    {
+                        "dataset": "daily",
+                        "status": "completed",
+                        "output_dir": str(patch_dir),
+                        "query": {
+                            "start_date": cmd[cmd.index("--start-date") + 1],
+                            "end_date": cmd[cmd.index("--end-date") + 1],
+                        },
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+        elif len(cmd) >= 3 and cmd[1:3] == ["-m", "csml.research.hk_asset_patch_merge"]:
+            out_dir = repo_root / cmd[cmd.index("--out-dir") + 1]
+            (out_dir / "data").mkdir(parents=True, exist_ok=True)
+            (out_dir / "manifest.yml").write_text(
+                yaml.safe_dump(
+                    {
+                        "dataset": "daily",
+                        "status": "completed",
+                        "output_dir": str(out_dir),
+                        "query": {"start_date": "20000101", "end_date": "20260402"},
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(workflow, "_run", _fake_run)
+
+    exit_code = workflow.main(
+        [
+            "--phase",
+            "repair",
+            "--repair-asset",
+            "daily",
+            "--target-date",
+            "20260402",
+            "--repair-source-report",
+            str(source_report),
+        ]
+    )
+
+    assert exit_code == 0
+
+    symbols_file = repo_root / "artifacts" / "reports" / "repair_inputs" / "daily_20260402_repair_symbols.txt"
+    assert symbols_file.read_text(encoding="utf-8") == "00005.HK\n00011.HK\n"
+
+    daily_patch_cmd = next(cmd for cmd in calls if "mirror-hk-daily" in cmd)
+    assert daily_patch_cmd[daily_patch_cmd.index("--symbols-file") + 1].endswith(
+        "artifacts/reports/repair_inputs/daily_20260402_repair_symbols.txt"
+    )
+    assert daily_patch_cmd[daily_patch_cmd.index("--start-date") + 1] == "20260328"
+    assert daily_patch_cmd[daily_patch_cmd.index("--end-date") + 1] == "20260402"
+    assert daily_patch_cmd[daily_patch_cmd.index("--name") + 1].endswith(
+        "hk_all_2000_20260402_daily_final_refetched_latest__repair"
+    )
+
+    report = json.loads(source_report.read_text(encoding="utf-8"))
+    assert report["repair"]["assets"]["daily"]["candidate_count"] == 2
+    assert report["repair"]["assets"]["daily"]["symbols"] == ["00005.HK", "00011.HK"]
+    assert report["repair"]["assets"]["daily"]["patch_window"] == {
+        "start_date": "20260328",
+        "end_date": "20260402",
+        "lookback_days": None,
+    }

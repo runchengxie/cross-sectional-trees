@@ -144,6 +144,9 @@ python scripts/internal/run_hk_asset_workflow.py --phase refresh --target-date 2
 # 日常维护优先用 patch 模式：只回看尾窗，再本地 merge 成新的 refreshed snapshot
 python scripts/internal/run_hk_asset_workflow.py --phase refresh --target-date 20260402 --refresh-mode patch --resume
 
+# 读取上一轮 inspect 产出的 repair_candidates，对 warning/error 问题做子集重拉
+python scripts/internal/run_hk_asset_workflow.py --phase repair --target-date 20260402 --repair-asset daily
+
 # 在已有 package 结果上继续发 GitHub release
 python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 20260402 --repo owner/name --prerelease
 ```
@@ -156,6 +159,8 @@ python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 2
 * `--refresh-mode full` 保留原来的整包重拉语义；`--refresh-mode patch` 会对 `daily / valuation / ex_factors / dividends / shares` 先拉尾窗 patch，再调用本地 patch merge 生成新的 canonical snapshot。
 * patch 模式默认 `daily` 回看 20 个日历日、其他支持的 dated assets 回看 40 个日历日；可用 `--daily-patch-lookback-days` 和 `--dated-patch-lookback-days` 调整。
 * 每次非 dry-run 执行还会额外写一份结构化 workflow report，默认落到 `artifacts/reports/hk_asset_refresh_<target_date>.json`；需要自定义位置时可传 `--workflow-report`。
+* `repair` 会读取已有 workflow report 里的 `inspect.assets.<asset>.repair_candidates`，生成按 `symbol/date` 收缩后的子集重拉和 patch merge；默认只包含 `warning`/`error`，可用 `--repair-min-severity` 放宽到 `info`。
+* `repair` 设计成第二次执行的修补流程；如果要基于本轮 inspect 结果修洞，先跑一轮带 `inspect` 的 workflow 产出 report，再单独跑 `--phase repair`。
 
 ### 测试矩阵
 

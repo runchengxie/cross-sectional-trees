@@ -47,7 +47,9 @@ INSPECT_ASSETS = (
 )
 DEFAULT_PHASES = ("refresh", "inspect", "package")
 DEFAULT_PACKAGE_PARTS = tuple(part for part in AVAILABLE_PART_CHOICES if part != "announcement")
-PATCH_MERGE_SUPPORTED_ASSETS = frozenset({"daily", "valuation", "ex_factors", "dividends", "shares"})
+PATCH_MERGE_SUPPORTED_ASSET_ORDER = ("daily", "valuation", "ex_factors", "dividends", "shares")
+PATCH_MERGE_SUPPORTED_ASSETS = frozenset(PATCH_MERGE_SUPPORTED_ASSET_ORDER)
+REPAIR_ASSETS = PATCH_MERGE_SUPPORTED_ASSET_ORDER
 DEFAULT_DAILY_PATCH_LOOKBACK_DAYS = 20
 DEFAULT_DATED_PATCH_LOOKBACK_DAYS = 40
 REPAIR_SEVERITY_RANK = {"error": 2, "warning": 1, "info": 0}
@@ -210,6 +212,10 @@ def _selected_inspect_assets(args: argparse.Namespace) -> tuple[str, ...]:
 
 def _selected_parts(args: argparse.Namespace) -> tuple[str, ...]:
     return tuple(dict.fromkeys(args.part or DEFAULT_PACKAGE_PARTS))
+
+
+def _selected_repair_assets(args: argparse.Namespace) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(args.repair_asset or REPAIR_ASSETS))
 
 
 def _default_workflow_report_path(target_date: str) -> Path:
@@ -597,14 +603,20 @@ def _init_workflow_report(
             "phases": list(phases),
             "selected_refresh_assets": list(_selected_refresh_assets(args)),
             "selected_inspect_assets": list(_selected_inspect_assets(args)),
+            "selected_repair_assets": list(_selected_repair_assets(args)),
             "selected_parts": list(_selected_parts(args)),
             "inspect_fail_on_severity": args.inspect_fail_on_severity,
+            "repair_min_severity": args.repair_min_severity,
+            "repair_source_report": str(args.repair_source_report) if args.repair_source_report else None,
             "started_at": datetime.now().isoformat(timespec="seconds"),
         },
         "refresh": {
             "assets": {},
         },
         "inspect": {
+            "assets": {},
+        },
+        "repair": {
             "assets": {},
         },
         "steps": [],
@@ -618,7 +630,8 @@ def _record_refresh_report(
 ) -> None:
     if not step.asset_name:
         return
-    assets = report.setdefault("refresh", {}).setdefault("assets", {})
+    target_section = "repair" if str((step.report_metadata or {}).get("mode") or "") == "repair" else "refresh"
+    assets = report.setdefault(target_section, {}).setdefault("assets", {})
     entry = assets.setdefault(step.asset_name, {"asset_name": step.asset_name})
     metadata = dict(step.report_metadata or {})
     action = str(metadata.get("action") or "").strip()
@@ -635,6 +648,12 @@ def _record_refresh_report(
             "end_date": metadata.get("end_date"),
             "lookback_days": metadata.get("lookback_days"),
         }
+        if metadata.get("candidate_count") is not None:
+            entry["candidate_count"] = int(metadata["candidate_count"])
+        if metadata.get("symbols_file") is not None:
+            entry["symbols_file"] = str(metadata["symbols_file"])
+        if metadata.get("symbols") is not None:
+            entry["symbols"] = list(metadata["symbols"])
         entry["patch"] = _describe_path(patch_path) if isinstance(patch_path, Path) else None
         if isinstance(refreshed_path, Path):
             entry["planned_refreshed"] = str(refreshed_path)
@@ -682,6 +701,8 @@ def _record_step_report(
         }
     )
     if step.phase == "refresh":
+        _record_refresh_report(report, step=step)
+    elif step.phase == "repair":
         _record_refresh_report(report, step=step)
     elif step.phase == "inspect":
         _record_inspect_report(report, step=step)
@@ -773,6 +794,196 @@ def _build_patch_refresh_steps(
             },
         ),
     ]
+
+
+def _normalize_repair_min_severity(value: str) -> str:
+    text = str(value or "").strip().lower() or "warning"
+    if text not in REPAIR_SEVERITY_RANK:
+        raise SystemExit("--repair-min-severity must be one of: info, warning, error.")
+    return text
+
+
+def _repair_candidate_passes_threshold(candidate: Mapping[str, Any], *, min_severity: str) -> bool:
+    candidate_severity = str(candidate.get("max_severity") or "info").strip().lower() or "info"
+    return REPAIR_SEVERITY_RANK.get(candidate_severity, -1) >= REPAIR_SEVERITY_RANK[min_severity]
+
+
+def _load_repair_source_report(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise SystemExit(f"Repair source report not found: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Repair source report must be a JSON object: {path}")
+    return payload
+
+
+def _asset_path_from_bundle(bundle: SnapshotBundle, asset_name: str) -> Path:
+    mapping = {
+        "daily": bundle.daily_dir,
+        "valuation": bundle.valuation_dir,
+        "ex_factors": bundle.ex_factors_dir,
+        "dividends": bundle.dividends_dir,
+        "shares": bundle.shares_dir,
+    }
+    if asset_name not in mapping:
+        raise SystemExit(f"Repair is not supported for asset: {asset_name}")
+    return mapping[asset_name]
+
+
+def _repair_command_name(asset_name: str) -> str:
+    mapping = {
+        "daily": "mirror-hk-daily",
+        "valuation": "mirror-hk-valuation",
+        "ex_factors": "mirror-hk-ex-factors",
+        "dividends": "mirror-hk-dividends",
+        "shares": "mirror-hk-shares",
+    }
+    if asset_name not in mapping:
+        raise SystemExit(f"Repair is not supported for asset: {asset_name}")
+    return mapping[asset_name]
+
+
+def _repair_symbols_file_path(args: argparse.Namespace, *, asset_name: str) -> Path:
+    return args.reports_dir / "repair_inputs" / f"{asset_name}_{args.target_date}_repair_symbols.txt"
+
+
+def _repair_patch_snapshot_path(refreshed_path: Path) -> Path:
+    return refreshed_path.parent / f"{refreshed_path.name}__repair"
+
+
+def _candidate_window_bounds(candidate: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    trade_date = str(candidate.get("trade_date") or "").strip() or None
+    start_date = str(candidate.get("start_date") or "").strip() or None
+    end_date = str(candidate.get("end_date") or "").strip() or None
+    return trade_date or start_date or end_date, trade_date or end_date or start_date
+
+
+def _write_repair_symbols_file(path: Path, *, symbols: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(f"{symbol}\n" for symbol in symbols), encoding="utf-8")
+
+
+def _build_repair_steps(
+    args: argparse.Namespace,
+    *,
+    current: SnapshotBundle,
+    refreshed: SnapshotBundle,
+) -> list[Step]:
+    source_report = _load_repair_source_report(args.repair_source_report)
+    inspect_assets = source_report.get("inspect", {}).get("assets")
+    if not isinstance(inspect_assets, Mapping):
+        raise SystemExit(
+            f"Repair source report does not contain inspect.assets: {args.repair_source_report}"
+        )
+
+    min_severity = _normalize_repair_min_severity(args.repair_min_severity)
+    steps: list[Step] = []
+    for asset_name in _selected_repair_assets(args):
+        asset_payload = inspect_assets.get(asset_name)
+        if not isinstance(asset_payload, Mapping):
+            continue
+        raw_candidates = asset_payload.get("repair_candidates")
+        if not isinstance(raw_candidates, list):
+            continue
+        candidates = [
+            item
+            for item in raw_candidates
+            if isinstance(item, Mapping)
+            and _repair_candidate_passes_threshold(item, min_severity=min_severity)
+            and str(item.get("symbol") or "").strip()
+        ]
+        if not candidates:
+            continue
+
+        symbols = sorted({str(item.get("symbol")).strip() for item in candidates if str(item.get("symbol")).strip()})
+        starts: list[str] = []
+        ends: list[str] = []
+        for item in candidates:
+            start, end = _candidate_window_bounds(item)
+            if start:
+                starts.append(_normalize_target_date(start))
+            if end:
+                ends.append(_normalize_target_date(end))
+        if not starts or not ends:
+            continue
+
+        start_date = min(starts)
+        end_date = max(ends)
+        current_path = _asset_path_from_bundle(current, asset_name)
+        refreshed_path = _asset_path_from_bundle(refreshed, asset_name)
+        patch_path = _repair_patch_snapshot_path(refreshed_path)
+        symbols_file = _repair_symbols_file_path(args, asset_name=asset_name)
+        if not args.dry_run:
+            _write_repair_symbols_file(symbols_file, symbols=symbols)
+
+        mirror_command = _rqdata_command(
+            args,
+            _repair_command_name(asset_name),
+            "--symbols-file",
+            _repo_relative(symbols_file),
+            "--start-date",
+            start_date,
+            "--end-date",
+            end_date,
+            "--name",
+            patch_path.name,
+        )
+        if args.resume:
+            mirror_command.append("--resume")
+        merge_command = [
+            sys.executable,
+            "-m",
+            "csml.research.hk_asset_patch_merge",
+            "--base-dir",
+            _repo_relative(current_path),
+            "--patch-dir",
+            _repo_relative(patch_path),
+            "--out-dir",
+            _repo_relative(refreshed_path),
+            "--overwrite",
+        ]
+        display_name = asset_name.replace("_", " ")
+        metadata = {
+            "action": "patch_fetch",
+            "mode": "repair",
+            "base_path": current_path,
+            "patch_path": patch_path,
+            "refreshed_path": refreshed_path,
+            "start_date": start_date,
+            "end_date": end_date,
+            "lookback_days": None,
+            "candidate_count": len(candidates),
+            "symbols_file": symbols_file,
+            "symbols": symbols,
+            "source_report": args.repair_source_report,
+            "min_severity": min_severity,
+        }
+        steps.extend(
+            [
+                Step(
+                    phase="repair",
+                    label=f"Mirror HK {display_name} repair window",
+                    command=mirror_command,
+                    asset_name=asset_name,
+                    report_metadata=metadata,
+                ),
+                Step(
+                    phase="repair",
+                    label=f"Merge HK {display_name} repair patch into refreshed snapshot",
+                    command=merge_command,
+                    alias_target=refreshed_path,
+                    alias_link=current_path,
+                    asset_name=asset_name,
+                    report_metadata={
+                        "action": "patch_merge",
+                        "mode": "repair",
+                        "refreshed_path": refreshed_path,
+                        "alias_path": current_path,
+                    },
+                ),
+            ]
+        )
+    return steps
 
 
 def _planned_bundle(
@@ -1228,7 +1439,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--phase",
         action="append",
-        choices=["refresh", "inspect", "package", "release"],
+        choices=["refresh", "inspect", "repair", "package", "release"],
         default=[],
         help="Workflow phase to run. Repeatable. Default: refresh, inspect, package.",
     )
@@ -1280,6 +1491,27 @@ def build_parser() -> argparse.ArgumentParser:
         choices=INSPECT_ASSETS,
         default=[],
         help="Only inspect selected asset(s). Repeatable.",
+    )
+    parser.add_argument(
+        "--repair-asset",
+        action="append",
+        choices=REPAIR_ASSETS,
+        default=[],
+        help="Only repair selected asset(s). Repeatable. Default: daily/valuation/ex_factors/dividends/shares.",
+    )
+    parser.add_argument(
+        "--repair-source-report",
+        type=Path,
+        help=(
+            "Structured workflow report used to source repair_candidates. "
+            "Default: same path as --workflow-report."
+        ),
+    )
+    parser.add_argument(
+        "--repair-min-severity",
+        default="warning",
+        choices=["info", "warning", "error"],
+        help="Minimum candidate severity to include in repair runs. Default: warning.",
     )
     parser.add_argument(
         "--part",
@@ -1371,20 +1603,43 @@ def main(argv: list[str] | None = None) -> int:
         args.workflow_report or _default_workflow_report_path(args.target_date),
         base_root=REPO_ROOT,
     )
+    args.repair_source_report = _normalize_report_path(
+        args.repair_source_report or args.workflow_report,
+        base_root=REPO_ROOT,
+    )
     args.package_dest = (
         args.package_dest.resolve() if args.package_dest.is_absolute() else REPO_ROOT / args.package_dest
     )
     args.tar_dir = args.tar_dir.resolve() if args.tar_dir.is_absolute() else REPO_ROOT / args.tar_dir
 
     phases = _phase_selection(args)
+    if "repair" in phases and not args.repair_source_report.exists() and "inspect" in phases:
+        raise SystemExit(
+            "Repair requires an existing workflow report with inspect.assets.repair_candidates. "
+            "Run the workflow once with inspect enabled, then rerun with --phase repair."
+        )
     workflow_report = _init_workflow_report(args=args, phases=phases)
     current = _current_snapshot_bundle()
     refreshed = _refreshed_snapshot_bundle(args.target_date)
     selected_refresh_assets = _selected_refresh_assets(args)
-    planned_bundle = _planned_bundle(
+    selected_repair_assets = _selected_repair_assets(args)
+    planned_refresh_bundle = _planned_bundle(
         current,
         refreshed,
         selected_refresh_assets=selected_refresh_assets,
+    )
+    selected_mutating_assets = tuple(
+        dict.fromkeys(
+            [
+                *(selected_refresh_assets if "refresh" in phases else ()),
+                *(selected_repair_assets if "repair" in phases else ()),
+            ]
+        )
+    )
+    planned_bundle = _planned_bundle(
+        current,
+        refreshed,
+        selected_refresh_assets=selected_mutating_assets,
     )
     active_bundle = current
 
@@ -1392,10 +1647,24 @@ def main(argv: list[str] | None = None) -> int:
     if "refresh" in phases:
         steps.extend(_build_refresh_steps(args, current=current, refreshed=refreshed))
     if "inspect" in phases:
-        inspect_bundle = active_bundle if "refresh" not in phases else planned_bundle
+        inspect_bundle = active_bundle if "refresh" not in phases else planned_refresh_bundle
         steps.extend(_build_inspect_steps(args, bundle=inspect_bundle))
+    if "repair" in phases:
+        repair_bundle_current = active_bundle if "refresh" not in phases else planned_refresh_bundle
+        repair_bundle_refreshed = _planned_bundle(
+            repair_bundle_current,
+            refreshed,
+            selected_refresh_assets=selected_repair_assets,
+        )
+        steps.extend(
+            _build_repair_steps(
+                args,
+                current=repair_bundle_current,
+                refreshed=repair_bundle_refreshed,
+            )
+        )
     if "package" in phases:
-        package_bundle = active_bundle if "refresh" not in phases else planned_bundle
+        package_bundle = active_bundle if not any(phase in phases for phase in ("refresh", "repair")) else planned_bundle
         steps.append(_build_package_step(args, bundle=package_bundle))
     if "release" in phases:
         steps.append(_build_release_step(args))
