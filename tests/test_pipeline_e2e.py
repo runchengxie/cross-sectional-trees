@@ -31,6 +31,39 @@ def _build_daily_frames(symbols: list[str], dates: pd.DatetimeIndex) -> dict[str
     return frames
 
 
+def _write_local_rqdata_assets(
+    root: Path,
+    *,
+    symbols: list[str],
+    frames: dict[str, pd.DataFrame],
+) -> tuple[Path, Path]:
+    daily_dir = root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_local_daily_demo"
+    data_dir = daily_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    for symbol in symbols:
+        local_frame = frames[symbol].rename(
+            columns={
+                "symbol": "ts_code",
+                "vol": "volume",
+                "amount": "total_turnover",
+            }
+        )
+        local_frame.to_parquet(data_dir / f"{symbol}.parquet", index=False)
+
+    instruments_file = (
+        root / "artifacts" / "assets" / "rqdata" / "hk" / "instruments" / "hk_local_instruments_demo.parquet"
+    )
+    instruments_file.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "symbol": symbols,
+            "name": symbols,
+            "list_date": ["20190101"] * len(symbols),
+        }
+    ).to_parquet(instruments_file, index=False)
+    return daily_dir, instruments_file
+
+
 @pytest.mark.integration
 def test_pipeline_run_offline(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=60, freq="B")
@@ -190,6 +223,137 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
     positions_current = pd.read_csv(run_dir / "positions_current.csv")
     assert required_position_columns.issubset(positions_full.columns)
     assert required_position_columns.issubset(positions_current.columns)
+
+
+@pytest.mark.integration
+def test_pipeline_run_with_local_rqdata_assets_smoke(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=60, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    frames = _build_daily_frames(symbols, dates)
+    daily_asset_dir, instruments_file = _write_local_rqdata_assets(
+        tmp_path,
+        symbols=symbols,
+        frames=frames,
+    )
+
+    def fail_init(*_args, **_kwargs):
+        raise AssertionError("rqdatac.init should not be called in local asset smoke test")
+
+    def fail_remote_daily(*_args, **_kwargs):
+        raise AssertionError("remote daily fetch should not be called in local asset smoke test")
+
+    def fail_remote_fundamentals(*_args, **_kwargs):
+        raise AssertionError("remote fundamentals should not be called in local asset smoke test")
+
+    monkeypatch.setattr("csml.data_interface._init_rqdatac_runtime", fail_init)
+    monkeypatch.setattr("csml.data_providers._fetch_daily_rqdata", fail_remote_daily)
+    monkeypatch.setattr(DataInterface, "fetch_fundamentals", fail_remote_fundamentals)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20200101",
+            "end_date": "20200331",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {
+                "market": "hk",
+                "frequency": "1d",
+                "skip_suspended": True,
+                "fields": ["close", "volume", "total_turnover"],
+                "daily_asset_dir": str(daily_asset_dir),
+                "instruments_file": str(instruments_file),
+            },
+            "column_map": {
+                "trade_date": "trade_date",
+                "symbol": "ts_code",
+                "close": "close",
+                "vol": "volume",
+                "amount": "total_turnover",
+            },
+        },
+        "universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "min_listed_days": 5,
+            "drop_st": False,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "next_rebalance",
+            "rebalance_frequency": "W",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5"],
+            "params": {"sma_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "e2e_local_assets",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {
+            "enabled": True,
+            "top_k": 2,
+            "rebalance_frequency": "W",
+            "transaction_cost_bps": 0,
+            "long_only": True,
+            "exit_mode": "rebalance",
+            "exit_price_policy": "delay",
+        },
+    }
+
+    config_path = tmp_path / "config_local_assets.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    pipeline.run(str(config_path))
+
+    run_dirs = list(Path(output_dir).glob("e2e_local_assets_*"))
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+
+    inputs_lock = json.loads((run_dir / "inputs.lock.json").read_text(encoding="utf-8"))
+    assert inputs_lock["inputs"]["daily_asset_dir"] == str(daily_asset_dir.resolve())
+    assert inputs_lock["inputs"]["instruments_file"] == str(instruments_file.resolve())
+
+    assert (run_dir / "summary.json").exists()
+    assert (run_dir / "dataset.parquet").exists()
+    assert (run_dir / "positions_current.csv").exists()
 
 
 @pytest.mark.integration

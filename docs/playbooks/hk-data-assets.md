@@ -796,6 +796,70 @@ fundamentals:
 * 优先只公开 `manifest.yml`、配置、说明文件和汇总结果
 * 先确认你的分发方式是否触及 provider 合规边界
 
+## RQData 权限失效前冻结清单
+
+如果你已经判断后面大概率不会再续 RQData，优先级不是“继续自动刷新”，而是把未来离线还要用的东西冻好。
+
+先做这三件事：
+
+1. 冻住 current asset：
+
+```bash
+csml backup-data \
+  --preset hk_current \
+  --name hk_current_frozen_YYYYMMDD \
+  --no-cache
+```
+
+它会把 `artifacts/metadata/current_assets/hk_current.json` 和 contract 里声明的 resolved snapshot / file 一起复制进 `artifacts/snapshots/<name>/`。
+
+2. 冻住真正要复用的研究入口：
+
+* `artifacts/assets/rqdata/hk/daily/...`
+* `artifacts/assets/rqdata/hk/instruments/...`
+* `artifacts/assets/universe/...`
+* 你之后还要复现的 `config.used.yml`
+
+如果未来还要跑 PIT / file 路线，再额外确认：
+
+* `pipeline_fundamentals.parquet`
+* 对应 `by_date` universe
+* 行业标签文件，如 `industry_labels_m.parquet`
+* 本地 benchmark returns 文件
+
+3. 跑一遍仅本地资产 smoke test：
+
+```bash
+.venv/bin/pytest -q tests/test_pipeline_e2e.py -k local_rqdata_assets -q
+```
+
+这条测试验证：
+
+* 本地 `daily_asset_dir + instruments_file` 足够让 pipeline 跑通
+* `rqdatac.init` 不会被调用
+* 远端日线 / 基本面抓取不会被触发
+
+权限失效后，不要再默认依赖下面这些能力：
+
+* `csml rqdata quota --pretty`
+* 新的 `mirror-hk-*` 下载
+* `fundamentals.source=provider`
+* `fundamentals.provider_overlay`
+* 依赖在线交易日历严格解析的相对日期
+
+更稳的做法是：
+
+* 配置里写绝对日期
+* 用本地 `daily + instruments + fundamentals file + universe` 跑
+* 不再把 provider 当隐式兜底
+
+这件事可以视为完成，当且仅当：
+
+* 至少有一份 `csml backup-data --preset hk_current` 生成的 snapshot
+* 未来还要用的 PIT / universe / benchmark 文件已经单独确认存在
+* 本地资产 smoke test 能通过
+* 关键 run 已经保留 `summary.json + config.used.yml + inputs.lock.json`
+
 ## 常见误解
 
 ### 误解 1：PIT 股票池会把历史财报自动裁成成员期
