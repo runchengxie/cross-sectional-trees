@@ -11,17 +11,27 @@ from ..repo_paths import resolve_repo_path as resolve_repo_relative_path
 from .support import save_json
 
 
-def _resolve_input_path(value: object | None) -> Path | None:
+def _configured_input_path(value: object | None) -> Path | None:
     if value is None:
         return None
     text = str(value).strip()
     if not text:
         return None
-    return resolve_repo_relative_path(text)
+    path = Path(text).expanduser()
+    if path.is_absolute():
+        return path.absolute()
+    return (Path.cwd() / path).absolute()
+
+
+def _resolve_input_path(value: object | None) -> Path | None:
+    configured = _configured_input_path(value)
+    if configured is None:
+        return None
+    return resolve_repo_relative_path(configured)
 
 
 def _infer_manifest_path(value: object | None) -> Path | None:
-    path = _resolve_input_path(value)
+    path = _configured_input_path(value)
     if path is None:
         return None
     candidates: list[Path] = []
@@ -32,7 +42,7 @@ def _infer_manifest_path(value: object | None) -> Path | None:
         candidates.append(path.parent / "manifest.yml")
     for candidate in candidates:
         if candidate.exists():
-            return candidate
+            return candidate.resolve()
     return None
 
 
@@ -43,6 +53,64 @@ def _looks_like_latest(value: object | None) -> bool:
     if not text:
         return False
     return "latest" in text
+
+
+def _path_kind(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    if not path.exists():
+        return "missing"
+    if path.is_dir():
+        return "directory"
+    if path.is_file():
+        return "file"
+    return "other"
+
+
+def _load_manifest_summary(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
+        return None
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        return None
+    query = payload.get("query") if isinstance(payload.get("query"), Mapping) else {}
+    output_dir = str(payload.get("output_dir") or "").strip()
+    snapshot_name = Path(output_dir).name if output_dir else None
+    query_end_date = None
+    for key in ("end_date", "date", "mapping_date", "as_of_date"):
+        value = query.get(key)
+        if value is None:
+            continue
+        query_end_date = str(value).strip() or None
+        if query_end_date:
+            break
+    return {
+        "dataset": str(payload.get("dataset") or "").strip() or None,
+        "status": str(payload.get("status") or "").strip() or None,
+        "output_dir": output_dir or None,
+        "snapshot_name": snapshot_name,
+        "query_end_date": query_end_date,
+    }
+
+
+def _build_input_resolution_entry(value: object | None) -> dict[str, Any] | None:
+    configured_path = _configured_input_path(value)
+    resolved_path = _resolve_input_path(value)
+    if configured_path is None and resolved_path is None:
+        return None
+    manifest_path = _infer_manifest_path(value)
+    manifest_summary = _load_manifest_summary(manifest_path)
+    return {
+        "raw": None if value is None else str(value),
+        "configured_path": str(configured_path) if configured_path is not None else None,
+        "resolved_path": str(resolved_path) if resolved_path is not None else None,
+        "path_kind": _path_kind(configured_path),
+        "exists": bool(configured_path.exists()) if configured_path is not None else False,
+        "is_symlink": bool(configured_path.is_symlink()) if configured_path is not None else False,
+        "points_to_latest_name": _looks_like_latest(value),
+        "manifest_path": str(manifest_path) if manifest_path is not None else None,
+        "manifest": manifest_summary,
+    }
 
 
 def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
@@ -78,22 +146,23 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         "benchmark_returns_file": ctx.get("BACKTEST_BENCHMARK_RETURNS_FILE"),
         "eval_output_dir": eval_cfg.get("output_dir"),
     }
-    resolved_inputs = {
-        key: str(path)
-        for key, path in (
-            (key, _resolve_input_path(value))
+    input_resolution = {
+        key: entry
+        for key, entry in (
+            (key, _build_input_resolution_entry(value))
             for key, value in raw_inputs.items()
         )
-        if path is not None
+        if entry is not None
+    }
+    resolved_inputs = {
+        key: str(entry["resolved_path"])
+        for key, entry in input_resolution.items()
+        if entry.get("resolved_path")
     }
     source_manifests = {
-        key: str(path)
-        for key, path in (
-            (f"{key}_manifest", _infer_manifest_path(value))
-            for key, value in raw_inputs.items()
-            if key not in {"cache_dir", "eval_output_dir"}
-        )
-        if path is not None
+        f"{key}_manifest": str(entry["manifest_path"])
+        for key, entry in input_resolution.items()
+        if key not in {"cache_dir", "eval_output_dir"} and entry.get("manifest_path")
     }
     if benchmark_compare_files:
         resolved_compare_files = [
@@ -118,6 +187,7 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
             "live_as_of": ctx.get("LIVE_AS_OF"),
         },
         "inputs": resolved_inputs,
+        "input_resolution": input_resolution,
         "source_manifests": source_manifests,
         "mutable_inputs": {
             "used_relative_start_date": is_relative_date_token(data_cfg.get("start_date")),
