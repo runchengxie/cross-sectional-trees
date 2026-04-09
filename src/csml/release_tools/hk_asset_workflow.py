@@ -53,6 +53,7 @@ REPAIR_ASSETS = PATCH_MERGE_SUPPORTED_ASSET_ORDER
 DEFAULT_DAILY_PATCH_LOOKBACK_DAYS = 20
 DEFAULT_DATED_PATCH_LOOKBACK_DAYS = 40
 REPAIR_SEVERITY_RANK = {"error": 2, "warning": 1, "info": 0}
+GATE_SEVERITY_RANK = {"none": -1, **REPAIR_SEVERITY_RANK}
 
 
 @dataclass
@@ -220,6 +221,14 @@ def _selected_repair_assets(args: argparse.Namespace) -> tuple[str, ...]:
 
 def _default_workflow_report_path(target_date: str) -> Path:
     return REPORTS_ROOT / f"hk_asset_refresh_{target_date}.json"
+
+
+def _default_repair_queue_path(target_date: str) -> Path:
+    return REPORTS_ROOT / f"hk_asset_repair_queue_{target_date}.json"
+
+
+def _default_remaining_repair_candidates_path(target_date: str) -> Path:
+    return REPORTS_ROOT / f"hk_asset_remaining_repair_candidates_{target_date}.json"
 
 
 def _load_asset_manifest(asset_dir: Path, *, asset_name: str) -> dict[str, object]:
@@ -591,6 +600,26 @@ def _load_health_report_analysis(path: Path, *, asset_name: str | None) -> dict[
     }
 
 
+def _normalize_gate_severity(value: str) -> str:
+    text = str(value or "").strip().lower() or "warning"
+    if text not in GATE_SEVERITY_RANK:
+        raise SystemExit("--gate-on-severity must be one of: none, info, warning, error.")
+    return text
+
+
+def _workflow_gate_enabled(*, phases: tuple[str, ...], threshold: str, repair_rerun_inspect: bool) -> bool:
+    return (
+        threshold != "none"
+        and ("inspect" in phases or ("repair" in phases and repair_rerun_inspect))
+        and any(phase in phases for phase in ("refresh", "repair", "package", "release"))
+    )
+
+
+def _health_summary_hits_gate(summary: Mapping[str, Any], *, threshold: str) -> bool:
+    overall = str(summary.get("overall_severity") or "none").strip().lower() or "none"
+    return GATE_SEVERITY_RANK.get(overall, -1) >= GATE_SEVERITY_RANK[threshold]
+
+
 def _init_workflow_report(
     *,
     args: argparse.Namespace,
@@ -606,6 +635,9 @@ def _init_workflow_report(
             "selected_repair_assets": list(_selected_repair_assets(args)),
             "selected_parts": list(_selected_parts(args)),
             "inspect_fail_on_severity": args.inspect_fail_on_severity,
+            "gate_on_severity": args.gate_on_severity,
+            "repair_rerun_inspect": args.repair_rerun_inspect,
+            "repair_only_unresolved": args.repair_only_unresolved,
             "repair_min_severity": args.repair_min_severity,
             "repair_source_report": str(args.repair_source_report) if args.repair_source_report else None,
             "started_at": datetime.now().isoformat(timespec="seconds"),
@@ -618,6 +650,21 @@ def _init_workflow_report(
         },
         "repair": {
             "assets": {},
+            "queue": None,
+            "remaining_candidates": None,
+        },
+        "gate": {
+            "enabled": _workflow_gate_enabled(
+                phases=phases,
+                threshold=args.gate_on_severity,
+                repair_rerun_inspect=args.repair_rerun_inspect,
+            ),
+            "threshold": args.gate_on_severity,
+            "stage": None,
+            "triggered": False,
+            "triggered_assets": [],
+            "blocked_alias_updates": [],
+            "skipped_steps": [],
         },
         "steps": [],
     }
@@ -675,14 +722,32 @@ def _record_inspect_report(
     assets = report.setdefault("inspect", {}).setdefault("assets", {})
     metadata = dict(step.report_metadata or {})
     analysis = _load_health_report_analysis(step.summary_path, asset_name=step.asset_name)
-    assets[step.asset_name] = {
-        "asset_name": step.asset_name,
-        "asset_dir": metadata.get("asset_dir"),
-        "target_date": metadata.get("target_date"),
-        "quality": analysis["quality"],
-        "repair_candidate_count": len(analysis["repair_candidates"]),
-        "repair_candidates": analysis["repair_candidates"],
-    }
+    inspection_stage = str(metadata.get("inspection_stage") or "default").strip() or "default"
+    entry = assets.setdefault(
+        step.asset_name,
+        {
+            "asset_name": step.asset_name,
+            "runs": [],
+        },
+    )
+    entry["asset_dir"] = metadata.get("asset_dir")
+    entry["target_date"] = metadata.get("target_date")
+    entry["latest_stage"] = inspection_stage
+    entry["quality"] = analysis["quality"]
+    entry["repair_candidate_count"] = len(analysis["repair_candidates"])
+    entry["repair_candidates"] = analysis["repair_candidates"]
+    entry.setdefault("runs", []).append(
+        {
+            "stage": inspection_stage,
+            "quality": analysis["quality"],
+            "repair_candidate_count": len(analysis["repair_candidates"]),
+            "repair_candidates": analysis["repair_candidates"],
+        }
+    )
+    if inspection_stage == "post_repair":
+        entry["post_repair_quality"] = analysis["quality"]
+        entry["post_repair_repair_candidate_count"] = len(analysis["repair_candidates"])
+        entry["post_repair_repair_candidates"] = analysis["repair_candidates"]
 
 
 def _record_step_report(
@@ -716,6 +781,78 @@ def _write_workflow_report(
     path.parent.mkdir(parents=True, exist_ok=True)
     report.setdefault("workflow", {})["finished_at"] = datetime.now().isoformat(timespec="seconds")
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _write_json_report(path: Path, *, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _record_gate_trigger(
+    report: dict[str, Any],
+    *,
+    step: Step,
+    summary: Mapping[str, Any],
+) -> None:
+    gate = report.setdefault("gate", {})
+    gate["triggered"] = True
+    triggered_assets = gate.setdefault("triggered_assets", [])
+    entry = {
+        "asset_name": step.asset_name,
+        "overall_severity": summary.get("overall_severity"),
+        "severity_counts": dict(summary.get("severity_counts") or {}),
+        "report_path": summary.get("report_path"),
+    }
+    if entry not in triggered_assets:
+        triggered_assets.append(entry)
+
+
+def _record_blocked_alias_update(
+    report: dict[str, Any],
+    *,
+    step: Step,
+    reason: str,
+) -> None:
+    if step.alias_target is None or step.alias_link is None:
+        return
+    blocked = report.setdefault("gate", {}).setdefault("blocked_alias_updates", [])
+    entry = {
+        "phase": step.phase,
+        "asset_name": step.asset_name,
+        "alias_path": str(step.alias_link),
+        "target_path": str(step.alias_target),
+        "reason": reason,
+    }
+    if entry not in blocked:
+        blocked.append(entry)
+
+
+def _record_skipped_step(
+    report: dict[str, Any],
+    *,
+    step: Step,
+    reason: str,
+) -> None:
+    report.setdefault("steps", []).append(
+        {
+            "phase": step.phase,
+            "label": step.label,
+            "asset_name": step.asset_name,
+            "returncode": None,
+            "command": step.command,
+            "skipped": True,
+            "reason": reason,
+        }
+    )
+    skipped = report.setdefault("gate", {}).setdefault("skipped_steps", [])
+    entry = {
+        "phase": step.phase,
+        "label": step.label,
+        "asset_name": step.asset_name,
+        "reason": reason,
+    }
+    if entry not in skipped:
+        skipped.append(entry)
 
 
 def _build_patch_refresh_steps(
@@ -817,6 +954,65 @@ def _load_repair_source_report(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _repair_source_kind(*, only_unresolved: bool) -> str:
+    return "remaining_repair_candidates" if only_unresolved else "repair_candidates"
+
+
+def _clone_candidate_list(items: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [dict(item) for item in items]
+
+
+def _repair_source_candidates(
+    source_report: Mapping[str, Any],
+    *,
+    asset_name: str,
+    only_unresolved: bool,
+) -> tuple[list[dict[str, Any]], str]:
+    inspect_assets = source_report.get("inspect", {}).get("assets")
+    if not isinstance(inspect_assets, Mapping):
+        raise SystemExit("Repair source report does not contain inspect.assets.")
+    asset_payload = inspect_assets.get(asset_name)
+    if not isinstance(asset_payload, Mapping):
+        return [], _repair_source_kind(only_unresolved=only_unresolved)
+
+    if only_unresolved:
+        remaining_assets = source_report.get("repair", {}).get("remaining_candidates", {}).get("assets")
+        if isinstance(remaining_assets, Mapping):
+            remaining_payload = remaining_assets.get(asset_name)
+            if isinstance(remaining_payload, Mapping):
+                candidates = remaining_payload.get("repair_candidates")
+                if isinstance(candidates, list):
+                    return _clone_candidate_list(
+                        [item for item in candidates if isinstance(item, Mapping)]
+                    ), "repair.remaining_candidates"
+        candidates = asset_payload.get("post_repair_repair_candidates")
+        if isinstance(candidates, list):
+            return _clone_candidate_list(
+                [item for item in candidates if isinstance(item, Mapping)]
+            ), "inspect.post_repair_repair_candidates"
+        return [], _repair_source_kind(only_unresolved=True)
+
+    candidates = asset_payload.get("repair_candidates")
+    if not isinstance(candidates, list):
+        return [], "inspect.repair_candidates"
+    return _clone_candidate_list(
+        [item for item in candidates if isinstance(item, Mapping)]
+    ), "inspect.repair_candidates"
+
+
+def _repair_unresolved_source_available(source_report: Mapping[str, Any]) -> bool:
+    remaining_assets = source_report.get("repair", {}).get("remaining_candidates", {}).get("assets")
+    if isinstance(remaining_assets, Mapping):
+        return True
+    inspect_assets = source_report.get("inspect", {}).get("assets")
+    if not isinstance(inspect_assets, Mapping):
+        return False
+    return any(
+        isinstance(asset_payload, Mapping) and isinstance(asset_payload.get("post_repair_repair_candidates"), list)
+        for asset_payload in inspect_assets.values()
+    )
+
+
 def _asset_path_from_bundle(bundle: SnapshotBundle, asset_name: str) -> Path:
     mapping = {
         "daily": bundle.daily_dir,
@@ -863,6 +1059,92 @@ def _write_repair_symbols_file(path: Path, *, symbols: list[str]) -> None:
     path.write_text("".join(f"{symbol}\n" for symbol in symbols), encoding="utf-8")
 
 
+def _repair_candidates_from_steps(steps: list[Step]) -> dict[str, list[dict[str, Any]]]:
+    assets: dict[str, list[dict[str, Any]]] = {}
+    for step in steps:
+        if step.phase != "repair" or not step.asset_name:
+            continue
+        metadata = step.report_metadata or {}
+        if str(metadata.get("action") or "") != "patch_fetch":
+            continue
+        candidates = metadata.get("candidates")
+        if not isinstance(candidates, list):
+            continue
+        assets[step.asset_name] = _clone_candidate_list(
+            [item for item in candidates if isinstance(item, Mapping)]
+        )
+    return assets
+
+
+def _build_repair_candidate_payload(
+    *,
+    args: argparse.Namespace,
+    source_report: Path,
+    source_kind: str,
+    candidates_by_asset: Mapping[str, list[dict[str, Any]]],
+    report_path: Path,
+) -> dict[str, Any]:
+    assets_payload: dict[str, Any] = {}
+    total = 0
+    for asset_name, candidates in candidates_by_asset.items():
+        symbols = sorted({str(item.get("symbol") or "").strip() for item in candidates if str(item.get("symbol") or "").strip()})
+        assets_payload[asset_name] = {
+            "asset_name": asset_name,
+            "candidate_count": len(candidates),
+            "symbols": symbols,
+            "repair_candidates": _clone_candidate_list(candidates),
+        }
+        total += len(candidates)
+    return {
+        "target_date": args.target_date,
+        "source_report": str(source_report),
+        "source_kind": source_kind,
+        "min_severity": args.repair_min_severity,
+        "candidate_count": total,
+        "assets": assets_payload,
+        "report_path": str(report_path),
+    }
+
+
+def _build_remaining_repair_candidates_payload(
+    *,
+    args: argparse.Namespace,
+    workflow_report: Mapping[str, Any],
+    report_path: Path,
+) -> dict[str, Any] | None:
+    inspect_assets = workflow_report.get("inspect", {}).get("assets")
+    if not isinstance(inspect_assets, Mapping):
+        return None
+    assets_payload: dict[str, Any] = {}
+    total = 0
+    for asset_name, asset_payload in inspect_assets.items():
+        if not isinstance(asset_payload, Mapping):
+            continue
+        latest_stage = str(asset_payload.get("latest_stage") or "").strip()
+        if latest_stage != "post_repair":
+            continue
+        candidates = asset_payload.get("post_repair_repair_candidates")
+        if not isinstance(candidates, list):
+            continue
+        cloned = _clone_candidate_list([item for item in candidates if isinstance(item, Mapping)])
+        symbols = sorted({str(item.get("symbol") or "").strip() for item in cloned if str(item.get("symbol") or "").strip()})
+        assets_payload[str(asset_name)] = {
+            "asset_name": str(asset_name),
+            "candidate_count": len(cloned),
+            "symbols": symbols,
+            "repair_candidates": cloned,
+        }
+        total += len(cloned)
+    return {
+        "target_date": args.target_date,
+        "source_report": str(args.workflow_report),
+        "source_kind": "inspect.post_repair_repair_candidates",
+        "candidate_count": total,
+        "assets": assets_payload,
+        "report_path": str(report_path),
+    }
+
+
 def _build_repair_steps(
     args: argparse.Namespace,
     *,
@@ -875,16 +1157,20 @@ def _build_repair_steps(
         raise SystemExit(
             f"Repair source report does not contain inspect.assets: {args.repair_source_report}"
         )
+    if args.repair_only_unresolved and not _repair_unresolved_source_available(source_report):
+        raise SystemExit(
+            "--repair-only-unresolved requires a source workflow report with "
+            "repair.remaining_candidates or inspect.assets.<asset>.post_repair_repair_candidates."
+        )
 
     min_severity = _normalize_repair_min_severity(args.repair_min_severity)
     steps: list[Step] = []
     for asset_name in _selected_repair_assets(args):
-        asset_payload = inspect_assets.get(asset_name)
-        if not isinstance(asset_payload, Mapping):
-            continue
-        raw_candidates = asset_payload.get("repair_candidates")
-        if not isinstance(raw_candidates, list):
-            continue
+        raw_candidates, source_kind = _repair_source_candidates(
+            source_report,
+            asset_name=asset_name,
+            only_unresolved=args.repair_only_unresolved,
+        )
         candidates = [
             item
             for item in raw_candidates
@@ -956,7 +1242,9 @@ def _build_repair_steps(
             "symbols_file": symbols_file,
             "symbols": symbols,
             "source_report": args.repair_source_report,
+            "source_kind": source_kind,
             "min_severity": min_severity,
+            "candidates": _clone_candidate_list(candidates),
         }
         steps.extend(
             [
@@ -1229,18 +1517,21 @@ def _build_refresh_steps(
     return steps
 
 
-def _inspect_report_name(asset_name: str, target_date: str) -> str:
+def _inspect_report_name(asset_name: str, target_date: str, *, stage: str = "default") -> str:
+    suffix = "_post_repair" if stage == "post_repair" else ""
     if asset_name == "valuation":
-        return f"hk_valuation_health_{target_date}_with_daily_ref.json"
-    return f"hk_{asset_name}_health_{target_date}_full_history.json"
+        return f"hk_valuation_health_{target_date}_with_daily_ref{suffix}.json"
+    return f"hk_{asset_name}_health_{target_date}_full_history{suffix}.json"
 
 
 def _build_inspect_steps(
     args: argparse.Namespace,
     *,
     bundle: SnapshotBundle,
+    asset_names: tuple[str, ...] | None = None,
+    inspection_stage: str = "default",
 ) -> list[Step]:
-    selected = _selected_inspect_assets(args)
+    selected = asset_names or _selected_inspect_assets(args)
     steps: list[Step] = []
     mapping = {
         "daily": bundle.daily_dir,
@@ -1253,7 +1544,11 @@ def _build_inspect_steps(
         "southbound": bundle.southbound_dir,
     }
     for asset_name in selected:
-        report_path = args.reports_dir / _inspect_report_name(asset_name, args.target_date)
+        report_path = args.reports_dir / _inspect_report_name(
+            asset_name,
+            args.target_date,
+            stage=inspection_stage,
+        )
         command = [
             *_csml_executable(),
             "rqdata",
@@ -1273,16 +1568,20 @@ def _build_inspect_steps(
             command.append("--include-history")
         if asset_name == "valuation":
             command.extend(["--daily-asset-dir", _repo_relative(bundle.daily_clean_dir)])
+        label = f"Inspect HK {asset_name} asset health"
+        if inspection_stage == "post_repair":
+            label = f"Inspect HK {asset_name} asset health after repair"
         steps.append(
             Step(
                 phase="inspect",
-                label=f"Inspect HK {asset_name} asset health",
+                label=label,
                 command=command,
                 summary_path=report_path,
                 asset_name=asset_name,
                 report_metadata={
                     "asset_dir": str(mapping[asset_name]),
                     "target_date": args.target_date,
+                    "inspection_stage": inspection_stage,
                 },
             )
         )
@@ -1386,6 +1685,26 @@ def _summarize_report(path: Path) -> str:
         f"history_issues={summary.get('history_issue_count', 0)} "
         f"report={_repo_relative(path)}"
     )
+
+
+def _block_alias_repoint(
+    step: Step,
+    *,
+    dry_run: bool,
+    report: dict[str, Any] | None,
+    reason: str,
+) -> None:
+    if step.alias_target is None or step.alias_link is None:
+        return
+    if dry_run:
+        return
+    print(
+        "  blocked latest alias repoint:",
+        f"{_repo_relative(step.alias_link)} -> {step.alias_target.name}",
+        f"({reason})",
+    )
+    if report is not None:
+        _record_blocked_alias_update(report, step=step, reason=reason)
 
 
 def _maybe_repoint_alias(step: Step, *, dry_run: bool, repoint_latest: bool) -> None:
@@ -1514,6 +1833,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Minimum candidate severity to include in repair runs. Default: warning.",
     )
     parser.add_argument(
+        "--repair-only-unresolved",
+        action="store_true",
+        help=(
+            "When running --phase repair, only consume remaining unresolved candidates from a prior "
+            "repair workflow report instead of the original inspect.repair_candidates."
+        ),
+    )
+    parser.add_argument(
+        "--no-repair-rerun-inspect",
+        action="store_false",
+        dest="repair_rerun_inspect",
+        help="Do not automatically rerun inspect on repaired assets after --phase repair.",
+    )
+    parser.set_defaults(repair_rerun_inspect=True)
+    parser.add_argument(
         "--part",
         action="append",
         choices=AVAILABLE_PART_CHOICES,
@@ -1559,6 +1893,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail threshold forwarded to inspect-hk-asset-health. Default: none.",
     )
     parser.add_argument(
+        "--gate-on-severity",
+        default="warning",
+        choices=["none", "info", "warning", "error"],
+        help=(
+            "Workflow gate threshold evaluated from inspect JSON summaries. "
+            "When hit, deferred latest alias repoints stay blocked and downstream package/release "
+            "steps are skipped. Default: warning."
+        ),
+    )
+    parser.add_argument(
         "--skip-history",
         action="store_true",
         help="Do not add --include-history to inspect-hk-asset-health.",
@@ -1592,6 +1936,7 @@ def main(argv: list[str] | None = None) -> int:
     args.target_date = _normalize_target_date(args.target_date)
     args.start_date = _normalize_target_date(args.start_date)
     args.southbound_start_date = _normalize_target_date(args.southbound_start_date)
+    args.gate_on_severity = _normalize_gate_severity(args.gate_on_severity)
     if args.daily_patch_lookback_days <= 0:
         raise SystemExit("--daily-patch-lookback-days must be > 0.")
     if args.dated_patch_lookback_days <= 0:
@@ -1628,19 +1973,6 @@ def main(argv: list[str] | None = None) -> int:
         refreshed,
         selected_refresh_assets=selected_refresh_assets,
     )
-    selected_mutating_assets = tuple(
-        dict.fromkeys(
-            [
-                *(selected_refresh_assets if "refresh" in phases else ()),
-                *(selected_repair_assets if "repair" in phases else ()),
-            ]
-        )
-    )
-    planned_bundle = _planned_bundle(
-        current,
-        refreshed,
-        selected_refresh_assets=selected_mutating_assets,
-    )
     active_bundle = current
 
     steps: list[Step] = []
@@ -1649,6 +1981,7 @@ def main(argv: list[str] | None = None) -> int:
     if "inspect" in phases:
         inspect_bundle = active_bundle if "refresh" not in phases else planned_refresh_bundle
         steps.extend(_build_inspect_steps(args, bundle=inspect_bundle))
+    repair_steps: list[Step] = []
     if "repair" in phases:
         repair_bundle_current = active_bundle if "refresh" not in phases else planned_refresh_bundle
         repair_bundle_refreshed = _planned_bundle(
@@ -1656,13 +1989,49 @@ def main(argv: list[str] | None = None) -> int:
             refreshed,
             selected_refresh_assets=selected_repair_assets,
         )
-        steps.extend(
-            _build_repair_steps(
-                args,
-                current=repair_bundle_current,
-                refreshed=repair_bundle_refreshed,
-            )
+        repair_steps = _build_repair_steps(
+            args,
+            current=repair_bundle_current,
+            refreshed=repair_bundle_refreshed,
         )
+        steps.extend(repair_steps)
+        if args.repair_rerun_inspect and repair_steps:
+            repaired_assets = tuple(
+                dict.fromkeys(
+                    step.asset_name
+                    for step in repair_steps
+                    if step.asset_name in INSPECT_ASSETS
+                )
+            )
+            if repaired_assets:
+                steps.extend(
+                    _build_inspect_steps(
+                        args,
+                        bundle=repair_bundle_refreshed,
+                        asset_names=repaired_assets,
+                        inspection_stage="post_repair",
+                    )
+                )
+    repair_assets_with_steps = tuple(
+        dict.fromkeys(
+            step.asset_name
+            for step in repair_steps
+            if step.asset_name
+        )
+    )
+    selected_mutating_assets = tuple(
+        dict.fromkeys(
+            [
+                *(selected_refresh_assets if "refresh" in phases else ()),
+                *(repair_assets_with_steps if "repair" in phases else ()),
+            ]
+        )
+    )
+    planned_bundle = _planned_bundle(
+        current,
+        refreshed,
+        selected_refresh_assets=selected_mutating_assets,
+    )
     if "package" in phases:
         package_bundle = active_bundle if not any(phase in phases for phase in ("refresh", "repair")) else planned_bundle
         steps.append(_build_package_step(args, bundle=package_bundle))
@@ -1680,23 +2049,139 @@ def main(argv: list[str] | None = None) -> int:
         if args.workflow_report is not None:
             args.workflow_report.parent.mkdir(parents=True, exist_ok=True)
 
+    inspect_stages = [
+        str((step.report_metadata or {}).get("inspection_stage") or "default")
+        for step in steps
+        if step.phase == "inspect"
+    ]
+    gate_stage = "post_repair" if "post_repair" in inspect_stages else ("default" if inspect_stages else None)
+    gate_enabled = bool(
+        gate_stage
+        and _workflow_gate_enabled(
+            phases=phases,
+            threshold=args.gate_on_severity,
+            repair_rerun_inspect=args.repair_rerun_inspect,
+        )
+    )
+    workflow_report.setdefault("gate", {})["enabled"] = gate_enabled
+    workflow_report.setdefault("gate", {})["stage"] = gate_stage
+    gate_triggered = False
+    gate_hits: list[tuple[Step, dict[str, Any]]] = []
+    remaining_gate_inspect_steps = sum(
+        1
+        for step in steps
+        if step.phase == "inspect"
+        and str((step.report_metadata or {}).get("inspection_stage") or "default") == gate_stage
+    )
+    pending_alias_steps: list[Step] = []
+
     for index, step in enumerate(steps, start=1):
+        if gate_triggered and step.phase in {"package", "release"}:
+            reason = f"inspect gate triggered at severity >= {args.gate_on_severity}"
+            print(f"==> [{index}/{len(steps)}] {step.phase}: {step.label}")
+            print(f"  skipped due to inspect gate: {reason}")
+            if not args.dry_run:
+                _record_skipped_step(workflow_report, step=step, reason=reason)
+            continue
         print(f"==> [{index}/{len(steps)}] {step.phase}: {step.label}")
         result = _run(step.command, dry_run=args.dry_run)
         if result.returncode != 0:
             raise SystemExit(result.returncode)
-        _maybe_repoint_alias(step, dry_run=args.dry_run, repoint_latest=not args.no_repoint_latest)
+
+        should_defer_alias = (
+            gate_enabled
+            and remaining_gate_inspect_steps > 0
+            and not args.no_repoint_latest
+            and step.alias_target is not None
+            and step.alias_link is not None
+        )
+        if should_defer_alias and not args.dry_run:
+            pending_alias_steps.append(step)
+            print(
+                "  deferred latest alias repoint until inspect gate clears:",
+                f"{_repo_relative(step.alias_link)} -> {step.alias_target.name}",
+            )
+        elif gate_triggered:
+            _block_alias_repoint(
+                step,
+                dry_run=args.dry_run,
+                report=workflow_report if not args.dry_run else None,
+                reason=f"inspect gate triggered at severity >= {args.gate_on_severity}",
+            )
+        else:
+            _maybe_repoint_alias(step, dry_run=args.dry_run, repoint_latest=not args.no_repoint_latest)
+
         active_bundle = _update_active_bundle(active_bundle, step)
         if step.summary_path is not None and not args.dry_run:
             if not step.summary_path.exists():
                 raise SystemExit(f"Expected health report not found: {step.summary_path}")
             print("  " + _summarize_report(step.summary_path))
+            inspection_stage = str((step.report_metadata or {}).get("inspection_stage") or "default")
+            if gate_enabled and step.phase == "inspect" and inspection_stage == gate_stage:
+                quality = _load_health_report_summary(step.summary_path)
+                if _health_summary_hits_gate(quality, threshold=args.gate_on_severity):
+                    gate_hits.append((step, quality))
+                remaining_gate_inspect_steps = max(0, remaining_gate_inspect_steps - 1)
+                if remaining_gate_inspect_steps == 0:
+                    if gate_hits:
+                        gate_triggered = True
+                        for gate_step, gate_quality in gate_hits:
+                            _record_gate_trigger(workflow_report, step=gate_step, summary=gate_quality)
+                            print(
+                                "  inspect gate triggered:",
+                                f"asset={gate_step.asset_name}",
+                                f"stage={gate_stage}",
+                                f"overall_severity={gate_quality.get('overall_severity')}",
+                                f"threshold={args.gate_on_severity}",
+                            )
+                        for pending_step in pending_alias_steps:
+                            _block_alias_repoint(
+                                pending_step,
+                                dry_run=args.dry_run,
+                                report=workflow_report,
+                                reason=f"inspect gate triggered at severity >= {args.gate_on_severity}",
+                            )
+                        pending_alias_steps.clear()
+                    elif pending_alias_steps:
+                        for pending_step in pending_alias_steps:
+                            _maybe_repoint_alias(
+                                pending_step,
+                                dry_run=args.dry_run,
+                                repoint_latest=not args.no_repoint_latest,
+                            )
+                        pending_alias_steps.clear()
         if not args.dry_run:
             _record_step_report(workflow_report, step=step, result=result)
+
+    if not args.dry_run and repair_steps:
+        repair_queue_path = _default_repair_queue_path(args.target_date)
+        repair_queue_payload = _build_repair_candidate_payload(
+            args=args,
+            source_report=args.repair_source_report,
+            source_kind=_repair_source_kind(only_unresolved=args.repair_only_unresolved),
+            candidates_by_asset=_repair_candidates_from_steps(repair_steps),
+            report_path=repair_queue_path,
+        )
+        _write_json_report(repair_queue_path, payload=repair_queue_payload)
+        workflow_report.setdefault("repair", {})["queue"] = repair_queue_payload
+        if args.repair_rerun_inspect:
+            remaining_path = _default_remaining_repair_candidates_path(args.target_date)
+            remaining_payload = _build_remaining_repair_candidates_payload(
+                args=args,
+                workflow_report=workflow_report,
+                report_path=remaining_path,
+            )
+            if remaining_payload is not None:
+                _write_json_report(remaining_path, payload=remaining_payload)
+                workflow_report.setdefault("repair", {})["remaining_candidates"] = remaining_payload
 
     if not args.dry_run and args.workflow_report is not None:
         _write_workflow_report(args.workflow_report, report=workflow_report)
         print(f"Workflow report: {_repo_relative(args.workflow_report)}")
+
+    if gate_triggered:
+        print("Workflow gate triggered:", f"threshold={args.gate_on_severity}")
+        return 2
 
     print(
         "Workflow complete:",

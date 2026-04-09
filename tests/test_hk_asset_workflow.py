@@ -113,6 +113,184 @@ def test_hk_asset_workflow_refresh_repoints_latest_aliases(tmp_path, monkeypatch
     assert valuation_alias.resolve() == repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "hk_all_2000_20260402_valuation_full_market_refetched_latest"
 
 
+def test_hk_asset_workflow_inspect_gate_blocks_alias_repoint_and_package(tmp_path, monkeypatch):
+    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _configure_repo_roots(workflow, repo_root)
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], *, dry_run: bool):
+        calls.append(cmd)
+        if "mirror-hk-daily" in cmd:
+            out_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / cmd[cmd.index("--name") + 1]
+            (out_dir / "data").mkdir(parents=True, exist_ok=True)
+            (out_dir / "manifest.yml").write_text(
+                yaml.safe_dump({"query": {"start_date": "20000101", "end_date": "20260402"}}, sort_keys=False),
+                encoding="utf-8",
+            )
+        elif "inspect-hk-asset-health" in cmd:
+            out_path = repo_root / cmd[cmd.index("--out") + 1]
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(
+                json.dumps(
+                    {
+                        "summary": {"history_issue_count": 1},
+                        "quality_checks": [
+                            {"severity": "warning", "check": "demo_warning"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(workflow, "_run", _fake_run)
+
+    exit_code = workflow.main(
+        [
+            "--phase",
+            "refresh",
+            "--phase",
+            "inspect",
+            "--phase",
+            "package",
+            "--refresh-asset",
+            "daily",
+            "--inspect-asset",
+            "daily",
+            "--target-date",
+            "20260402",
+        ]
+    )
+
+    assert exit_code == 2
+    assert any("mirror-hk-daily" in cmd for cmd in calls)
+    assert not any(cmd[1:3] == ["-m", "csml.release_tools.package_assets"] for cmd in calls)
+
+    daily_alias = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_latest"
+    assert not daily_alias.exists()
+
+    report = json.loads(
+        (repo_root / "artifacts" / "reports" / "hk_asset_refresh_20260402.json").read_text(encoding="utf-8")
+    )
+    assert report["gate"]["enabled"] is True
+    assert report["gate"]["triggered"] is True
+    assert report["gate"]["triggered_assets"] == [
+        {
+            "asset_name": "daily",
+            "overall_severity": "warning",
+            "severity_counts": {"error": 0, "warning": 1, "info": 0},
+            "report_path": str(repo_root / "artifacts" / "reports" / "hk_daily_health_20260402_full_history.json"),
+        }
+    ]
+    assert report["gate"]["blocked_alias_updates"] == [
+        {
+            "phase": "refresh",
+            "asset_name": "daily",
+            "alias_path": str(daily_alias),
+            "target_path": str(
+                repo_root
+                / "artifacts"
+                / "assets"
+                / "rqdata"
+                / "hk"
+                / "daily"
+                / "hk_all_2000_20260402_daily_final_refetched_latest"
+            ),
+            "reason": "inspect gate triggered at severity >= warning",
+        }
+    ]
+    assert report["gate"]["skipped_steps"] == [
+        {
+            "phase": "package",
+            "label": "Stage HK asset release parts",
+            "asset_name": None,
+            "reason": "inspect gate triggered at severity >= warning",
+        }
+    ]
+
+
+def test_hk_asset_workflow_inspect_gate_allows_repoint_and_package_when_clean(tmp_path, monkeypatch):
+    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _configure_repo_roots(workflow, repo_root)
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], *, dry_run: bool):
+        calls.append(cmd)
+        if "mirror-hk-daily" in cmd:
+            out_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / cmd[cmd.index("--name") + 1]
+            (out_dir / "data").mkdir(parents=True, exist_ok=True)
+            (out_dir / "manifest.yml").write_text(
+                yaml.safe_dump({"query": {"start_date": "20000101", "end_date": "20260402"}}, sort_keys=False),
+                encoding="utf-8",
+            )
+        elif "inspect-hk-asset-health" in cmd:
+            out_path = repo_root / cmd[cmd.index("--out") + 1]
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(
+                json.dumps(
+                    {
+                        "summary": {"history_issue_count": 0},
+                        "quality_checks": [
+                            {"severity": "info", "check": "demo_info"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(workflow, "_run", _fake_run)
+
+    exit_code = workflow.main(
+        [
+            "--phase",
+            "refresh",
+            "--phase",
+            "inspect",
+            "--phase",
+            "package",
+            "--refresh-asset",
+            "daily",
+            "--inspect-asset",
+            "daily",
+            "--part",
+            "daily",
+            "--target-date",
+            "20260402",
+        ]
+    )
+
+    assert exit_code == 0
+    assert any("mirror-hk-daily" in cmd for cmd in calls)
+    assert any(cmd[1:3] == ["-m", "csml.release_tools.package_assets"] for cmd in calls)
+
+    daily_alias = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_latest"
+    assert daily_alias.is_symlink()
+    assert daily_alias.resolve() == (
+        repo_root
+        / "artifacts"
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / "hk_all_2000_20260402_daily_final_refetched_latest"
+    )
+
+    report = json.loads(
+        (repo_root / "artifacts" / "reports" / "hk_asset_refresh_20260402.json").read_text(encoding="utf-8")
+    )
+    assert report["gate"]["enabled"] is True
+    assert report["gate"]["triggered"] is False
+    assert report["gate"]["blocked_alias_updates"] == []
+    assert report["gate"]["skipped_steps"] == []
+
+
 def test_hk_asset_workflow_prints_health_summary_from_json_reports(tmp_path, monkeypatch, capsys):
     workflow = _load_module("csml.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
@@ -367,6 +545,8 @@ def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatc
             "20260402",
             "--refresh-mode",
             "patch",
+            "--gate-on-severity",
+            "none",
         ]
     )
 
@@ -377,6 +557,9 @@ def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatc
 
     assert report["workflow"]["target_date"] == "20260402"
     assert report["workflow"]["refresh_mode"] == "patch"
+    assert report["workflow"]["gate_on_severity"] == "none"
+    assert report["gate"]["enabled"] is False
+    assert report["gate"]["triggered"] is False
     assert report["refresh"]["assets"]["daily"]["mode"] == "patch"
     assert report["refresh"]["assets"]["daily"]["patch_window"] == {
         "start_date": "20260313",
@@ -540,6 +723,18 @@ def test_hk_asset_workflow_repair_phase_uses_report_candidates_to_build_subset_p
                 ),
                 encoding="utf-8",
             )
+        elif "inspect-hk-asset-health" in cmd:
+            out_path = repo_root / cmd[cmd.index("--out") + 1]
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(
+                json.dumps(
+                    {
+                        "summary": {"target_date": "2026-04-02", "history_issue_count": 0},
+                        "quality_checks": [{"severity": "info", "check": "demo_info"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(workflow, "_run", _fake_run)
@@ -571,6 +766,21 @@ def test_hk_asset_workflow_repair_phase_uses_report_candidates_to_build_subset_p
     assert daily_patch_cmd[daily_patch_cmd.index("--name") + 1].endswith(
         "hk_all_2000_20260402_daily_final_refetched_latest__repair"
     )
+    repair_inspect_cmd = next(cmd for cmd in calls if "inspect-hk-asset-health" in cmd)
+    assert repair_inspect_cmd[repair_inspect_cmd.index("--out") + 1].endswith(
+        "artifacts/reports/hk_daily_health_20260402_full_history_post_repair.json"
+    )
+
+    assert daily_current.is_symlink()
+    assert daily_current.resolve() == (
+        repo_root
+        / "artifacts"
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / "hk_all_2000_20260402_daily_final_refetched_latest"
+    )
 
     report = json.loads(source_report.read_text(encoding="utf-8"))
     assert report["repair"]["assets"]["daily"]["candidate_count"] == 2
@@ -580,3 +790,189 @@ def test_hk_asset_workflow_repair_phase_uses_report_candidates_to_build_subset_p
         "end_date": "20260402",
         "lookback_days": None,
     }
+    assert report["gate"]["stage"] == "post_repair"
+    assert report["gate"]["triggered"] is False
+    assert report["inspect"]["assets"]["daily"]["latest_stage"] == "post_repair"
+    assert report["inspect"]["assets"]["daily"]["post_repair_quality"] == {
+        "report_path": str(
+            repo_root / "artifacts" / "reports" / "hk_daily_health_20260402_full_history_post_repair.json"
+        ),
+        "issue_count": 1,
+        "severity_counts": {"error": 0, "warning": 0, "info": 1},
+        "overall_severity": "info",
+        "history_issue_count": 0,
+    }
+
+    repair_queue = json.loads(
+        (repo_root / "artifacts" / "reports" / "hk_asset_repair_queue_20260402.json").read_text(encoding="utf-8")
+    )
+    assert repair_queue["candidate_count"] == 2
+    assert repair_queue["assets"]["daily"]["symbols"] == ["00005.HK", "00011.HK"]
+
+    remaining_queue = json.loads(
+        (
+            repo_root / "artifacts" / "reports" / "hk_asset_remaining_repair_candidates_20260402.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert remaining_queue["candidate_count"] == 0
+    assert remaining_queue["assets"]["daily"]["repair_candidates"] == []
+    assert report["repair"]["queue"]["report_path"] == str(
+        repo_root / "artifacts" / "reports" / "hk_asset_repair_queue_20260402.json"
+    )
+    assert report["repair"]["remaining_candidates"]["report_path"] == str(
+        repo_root / "artifacts" / "reports" / "hk_asset_remaining_repair_candidates_20260402.json"
+    )
+
+
+def test_hk_asset_workflow_repair_only_unresolved_uses_remaining_candidates(tmp_path, monkeypatch):
+    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _configure_repo_roots(workflow, repo_root)
+
+    daily_base = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_2000_20260402_daily_clean"
+    (daily_base / "data").mkdir(parents=True, exist_ok=True)
+    (daily_base / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily",
+                "status": "completed",
+                "output_dir": str(daily_base),
+                "query": {"start_date": "20000101", "end_date": "20260402"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    daily_current = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_latest"
+    daily_current.parent.mkdir(parents=True, exist_ok=True)
+    daily_current.symlink_to(daily_base.name, target_is_directory=True)
+
+    source_report = repo_root / "artifacts" / "reports" / "hk_asset_refresh_20260402.json"
+    source_report.parent.mkdir(parents=True, exist_ok=True)
+    source_report.write_text(
+        json.dumps(
+            {
+                "inspect": {
+                    "assets": {
+                        "daily": {
+                            "repair_candidates": [
+                                {
+                                    "symbol": "00005.HK",
+                                    "trade_date": "2026-04-01",
+                                    "start_date": None,
+                                    "end_date": None,
+                                    "max_severity": "error",
+                                },
+                                {
+                                    "symbol": "00011.HK",
+                                    "trade_date": "2026-04-02",
+                                    "start_date": None,
+                                    "end_date": None,
+                                    "max_severity": "warning",
+                                },
+                            ],
+                            "post_repair_repair_candidates": [
+                                {
+                                    "symbol": "00011.HK",
+                                    "trade_date": "2026-04-02",
+                                    "start_date": None,
+                                    "end_date": None,
+                                    "max_severity": "warning",
+                                }
+                            ],
+                        }
+                    }
+                },
+                "repair": {
+                    "remaining_candidates": {
+                        "assets": {
+                            "daily": {
+                                "repair_candidates": [
+                                    {
+                                        "symbol": "00011.HK",
+                                        "trade_date": "2026-04-02",
+                                        "start_date": None,
+                                        "end_date": None,
+                                        "max_severity": "warning",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], *, dry_run: bool):
+        calls.append(cmd)
+        if "mirror-hk-daily" in cmd:
+            patch_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / cmd[cmd.index("--name") + 1]
+            (patch_dir / "data").mkdir(parents=True, exist_ok=True)
+            (patch_dir / "manifest.yml").write_text(
+                yaml.safe_dump(
+                    {
+                        "dataset": "daily",
+                        "status": "completed",
+                        "output_dir": str(patch_dir),
+                        "query": {
+                            "start_date": cmd[cmd.index("--start-date") + 1],
+                            "end_date": cmd[cmd.index("--end-date") + 1],
+                        },
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+        elif len(cmd) >= 3 and cmd[1:3] == ["-m", "csml.research.hk_asset_patch_merge"]:
+            out_dir = repo_root / cmd[cmd.index("--out-dir") + 1]
+            (out_dir / "data").mkdir(parents=True, exist_ok=True)
+            (out_dir / "manifest.yml").write_text(
+                yaml.safe_dump(
+                    {
+                        "dataset": "daily",
+                        "status": "completed",
+                        "output_dir": str(out_dir),
+                        "query": {"start_date": "20000101", "end_date": "20260402"},
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(workflow, "_run", _fake_run)
+
+    exit_code = workflow.main(
+        [
+            "--phase",
+            "repair",
+            "--repair-asset",
+            "daily",
+            "--target-date",
+            "20260402",
+            "--repair-source-report",
+            str(source_report),
+            "--repair-only-unresolved",
+            "--no-repair-rerun-inspect",
+        ]
+    )
+
+    assert exit_code == 0
+    symbols_file = repo_root / "artifacts" / "reports" / "repair_inputs" / "daily_20260402_repair_symbols.txt"
+    assert symbols_file.read_text(encoding="utf-8") == "00011.HK\n"
+
+    daily_patch_cmd = next(cmd for cmd in calls if "mirror-hk-daily" in cmd)
+    assert daily_patch_cmd[daily_patch_cmd.index("--start-date") + 1] == "20260402"
+    assert daily_patch_cmd[daily_patch_cmd.index("--end-date") + 1] == "20260402"
+
+    report = json.loads(source_report.read_text(encoding="utf-8"))
+    assert report["workflow"]["repair_only_unresolved"] is True
+    assert report["repair"]["queue"]["source_kind"] == "remaining_repair_candidates"
+    assert report["repair"]["queue"]["candidate_count"] == 1
+    assert report["repair"]["queue"]["assets"]["daily"]["symbols"] == ["00011.HK"]
+    assert report["repair"]["remaining_candidates"] is None
