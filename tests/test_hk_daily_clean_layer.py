@@ -322,3 +322,76 @@ def test_build_hk_daily_clean_layer_applies_etf_second_pass_only_to_vanilla_prod
             "end_trade_date": "2026-03-30",
         }
     ]
+
+
+def test_build_hk_daily_clean_layer_nulls_partial_nonpositive_prices(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_partial_zero_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily",
+                "query": {
+                    "start_date": "20260301",
+                    "end_date": "20260331",
+                    "frequency": "1d",
+                    "fields": ["open", "high", "low", "close", "volume", "total_turnover"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    (asset_dir / "fields.txt").write_text(
+        "open\nhigh\nlow\nclose\nvolume\ntotal_turnover\n",
+        encoding="utf-8",
+    )
+    (asset_dir / "symbols.txt").write_text(
+        "02800.HK\n",
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260330", "20260331"],
+            "symbol": ["02800.HK", "02800.HK"],
+            "order_book_id": ["02800.XHKG", "02800.XHKG"],
+            "open": [0.0, 21.3],
+            "high": [21.55, 21.7],
+            "low": [21.2, 21.1],
+            "close": [21.25, 21.45],
+            "volume": [1000.0, 1100.0],
+            "total_turnover": [21250.0, 23595.0],
+        }
+    ).to_parquet(data_dir / "02800.HK.parquet", index=False)
+
+    out_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_partial_zero_clean"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        out_dir=str(out_dir),
+        alias=None,
+        symbols_file=None,
+        instruments_file=None,
+        zero_price_min_run=5,
+        etf_short_zero_max_run=2,
+        overwrite=False,
+    )
+
+    assert rqdata_assets.build_hk_daily_clean_layer(args) == 0
+
+    cleaned = pd.read_parquet(out_dir / "data" / "02800.HK.parquet")
+    assert pd.isna(cleaned.loc[0, "open"])
+    assert cleaned.loc[0, "high"] == 21.55
+    assert cleaned.loc[0, "low"] == 21.2
+    assert cleaned.loc[0, "close"] == 21.25
+
+    report = json.loads((out_dir / "cleaning_report.json").read_text(encoding="utf-8"))
+    assert report["summary"]["rows_partial_nonpositive_price_nulled"] == 1
+    assert report["summary"]["remaining_nonpositive_price_rows"] == 0

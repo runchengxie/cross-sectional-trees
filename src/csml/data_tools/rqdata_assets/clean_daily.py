@@ -469,6 +469,45 @@ def _clean_daily_frame(
     high_values = _numeric_series(work, "high").to_numpy(dtype="float64")
     low_values = _numeric_series(work, "low").to_numpy(dtype="float64")
     close_values = _numeric_series(work, "close").to_numpy(dtype="float64")
+    finite_price_mask = (
+        np.isfinite(open_values)
+        & np.isfinite(high_values)
+        & np.isfinite(low_values)
+        & np.isfinite(close_values)
+    )
+    positive_price_counts = (
+        (open_values > 0.0).astype(int)
+        + (high_values > 0.0).astype(int)
+        + (low_values > 0.0).astype(int)
+        + (close_values > 0.0).astype(int)
+    )
+    partial_nonpositive_price_mask = (
+        finite_price_mask
+        & (positive_price_counts > 0)
+        & (positive_price_counts < len(_PRICE_FIELDS))
+    )
+    if partial_nonpositive_price_mask.any():
+        fields_affected = 0
+        for field_name in _PRICE_FIELDS:
+            numeric = _numeric_series(work, field_name).to_numpy(dtype="float64")
+            field_mask = partial_nonpositive_price_mask & (numeric <= 0.0)
+            if not field_mask.any():
+                continue
+            work.loc[field_mask, field_name] = np.nan
+            fields_affected += int(np.count_nonzero(field_mask))
+        _append_action(
+            actions,
+            symbol=symbol,
+            action="partial_nonpositive_price_to_null",
+            rows_affected=int(np.count_nonzero(partial_nonpositive_price_mask)),
+            trade_dates=parsed_dates.loc[partial_nonpositive_price_mask],
+            extra={"fields_affected": fields_affected},
+        )
+
+    open_values = _numeric_series(work, "open").to_numpy(dtype="float64")
+    high_values = _numeric_series(work, "high").to_numpy(dtype="float64")
+    low_values = _numeric_series(work, "low").to_numpy(dtype="float64")
+    close_values = _numeric_series(work, "close").to_numpy(dtype="float64")
     finite_positive_mask = (
         np.isfinite(open_values)
         & np.isfinite(high_values)
@@ -753,6 +792,9 @@ def build_hk_daily_clean_layer(args) -> int:
         "symbols_failed": int(status_counts.get("failed", 0)),
         "rows_price_bounds_fixed": int(action_rows_by_type.get("price_bounds_fix", 0)),
         "rows_zero_price_nulled": int(action_rows_by_type.get("zero_price_run_to_null", 0)),
+        "rows_partial_nonpositive_price_nulled": int(
+            action_rows_by_type.get("partial_nonpositive_price_to_null", 0)
+        ),
         "rows_negative_volume_nulled": int(action_rows_by_type.get("volume_to_null", 0)),
         "rows_negative_total_turnover_nulled": int(action_rows_by_type.get("total_turnover_to_null", 0)),
         "rows_etf_short_zero_nulled": int(action_rows_by_type.get("etf_short_zero_price_run_to_null", 0)),
@@ -783,6 +825,7 @@ def build_hk_daily_clean_layer(args) -> int:
             "negative_volume_to_null": True,
             "negative_total_turnover_to_null": True,
             "zero_price_run_to_null": True,
+            "partial_nonpositive_price_to_null": True,
             "zero_price_min_run": int(getattr(args, "zero_price_min_run", 5) or 5),
             "etf_second_pass": bool(etf_metadata_by_symbol),
             "etf_short_zero_max_run": int(getattr(args, "etf_short_zero_max_run", 2) or 2),
