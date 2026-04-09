@@ -6,6 +6,13 @@ from typing import Any
 
 import yaml
 
+from ..current_assets import (
+    default_hk_current_contract_path,
+    infer_manifest_path,
+    load_current_contract,
+    load_manifest_summary,
+    match_current_contract_entry,
+)
 from ..date_utils import is_relative_date_token
 from ..repo_paths import resolve_repo_path as resolve_repo_relative_path
 from .support import save_json
@@ -30,22 +37,6 @@ def _resolve_input_path(value: object | None) -> Path | None:
     return resolve_repo_relative_path(configured)
 
 
-def _infer_manifest_path(value: object | None) -> Path | None:
-    path = _configured_input_path(value)
-    if path is None:
-        return None
-    candidates: list[Path] = []
-    if path.is_dir():
-        candidates.append(path / "manifest.yml")
-    else:
-        candidates.append(path.with_name(f"{path.stem}.manifest.yml"))
-        candidates.append(path.parent / "manifest.yml")
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate.resolve()
-    return None
-
-
 def _looks_like_latest(value: object | None) -> bool:
     if value is None:
         return False
@@ -67,39 +58,41 @@ def _path_kind(path: Path | None) -> str | None:
     return "other"
 
 
-def _load_manifest_summary(path: Path | None) -> dict[str, Any] | None:
-    if path is None or not path.exists():
-        return None
-    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, Mapping):
-        return None
-    query = payload.get("query") if isinstance(payload.get("query"), Mapping) else {}
-    output_dir = str(payload.get("output_dir") or "").strip()
-    snapshot_name = Path(output_dir).name if output_dir else None
-    query_end_date = None
-    for key in ("end_date", "date", "mapping_date", "as_of_date"):
-        value = query.get(key)
-        if value is None:
-            continue
-        query_end_date = str(value).strip() or None
-        if query_end_date:
-            break
-    return {
-        "dataset": str(payload.get("dataset") or "").strip() or None,
-        "status": str(payload.get("status") or "").strip() or None,
-        "output_dir": output_dir or None,
-        "snapshot_name": snapshot_name,
-        "query_end_date": query_end_date,
-    }
-
-
-def _build_input_resolution_entry(value: object | None) -> dict[str, Any] | None:
+def _build_input_resolution_entry(
+    value: object | None,
+    *,
+    current_contract: Mapping[str, Any] | None,
+    current_contract_path: Path | None,
+) -> dict[str, Any] | None:
     configured_path = _configured_input_path(value)
     resolved_path = _resolve_input_path(value)
     if configured_path is None and resolved_path is None:
         return None
-    manifest_path = _infer_manifest_path(value)
-    manifest_summary = _load_manifest_summary(manifest_path)
+    manifest_path = infer_manifest_path(configured_path)
+    manifest_summary = load_manifest_summary(manifest_path)
+    current_reference = None
+    matched = match_current_contract_entry(
+        current_contract,
+        configured_path=configured_path,
+        resolved_path=resolved_path,
+    )
+    if matched is not None and current_contract_path is not None:
+        asset_key, entry = matched
+        contract_meta = (
+            current_contract.get("contract")
+            if isinstance(current_contract, Mapping) and isinstance(current_contract.get("contract"), Mapping)
+            else {}
+        )
+        current_reference = {
+            "contract_name": str(contract_meta.get("name") or "hk_current"),
+            "contract_path": str(current_contract_path),
+            "asset_key": asset_key,
+            "alias_path": entry.get("alias_path"),
+            "resolved_path": entry.get("resolved_path"),
+            "manifest_path": entry.get("manifest_path"),
+            "manifest": entry.get("manifest"),
+            "as_of": entry.get("as_of"),
+        }
     return {
         "raw": None if value is None else str(value),
         "configured_path": str(configured_path) if configured_path is not None else None,
@@ -110,6 +103,7 @@ def _build_input_resolution_entry(value: object | None) -> dict[str, Any] | None
         "points_to_latest_name": _looks_like_latest(value),
         "manifest_path": str(manifest_path) if manifest_path is not None else None,
         "manifest": manifest_summary,
+        "current_contract": current_reference,
     }
 
 
@@ -146,10 +140,26 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         "benchmark_returns_file": ctx.get("BACKTEST_BENCHMARK_RETURNS_FILE"),
         "eval_output_dir": eval_cfg.get("output_dir"),
     }
+    artifacts_root = Path(ctx["ARTIFACTS_ROOT"]).resolve() if ctx.get("ARTIFACTS_ROOT") else None
+    current_contract_path = (
+        default_hk_current_contract_path(artifacts_root) if artifacts_root is not None else None
+    )
+    current_contract = (
+        load_current_contract(current_contract_path)
+        if current_contract_path is not None and current_contract_path.exists()
+        else None
+    )
     input_resolution = {
         key: entry
         for key, entry in (
-            (key, _build_input_resolution_entry(value))
+            (
+                key,
+                _build_input_resolution_entry(
+                    value,
+                    current_contract=current_contract,
+                    current_contract_path=current_contract_path,
+                ),
+            )
             for key, value in raw_inputs.items()
         )
         if entry is not None
@@ -164,6 +174,12 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         for key, entry in input_resolution.items()
         if key not in {"cache_dir", "eval_output_dir"} and entry.get("manifest_path")
     }
+    current_contracts = (
+        {"hk_current": str(current_contract_path)}
+        if current_contract_path is not None
+        and any(entry.get("current_contract") for entry in input_resolution.values())
+        else {}
+    )
     if benchmark_compare_files:
         resolved_compare_files = [
             str(path)
@@ -189,6 +205,7 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         "inputs": resolved_inputs,
         "input_resolution": input_resolution,
         "source_manifests": source_manifests,
+        "current_contracts": current_contracts,
         "mutable_inputs": {
             "used_relative_start_date": is_relative_date_token(data_cfg.get("start_date")),
             "used_relative_end_date": is_relative_date_token(data_cfg.get("end_date")),

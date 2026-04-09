@@ -229,7 +229,15 @@ csml alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom
 
 ```bash
 csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
+csml backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
 ```
+
+说明：
+
+* 默认会复制 `artifacts/cache/`、`artifacts/assets/universe/`，再叠加 `--config` / `--include-path`。
+* `--preset hk_current` 会额外读取 `artifacts/metadata/current_assets/hk_current.json`，把 contract 本身和其中声明的当前 HK 资产一起冻进 `artifacts/snapshots/<name>/`。
+* `hk_current` preset 复制的是 contract 解析后的 resolved snapshot/file，不是单纯把 `latest` alias 当成最终审计依据。
+* 这是本地私有冻结入口，不会重新向 provider 拉数；如果要跨机器共享，优先走 `python -m csml.release_tools.package_assets` / `release_assets`。
 
 ### csml data catalog
 

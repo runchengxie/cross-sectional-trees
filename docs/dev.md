@@ -162,6 +162,7 @@ python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 2
 * `--refresh-mode full` 保留原来的整包重拉语义；`--refresh-mode patch` 会对 `daily / valuation / ex_factors / dividends / shares` 先拉尾窗 patch，再调用本地 patch merge 生成新的 canonical snapshot。
 * patch 模式默认 `daily` 回看 20 个日历日、其他支持的 dated assets 回看 40 个日历日；可用 `--daily-patch-lookback-days` 和 `--dated-patch-lookback-days` 调整。
 * 每次非 dry-run 执行还会额外写一份结构化 workflow report，默认落到 `artifacts/reports/hk_asset_refresh_<target_date>.json`；需要自定义位置时可传 `--workflow-report`。
+* 同一轮非 dry-run workflow 还会刷新 `artifacts/metadata/current_assets/hk_current.json`，把当前 HK 资产 alias、resolved snapshot/file、manifest 摘要和 `as_of` 固化成一份轻量 current contract，供 `package_assets --preset hk_current` 和 run 侧输入锁定复用。
 * 默认 `--gate-on-severity warning`。当本轮包含 `inspect` 且 inspect 汇总严重级别命中阈值时，refresh/repair 产生的 `latest` alias repoint 会被阻断，后续 `package` / `release` 会被跳过，workflow 以非零状态结束。
 * `inspect` 只跑体检而不带后续 phase 时，不会触发 workflow gate；这时它仍然只是产出 report。
 * `repair` 会读取已有 workflow report 里的 `inspect.assets.<asset>.repair_candidates`，生成按 `symbol/date` 收缩后的子集重拉和 patch merge；默认只包含 `warning`/`error`，可用 `--repair-min-severity` 放宽到 `info`。

@@ -121,6 +121,7 @@ def handle_backup_data(args) -> int:
     from ..data_tools import backup_data
 
     argv: list[str] = []
+    append_arg(argv, "--preset", getattr(args, "preset", None))
     append_arg(argv, "--out-root", getattr(args, "out_root", None))
     append_arg(argv, "--name", getattr(args, "name", None))
     append_repeat_args(argv, "--config", getattr(args, "config", None))

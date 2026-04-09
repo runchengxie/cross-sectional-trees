@@ -161,8 +161,9 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 * `artifacts/metadata/catalog.sqlite`
 * `artifacts/metadata/catalog_summary.csv`
+* `artifacts/metadata/current_assets/hk_current.json`
 
-这两份产物由 `csml data catalog` 生成。
+其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `csml data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新。
 
 如果改了 `paths.artifacts_root`、`CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
 
@@ -183,6 +184,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 * `catalog.sqlite` 是控制面，不存行情本体。
 * `catalog_summary.csv` 是给人看和临时筛选的平面导出，不替代 SQLite。
+* `current_assets/hk_current.json` 是一份轻量 current contract，记录当前 HK 资产 alias 的 resolved snapshot/file、manifest 摘要和 `as_of`；`package_assets --preset hk_current` 与 run 侧 `inputs.lock.json` 会优先消费它，而不是把 `latest` alias 直接当审计依据。
 
 ## Standardized Layer
 
@@ -590,7 +592,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 1. `summary.json`：机器可读总摘要，包含关键指标和各类输出文件路径。
 1. `config.used.yml`：本次 run 实际生效配置；复现实验时优先读它，不要回退到原始模板猜测。
-1. `inputs.lock.json`：运行时解析后的输入锁定，包括实际产物根目录、绝对输入路径、推断到的 source manifest，以及相对日期 / `latest` 这类 mutable 输入标记。
+1. `inputs.lock.json`：运行时解析后的输入锁定，包括实际产物根目录、绝对输入路径、推断到的 source manifest，以及相对日期 / `latest` 这类 mutable 输入标记。若命中了 current contract，还会额外记录 `current_contracts`，并在 `input_resolution.<name>.current_contract` 里固化 contract 名称、asset key、alias/resolved path、manifest 摘要和 `as_of`。
 1. `latest.json`：仅在 live 输出场景写入，是一个 mutable 便利指针，不是长期审计入口；做发布、复现或归档时应落到具体 run 目录。
 
 ## run 目录文件索引（按生成条件）
@@ -902,6 +904,7 @@ artifacts/snapshots/<name>/
 其中：
 
 1. `manifest.yml` 记录快照名、生成时间、来源路径、复制后的目标路径、`kind/file_count/total_bytes` 汇总，以及当前 git 提交信息（若可识别）。
+1. 如果这次快照来自 `--preset hk_current`，`manifest.yml -> selection` 还会额外记录 `preset/current_contract_path/current_asset_keys`，说明它冻结的是哪一版 current contract。
 1. 默认会把 `artifacts/cache/` 和 `artifacts/assets/universe/` 一起复制；额外路径由 `--config` 和 `--include-path` 决定。
 1. 这是本地私有快照工具，不会重新向 provider 拉数。
 1. 若需要公开分享，请另做一份不含 `artifacts/cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、`inputs.lock.json`、汇总 CSV 和简短说明。

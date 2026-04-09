@@ -106,11 +106,23 @@ def test_hk_asset_workflow_refresh_repoints_latest_aliases(tmp_path, monkeypatch
 
     instruments_alias = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instruments" / "hk_all_instruments_latest.parquet"
     valuation_alias = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "hk_all_valuation_latest"
+    current_contract_path = repo_root / "artifacts" / "metadata" / "current_assets" / "hk_current.json"
 
     assert instruments_alias.is_symlink()
     assert valuation_alias.is_symlink()
     assert instruments_alias.resolve() == repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instruments" / "hk_all_instruments_20260402.parquet"
     assert valuation_alias.resolve() == repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "hk_all_2000_20260402_valuation_full_market_refetched_latest"
+    assert current_contract_path.exists()
+
+    current_contract = json.loads(current_contract_path.read_text(encoding="utf-8"))
+    assert current_contract["contract"]["name"] == "hk_current"
+    assert current_contract["contract"]["target_date"] == "20260402"
+    assert current_contract["assets"]["valuation"]["alias_path"] == str(valuation_alias.absolute())
+    assert current_contract["assets"]["valuation"]["resolved_path"] == str(valuation_alias.resolve())
+    assert current_contract["assets"]["valuation"]["exists"] is True
+    assert current_contract["assets"]["instruments"]["alias_path"] == str(instruments_alias.absolute())
+    assert current_contract["assets"]["instruments"]["resolved_path"] == str(instruments_alias.resolve())
+    assert current_contract["assets"]["instruments"]["exists"] is True
 
 
 def test_hk_asset_workflow_inspect_gate_blocks_alias_repoint_and_package(tmp_path, monkeypatch):

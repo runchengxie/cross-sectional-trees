@@ -17,6 +17,7 @@ from ..artifacts import (
     UNIVERSE_DIR as DEFAULT_UNIVERSE_DIR,
     default_path_text,
 )
+from ..current_assets import default_hk_current_contract_path, load_current_contract
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,58 @@ def _copy_path(source: Path, target: Path) -> None:
         shutil.copy2(source, target)
 
 
+def _current_contract_backup_paths(
+    *,
+    repo_root: Path,
+    preset: str | None,
+) -> tuple[list[Path], dict[str, object] | None]:
+    if preset != "hk_current":
+        return [], None
+    contract_path = default_hk_current_contract_path(repo_root / "artifacts")
+    contract = load_current_contract(contract_path)
+    if not isinstance(contract, dict):
+        raise SystemExit(f"Current contract not found or invalid: {contract_path}")
+
+    assets = contract.get("assets")
+    if not isinstance(assets, dict):
+        raise SystemExit(f"Current contract is missing assets: {contract_path}")
+
+    selected_paths: list[Path] = [contract_path]
+    selected_asset_keys: list[str] = []
+    for asset_key, entry in assets.items():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("exists") is not True:
+            continue
+        resolved_path_text = str(entry.get("resolved_path") or "").strip()
+        if not resolved_path_text:
+            continue
+        resolved_path = _resolve_path(resolved_path_text)
+        selected_paths.append(resolved_path)
+        selected_asset_keys.append(str(asset_key))
+
+        manifest_path_text = str(entry.get("manifest_path") or "").strip()
+        if not manifest_path_text:
+            continue
+        manifest_path = _resolve_path(manifest_path_text)
+        if not manifest_path.exists():
+            continue
+        if resolved_path.is_dir():
+            try:
+                manifest_path.relative_to(resolved_path)
+                continue
+            except ValueError:
+                pass
+        if manifest_path != resolved_path:
+            selected_paths.append(manifest_path)
+
+    return selected_paths, {
+        "preset": "hk_current",
+        "current_contract_path": str(contract_path),
+        "current_asset_keys": selected_asset_keys,
+    }
+
+
 def _build_manifest(
     *,
     name: str,
@@ -76,6 +129,7 @@ def _build_manifest(
     output_dir: Path,
     entries: Iterable[SnapshotEntry],
     git: dict | None = None,
+    selection: dict[str, object] | None = None,
 ) -> dict:
     entries_list = list(entries)
     manifest = {
@@ -101,6 +155,8 @@ def _build_manifest(
     }
     if git:
         manifest["git"] = git
+    if selection:
+        manifest["selection"] = selection
     return manifest
 
 
@@ -137,6 +193,12 @@ def _git_metadata(repo_root: Path) -> dict | None:
 
 
 def add_backup_data_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--preset",
+        choices=["hk_current"],
+        default=None,
+        help="Optional backup selection preset. `hk_current` freezes the current HK asset set declared by hk_current.json.",
+    )
     parser.add_argument(
         "--out-root",
         default=default_path_text(DEFAULT_SNAPSHOTS_DIR),
@@ -195,6 +257,11 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"Refusing to overwrite existing snapshot: {output_dir}")
 
     requested: list[Path] = []
+    preset_paths, selection = _current_contract_backup_paths(
+        repo_root=repo_root,
+        preset=getattr(args, "preset", None),
+    )
+    requested.extend(preset_paths)
     if not args.no_cache:
         requested.append(_resolve_path(DEFAULT_CACHE_DIR))
     if not args.no_universe:
@@ -240,6 +307,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=output_dir,
             entries=copied,
             git=_git_metadata(repo_root),
+            selection=selection,
         )
         manifest_path = output_dir / "manifest.yml"
         manifest_path.write_text(

@@ -126,6 +126,7 @@ csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
 
 ```bash
 csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
+csml backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
 ```
 
 ## 常见任务速查
@@ -140,6 +141,7 @@ csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants
 | 生成快照 | `csml snapshot --config <live.yml>` 或 `csml snapshot --run-dir <run_dir>` |
 | 手数分配 | `csml alloc --config <live.yml> --source live --top-n 20 --cash 1000000` |
 | 归档数据 | `csml backup-data --name <name> --config <config>` |
+| 冻结当前 HK 资产 | `csml backup-data --preset hk_current --name <name>` |
 
 ## 相关文档
 

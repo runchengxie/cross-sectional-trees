@@ -120,6 +120,8 @@ def test_cli_parses_research_commands():
     backup = parser.parse_args(
         [
             "backup-data",
+            "--preset",
+            "hk_current",
             "--out-root",
             "artifacts/snapshots",
             "--name",
@@ -132,6 +134,7 @@ def test_cli_parses_research_commands():
         ]
     )
     assert backup.command == "backup-data"
+    assert backup.preset == "hk_current"
     assert backup.out_root == "artifacts/snapshots"
     assert backup.name == "hk_frozen"
     assert backup.config == ["configs/presets/hk.yml"]
@@ -390,6 +393,8 @@ def test_cli_main_backup_data_passes_through_args(monkeypatch):
         cli.main(
             [
                 "backup-data",
+                "--preset",
+                "hk_current",
                 "--out-root",
                 "artifacts/snapshots",
                 "--name",
@@ -406,6 +411,8 @@ def test_cli_main_backup_data_passes_through_args(monkeypatch):
     )
     assert calls == [
         [
+            "--preset",
+            "hk_current",
             "--out-root",
             "artifacts/snapshots",
             "--name",

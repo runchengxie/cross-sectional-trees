@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from csml.current_assets import current_contract_entry, default_hk_current_contract_path, load_current_contract
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 REPO_ROOT = find_repo_root(__file__)
@@ -211,43 +212,127 @@ def _latest_link(link: str, target: str) -> dict:
     return {"link": link, "target": target}
 
 
+def _hk_current_contract_overrides(args: argparse.Namespace) -> tuple[dict[str, str], Path | None]:
+    if args.preset != "hk_current":
+        return {}, None
+    contract_path = default_hk_current_contract_path(ASSETS_ROOT.parent)
+    contract = load_current_contract(contract_path)
+    if not isinstance(contract, dict):
+        return {}, None
+    mapping = {
+        "daily_snapshot": "daily_clean",
+        "intraday_snapshot": "intraday",
+        "etf_daily_snapshot": "etf_daily",
+        "etf_instruments_file": "etf_instruments",
+        "valuation_snapshot": "valuation",
+        "instruments_file": "instruments",
+        "pit_snapshot": "pit",
+        "ex_factors_snapshot": "ex_factors",
+        "dividends_snapshot": "dividends",
+        "shares_snapshot": "shares",
+        "exchange_rate_snapshot": "exchange_rate",
+        "southbound_snapshot": "southbound",
+        "financial_details_snapshot": "financial_details",
+        "industry_changes_snapshot": "industry_changes",
+        "universe_by_date": "universe_by_date",
+        "universe_symbols": "universe_symbols",
+        "universe_meta": "universe_meta",
+    }
+    overrides: dict[str, str] = {}
+    for arg_name, asset_key in mapping.items():
+        if getattr(args, arg_name, None) is not None:
+            continue
+        entry = current_contract_entry(contract, asset_key)
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("exists") is not True:
+            continue
+        resolved_path = str(entry.get("resolved_path") or "").strip()
+        if resolved_path:
+            overrides[arg_name] = resolved_path
+    return overrides, contract_path
+
+
 def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
     preset = PRESETS[args.preset]
-    daily_snapshot = args.daily_snapshot or preset["daily_snapshot"]
+    current_overrides, current_contract_path = _hk_current_contract_overrides(args)
+    daily_snapshot = args.daily_snapshot or current_overrides.get("daily_snapshot") or preset["daily_snapshot"]
     intraday_snapshot = (
-        None if args.no_intraday else (args.intraday_snapshot or preset.get("intraday_snapshot"))
+        None
+        if args.no_intraday
+        else (args.intraday_snapshot or current_overrides.get("intraday_snapshot") or preset.get("intraday_snapshot"))
     )
-    etf_daily_snapshot = None if args.no_etf else (args.etf_daily_snapshot or preset.get("etf_daily_snapshot"))
+    etf_daily_snapshot = (
+        None
+        if args.no_etf
+        else (args.etf_daily_snapshot or current_overrides.get("etf_daily_snapshot") or preset.get("etf_daily_snapshot"))
+    )
     etf_instruments_file = (
-        None if args.no_etf else (args.etf_instruments_file or preset.get("etf_instruments_file"))
+        None
+        if args.no_etf
+        else (
+            args.etf_instruments_file
+            or current_overrides.get("etf_instruments_file")
+            or preset.get("etf_instruments_file")
+        )
     )
     valuation_snapshot = (
-        None if args.no_valuation else (args.valuation_snapshot or preset.get("valuation_snapshot"))
+        None
+        if args.no_valuation
+        else (args.valuation_snapshot or current_overrides.get("valuation_snapshot") or preset.get("valuation_snapshot"))
     )
-    instruments_file = args.instruments_file or preset["instruments_file"]
-    pit_snapshot = None if args.no_pit else (args.pit_snapshot or preset["pit_snapshot"])
+    instruments_file = args.instruments_file or current_overrides.get("instruments_file") or preset["instruments_file"]
+    pit_snapshot = (
+        None
+        if args.no_pit
+        else (args.pit_snapshot or current_overrides.get("pit_snapshot") or preset["pit_snapshot"])
+    )
     if args.no_reference:
         ex_factors_snapshot = None
         dividends_snapshot = None
         shares_snapshot = None
     else:
-        ex_factors_snapshot = args.ex_factors_snapshot or preset.get("ex_factors_snapshot")
-        dividends_snapshot = args.dividends_snapshot or preset.get("dividends_snapshot")
-        shares_snapshot = args.shares_snapshot or preset.get("shares_snapshot")
+        ex_factors_snapshot = (
+            args.ex_factors_snapshot
+            or current_overrides.get("ex_factors_snapshot")
+            or preset.get("ex_factors_snapshot")
+        )
+        dividends_snapshot = (
+            args.dividends_snapshot
+            or current_overrides.get("dividends_snapshot")
+            or preset.get("dividends_snapshot")
+        )
+        shares_snapshot = (
+            args.shares_snapshot
+            or current_overrides.get("shares_snapshot")
+            or preset.get("shares_snapshot")
+        )
     exchange_rate_snapshot = (
         None
         if args.no_exchange_rate
-        else (args.exchange_rate_snapshot or preset.get("exchange_rate_snapshot"))
+        else (
+            args.exchange_rate_snapshot
+            or current_overrides.get("exchange_rate_snapshot")
+            or preset.get("exchange_rate_snapshot")
+        )
     )
     southbound_snapshot = (
         None
         if args.no_southbound
-        else (args.southbound_snapshot or preset.get("southbound_snapshot"))
+        else (
+            args.southbound_snapshot
+            or current_overrides.get("southbound_snapshot")
+            or preset.get("southbound_snapshot")
+        )
     )
     financial_details_snapshot = (
         None
         if args.no_financial_details
-        else (args.financial_details_snapshot or preset.get("financial_details_snapshot"))
+        else (
+            args.financial_details_snapshot
+            or current_overrides.get("financial_details_snapshot")
+            or preset.get("financial_details_snapshot")
+        )
     )
     announcement_snapshot = (
         None
@@ -257,11 +342,27 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
     industry_changes_snapshot = (
         None
         if args.no_industry
-        else (args.industry_changes_snapshot or preset.get("industry_changes_snapshot"))
+        else (
+            args.industry_changes_snapshot
+            or current_overrides.get("industry_changes_snapshot")
+            or preset.get("industry_changes_snapshot")
+        )
     )
-    universe_by_date = args.universe_by_date if args.universe_by_date is not None else preset.get("universe_by_date")
-    universe_symbols = args.universe_symbols if args.universe_symbols is not None else preset.get("universe_symbols")
-    universe_meta = args.universe_meta if args.universe_meta is not None else preset.get("universe_meta")
+    universe_by_date = (
+        args.universe_by_date
+        if args.universe_by_date is not None
+        else current_overrides.get("universe_by_date") or preset.get("universe_by_date")
+    )
+    universe_symbols = (
+        args.universe_symbols
+        if args.universe_symbols is not None
+        else current_overrides.get("universe_symbols") or preset.get("universe_symbols")
+    )
+    universe_meta = (
+        args.universe_meta
+        if args.universe_meta is not None
+        else current_overrides.get("universe_meta") or preset.get("universe_meta")
+    )
 
     daily_dir = resolve_snapshot_path(ASSETS_ROOT / "rqdata" / "hk" / "daily", daily_snapshot)
     valuation_dir = (
@@ -421,6 +522,7 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         "universe_by_date_path": universe_by_date_path,
         "universe_symbols_path": universe_symbols_path,
         "universe_meta_path": universe_meta_path,
+        "current_contract_path": current_contract_path,
     }
 
 
@@ -814,6 +916,7 @@ def _build_root_manifest(
     generated_at: str,
     selected_parts: list[str],
     part_specs: dict[str, dict],
+    current_contract_path: Path | None,
 ) -> dict:
     payload = {
         "distribution": {
@@ -823,6 +926,7 @@ def _build_root_manifest(
             "source_repo": str(REPO_ROOT),
             "mode": mode,
             "preset": preset,
+            "current_contract_path": str(current_contract_path) if current_contract_path is not None else None,
         },
         "parts": {},
     }
@@ -847,6 +951,7 @@ def _build_part_manifest(
     generated_at: str,
     part_name: str,
     spec: dict,
+    current_contract_path: Path | None,
 ) -> dict:
     return {
         "distribution": {
@@ -856,6 +961,7 @@ def _build_part_manifest(
             "source_repo": str(REPO_ROOT),
             "mode": mode,
             "preset": preset,
+            "current_contract_path": str(current_contract_path) if current_contract_path is not None else None,
         },
         "part": {
             "name": part_name,
@@ -957,6 +1063,7 @@ def main(argv: list[str] | None = None) -> int:
                     generated_at=generated_at,
                     part_name=part_name,
                     spec=spec,
+                    current_contract_path=resolved.get("current_contract_path"),
                 ),
             )
 
@@ -971,6 +1078,7 @@ def main(argv: list[str] | None = None) -> int:
                 generated_at=generated_at,
                 selected_parts=selected_parts,
                 part_specs=part_specs,
+                current_contract_path=resolved.get("current_contract_path"),
             ),
         )
 

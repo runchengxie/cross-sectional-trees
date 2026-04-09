@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 
 import yaml
@@ -37,6 +38,37 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
     alias_path.parent.mkdir(parents=True, exist_ok=True)
     os.symlink(os.path.relpath(snapshot_dir, start=alias_path.parent), alias_path, target_is_directory=True)
 
+    current_contract_path = tmp_path / "artifacts" / "metadata" / "current_assets" / "hk_current.json"
+    current_contract_path.parent.mkdir(parents=True, exist_ok=True)
+    current_contract_path.write_text(
+        json.dumps(
+            {
+                "contract": {
+                    "name": "hk_current",
+                    "market": "hk",
+                    "version": 1,
+                },
+                "assets": {
+                    "daily_clean": {
+                        "alias_path": str(alias_path.absolute()),
+                        "resolved_path": str(snapshot_dir.resolve()),
+                        "manifest_path": str(snapshot_dir / "manifest.yml"),
+                        "manifest": {
+                            "dataset": "daily",
+                            "status": "completed",
+                            "output_dir": str(snapshot_dir),
+                            "snapshot_name": snapshot_dir.name,
+                            "query_end_date": "20260327",
+                        },
+                        "as_of": "20260327",
+                        "exists": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
     run_dir = tmp_path / "artifacts" / "runs" / "demo_20260409_deadbeef"
     context = {
         "data_cfg": {
@@ -68,6 +100,7 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
     assert payload["inputs"]["cache_dir"] == str(cache_dir.resolve())
     assert payload["inputs"]["daily_asset_dir"] == str(snapshot_dir.resolve())
     assert payload["source_manifests"]["daily_asset_dir_manifest"] == str(snapshot_dir / "manifest.yml")
+    assert payload["current_contracts"] == {"hk_current": str(current_contract_path)}
 
     daily_resolution = payload["input_resolution"]["daily_asset_dir"]
     assert daily_resolution["raw"] == "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest"
@@ -85,4 +118,19 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
         "snapshot_name": snapshot_dir.name,
         "query_end_date": "20260327",
     }
-
+    assert daily_resolution["current_contract"] == {
+        "contract_name": "hk_current",
+        "contract_path": str(current_contract_path),
+        "asset_key": "daily_clean",
+        "alias_path": str(alias_path.absolute()),
+        "resolved_path": str(snapshot_dir.resolve()),
+        "manifest_path": str(snapshot_dir / "manifest.yml"),
+        "manifest": {
+            "dataset": "daily",
+            "status": "completed",
+            "output_dir": str(snapshot_dir),
+            "snapshot_name": snapshot_dir.name,
+            "query_end_date": "20260327",
+        },
+        "as_of": "20260327",
+    }

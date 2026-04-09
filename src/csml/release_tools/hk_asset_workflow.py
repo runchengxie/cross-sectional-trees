@@ -15,6 +15,11 @@ from typing import Any
 
 import yaml
 
+from csml.current_assets import (
+    build_hk_current_contract,
+    default_hk_current_contract_path,
+    write_current_contract,
+)
 from csml.repo_paths import find_repo_root
 
 from .package_assets import AVAILABLE_PART_CHOICES, create_relative_symlink
@@ -2174,6 +2179,16 @@ def main(argv: list[str] | None = None) -> int:
             if remaining_payload is not None:
                 _write_json_report(remaining_path, payload=remaining_payload)
                 workflow_report.setdefault("repair", {})["remaining_candidates"] = remaining_payload
+
+    if not args.dry_run:
+        current_contract_path = default_hk_current_contract_path(ASSETS_ROOT.parent)
+        current_contract_payload = build_hk_current_contract(
+            ASSETS_ROOT.parent,
+            generated_by="hk_asset_workflow",
+            target_date=args.target_date,
+        )
+        write_current_contract(current_contract_path, current_contract_payload)
+        workflow_report.setdefault("workflow", {})["current_contract_path"] = str(current_contract_path)
 
     if not args.dry_run and args.workflow_report is not None:
         _write_workflow_report(args.workflow_report, report=workflow_report)

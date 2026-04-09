@@ -1,4 +1,5 @@
 import importlib
+import json
 import subprocess
 from pathlib import Path
 
@@ -540,6 +541,80 @@ def test_package_assets_current_preset_stages_intraday_etf_and_valuation_parts(t
 
     root_manifest = yaml.safe_load((stage_root / "manifest.yml").read_text(encoding="utf-8"))
     assert sorted(root_manifest["parts"].keys()) == ["etf", "intraday", "valuation"]
+
+
+def test_package_assets_current_preset_prefers_current_contract_over_alias_targets(tmp_path):
+    package_script = _load_module("csml.release_tools.package_assets")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _prepare_demo_assets(repo_root)
+
+    contract_valuation_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_contract_demo"
+    contract_valuation_dir.mkdir(parents=True, exist_ok=True)
+    (contract_valuation_dir / "00005.HK.parquet").write_text("valuation-from-current-contract", encoding="utf-8")
+
+    current_contract_path = repo_root / "artifacts" / "metadata" / "current_assets" / "hk_current.json"
+    current_contract_path.parent.mkdir(parents=True, exist_ok=True)
+    current_contract_path.write_text(
+        json.dumps(
+            {
+                "contract": {"name": "hk_current", "market": "hk", "version": 1},
+                "assets": {
+                    "valuation": {
+                        "alias_path": str(
+                            repo_root
+                            / "artifacts"
+                            / "assets"
+                            / "rqdata"
+                            / "hk"
+                            / "valuation"
+                            / "hk_all_valuation_latest"
+                        ),
+                        "resolved_path": str(contract_valuation_dir.resolve()),
+                        "exists": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    package_script.REPO_ROOT = repo_root
+    package_script.ASSETS_ROOT = repo_root / "artifacts" / "assets"
+
+    stage_root = tmp_path / "stage_current_contract"
+    exit_code = package_script.main(
+        [
+            "--preset",
+            "hk_current",
+            "--dest",
+            str(stage_root),
+            "--name",
+            "demo_current_contract_assets",
+            "--as-of",
+            "20260403",
+            "--part",
+            "valuation",
+        ]
+    )
+
+    assert exit_code == 0
+    staged_file = (
+        stage_root
+        / "valuation"
+        / "rqdata"
+        / "hk"
+        / "valuation"
+        / "valuation_contract_demo"
+        / "00005.HK.parquet"
+    )
+    assert staged_file.read_text(encoding="utf-8") == "valuation-from-current-contract"
+
+    root_manifest = yaml.safe_load((stage_root / "manifest.yml").read_text(encoding="utf-8"))
+    valuation_manifest = yaml.safe_load((stage_root / "valuation" / "manifest.yml").read_text(encoding="utf-8"))
+    assert root_manifest["distribution"]["current_contract_path"] == str(current_contract_path)
+    assert valuation_manifest["distribution"]["current_contract_path"] == str(current_contract_path)
+    assert valuation_manifest["part"]["summary"]["snapshot"] == "valuation_contract_demo"
 
 
 def test_release_assets_builds_tarballs_for_intraday_and_etf_parts(tmp_path):
