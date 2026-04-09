@@ -251,6 +251,33 @@ def test_merge_asset_patch_daily_updates_alias_and_preserves_base_schema(tmp_pat
     assert manifest["totals"]["symbols_written"] == 2
 
 
+def test_merge_asset_patch_daily_supports_in_place_overwrite(tmp_path: Path) -> None:
+    base_dir = _write_daily_snapshot(tmp_path, "daily_in_place", end_date="20260318")
+    patch_dir = _write_daily_patch(tmp_path, "daily_patch_in_place")
+
+    result = merge_asset_patch(
+        base_dir=base_dir,
+        patch_dir=patch_dir,
+        out_dir=base_dir,
+        alias_path=None,
+        overwrite=True,
+    )
+
+    assert result["dataset"] == "daily"
+    assert not (tmp_path / "daily_in_place__base_backup").exists()
+
+    merged = pd.read_parquet(base_dir / "data" / "00005.HK.parquet")
+    assert merged["trade_date"].tolist() == ["20260318", "20260319"]
+    assert merged["open"].tolist() == [11.0, 12.0]
+
+    patch_only = pd.read_parquet(base_dir / "data" / "00006.HK.parquet")
+    assert patch_only["trade_date"].tolist() == ["20260319"]
+
+    manifest = yaml.safe_load((base_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["output_dir"] == str(base_dir)
+    assert manifest["totals"]["symbols_written"] == 2
+
+
 def test_merge_asset_patch_dated_prefers_patch_row_for_overlap(tmp_path: Path) -> None:
     base_dir = _write_valuation_snapshot(tmp_path, "valuation_base", end_date="20260324")
     patch_dir = _write_valuation_patch(tmp_path, "valuation_patch")

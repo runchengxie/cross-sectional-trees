@@ -181,6 +181,15 @@ def _ensure_clean_dir(path: Path, *, overwrite: bool) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def _remove_existing_path(path: Path) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
+
+
 def _dedupe_dated_frame(
     frame: pd.DataFrame,
     *,
@@ -374,176 +383,204 @@ def merge_asset_patch(
     alias_path: Path | None,
     overwrite: bool,
 ) -> dict[str, object]:
-    base_manifest = _base._load_manifest(base_dir / "manifest.yml") or {}
-    patch_manifest = _base._load_manifest(patch_dir / "manifest.yml") or {}
-    dataset_name = str(base_manifest.get("dataset") or patch_manifest.get("dataset") or "").strip()
-    if dataset_name not in DATASET_CONFIG:
-        raise SystemExit(f"Unsupported dataset for local merge: {dataset_name!r}")
-    if str(patch_manifest.get("dataset") or dataset_name).strip() != dataset_name:
-        raise SystemExit(
-            f"Dataset mismatch between base={base_manifest.get('dataset')!r} and patch={patch_manifest.get('dataset')!r}."
+    same_base_out = base_dir.resolve() == out_dir.resolve()
+    base_backup_dir: Path | None = None
+    working_base_dir = base_dir
+
+    if same_base_out:
+        if not overwrite:
+            raise SystemExit(
+                "In-place patch merge requires --overwrite because the output directory "
+                "matches the base snapshot directory."
+            )
+        base_backup_dir = out_dir.parent / f"{out_dir.name}__base_backup"
+        _remove_existing_path(base_backup_dir)
+        out_dir.rename(base_backup_dir)
+        working_base_dir = base_backup_dir
+
+    try:
+        base_manifest = _base._load_manifest(working_base_dir / "manifest.yml") or {}
+        patch_manifest = _base._load_manifest(patch_dir / "manifest.yml") or {}
+        dataset_name = str(base_manifest.get("dataset") or patch_manifest.get("dataset") or "").strip()
+        if dataset_name not in DATASET_CONFIG:
+            raise SystemExit(f"Unsupported dataset for local merge: {dataset_name!r}")
+        if str(patch_manifest.get("dataset") or dataset_name).strip() != dataset_name:
+            raise SystemExit(
+                f"Dataset mismatch between base={base_manifest.get('dataset')!r} and patch={patch_manifest.get('dataset')!r}."
+            )
+
+        if same_base_out:
+            base_manifest = dict(base_manifest)
+            base_manifest["output_dir"] = str(working_base_dir)
+
+        _ensure_clean_dir(out_dir, overwrite=overwrite)
+        data_dir = out_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        base_data_dir = working_base_dir / "data"
+        patch_data_dir = patch_dir / "data"
+        base_files = {path.stem: path for path in sorted(base_data_dir.glob("*.parquet"))}
+        patch_files = {path.stem: path for path in sorted(patch_data_dir.glob("*.parquet"))}
+        base_audit_rows = _load_audit_rows(working_base_dir)
+        patch_audit_rows = _load_audit_rows(patch_dir)
+
+        base_symbols_requested = _load_text_list(working_base_dir / "symbols.txt")
+        patch_symbols_requested = _load_text_list(patch_dir / "symbols.txt")
+        symbols_requested = _dedupe_preserve_order(
+            base_symbols_requested + patch_symbols_requested + list(base_files) + list(patch_files)
         )
 
-    _ensure_clean_dir(out_dir, overwrite=overwrite)
-    data_dir = out_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
+        fields, field_metadata = _merge_fields(base_manifest, patch_manifest)
+        schema_columns = _merge_columns(base_manifest, patch_manifest)
+        symbol_metadata = _merge_symbol_metadata(
+            base_manifest=base_manifest,
+            patch_manifest=patch_manifest,
+            symbols_requested=symbols_requested,
+        )
+        field_coverage = _base._field_coverage_template(fields)
+        entries_by_symbol: dict[str, object] = {}
+        audit_by_symbol: dict[str, object] = {}
+        started_at = _base._timestamp_now()
+        source_rows = {
+            "base": int(((base_manifest.get("totals") or {}).get("rows")) or 0),
+            "patch": int(((patch_manifest.get("totals") or {}).get("rows")) or 0),
+        }
+        kind = str(DATASET_CONFIG[dataset_name]["kind"])
+        date_column = str(DATASET_CONFIG[dataset_name]["date_column"])
 
-    base_data_dir = base_dir / "data"
-    patch_data_dir = patch_dir / "data"
-    base_files = {path.stem: path for path in sorted(base_data_dir.glob("*.parquet"))}
-    patch_files = {path.stem: path for path in sorted(patch_data_dir.glob("*.parquet"))}
-    base_audit_rows = _load_audit_rows(base_dir)
-    patch_audit_rows = _load_audit_rows(patch_dir)
-
-    base_symbols_requested = _load_text_list(base_dir / "symbols.txt")
-    patch_symbols_requested = _load_text_list(patch_dir / "symbols.txt")
-    symbols_requested = _dedupe_preserve_order(
-        base_symbols_requested + patch_symbols_requested + list(base_files) + list(patch_files)
-    )
-
-    fields, field_metadata = _merge_fields(base_manifest, patch_manifest)
-    schema_columns = _merge_columns(base_manifest, patch_manifest)
-    symbol_metadata = _merge_symbol_metadata(
-        base_manifest=base_manifest,
-        patch_manifest=patch_manifest,
-        symbols_requested=symbols_requested,
-    )
-    field_coverage = _base._field_coverage_template(fields)
-    entries_by_symbol: dict[str, object] = {}
-    audit_by_symbol: dict[str, object] = {}
-    started_at = _base._timestamp_now()
-    source_rows = {
-        "base": int(((base_manifest.get("totals") or {}).get("rows")) or 0),
-        "patch": int(((patch_manifest.get("totals") or {}).get("rows")) or 0),
-    }
-    kind = str(DATASET_CONFIG[dataset_name]["kind"])
-    date_column = str(DATASET_CONFIG[dataset_name]["date_column"])
-
-    def _record_written(symbol: str, path: Path, status: str) -> None:
-        if kind == "daily":
-            entry, symbol_frame = _base._load_existing_daily_entry(path, fields=fields)
-            entries_by_symbol[symbol] = entry
-            _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
-            audit_by_symbol[symbol] = _base._daily_audit_record(
-                symbol=symbol,
-                order_book_id=entry.order_book_id,
-                status=status,
-                attempts=0,
-                started_at=None,
-                finished_at=_base._path_mtime_iso(path),
-                file_mtime=_base._path_mtime_iso(path),
-                error=None,
-                entry=entry,
-            )
-        else:
-            entry, symbol_frame = _base._load_existing_dated_entry(path, date_column=date_column, fields=fields)
-            entries_by_symbol[symbol] = entry
-            _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
-            audit_by_symbol[symbol] = _base._dated_audit_record(
-                symbol=symbol,
-                order_book_id=entry.order_book_id,
-                status=status,
-                attempts=0,
-                started_at=None,
-                finished_at=_base._path_mtime_iso(path),
-                file_mtime=_base._path_mtime_iso(path),
-                error=None,
-                entry=entry,
-            )
-
-    for symbol in symbols_requested:
-        base_path = base_files.get(symbol)
-        patch_path = patch_files.get(symbol)
-        out_path = data_dir / f"{symbol}.parquet"
-
-        if patch_path is not None:
-            base_frame = pd.read_parquet(base_path) if base_path and base_path.exists() else None
-            patch_frame = pd.read_parquet(patch_path)
-            merged = _merge_symbol_frames(
-                dataset_name=dataset_name,
-                schema_columns=schema_columns,
-                symbol=symbol,
-                base_frame=base_frame,
-                patch_frame=patch_frame,
-            )
-            if merged.empty:
-                continue
+        def _record_written(symbol: str, path: Path, status: str) -> None:
             if kind == "daily":
-                _base._write_daily_symbol_frame(data_dir, merged)
+                entry, symbol_frame = _base._load_existing_daily_entry(path, fields=fields)
+                entries_by_symbol[symbol] = entry
+                _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
+                audit_by_symbol[symbol] = _base._daily_audit_record(
+                    symbol=symbol,
+                    order_book_id=entry.order_book_id,
+                    status=status,
+                    attempts=0,
+                    started_at=None,
+                    finished_at=_base._path_mtime_iso(path),
+                    file_mtime=_base._path_mtime_iso(path),
+                    error=None,
+                    entry=entry,
+                )
             else:
-                _base._write_dated_symbol_frame(data_dir, merged, date_column=date_column)
-            _record_written(symbol, out_path, status="merged_patch" if base_path else "patch_only")
-            continue
+                entry, symbol_frame = _base._load_existing_dated_entry(path, date_column=date_column, fields=fields)
+                entries_by_symbol[symbol] = entry
+                _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
+                audit_by_symbol[symbol] = _base._dated_audit_record(
+                    symbol=symbol,
+                    order_book_id=entry.order_book_id,
+                    status=status,
+                    attempts=0,
+                    started_at=None,
+                    finished_at=_base._path_mtime_iso(path),
+                    file_mtime=_base._path_mtime_iso(path),
+                    error=None,
+                    entry=entry,
+                )
 
-        if base_path is not None:
-            _link_or_copy_base_file(base_path, out_path)
-            _record_written(symbol, out_path, status="linked_base")
-            continue
+        for symbol in symbols_requested:
+            base_path = base_files.get(symbol)
+            patch_path = patch_files.get(symbol)
+            out_path = data_dir / f"{symbol}.parquet"
 
-        order_book_id = _to_rqdata_symbol("hk", symbol)
+            if patch_path is not None:
+                base_frame = pd.read_parquet(base_path) if base_path and base_path.exists() else None
+                patch_frame = pd.read_parquet(patch_path)
+                merged = _merge_symbol_frames(
+                    dataset_name=dataset_name,
+                    schema_columns=schema_columns,
+                    symbol=symbol,
+                    base_frame=base_frame,
+                    patch_frame=patch_frame,
+                )
+                if merged.empty:
+                    continue
+                if kind == "daily":
+                    _base._write_daily_symbol_frame(data_dir, merged)
+                else:
+                    _base._write_dated_symbol_frame(data_dir, merged, date_column=date_column)
+                _record_written(symbol, out_path, status="merged_patch" if base_path else "patch_only")
+                continue
+
+            if base_path is not None:
+                _link_or_copy_base_file(base_path, out_path)
+                _record_written(symbol, out_path, status="linked_base")
+                continue
+
+            order_book_id = _to_rqdata_symbol("hk", symbol)
+            finished_at = _base._timestamp_now()
+            source_audit = patch_audit_rows.get(symbol) or base_audit_rows.get(symbol) or {}
+            missing_remote_error = str(source_audit.get("error") or "").strip() or None
+            if kind == "daily":
+                audit_by_symbol[symbol] = _base._daily_audit_record(
+                    symbol=symbol,
+                    order_book_id=order_book_id,
+                    status="missing_remote",
+                    attempts=0,
+                    started_at=None,
+                    finished_at=finished_at,
+                    file_mtime=None,
+                    error=missing_remote_error,
+                    entry=None,
+                )
+            else:
+                audit_by_symbol[symbol] = _base._dated_audit_record(
+                    symbol=symbol,
+                    order_book_id=order_book_id,
+                    status="missing_remote",
+                    attempts=0,
+                    started_at=None,
+                    finished_at=finished_at,
+                    file_mtime=None,
+                    error=missing_remote_error,
+                    entry=None,
+                )
+
+        _base._write_text_list(out_dir / "fields.txt", fields)
+        _base._write_text_list(out_dir / "symbols.txt", symbols_requested)
         finished_at = _base._timestamp_now()
-        source_audit = patch_audit_rows.get(symbol) or base_audit_rows.get(symbol) or {}
-        missing_remote_error = str(source_audit.get("error") or "").strip() or None
-        if kind == "daily":
-            audit_by_symbol[symbol] = _base._daily_audit_record(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                status="missing_remote",
-                attempts=0,
-                started_at=None,
-                finished_at=finished_at,
-                file_mtime=None,
-                error=missing_remote_error,
-                entry=None,
-            )
-        else:
-            audit_by_symbol[symbol] = _base._dated_audit_record(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                status="missing_remote",
-                attempts=0,
-                started_at=None,
-                finished_at=finished_at,
-                file_mtime=None,
-                error=missing_remote_error,
-                entry=None,
-            )
+        manifest = _build_manifest_and_audit(
+            dataset_name=dataset_name,
+            base_manifest=base_manifest,
+            patch_manifest=patch_manifest,
+            out_dir=out_dir,
+            symbols_requested=symbols_requested,
+            fields=fields,
+            field_metadata=field_metadata,
+            symbol_metadata=symbol_metadata,
+            schema_columns=schema_columns,
+            entries_by_symbol=entries_by_symbol,
+            audit_by_symbol=audit_by_symbol,
+            field_coverage=field_coverage,
+            source_rows=source_rows,
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+        _base._write_manifest(out_dir / "manifest.yml", manifest)
 
-    _base._write_text_list(out_dir / "fields.txt", fields)
-    _base._write_text_list(out_dir / "symbols.txt", symbols_requested)
-    finished_at = _base._timestamp_now()
-    manifest = _build_manifest_and_audit(
-        dataset_name=dataset_name,
-        base_manifest=base_manifest,
-        patch_manifest=patch_manifest,
-        out_dir=out_dir,
-        symbols_requested=symbols_requested,
-        fields=fields,
-        field_metadata=field_metadata,
-        symbol_metadata=symbol_metadata,
-        schema_columns=schema_columns,
-        entries_by_symbol=entries_by_symbol,
-        audit_by_symbol=audit_by_symbol,
-        field_coverage=field_coverage,
-        source_rows=source_rows,
-        started_at=started_at,
-        finished_at=finished_at,
-    )
-    _base._write_manifest(out_dir / "manifest.yml", manifest)
+        if alias_path is not None:
+            _create_relative_symlink(out_dir, alias_path)
 
-    if alias_path is not None:
-        _create_relative_symlink(out_dir, alias_path)
-
-    totals = manifest.get("totals") if isinstance(manifest.get("totals"), Mapping) else {}
-    return {
-        "dataset": dataset_name,
-        "output_dir": str(out_dir),
-        "alias_path": str(alias_path) if alias_path is not None else None,
-        "files": int(totals.get("files") or 0),
-        "rows": int(totals.get("rows") or 0),
-        "symbols_written": int(totals.get("symbols_written") or 0),
-        "symbols_missing_remote": int(totals.get("symbols_missing_remote") or 0),
-    }
+        totals = manifest.get("totals") if isinstance(manifest.get("totals"), Mapping) else {}
+        return {
+            "dataset": dataset_name,
+            "output_dir": str(out_dir),
+            "alias_path": str(alias_path) if alias_path is not None else None,
+            "files": int(totals.get("files") or 0),
+            "rows": int(totals.get("rows") or 0),
+            "symbols_written": int(totals.get("symbols_written") or 0),
+            "symbols_missing_remote": int(totals.get("symbols_missing_remote") or 0),
+        }
+    except Exception:
+        if base_backup_dir is not None and base_backup_dir.exists():
+            _remove_existing_path(out_dir)
+            base_backup_dir.rename(out_dir)
+        raise
+    finally:
+        if base_backup_dir is not None and base_backup_dir.exists():
+            shutil.rmtree(base_backup_dir)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
