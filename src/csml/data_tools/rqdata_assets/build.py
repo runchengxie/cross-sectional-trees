@@ -414,6 +414,24 @@ def _load_universe_by_date_frame(path_text: str | Path) -> pd.DataFrame:
     ).reset_index(drop=True)
 
 
+def _parse_trade_date_series(values: pd.Series) -> pd.Series:
+    text = values.astype(str).str.strip().str.replace(r"\.0+$", "", regex=True)
+    digits_mask = text.str.fullmatch(r"\d{8}")
+    parsed = pd.Series(pd.NaT, index=values.index, dtype="datetime64[ns]")
+    if digits_mask.any():
+        parsed.loc[digits_mask] = pd.to_datetime(
+            text.loc[digits_mask],
+            format="%Y%m%d",
+            errors="coerce",
+        )
+    if (~digits_mask).any():
+        parsed.loc[~digits_mask] = pd.to_datetime(
+            text.loc[~digits_mask],
+            errors="coerce",
+        )
+    return parsed.dt.normalize()
+
+
 def _pipeline_fundamentals_manifest_path(out_path: Path) -> Path:
     return out_path.with_name(f"{out_path.stem}.manifest.yml")
 
@@ -431,6 +449,8 @@ def _build_filtered_universe_by_date(
     source_path: Path,
     out_path: Path,
     symbols: Sequence[str],
+    fundamentals: pd.DataFrame | None = None,
+    max_latest_report_age_days: int | None = None,
 ) -> dict[str, object]:
     universe = pd.read_csv(source_path)
     date_col, symbol_col = _resolve_universe_by_date_columns(universe)
@@ -438,9 +458,90 @@ def _build_filtered_universe_by_date(
     selected_symbols = set(symbols)
     filtered = universe.loc[normalized_symbols.isin(selected_symbols)].copy()
     filtered["symbol"] = normalized_symbols.loc[filtered.index]
+
+    age_filter_summary = None
+    if max_latest_report_age_days is not None:
+        if max_latest_report_age_days < 0:
+            raise SystemExit("--max-latest-report-age-days must be >= 0.")
+        if fundamentals is None:
+            raise SystemExit(
+                "fundamentals frame is required when --max-latest-report-age-days is used."
+            )
+        filtered_dates = _parse_trade_date_series(filtered[date_col])
+        valid_date_mask = filtered_dates.notna()
+        filtered = filtered.loc[valid_date_mask].copy()
+        filtered["_trade_date_ts"] = filtered_dates.loc[valid_date_mask]
+
+        pit_dates = fundamentals.loc[:, ["symbol", "trade_date"]].copy()
+        pit_dates["symbol"] = (
+            pit_dates["symbol"].astype(str).str.strip().map(_normalize_hk_symbol)
+        )
+        pit_dates["_pit_trade_date_ts"] = _parse_trade_date_series(pit_dates["trade_date"])
+        pit_dates = pit_dates.loc[
+            pit_dates["symbol"].ne("") & pit_dates["_pit_trade_date_ts"].notna(),
+            ["symbol", "_pit_trade_date_ts"],
+        ].drop_duplicates()
+
+        rows_before_age_filter = int(len(filtered))
+        if filtered.empty or pit_dates.empty:
+            rows_dropped_missing_asof_pit = rows_before_age_filter
+            rows_dropped_stale_latest_report = 0
+            sample_dropped_stale_symbols: list[str] = []
+            sample_dropped_missing_asof_pit_symbols: list[str] = []
+            filtered = filtered.iloc[0:0].copy()
+        else:
+            left = filtered.loc[:, ["symbol", "_trade_date_ts"]].copy()
+            left["_source_index"] = left.index
+            left = left.sort_values(["_trade_date_ts", "symbol"]).reset_index(drop=True)
+            pit_dates = pit_dates.sort_values(["_pit_trade_date_ts", "symbol"]).reset_index(drop=True)
+            merged = pd.merge_asof(
+                left,
+                pit_dates,
+                left_on="_trade_date_ts",
+                right_on="_pit_trade_date_ts",
+                by="symbol",
+                direction="backward",
+            )
+            report_age_days = (
+                (merged["_trade_date_ts"] - merged["_pit_trade_date_ts"]).dt.days
+            )
+            missing_asof_mask = merged["_pit_trade_date_ts"].isna()
+            stale_mask = (~missing_asof_mask) & (report_age_days > max_latest_report_age_days)
+            keep_indices = merged.loc[
+                ~(missing_asof_mask | stale_mask), "_source_index"
+            ].tolist()
+            rows_dropped_missing_asof_pit = int(missing_asof_mask.sum())
+            rows_dropped_stale_latest_report = int(stale_mask.sum())
+            sample_dropped_stale_symbols = (
+                merged.loc[stale_mask, "symbol"]
+                .astype(str)
+                .drop_duplicates()
+                .head(5)
+                .tolist()
+            )
+            sample_dropped_missing_asof_pit_symbols = (
+                merged.loc[missing_asof_mask, "symbol"]
+                .astype(str)
+                .drop_duplicates()
+                .head(5)
+                .tolist()
+            )
+            filtered = filtered.loc[keep_indices].copy()
+
+        age_filter_summary = {
+            "max_latest_report_age_days": int(max_latest_report_age_days),
+            "rows_before_age_filter": rows_before_age_filter,
+            "rows_after_age_filter": int(len(filtered)),
+            "rows_dropped_no_pit_asof_trade_date": rows_dropped_missing_asof_pit,
+            "rows_dropped_stale_latest_report": rows_dropped_stale_latest_report,
+            "sample_dropped_no_pit_asof_trade_date_symbols": sample_dropped_missing_asof_pit_symbols,
+            "sample_dropped_stale_latest_report_symbols": sample_dropped_stale_symbols,
+        }
+
     filtered = drop_legacy_symbol_columns(filtered)
     if symbol_col == "order_book_id":
         filtered = filtered.drop(columns=["order_book_id"], errors="ignore")
+    filtered = filtered.drop(columns=["_trade_date_ts"], errors="ignore")
 
     preferred = []
     seen: set[str] = set()
@@ -460,6 +561,7 @@ def _build_filtered_universe_by_date(
         "symbols": int(filtered["symbol"].nunique()) if not filtered.empty else 0,
         "date_column": date_col,
         "symbol_column": "symbol",
+        "latest_report_age_filter": age_filter_summary,
     }
 
 
@@ -498,12 +600,17 @@ def build_hk_pit_fundamentals_file(args) -> int:
         if getattr(args, "universe_by_date_out", None)
         else None
     )
+    max_latest_report_age_days = getattr(args, "max_latest_report_age_days", None)
     if universe_out_path and source_universe_path is None:
         raise SystemExit("--source-universe-by-date is required when --universe-by-date-out is set.")
     if source_universe_path and not source_universe_path.exists():
         raise SystemExit(f"Universe-by-date file not found: {source_universe_path}")
     if universe_out_path and universe_out_path.exists() and not force:
         raise SystemExit(f"Refusing to overwrite existing output: {universe_out_path}")
+    if max_latest_report_age_days is not None and universe_out_path is None:
+        raise SystemExit(
+            "--max-latest-report-age-days requires --source-universe-by-date and --universe-by-date-out."
+        )
 
     combined_frames: list[pd.DataFrame] = []
     input_rows = 0
@@ -619,6 +726,8 @@ def build_hk_pit_fundamentals_file(args) -> int:
             source_path=source_universe_path,
             out_path=universe_out_path,
             symbols=research_symbols,
+            fundamentals=output_df,
+            max_latest_report_age_days=max_latest_report_age_days,
         )
         outputs["universe_by_date_file"] = str(universe_out_path)
 
@@ -642,6 +751,7 @@ def build_hk_pit_fundamentals_file(args) -> int:
             "field_source": field_metadata.get("source"),
             "keep_meta": keep_meta,
             "duplicate_policy": getattr(args, "duplicate_policy", "keep-last"),
+            "max_latest_report_age_days": max_latest_report_age_days,
         },
         "columns": output_df.columns.tolist(),
         "totals": {

@@ -397,6 +397,8 @@ def test_cli_parses_rqdata_asset_commands():
             "artifacts/assets/universe/hk_connect_full_by_date.csv",
             "--universe-by-date-out",
             "artifacts/assets/universe/hk_connect_full_research_by_date.csv",
+            "--max-latest-report-age-days",
+            "365",
             "--symbols-out",
             "artifacts/assets/universe/hk_connect_full_research_symbols.txt",
             "--keep-meta",
@@ -413,6 +415,7 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit_fundamentals.out == "artifacts/assets/fundamentals/pit_fundamentals.parquet"
     assert pit_fundamentals.source_universe_by_date == "artifacts/assets/universe/hk_connect_full_by_date.csv"
     assert pit_fundamentals.universe_by_date_out == "artifacts/assets/universe/hk_connect_full_research_by_date.csv"
+    assert pit_fundamentals.max_latest_report_age_days == 365
     assert pit_fundamentals.symbols_out == "artifacts/assets/universe/hk_connect_full_research_symbols.txt"
     assert pit_fundamentals.keep_meta is True
     assert pit_fundamentals.duplicate_policy == "error"

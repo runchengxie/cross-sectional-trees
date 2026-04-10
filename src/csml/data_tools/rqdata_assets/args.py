@@ -697,6 +697,14 @@ def add_hk_pit_fundamentals_build_args(
         help="Optional filtered universe-by-date CSV output. Requires --source-universe-by-date.",
     )
     parser.add_argument(
+        "--max-latest-report-age-days",
+        type=int,
+        help=(
+            "Optional max age, in calendar days, between each universe trade_date and the latest "
+            "available PIT row for that symbol. Only applies when deriving --universe-by-date-out."
+        ),
+    )
+    parser.add_argument(
         "--symbols-out",
         help=(
             "Optional text file output with one canonical symbol per line for names present "

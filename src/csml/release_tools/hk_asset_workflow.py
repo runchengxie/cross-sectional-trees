@@ -393,6 +393,111 @@ def _load_health_report_summary(path: Path) -> dict[str, Any]:
     }
 
 
+def _load_health_report_payload(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Health report payload must be a JSON object: {path}")
+    return payload
+
+
+def _gate_relevant_quality_checks(
+    payload: Mapping[str, Any],
+    *,
+    threshold: str,
+) -> list[dict[str, Any]]:
+    quality_checks = payload.get("quality_checks") if isinstance(payload.get("quality_checks"), list) else []
+    threshold_rank = GATE_SEVERITY_RANK[threshold]
+    relevant: list[dict[str, Any]] = []
+    for item in quality_checks:
+        if not isinstance(item, dict):
+            continue
+        severity = str(item.get("severity") or "").strip().lower() or "info"
+        if GATE_SEVERITY_RANK.get(severity, -1) >= threshold_rank:
+            relevant.append(item)
+    return relevant
+
+
+def _build_gate_quality_summary(path: Path, *, threshold: str) -> dict[str, Any]:
+    payload = _load_health_report_payload(path)
+    relevant_checks = _gate_relevant_quality_checks(payload, threshold=threshold)
+    severity_counts = {"error": 0, "warning": 0, "info": 0}
+    for item in relevant_checks:
+        severity = str(item.get("severity") or "").strip().lower() or "info"
+        if severity in severity_counts:
+            severity_counts[severity] += 1
+    issue_count = int(sum(severity_counts.values()))
+    overall_severity = "none"
+    if severity_counts["error"] > 0:
+        overall_severity = "error"
+    elif severity_counts["warning"] > 0:
+        overall_severity = "warning"
+    elif severity_counts["info"] > 0:
+        overall_severity = "info"
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    return {
+        "report_path": str(path),
+        "issue_count": issue_count,
+        "severity_counts": severity_counts,
+        "overall_severity": overall_severity,
+        "history_issue_count": int(summary.get("history_issue_count") or 0),
+        "quality_checks": relevant_checks,
+    }
+
+
+def _is_daily_price_bounds_only_gate_hit(summary: Mapping[str, Any]) -> bool:
+    relevant_checks = summary.get("quality_checks")
+    if not isinstance(relevant_checks, list) or not relevant_checks:
+        return False
+    for item in relevant_checks:
+        if not isinstance(item, Mapping):
+            return False
+        if str(item.get("check") or "").strip() != "daily_price_bounds_violation":
+            return False
+    return True
+
+
+def _suppress_gate_hits_for_clean_daily_consumer_path(
+    gate_results: list[tuple[Step, dict[str, Any]]],
+    *,
+    threshold: str,
+    report: dict[str, Any],
+) -> list[tuple[Step, dict[str, Any]]]:
+    if not gate_results:
+        return gate_results
+
+    by_asset = {
+        str(step.asset_name or ""): summary
+        for step, summary in gate_results
+        if step.asset_name
+    }
+    daily_summary = by_asset.get("daily")
+    daily_clean_summary = by_asset.get("daily_clean")
+    if daily_summary is None or daily_clean_summary is None:
+        return gate_results
+    if not _is_daily_price_bounds_only_gate_hit(daily_summary):
+        return gate_results
+    if _health_summary_hits_gate(daily_clean_summary, threshold=threshold):
+        return gate_results
+
+    gate = report.setdefault("gate", {})
+    suppressed = gate.setdefault("suppressed_triggered_assets", [])
+    suppressed_entry = {
+        "asset_name": "daily",
+        "overall_severity": daily_summary.get("overall_severity"),
+        "severity_counts": dict(daily_summary.get("severity_counts") or {}),
+        "report_path": daily_summary.get("report_path"),
+        "reason": "raw daily price-bounds-only issues are tolerated when daily_clean passes the gate",
+    }
+    if suppressed_entry not in suppressed:
+        suppressed.append(suppressed_entry)
+
+    return [
+        (step, summary)
+        for step, summary in gate_results
+        if not (step.asset_name == "daily" and summary is daily_summary)
+    ]
+
+
 def _append_repair_candidate(
     candidates: dict[tuple[str, str | None, str | None, str | None], dict[str, Any]],
     *,
@@ -598,7 +703,7 @@ def _extract_health_repair_candidates(
 
 
 def _load_health_report_analysis(path: Path, *, asset_name: str | None) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = _load_health_report_payload(path)
     return {
         "quality": _load_health_report_summary(path),
         "repair_candidates": _extract_health_repair_candidates(payload=payload, asset_name=asset_name),
@@ -2071,7 +2176,7 @@ def main(argv: list[str] | None = None) -> int:
     workflow_report.setdefault("gate", {})["enabled"] = gate_enabled
     workflow_report.setdefault("gate", {})["stage"] = gate_stage
     gate_triggered = False
-    gate_hits: list[tuple[Step, dict[str, Any]]] = []
+    gate_results: list[tuple[Step, dict[str, Any]]] = []
     remaining_gate_inspect_steps = sum(
         1
         for step in steps
@@ -2123,11 +2228,22 @@ def main(argv: list[str] | None = None) -> int:
             print("  " + _summarize_report(step.summary_path))
             inspection_stage = str((step.report_metadata or {}).get("inspection_stage") or "default")
             if gate_enabled and step.phase == "inspect" and inspection_stage == gate_stage:
-                quality = _load_health_report_summary(step.summary_path)
-                if _health_summary_hits_gate(quality, threshold=args.gate_on_severity):
-                    gate_hits.append((step, quality))
+                gate_quality = _build_gate_quality_summary(
+                    step.summary_path,
+                    threshold=args.gate_on_severity,
+                )
+                gate_results.append((step, gate_quality))
                 remaining_gate_inspect_steps = max(0, remaining_gate_inspect_steps - 1)
                 if remaining_gate_inspect_steps == 0:
+                    gate_hits = [
+                        item
+                        for item in _suppress_gate_hits_for_clean_daily_consumer_path(
+                            gate_results,
+                            threshold=args.gate_on_severity,
+                            report=workflow_report,
+                        )
+                        if _health_summary_hits_gate(item[1], threshold=args.gate_on_severity)
+                    ]
                     if gate_hits:
                         gate_triggered = True
                         for gate_step, gate_quality in gate_hits:

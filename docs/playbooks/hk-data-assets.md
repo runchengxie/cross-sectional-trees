@@ -256,6 +256,7 @@ csml rqdata build-hk-pit-fundamentals \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/pipeline_fundamentals.parquet \
   --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv \
   --universe-by-date-out artifacts/assets/universe/hk_connect_full_research_by_date.csv \
+  --max-latest-report-age-days 365 \
   --symbols-out artifacts/assets/universe/hk_connect_full_research_symbols.txt
 ```
 
@@ -265,6 +266,7 @@ csml rqdata build-hk-pit-fundamentals \
 * 对 `trade_date + symbol` 做去重，默认策略是 `keep-last`
 * 生成 pipeline 直接可读的 `pipeline_fundamentals.parquet`
 * 如果同时提供 `--source-universe-by-date` 和 `--universe-by-date-out`，再顺手派生一份“只保留本地确实有 PIT flat data 的 symbol”研究股票池
+* 如果再加 `--max-latest-report-age-days`，research universe 还会按每个 `trade_date` 回看 symbol 当时最近一条 PIT 披露，把过旧的 symbol-date 一起剔掉
 
 构建时还有几个常用参数：
 

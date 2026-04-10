@@ -42,6 +42,9 @@ from .shared import (
     _resolve_universe_by_date_columns,
 )
 
+PIT_HEALTH_STALE_INFO_DAYS = 180
+PIT_HEALTH_STALE_WARNING_DAYS = 365
+
 
 def _resolve_fields(args) -> tuple[list[str], dict]:
     package = sys.modules.get("csml.data_tools.rqdata_assets")
@@ -284,7 +287,13 @@ def _build_pit_health_section(
             if not latest_feature_dates.empty
             else pd.Series(dtype="int64")
         )
-        stale_180_symbols = age_days.loc[age_days > 180].sort_values(ascending=False).index.tolist()
+        stale_warning_symbols = age_days.loc[
+            age_days > PIT_HEALTH_STALE_WARNING_DAYS
+        ].sort_values(ascending=False).index.tolist()
+        stale_info_symbols = age_days.loc[
+            (age_days > PIT_HEALTH_STALE_INFO_DAYS)
+            & (age_days <= PIT_HEALTH_STALE_WARNING_DAYS)
+        ].sort_values(ascending=False).index.tolist()
         available_count = int(latest_feature_dates.index.nunique())
         missing_symbols = [symbol for symbol in requested_symbols if symbol not in set(latest_feature_dates.index)]
         row = {
@@ -319,15 +328,26 @@ def _build_pit_health_section(
                     "sample_symbols": _make_sample_symbols(requested_symbols, limit=sample_limit),
                 }
             )
-        elif row["age_gt_180d_symbols"] > 0:
+        elif stale_warning_symbols:
             quality_checks.append(
                 {
-                    "check": "feature_stale_gt_180d_asof_target_date",
+                    "check": f"feature_stale_gt_{PIT_HEALTH_STALE_WARNING_DAYS}d_asof_target_date",
                     "field": feature,
                     "severity": "warning",
-                    "affected_symbols": row["age_gt_180d_symbols"],
-                    "affected_pct": _round_pct(row["age_gt_180d_symbols"], available_count),
-                    "sample_symbols": _make_sample_symbols(stale_180_symbols, limit=sample_limit),
+                    "affected_symbols": len(stale_warning_symbols),
+                    "affected_pct": _round_pct(len(stale_warning_symbols), available_count),
+                    "sample_symbols": _make_sample_symbols(stale_warning_symbols, limit=sample_limit),
+                }
+            )
+        if stale_info_symbols:
+            quality_checks.append(
+                {
+                    "check": f"feature_stale_gt_{PIT_HEALTH_STALE_INFO_DAYS}d_asof_target_date",
+                    "field": feature,
+                    "severity": "info",
+                    "affected_symbols": len(stale_info_symbols),
+                    "affected_pct": _round_pct(len(stale_info_symbols), available_count),
+                    "sample_symbols": _make_sample_symbols(stale_info_symbols, limit=sample_limit),
                 }
             )
 

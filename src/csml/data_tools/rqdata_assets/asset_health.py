@@ -272,6 +272,18 @@ def _duplicate_key_columns(
     keys = [date_column]
     if dataset == "southbound" and "trading_type" in columns:
         keys.append("trading_type")
+    elif dataset == "financial_details":
+        for column in (
+            "field",
+            "quarter",
+            "fiscal_year",
+            "relationship",
+            "currency",
+            "standard",
+            "subject",
+        ):
+            if column in columns and column not in keys:
+                keys.append(column)
     elif dataset == "dividends":
         for column in (
             "ex_dividend_date",
@@ -294,6 +306,16 @@ def _duplicate_key_columns(
 def _duplicate_key_read_columns(*, dataset: str | None) -> list[str]:
     if dataset == "southbound":
         return ["trading_type"]
+    if dataset == "financial_details":
+        return [
+            "field",
+            "quarter",
+            "fiscal_year",
+            "relationship",
+            "currency",
+            "standard",
+            "subject",
+        ]
     if dataset == "dividends":
         return [
             "ex_dividend_date",

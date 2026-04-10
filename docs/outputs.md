@@ -241,7 +241,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 配套文件：
 
-* `pipeline_fundamentals.manifest.yml`：来源资产目录、字段选择、去重策略和输出统计。
+* `pipeline_fundamentals.manifest.yml`：来源资产目录、字段选择、去重策略、输出统计，以及可选的 `filtered_universe.latest_report_age_filter` 摘要。
 * 可选：如果构建时传了 `--symbols-out`，会额外写一个 symbol 文本文件。
 * 可选：如果构建时传了 `--source-universe-by-date` + `--universe-by-date-out`，会额外写一个过滤后的 PIT universe CSV。
 

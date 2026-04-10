@@ -445,7 +445,14 @@ csml rqdata mirror-hk-industry-changes --by-date-file artifacts/assets/universe/
 
 ```bash
 csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv --max-latest-report-age-days 365
 ```
+
+说明：
+
+* `--source-universe-by-date` + `--universe-by-date-out` 会顺手派生一份 research-ready PIT universe。
+* `--max-latest-report-age-days` 只作用在这份派生 universe 上：它会按每个 `trade_date` 回看该 symbol 当时最近一条 PIT 披露，超过阈值的 symbol-date 会被剔除。
+* 这适合处理 “symbol 仍然有 PIT flat data，但最新披露已经过旧，不应该继续留在研究股票池里” 的场景。
 
 ### csml rqdata build-hk-industry-labels
 
@@ -479,6 +486,7 @@ csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_sel
 * 默认输出还是覆盖率 / trainability 体检；加上 `--include-health` 后，会额外输出 `Health` section，回答“到某个 `target_date` 为止，这份 `pipeline_fundamentals.parquet` 能不能安全前推到调仓日”。
 * `--target-date` 不传时，会优先取 `--by-date-file` 或 `config research_universe.by_date_file` 里的最大日期；再没有时，回退到 `pipeline_fundamentals.parquet` 的最大 `trade_date`。
 * `Health` 会统计 `symbols_with_all_selected_features_asof_target_date`、各字段 `age_days_*`、`rows_last_30d/90d/180d`、以及 `symbol_without_any_pit_row_before_target_date` 这类断档告警。
+* PIT freshness 默认分两档：`>180d` 记为 `info`，`>365d` 才记为 `warning`。这样 7-8 个月的披露滞后仍然可见，但不会和明显失效的超老 PIT 行混在同一层告警里。
 * `--symbols-file` 和 `--by-date-file` 只影响 `Health` section，不改变原有覆盖率 / trainable 计算口径。
 * `--fail-on-severity none|info|warning|error` 可以把 health 检查升级成质量闸门；命中对应级别的问题时命令会非零退出。显式传这个参数时，即使没写 `--include-health`，也会自动启用 `Health` section。
 
@@ -499,7 +507,7 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valua
 * 默认优先用 `audit.csv` 的最新日期作为目标日；没有 `audit.csv` 时回退到 `manifest.yml` 里的查询日期，再回退到 parquet 扫描得到的最大日期。
 * `--by-date-file` 会按目标日过滤研究 universe，只检查这一天实际会进入策略判断的 symbol；`--symbols-file` 则适合传入自定义观察名单。
 * `missing_but_prior_nonnull` 表示目标日原始值为空、但更早日期有值；`unusable_but_prior_clean` 和 `ffill_age_days_*` 会进一步统计占位符 / `inf` / 非法值在回退后离目标日有多远。
-* `placeholder_on_target_date`、`nonfinite_on_target_date`、`zero_on_target_date`、`is_constant_across_clean_values_on_target_date` 和 `symbol_duplicate_dates_in_asset_file` 用来补齐仅看 non-null 时抓不到的脏值、退化值、横截面常数和同一 `symbol-date` 重复行问题。
+* `placeholder_on_target_date`、`nonfinite_on_target_date`、`zero_on_target_date`、`is_constant_across_clean_values_on_target_date` 和 `symbol_duplicate_dates_in_asset_file` 用来补齐仅看 non-null 时抓不到的脏值、退化值、横截面常数和同一逻辑记录重复问题。大多数数据集默认按 `symbol + date` 去重；`dividends`、`southbound`、`industry_changes`、`shares` / `ex_factors`、`financial_details` 会自动改用各自更合理的事件 / 披露键。
 * 对 `daily` 资产，命令还会额外检查 `high/low/open/close` 的价格逻辑关系，以及负成交量 / 负成交额。
 * `sample_stale_symbols` 会列出没有覆盖到目标日的样本 symbol，适合快速判断是原始数据没补齐，还是个别 symbol 落后。
 * `sample_missing_asset_file_details` 和 `audit_issue_groups` 会把 `audit.csv` 里的失败原因带出来，便于区分权限问题、quota 问题和单纯没有远端数据。

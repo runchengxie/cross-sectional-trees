@@ -339,7 +339,10 @@ csml rqdata mirror-hk-pit-financials \
 
 csml rqdata build-hk-pit-fundamentals \
   --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
-  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet \
+  --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv \
+  --max-latest-report-age-days 365
 
 csml rqdata inspect-hk-pit-coverage \
   --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \

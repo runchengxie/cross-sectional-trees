@@ -832,6 +832,98 @@ def test_inspect_hk_asset_health_flags_duplicate_dates_and_dedupes_target_day(tm
         "sample_symbols": ["00005.HK"],
     }
 
+
+def test_inspect_hk_asset_health_uses_financial_details_disclosure_keys(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "financial_details" / "financial_details_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "financial_details",
+                "query": {
+                    "date": "20260331",
+                    "fields": ["amount"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "symbol": ["00005.HK", "00005.HK", "00005.HK", "00005.HK"],
+            "order_book_id": ["00005.XHKG"] * 4,
+            "quarter": ["2021q2", "2022q2", "2022q2", "2022q2"],
+            "info_date": ["20220801", "20220801", "20220801", "20220801"],
+            "fiscal_year": ["2021-12-31", "2022-12-31", "2022-12-31", "2022-12-31"],
+            "field": [
+                "operating_revenue",
+                "operating_revenue",
+                "other_operating_revenue",
+                "other_operating_revenue",
+            ],
+            "relationship": [1.0, 1.0, 1.0, 1.0],
+            "amount": [100.0, 120.0, 30.0, 30.0],
+            "currency": ["USD", "USD", "USD", "USD"],
+            "subject": ["营业收入总额", "营业收入总额", "其他营业收入", "其他营业收入"],
+            "standard": ["非中国会计准则_金融公司"] * 4,
+            "if_adjusted": [1, 0, 0, 0],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "order_book_id": "00005.XHKG",
+                "status": "written",
+                "max_info_date": "2022-08-01",
+            }
+        ]
+    ).to_csv(asset_dir / "audit.csv", index=False)
+
+    out_path = repo_root / "financial_details_asset_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=["amount"],
+        date_column=None,
+        target_date="20220801",
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=False,
+        history_sample_limit=5,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["symbols_with_duplicate_dates"] == 1
+    assert payload["summary"]["duplicate_date_groups"] == 1
+    assert payload["summary"]["duplicate_date_rows"] == 2
+    checks = {(item["check"], item.get("field")): item for item in payload["quality_checks"]}
+    assert checks[("symbol_duplicate_dates_in_asset_file", None)] == {
+        "check": "symbol_duplicate_dates_in_asset_file",
+        "field": None,
+        "severity": "error",
+        "affected_symbols": 1,
+        "affected_pct": 100.0,
+        "duplicate_date_groups": 1,
+        "duplicate_rows": 2,
+        "sample_symbols": ["00005.HK"],
+    }
+
+
 def test_inspect_hk_asset_health_parses_compact_audit_dates_written_as_floats(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_demo"

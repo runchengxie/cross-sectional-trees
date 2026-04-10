@@ -303,6 +303,101 @@ def test_hk_asset_workflow_inspect_gate_allows_repoint_and_package_when_clean(tm
     assert report["gate"]["skipped_steps"] == []
 
 
+def test_hk_asset_workflow_gate_ignores_raw_daily_price_bounds_when_daily_clean_passes(
+    tmp_path, monkeypatch
+):
+    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _configure_repo_roots(workflow, repo_root)
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], *, dry_run: bool):
+        calls.append(cmd)
+        if "mirror-hk-daily" in cmd:
+            out_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / cmd[cmd.index("--name") + 1]
+            (out_dir / "data").mkdir(parents=True, exist_ok=True)
+            (out_dir / "manifest.yml").write_text(
+                yaml.safe_dump({"query": {"start_date": "20000101", "end_date": "20260402"}}, sort_keys=False),
+                encoding="utf-8",
+            )
+        elif "build-hk-daily-clean-layer" in cmd:
+            out_dir = repo_root / cmd[cmd.index("--out-dir") + 1]
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "data").mkdir(exist_ok=True)
+            (out_dir / "manifest.yml").write_text(
+                yaml.safe_dump({"query": {"start_date": "20000101", "end_date": "20260402"}}, sort_keys=False),
+                encoding="utf-8",
+            )
+        elif "inspect-hk-asset-health" in cmd:
+            out_path = repo_root / cmd[cmd.index("--out") + 1]
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            if "daily_clean" in out_path.name:
+                payload = {
+                    "summary": {"history_issue_count": 0},
+                    "quality_checks": [],
+                }
+            else:
+                payload = {
+                    "summary": {"history_issue_count": 0},
+                    "quality_checks": [
+                        {
+                            "severity": "error",
+                            "check": "daily_price_bounds_violation",
+                            "sample_symbols": ["00005.HK"],
+                        }
+                    ],
+                }
+            out_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(workflow, "_run", _fake_run)
+
+    exit_code = workflow.main(
+        [
+            "--phase",
+            "refresh",
+            "--phase",
+            "inspect",
+            "--phase",
+            "package",
+            "--refresh-asset",
+            "daily",
+            "--refresh-asset",
+            "daily_clean",
+            "--inspect-asset",
+            "daily",
+            "--inspect-asset",
+            "daily_clean",
+            "--part",
+            "daily",
+            "--target-date",
+            "20260402",
+        ]
+    )
+
+    assert exit_code == 0
+    assert any(cmd[1:3] == ["-m", "csml.release_tools.package_assets"] for cmd in calls)
+
+    report = json.loads(
+        (repo_root / "artifacts" / "reports" / "hk_asset_refresh_20260402.json").read_text(encoding="utf-8")
+    )
+    assert report["gate"]["enabled"] is True
+    assert report["gate"]["triggered"] is False
+    assert report["gate"]["blocked_alias_updates"] == []
+    assert report["gate"]["skipped_steps"] == []
+    assert report["gate"]["suppressed_triggered_assets"] == [
+        {
+            "asset_name": "daily",
+            "overall_severity": "error",
+            "severity_counts": {"error": 1, "warning": 0, "info": 0},
+            "report_path": str(repo_root / "artifacts" / "reports" / "hk_daily_health_20260402_full_history.json"),
+            "reason": "raw daily price-bounds-only issues are tolerated when daily_clean passes the gate",
+        }
+    ]
+
+
 def test_hk_asset_workflow_prints_health_summary_from_json_reports(tmp_path, monkeypatch, capsys):
     workflow = _load_module("csml.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"

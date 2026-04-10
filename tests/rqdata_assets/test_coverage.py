@@ -424,7 +424,7 @@ def test_inspect_hk_pit_coverage_include_health_reports_target_date_staleness(
     assert checks[("feature_stale_gt_180d_asof_target_date", "revenue")] == {
         "check": "feature_stale_gt_180d_asof_target_date",
         "field": "revenue",
-        "severity": "warning",
+        "severity": "info",
         "affected_symbols": 1,
         "affected_pct": 50.0,
         "sample_symbols": ["00011.HK"],
@@ -443,8 +443,8 @@ def test_inspect_hk_pit_coverage_include_health_reports_target_date_staleness(
         "issue_count": 2,
         "severity_counts": {
             "error": 1,
-            "warning": 1,
-            "info": 0,
+            "warning": 0,
+            "info": 1,
         },
         "fail_on_severity": "none",
         "gate_triggered": False,
@@ -513,3 +513,63 @@ def test_inspect_hk_pit_coverage_fail_on_severity_auto_enables_health(tmp_path, 
         "symbol_without_any_pit_row_before_target_date",
         "selected_feature_set_below_min_symbols_asof_target_date",
     ]
+
+def test_inspect_hk_pit_coverage_marks_gt_365d_as_warning(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    asset_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    fundamentals_path = asset_dir / "pipeline_fundamentals.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": ["20240320", "20250929"],
+            "symbol": ["00011.HK", "00005.HK"],
+            "revenue": [200.0, 100.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    by_date_file = repo_root / "artifacts" / "assets" / "universe" / "pit_gt365_by_date.csv"
+    by_date_file.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "trade_date": ["20250930", "20250930"],
+            "symbol": ["00005.HK", "00011.HK"],
+            "selected": [1, 1],
+        }
+    ).to_csv(by_date_file, index=False)
+
+    out_path = repo_root / "pit_gt365.json"
+    args = SimpleNamespace(
+        config=None,
+        asset_dir=str(asset_dir),
+        fundamentals_file=None,
+        field_profile=[],
+        field=["revenue"],
+        fields_file=[],
+        mode="strict",
+        include_health=True,
+        target_date="20250930",
+        symbols_file=None,
+        by_date_file=str(by_date_file),
+        health_sample_limit=3,
+        min_symbols=1,
+        top=10,
+        quarter_limit=12,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="warning",
+    )
+
+    assert rqdata_assets.inspect_hk_pit_coverage(args) == 2
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    checks = {(item["check"], item.get("field")): item for item in payload["health"]["quality_checks"]}
+    assert checks[("feature_stale_gt_365d_asof_target_date", "revenue")] == {
+        "check": "feature_stale_gt_365d_asof_target_date",
+        "field": "revenue",
+        "severity": "warning",
+        "affected_symbols": 1,
+        "affected_pct": 50.0,
+        "sample_symbols": ["00011.HK"],
+    }

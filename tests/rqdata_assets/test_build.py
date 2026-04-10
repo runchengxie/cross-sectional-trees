@@ -286,6 +286,114 @@ def test_build_hk_pit_fundamentals_file_normalizes_whitespace_fields_and_derives
     assert output_manifest["outputs"]["universe_by_date_file"] == str(research_universe_out)
     assert output_manifest["filtered_universe"]["symbols"] == 1
 
+def test_build_hk_pit_fundamentals_file_filters_universe_by_latest_report_age(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    manifest = {
+        "dataset": "pit_financials",
+        "query": {"fields": ["revenue"]},
+        "columns": [
+            "quarter",
+            "info_date",
+            "fiscal_year",
+            "standard",
+            "if_adjusted",
+            "rice_create_tm",
+            "revenue",
+            "symbol",
+        ],
+    }
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        {
+            "quarter": ["2024q4", "2025q2"],
+            "info_date": pd.to_datetime(["2025-03-20", "2025-08-20"]),
+            "fiscal_year": pd.to_datetime(["2024-12-31", "2025-12-31"]),
+            "standard": ["IFRS", "IFRS"],
+            "if_adjusted": [0, 0],
+            "rice_create_tm": pd.to_datetime(["2025-03-20 09:00:00", "2025-08-20 09:00:00"]),
+            "revenue": [100.0, 120.0],
+            "symbol": ["00005.HK", "00005.HK"],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "quarter": ["2024q4"],
+            "info_date": pd.to_datetime(["2025-03-20"]),
+            "fiscal_year": pd.to_datetime(["2024-12-31"]),
+            "standard": ["IFRS"],
+            "if_adjusted": [0],
+            "rice_create_tm": pd.to_datetime(["2025-03-20 09:00:00"]),
+            "revenue": [220.0],
+            "symbol": ["00011.HK"],
+        }
+    ).to_parquet(data_dir / "00011.HK.parquet", index=False)
+
+    source_universe = repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_by_date.csv"
+    source_universe.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "trade_date": ["20250131", "20250331", "20250331", "20251231", "20251231"],
+            "symbol": ["00005.HK", "00005.HK", "00011.HK", "00005.HK", "00011.HK"],
+            "selected": [1, 1, 1, 1, 1],
+        }
+    ).to_csv(source_universe, index=False)
+
+    out_path = repo_root / "artifacts" / "assets" / "fundamentals" / "pit_fundamentals_age_filtered.parquet"
+    research_universe_out = (
+        repo_root / "artifacts" / "assets" / "universe" / "hk_connect_full_research_by_date.csv"
+    )
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        field=[],
+        fields_file=[],
+        out=str(out_path),
+        source_universe_by_date=str(source_universe),
+        universe_by_date_out=str(research_universe_out),
+        symbols_out=None,
+        keep_meta=False,
+        duplicate_policy="keep-last",
+        max_latest_report_age_days=180,
+        force=False,
+    )
+
+    assert rqdata_assets.build_hk_pit_fundamentals_file(args) == 0
+
+    research_universe = pd.read_csv(research_universe_out)
+    assert research_universe["trade_date"].tolist() == [20250331, 20250331, 20251231]
+    assert research_universe["symbol"].tolist() == ["00005.HK", "00011.HK", "00005.HK"]
+
+    output_manifest = yaml.safe_load(
+        (
+            repo_root
+            / "artifacts"
+            / "assets"
+            / "fundamentals"
+            / "pit_fundamentals_age_filtered.manifest.yml"
+        ).read_text(encoding="utf-8")
+    )
+    assert output_manifest["query"]["max_latest_report_age_days"] == 180
+    assert output_manifest["filtered_universe"]["rows"] == 3
+    assert output_manifest["filtered_universe"]["latest_report_age_filter"] == {
+        "max_latest_report_age_days": 180,
+        "rows_before_age_filter": 5,
+        "rows_after_age_filter": 3,
+        "rows_dropped_no_pit_asof_trade_date": 1,
+        "rows_dropped_stale_latest_report": 1,
+        "sample_dropped_no_pit_asof_trade_date_symbols": ["00005.HK"],
+        "sample_dropped_stale_latest_report_symbols": ["00011.HK"],
+    }
+
 def test_build_hk_industry_labels_file_from_universe_grid(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "industry_changes" / "industry_demo"
