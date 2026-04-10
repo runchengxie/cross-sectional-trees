@@ -123,7 +123,7 @@ PRESETS = {
         "shares_snapshot": "hk_all_shares_latest",
         "exchange_rate_snapshot": "hk_all_2000_20260319_exchange_rate_latest",
         "southbound_snapshot": "hk_connect_southbound_latest",
-        "financial_details_snapshot": "hk_financial_details_portable_bundle_20260324",
+        "financial_details_snapshot": "hk_financial_details_latest",
         "announcement_snapshot": None,
         "industry_changes_snapshot": "hk_all_industry_changes_latest",
         "universe_by_date": "hk_all_full_by_date.csv",

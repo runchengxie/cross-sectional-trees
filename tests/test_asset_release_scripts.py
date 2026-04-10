@@ -82,6 +82,7 @@ def _prepare_demo_assets(repo_root: Path) -> None:
     financial_details_current = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "financial_details" / "hk_financial_details_portable_bundle_20260324"
     (financial_details_current / "data").mkdir(parents=True, exist_ok=True)
     (financial_details_current / "data" / "00005.HK.parquet").write_text("financial-details-current", encoding="utf-8")
+    _symlink(financial_details_current, financial_details_current.parent / "hk_financial_details_latest")
 
     ex_factors_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "ex_factors" / "ex_factors_demo"
     (ex_factors_dir / "data").mkdir(parents=True, exist_ok=True)

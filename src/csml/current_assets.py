@@ -30,7 +30,7 @@ HK_CURRENT_PATH_SPECS = {
         "rqdata",
         "hk",
         "financial_details",
-        "hk_financial_details_portable_bundle_20260324",
+        "hk_financial_details_latest",
     ),
     "industry_changes": ("assets", "rqdata", "hk", "industry_changes", "hk_all_industry_changes_latest"),
     "universe_by_date": ("assets", "universe", "hk_all_full_by_date.csv"),
