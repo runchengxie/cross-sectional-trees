@@ -1,0 +1,36 @@
+## Same quarterly hybrid research unit as the strong benchmark, but swap the
+## provider-sparse PIT income/growth block for denser balance-sheet and
+## freshness features that hold up better under current HK PIT coverage.
+extends:
+  - configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
+
+fundamentals:
+  features:
+    - total_assets
+    - total_liabilities
+  allow_missing_features: true
+
+features:
+  list:
+    - ret_60
+    - ret_120
+    - ret_240
+    - rv_60
+    - rv_120
+    - volume_sma20_ratio
+    - volume_sma60_ratio
+    - log_vol
+    - vol
+    - total_assets
+    - total_liabilities
+    - leverage
+    - days_since_report
+  missing:
+    features:
+      - total_assets
+      - total_liabilities
+      - leverage
+      - days_since_report
+
+eval:
+  run_name: hk_sel_q_variant_pit_core_hybrid_provider_dense_xgb_reg

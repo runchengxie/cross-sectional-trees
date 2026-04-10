@@ -42,6 +42,7 @@ read_current_path() { ... }
 所以它本身不需要当成“一条检查”去跑；更适合固化成脚本。仓库现在已经提供：
 
 * `scripts/dev/run_hk_health_checks.sh`
+* `scripts/dev/run_hk_pit_health.sh`
 
 这份脚本把上面的 helper 包起来了，不需要你再手动先定义 shell 函数。
 
@@ -84,7 +85,21 @@ bash scripts/dev/run_hk_health_checks.sh \
   --pit-config configs/experiments/baseline/hk_selected.yml
 ```
 
-脚本默认会产出：
+只想单独检查某个 PIT config 时：
+
+```bash
+bash scripts/dev/run_hk_pit_health.sh \
+  --target-date 20260409 \
+  --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_dense.yml \
+  --name provider_dense
+```
+
+单项 PIT 脚本默认会产出：
+
+* `artifacts/reports/hk_pit_health_<date>_<name>.json`
+* `artifacts/reports/health_logs/*_pit_health_<name>.log`
+
+批量脚本默认会产出：
 
 * `artifacts/reports/hk_current_health_<date>.json`
 * `artifacts/reports/hk_daily_clean_health_<date>.json`

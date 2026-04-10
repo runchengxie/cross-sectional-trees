@@ -83,6 +83,44 @@ def test_linear_provider_overlay_validate_variants_do_not_inherit_xgb_params():
     assert "learning_rate" not in elasticnet_params
 
 
+def test_provider_dense_quarterly_variant_replaces_sparse_pit_block():
+    cfg = resolve_pipeline_config(
+        "configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_dense.yml"
+    ).data
+
+    feature_list = cfg["features"]["list"]
+    missing_features = cfg["features"]["missing"]["features"]
+    fundamentals_features = cfg["fundamentals"]["features"]
+
+    assert cfg["eval"]["run_name"] == "hk_sel_q_variant_pit_core_hybrid_provider_dense_xgb_reg"
+    assert feature_list == [
+        "ret_60",
+        "ret_120",
+        "ret_240",
+        "rv_60",
+        "rv_120",
+        "volume_sma20_ratio",
+        "volume_sma60_ratio",
+        "log_vol",
+        "vol",
+        "total_assets",
+        "total_liabilities",
+        "leverage",
+        "days_since_report",
+    ]
+    assert missing_features == [
+        "total_assets",
+        "total_liabilities",
+        "leverage",
+        "days_since_report",
+    ]
+    assert fundamentals_features == ["total_assets", "total_liabilities"]
+    assert "sales" not in feature_list
+    assert "growth_sales" not in feature_list
+    assert "net_profit" not in feature_list
+    assert "cash_flow_from_operating_activities" not in feature_list
+
+
 def test_resolve_pipeline_config_normalizes_legacy_universe_to_research_universe(tmp_path):
     config_path = tmp_path / "legacy_universe.yml"
     config_path.write_text(
