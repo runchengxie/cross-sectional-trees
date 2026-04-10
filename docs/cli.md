@@ -446,6 +446,7 @@ csml rqdata mirror-hk-industry-changes --by-date-file artifacts/assets/universe/
 ```bash
 csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
 csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv --max-latest-report-age-days 365
+csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv --max-latest-report-age-days 365 --feature-age-config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_dense.yml --max-selected-feature-age-days 365
 ```
 
 说明：
@@ -453,6 +454,8 @@ csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit
 * `--source-universe-by-date` + `--universe-by-date-out` 会顺手派生一份 research-ready PIT universe。
 * `--max-latest-report-age-days` 只作用在这份派生 universe 上：它会按每个 `trade_date` 回看该 symbol 当时最近一条 PIT 披露，超过阈值的 symbol-date 会被剔除。
 * 这适合处理 “symbol 仍然有 PIT flat data，但最新披露已经过旧，不应该继续留在研究股票池里” 的场景。
+* `--feature-age-config` + `--max-selected-feature-age-days` 会再按 config 的 PIT-backed selected features 做 as-of 检查：任一 selected feature 缺少 as-of 非空值，或最近非空值超过阈值，都会剔除对应 symbol-date。
+* 这适合处理 “最新 PIT 行存在，但 config 需要的字段在最新行里长期为空” 的 provider coverage 场景。
 
 ### csml rqdata build-hk-industry-labels
 

@@ -260,6 +260,20 @@ csml rqdata build-hk-pit-fundamentals \
   --symbols-out artifacts/assets/universe/hk_connect_full_research_symbols.txt
 ```
 
+如果某个研究 config 已经收紧到一组更稳的 PIT selected features，可以再加 config-aware feature age 过滤：
+
+```bash
+csml rqdata build-hk-pit-fundamentals \
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet \
+  --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv \
+  --max-latest-report-age-days 365 \
+  --feature-age-config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_dense.yml \
+  --max-selected-feature-age-days 365 \
+  --symbols-out artifacts/assets/universe/hk_selected_pit_research_symbols.txt
+```
+
 这一步会做的事情：
 
 * 把 `trade_date` 映射为原始 PIT 行的 `info_date`
@@ -267,6 +281,7 @@ csml rqdata build-hk-pit-fundamentals \
 * 生成 pipeline 直接可读的 `pipeline_fundamentals.parquet`
 * 如果同时提供 `--source-universe-by-date` 和 `--universe-by-date-out`，再顺手派生一份“只保留本地确实有 PIT flat data 的 symbol”研究股票池
 * 如果再加 `--max-latest-report-age-days`，research universe 还会按每个 `trade_date` 回看 symbol 当时最近一条 PIT 披露，把过旧的 symbol-date 一起剔掉
+* 如果再加 `--feature-age-config` 和 `--max-selected-feature-age-days`，research universe 还会按 config 里的 PIT-backed selected features 检查每个 symbol-date 的 as-of 非空值年龄；任一 selected feature 缺失或过旧都会剔除该 symbol-date
 
 构建时还有几个常用参数：
 

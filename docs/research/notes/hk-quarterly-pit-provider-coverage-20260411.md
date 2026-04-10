@@ -88,3 +88,23 @@
   * `total_liabilities`
   * `leverage`
   * `days_since_report`
+
+配套处理：
+
+* `build-hk-pit-fundamentals` 支持 `--feature-age-config` + `--max-selected-feature-age-days`，可以按这份 variant 的 PIT-backed selected features 派生 config-aware research universe。
+* 这类过滤只作用于 `--universe-by-date-out`，不改 raw PIT mirror，也不改 `pipeline_fundamentals.parquet` 本体。
+* 典型用途是剔除类似 `09988.HK` 这种“最新 PIT 行存在，但 selected balance-sheet 字段最近一次非空值超过 365 天”的 symbol-date。
+
+示例：
+
+```bash
+csml rqdata build-hk-pit-fundamentals \
+  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
+  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet \
+  --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv \
+  --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv \
+  --max-latest-report-age-days 365 \
+  --feature-age-config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_dense.yml \
+  --max-selected-feature-age-days 365 \
+  --force
+```

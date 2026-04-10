@@ -705,6 +705,22 @@ def add_hk_pit_fundamentals_build_args(
         ),
     )
     parser.add_argument(
+        "--feature-age-config",
+        help=(
+            "Optional pipeline config whose PIT-backed features should be used for config-aware "
+            "universe filtering. Use with --max-selected-feature-age-days."
+        ),
+    )
+    parser.add_argument(
+        "--max-selected-feature-age-days",
+        type=int,
+        help=(
+            "Optional max age, in calendar days, between each universe trade_date and the latest "
+            "non-null value of every selected PIT-backed feature resolved from --feature-age-config. "
+            "Only applies when deriving --universe-by-date-out."
+        ),
+    )
+    parser.add_argument(
         "--symbols-out",
         help=(
             "Optional text file output with one canonical symbol per line for names present "
