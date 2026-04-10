@@ -1,9 +1,9 @@
 # HK 数据健康检查 Runbook
 
-本页解决什么：把 HK / RQData 本地资产健康检查整理成可直接复制执行的命令与脚本。  
-本页不解决什么：不重复展开每个 health 命令的全部参数定义。  
-适合谁：准备在本地批量跑资产体检、落 report / log、再让代理复核结果的人。  
-读完你会得到什么：一套从轻到重的检查顺序、可直接执行的脚本入口、以及逐条手动命令。  
+本页解决什么：把 HK / RQData 本地资产健康检查整理成可直接复制执行的命令与脚本。\
+本页不解决什么：不重复展开每个 health 命令的全部参数定义。\
+适合谁：准备在本地批量跑资产体检、落 report / log、再让代理复核结果的人。\
+读完你会得到什么：一套从轻到重的检查顺序、可直接执行的脚本入口、以及逐条手动命令。\
 相关页面：`docs/cli.md`、`docs/dev.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-intraday-assets.md`
 
 ## 先说结论
@@ -23,9 +23,7 @@
 * `pit-coverage --include-health` 回答的是“到目标调仓日为止，PIT 是否还能安全前推”。
 * intraday 检查 I/O 最重，应单独控制。
 
-## helper 片段要不要单独跑
-
-你之前那段：
+## helper 片段
 
 ```bash
 mkdir -p artifacts/reports artifacts/reports/health_logs
@@ -35,8 +33,6 @@ TARGET_DATE=20260409
 run_and_log() { ... }
 read_current_path() { ... }
 ```
-
-不是单独的健康检查命令。
 
 它做的是两件事：
 
