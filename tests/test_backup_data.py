@@ -205,6 +205,85 @@ def test_backup_data_hk_current_preset_copies_current_contract_and_resolved_asse
     }
 
 
+def test_backup_data_hk_current_preset_prunes_universe_file_and_directory_overlap(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    daily_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_2000_20260409_daily_clean"
+    daily_dir.mkdir(parents=True, exist_ok=True)
+    (daily_dir / "00005.HK.parquet").write_text("daily", encoding="utf-8")
+    (daily_dir / "manifest.yml").write_text("dataset: daily\n", encoding="utf-8")
+
+    universe_dir = repo_root / "artifacts" / "assets" / "universe"
+    universe_dir.mkdir(parents=True, exist_ok=True)
+    universe_by_date = universe_dir / "hk_all_full_by_date.csv"
+    universe_symbols = universe_dir / "hk_all_full_symbols.txt"
+    universe_meta = universe_dir / "hk_all_full_by_date.meta.yml"
+    universe_by_date.write_text("trade_date,symbol\n20260409,00005.HK\n", encoding="utf-8")
+    universe_symbols.write_text("00005.HK\n", encoding="utf-8")
+    universe_meta.write_text("generated_at: 2026-04-09\n", encoding="utf-8")
+
+    current_contract_path = repo_root / "artifacts" / "metadata" / "current_assets" / "hk_current.json"
+    current_contract_path.parent.mkdir(parents=True, exist_ok=True)
+    current_contract_path.write_text(
+        json.dumps(
+            {
+                "contract": {"name": "hk_current", "market": "hk", "version": 1},
+                "assets": {
+                    "daily_clean": {
+                        "resolved_path": str(daily_dir.resolve()),
+                        "manifest_path": str((daily_dir / "manifest.yml").resolve()),
+                        "exists": True,
+                    },
+                    "universe_by_date": {
+                        "resolved_path": str(universe_by_date.resolve()),
+                        "exists": True,
+                    },
+                    "universe_symbols": {
+                        "resolved_path": str(universe_symbols.resolve()),
+                        "exists": True,
+                    },
+                    "universe_meta": {
+                        "resolved_path": str(universe_meta.resolve()),
+                        "exists": True,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(repo_root)
+
+    assert (
+        backup_data.main(
+            [
+                "--out-root",
+                "artifacts/snapshots",
+                "--name",
+                "hk_current_with_universe",
+                "--preset",
+                "hk_current",
+                "--no-cache",
+            ]
+        )
+        == 0
+    )
+
+    snapshot_dir = repo_root / "artifacts" / "snapshots" / "hk_current_with_universe"
+    assert (snapshot_dir / "artifacts" / "assets" / "universe" / "hk_all_full_by_date.csv").exists()
+    assert (snapshot_dir / "artifacts" / "assets" / "universe" / "hk_all_full_symbols.txt").exists()
+    assert (snapshot_dir / "artifacts" / "assets" / "universe" / "hk_all_full_by_date.meta.yml").exists()
+
+    manifest = yaml.safe_load((snapshot_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["totals"]["paths"] == 3
+    assert manifest["selection"] == {
+        "preset": "hk_current",
+        "current_contract_path": str(current_contract_path.resolve()),
+        "current_asset_keys": ["daily_clean", "universe_by_date", "universe_symbols", "universe_meta"],
+    }
+
+
 def test_backup_data_places_repo_external_paths_under_external_prefix(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

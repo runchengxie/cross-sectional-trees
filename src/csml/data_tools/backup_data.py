@@ -70,6 +70,21 @@ def _copy_path(source: Path, target: Path) -> None:
         shutil.copy2(source, target)
 
 
+def _prune_nested_paths(paths: Iterable[Path]) -> list[Path]:
+    items = list(paths)
+    directory_paths = [
+        path
+        for path in items
+        if path.exists() and path.is_dir()
+    ]
+    pruned: list[Path] = []
+    for path in items:
+        if any(parent != path and path.is_relative_to(parent) for parent in directory_paths):
+            continue
+        pruned.append(path)
+    return pruned
+
+
 def _current_contract_backup_paths(
     *,
     repo_root: Path,
@@ -275,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
         if item not in seen:
             deduped.append(item)
             seen.add(item)
+    deduped = _prune_nested_paths(deduped)
 
     if not deduped:
         raise SystemExit("No paths selected for backup.")
