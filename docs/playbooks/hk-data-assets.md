@@ -83,6 +83,7 @@
 
 * `hk_connect_full_research_by_date.csv` 和 `hk_selected_pit_research_by_date.csv` 这两类 research universe，推荐从本地 `pipeline_fundamentals.parquet` 过滤派生，不要手工维护。
 * 当前仓库里的默认研究入口已经收口到这两组 research universe；`hk_connect_full_by_date.csv` 和 `hk_all_full_by_date.csv` 更偏原始或宽覆盖层。
+* 如果你只是想先确认 `hk_current` 是否整体对齐，优先跑 `csml rqdata inspect-hk-current-health`；它只看 current contract、alias 和 manifest，不会像全量 asset health 那样去扫大量 parquet。
 
 ## 先厘清一个最容易混淆的关系
 

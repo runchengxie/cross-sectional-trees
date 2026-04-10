@@ -118,6 +118,31 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 * `tests/test_provider_integration.py` 也带 `integration` 标记，但未设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时会自动 skip，所以“integration” 不等于真实 provider 在线联调。
 * 文档引用和公开入口契约现在也有测试兜底，主要看 `tests/test_docs_contracts.py` 和 `tests/test_run_tests_script.py`。
 
+## HK 资产健康检查脚本
+
+如果你只是想把本地 HK / RQData 资产健康检查批量跑完、统一落到 `artifacts/reports/`，优先用：
+
+```bash
+bash scripts/dev/run_hk_health_checks.sh --target-date 20260409
+```
+
+常见变体：
+
+```bash
+# 加上 intraday 检查
+bash scripts/dev/run_hk_health_checks.sh --target-date 20260409 --with-intraday
+
+# 额外生成维护者 workflow inspect report
+bash scripts/dev/run_hk_health_checks.sh --target-date 20260409 --with-workflow-inspect
+```
+
+说明：
+
+* 这不是公开 `csml` CLI，而是本地运维辅助脚本。
+* 它会优先从 `artifacts/metadata/current_assets/hk_current.json` 解析当前 `daily_clean`、`valuation`、`intraday` 路径。
+* 默认会产出 `current / daily_clean / valuation / pit` 四份 JSON report，并把 stdout / stderr 分别落到 `artifacts/reports/health_logs/`。
+* 逐条手动命令和 report 阅读顺序见 `docs/rqdata/hk-health-checks.md`。
+
 ## HK 资产维护 Driver
 
 如果你在做 HK + RQData 资产维护，而不是日常研究 / pipeline 开发，可以直接用维护者 driver：

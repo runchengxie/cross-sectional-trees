@@ -538,6 +538,39 @@ def test_cli_parses_rqdata_asset_commands():
     assert asset_health.out == "artifacts/reports/hk_asset_health.json"
     assert callable(asset_health.func)
 
+    current_health = parser.parse_args(
+        [
+            "rqdata",
+            "inspect-hk-current-health",
+            "--artifacts-root",
+            "artifacts",
+            "--current-contract",
+            "artifacts/metadata/current_assets/hk_current.json",
+            "--asset",
+            "daily_clean",
+            "--asset",
+            "universe_meta",
+            "--target-date",
+            "20260409",
+            "--fail-on-severity",
+            "warning",
+            "--format",
+            "json",
+            "--out",
+            "artifacts/reports/hk_current_health.json",
+        ]
+    )
+    assert current_health.command == "rqdata"
+    assert current_health.rq_command == "inspect-hk-current-health"
+    assert current_health.artifacts_root == "artifacts"
+    assert current_health.current_contract == "artifacts/metadata/current_assets/hk_current.json"
+    assert current_health.asset == ["daily_clean", "universe_meta"]
+    assert current_health.target_date == "20260409"
+    assert current_health.fail_on_severity == "warning"
+    assert current_health.format == "json"
+    assert current_health.out == "artifacts/reports/hk_current_health.json"
+    assert callable(current_health.func)
+
     intraday_health = parser.parse_args(
         [
             "rqdata",

@@ -21,6 +21,7 @@
 | 我想理解成本、滑点、`tr_close` 和现金分红假设 | `docs/concepts/execution-costs.md` |
 | 我想查输出目录、文件和字段 | `docs/outputs.md` |
 | 我想查 provider 差异、凭证和日期 token | `docs/providers.md` |
+| 我想批量跑 HK / RQData 本地资产健康检查，并把结果保存成 report / log | `docs/rqdata/hk-health-checks.md` |
 | 我想看 HK `5m` 分钟线现状、quota 和滑点校准文件 | `docs/playbooks/hk-intraday-assets.md` |
 | 我想理解为什么当前只保留四个模型，以及别的算法何时值得引入 | `docs/concepts/model-landscape.md` |
 | 我想查 HK / RQData 专题资料 | `docs/rqdata/README.md` |

@@ -971,6 +971,51 @@ def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
     _add_quality_gate_arg(parser)
 
 
+def add_hk_current_health_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--artifacts-root",
+        default="artifacts",
+        help=(
+            "Artifacts root used to resolve the default current contract and fallback alias paths. "
+            "Default: artifacts."
+        ),
+    )
+    parser.add_argument(
+        "--current-contract",
+        help=(
+            "Optional HK current contract path. Default: "
+            "<artifacts-root>/metadata/current_assets/hk_current.json."
+        ),
+    )
+    parser.add_argument(
+        "--asset",
+        action="append",
+        default=[],
+        help=(
+            "Optional HK current asset key to inspect. Repeatable. "
+            "Default: inspect all known hk_current assets."
+        ),
+    )
+    parser.add_argument(
+        "--target-date",
+        help=(
+            "Optional target date in YYYYMMDD. Default: current_contract.target_date when available, "
+            "else max asset as_of."
+        ),
+    )
+    parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format. Default: text.",
+    )
+    parser.add_argument(
+        "--out",
+        help="Optional output path. Default: print to stdout.",
+    )
+    _add_quality_gate_arg(parser)
+
+
 def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--input",

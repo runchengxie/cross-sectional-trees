@@ -507,6 +507,22 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valua
 * 对 `valuation` 资产，如果同时传 `--daily-asset-dir`，历史 stale-run 检查会用本地 `daily close` 做去噪：只有在对应 run 期间 `close` 发生变化的常数段才继续报出来，长期停牌 / 无交易导致的平价常数段会被抑制。
 * JSON 输出会额外给出统一的 `quality_verdict`；需要阻断时可用 `--fail-on-severity none|info|warning|error`。
 
+### csml rqdata inspect-hk-current-health
+
+轻量检查 `hk_current` contract 和当前 alias 是否整体对齐，不扫描大 parquet。
+
+```bash
+csml rqdata inspect-hk-current-health
+csml rqdata inspect-hk-current-health --asset daily_clean --asset valuation --asset universe_meta --target-date 20260409 --format json --out artifacts/reports/hk_current_health_20260409.json
+```
+
+说明：
+
+* 默认读取 `artifacts/metadata/current_assets/hk_current.json`；如果 contract 缺失，会回退到 `artifacts/` 下的默认 alias 路径继续检查，并把 `current_contract_missing` 记成质量问题。
+* 它优先回答“current 是否整体对齐”，例如 alias 是否存在、manifest 状态是否健康、`as_of` 是否落后于目标日、`universe_meta` 的 `last_rebalance_date` 是否落后。
+* 这条命令适合作为大范围 parquet 扫描前的第一道轻检查，尤其适合笔记本环境或 agent 上下文容易被大文件拖垮的场景。
+* 命中 `--fail-on-severity` 时，命令会和其他 health 检查一样以非零退出。
+
 ### csml rqdata sync-hk-intraday
 
 串起 HK `5m` 的常用维护路径：先下载本地 intraday cache，再跑健康检查，通过后把这批 cache 提升成正式 `intraday` 资产并更新 `hk_intraday_latest`；只有显式加 `--package` / `--release` 时，才继续做 tarball / GitHub Release。

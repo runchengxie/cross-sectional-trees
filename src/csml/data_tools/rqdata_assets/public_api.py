@@ -215,6 +215,7 @@ from .coverage import (
     inspect_hk_pit_coverage,
 )
 from .asset_health import inspect_hk_asset_health
+from .current_health import inspect_hk_current_health
 from .clean_daily import build_hk_daily_clean_layer
 from .intraday_health import inspect_hk_intraday_health
 from .intraday_asset import build_hk_intraday_asset
@@ -404,6 +405,10 @@ def add_hk_pit_coverage_args(parser: argparse.ArgumentParser) -> None:
 
 def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_asset_health_args(parser)
+
+
+def add_hk_current_health_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_current_health_args(parser)
 
 
 def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:

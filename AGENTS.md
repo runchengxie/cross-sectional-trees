@@ -93,6 +93,18 @@ uv sync --extra dev --extra rqdata
 * 检查 / 健康 / 校准报告：`artifacts/reports/`
 * 详见 `artifacts/metadata/dataset_registry.csv` 数据集索引。
 
+## 大数据检查约定
+
+* 对 `artifacts/assets/`、`artifacts/cache/` 下的大型 parquet / `.parts/` 目录，默认不要让代理直接做整块读取后再在会话里展开结果。
+* 优先使用仓库内置健康检查入口落结构化报告，再读取小型 JSON / text 结果：
+  * `csml rqdata inspect-hk-current-health`
+  * `csml rqdata inspect-hk-asset-health`
+  * `csml rqdata inspect-hk-intraday-health`
+  * `csml rqdata inspect-hk-pit-coverage --include-health`
+* 对 intraday 数据，优先把正式资产目录或同名 `.parts/` 目录传给检查命令，不要默认直扫合并后的超大 parquet。
+* 需要保留检查痕迹时，优先使用 `--format json --out artifacts/reports/<name>.json`，并额外把 stdout / stderr 重定向到日志文件，避免只在交互上下文里看结果。
+* 如果检查预计会扫描大量数据或运行很久，优先由用户本地执行命令并把 `artifacts/reports/*.json` 与对应 log 提供给代理复核；不要默认在代理会话里直接重跑整套重 I/O 检查。
+
 ## 编辑与验证
 
 * 搜索优先用 `rg`。

@@ -10,6 +10,7 @@ from .asset_health import inspect_hk_asset_health
 from .build import build_hk_industry_labels_file, build_hk_pit_fundamentals_file
 from .clean_daily import build_hk_daily_clean_layer
 from .coverage import inspect_hk_pit_coverage
+from .current_health import inspect_hk_current_health
 from .industry_ops import (
     DEFAULT_HK_INDUSTRY_CHANGE_LEVEL,
     DEFAULT_HK_INDUSTRY_SOURCE,
@@ -226,6 +227,10 @@ def _add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_asset_health_args(parser)
 
 
+def _add_hk_current_health_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_current_health_args(parser)
+
+
 def _add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_intraday_health_args(parser)
 
@@ -376,6 +381,12 @@ def rqdata_asset_command_specs() -> Sequence[RQDataAssetCommandSpec]:
             help="Inspect local HK asset snapshots for latest-date coverage and field-level gaps",
             add_args=_add_hk_asset_health_args,
             runner=inspect_hk_asset_health,
+        ),
+        RQDataAssetCommandSpec(
+            name="inspect-hk-current-health",
+            help="Inspect hk_current contract and alias alignment without scanning large parquet assets",
+            add_args=_add_hk_current_health_args,
+            runner=inspect_hk_current_health,
         ),
         RQDataAssetCommandSpec(
             name="inspect-hk-intraday-health",
