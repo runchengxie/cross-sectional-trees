@@ -13,7 +13,7 @@ from ..artifacts import cache_dir_for
 from ..artifacts import resolve_configured_artifacts_root
 from ..artifacts import resolve_repo_path
 from ..artifacts import runs_dir_for
-from ..config_utils import resolve_pipeline_config
+from ..config_utils import get_research_universe_config, resolve_pipeline_config
 from ..data_providers import normalize_market, resolve_provider
 from ..date_utils import is_relative_date_token as _is_relative_date_token
 from ..date_utils import resolve_date_token as _resolve_date_token
@@ -44,7 +44,7 @@ def load_run_config(
     )
     data_cfg = config.get("data", {})
     market = normalize_market(config.get("market") or data_cfg.get("market"))
-    universe_cfg = config.get("universe", {})
+    universe_cfg = get_research_universe_config(config)
     label_cfg = config.get("label", {})
     features_cfg = config.get("features", {})
     fundamentals_cfg = config.get("fundamentals", {})
@@ -94,7 +94,7 @@ def resolve_universe_inputs(
     universe_cfg = universe_cfg if isinstance(universe_cfg, Mapping) else {}
     universe_mode = str(universe_cfg.get("mode", "auto")).strip().lower()
     if universe_mode not in {"auto", "pit", "static"}:
-        raise SystemExit("universe.mode must be one of: auto, pit, static.")
+        raise SystemExit("research_universe.mode must be one of: auto, pit, static.")
     require_by_date = bool(universe_cfg.get("require_by_date", False))
 
     symbols = normalize_symbol_list(universe_cfg.get("symbols"))
@@ -119,18 +119,20 @@ def resolve_universe_inputs(
         universe_mode_effective = "pit"
         if universe_mode == "static":
             logger.warning(
-                "universe.mode=static but by_date_file provided; using PIT universe."
+                "research_universe.mode=static but by_date_file provided; using PIT universe."
             )
     else:
         if require_by_date or universe_mode == "pit":
             raise SystemExit(
-                "universe.by_date_file is required when universe.mode=pit or require_by_date=true."
+                "research_universe.by_date_file is required when "
+                "research_universe.mode=pit or require_by_date=true."
             )
         universe_mode_effective = "static"
         if universe_mode == "auto":
             logger.warning(
                 "Universe-by-date not provided; using static symbols (survivorship bias). "
-                "Set universe.mode=static to acknowledge or provide by_date_file for PIT."
+                "Set research_universe.mode=static to acknowledge or provide by_date_file "
+                "for PIT."
             )
 
     if not symbols:

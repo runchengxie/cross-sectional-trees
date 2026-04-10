@@ -25,7 +25,7 @@
 
 这里最容易混淆的是，`PIT` 可能同时出现在三层语义里：
 
-* `PIT universe`：按日期变化的股票池成员关系，通常通过 `universe.by_date_file` 体现。
+* `PIT universe`：按日期变化的股票池成员关系，通常通过 `research_universe.by_date_file` 体现。
 * `PIT fundamentals`：按披露节奏对齐的本地财务平面文件，通常通过 `fundamentals.source=file` + `pipeline_fundamentals.parquet` 体现。
 * `季度 PIT 研究路线`：在同一研究单元里，把 `Q` 频率、PIT 财务字段和 benchmark protocol 组合起来的一整条正式研究路线。
 
@@ -55,7 +55,7 @@ configs/
 | `market` | 市场 | `hk` |
 | `paths` | 产物根目录与 metadata / warehouse 默认路径 | `artifacts_root`, `metadata_db_path`, `warehouse_db_path` |
 | `data` | 数据源、日期、缓存 | `provider`, `start_date`, `end_date`, `cache_tag` |
-| `universe` | 股票池 | `mode`, `by_date_file`, `symbols` |
+| `research_universe` | 股票池 | `mode`, `by_date_file`, `symbols` |
 | `fundamentals` | 基本面 | `enabled`, `source`, `features` |
 | `label` | 标签 | `target_col`, `horizon_days`, `rebalance_frequency`, `shift_days` |
 | `features` | 特征 | `list`, `windows`, `missing` |
@@ -119,7 +119,7 @@ data:
 ### 股票池
 
 ```yaml
-universe:
+research_universe:
   mode: static           # auto / pit / static
   symbols:               # static 模式用
     - 00700.HK
@@ -127,6 +127,10 @@ universe:
   # pit 模式用
   # by_date_file: artifacts/assets/universe/hk_connect_by_date.csv
 ```
+
+补充：
+
+* 旧键 `universe` 仍然兼容，但新的内置模板和 `config.used.yml` 会统一写成 `research_universe`。
 
 ### 模型
 
@@ -374,7 +378,7 @@ logging:
 
 说明：
 
-* 若同时启用 `universe.by_date_file`，选股样本仍按 PIT universe 过滤。
+* 若同时启用 `research_universe.by_date_file`，选股样本仍按 PIT universe 过滤。
 * 回测的 entry/exit 定价与 `tradable` 检查会使用未经过 `universe_by_date` 过滤的日线价格面板，避免已持仓股票在持有期内因 universe 变化而“消失”。
 * `backtest.group_col + max_names_per_group` 是组合构造阶段的最小版暴露约束，不会改变模型打分，也不等于完整行业中性化。
 * `backtest.execution` 会在 `transaction_cost_bps`、`exit_price_policy` 和 `data.price_col` 之上做更细的 execution 建模；不配时仍沿用原有默认行为。

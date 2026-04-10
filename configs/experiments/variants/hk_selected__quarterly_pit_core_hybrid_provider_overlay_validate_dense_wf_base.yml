@@ -34,7 +34,7 @@ fundamentals:
     auto_add_features: true
     required: true
 
-universe:
+research_universe:
   by_date_file: artifacts/assets/universe/universe_by_date.csv
 
 features:

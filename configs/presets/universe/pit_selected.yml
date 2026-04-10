@@ -1,5 +1,5 @@
 # PIT Universe Preset
-universe:
+research_universe:
   mode: "pit"
   require_by_date: true
   symbols: []

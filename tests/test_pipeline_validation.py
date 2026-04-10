@@ -413,7 +413,7 @@ def test_hk_benchmark_protocol_configs_align_research_unit():
     for variant_cfg in (ridge_cfg, ranker_cfg, elasticnet_cfg):
         assert variant_cfg["fundamentals"] == hybrid_cfg["fundamentals"]
         assert variant_cfg["features"] == hybrid_cfg["features"]
-        assert variant_cfg["universe"] == hybrid_cfg["universe"]
+        assert variant_cfg["research_universe"] == hybrid_cfg["research_universe"]
         assert variant_cfg["backtest"] == hybrid_cfg["backtest"]
 
     assert ridge_cfg["model"]["type"] == "ridge"

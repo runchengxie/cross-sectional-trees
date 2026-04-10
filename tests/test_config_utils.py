@@ -83,6 +83,90 @@ def test_linear_provider_overlay_validate_variants_do_not_inherit_xgb_params():
     assert "learning_rate" not in elasticnet_params
 
 
+def test_resolve_pipeline_config_normalizes_legacy_universe_to_research_universe(tmp_path):
+    config_path = tmp_path / "legacy_universe.yml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "market": "hk",
+                "universe": {
+                    "mode": "pit",
+                    "by_date_file": "artifacts/assets/universe/demo_by_date.csv",
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_pipeline_config(str(config_path)).data
+
+    assert "universe" not in resolved
+    assert resolved["research_universe"]["mode"] == "pit"
+    assert (
+        resolved["research_universe"]["by_date_file"]
+        == "artifacts/assets/universe/demo_by_date.csv"
+    )
+
+
+def test_resolve_pipeline_config_allows_research_universe_to_override_legacy_base(tmp_path):
+    base = tmp_path / "base.yml"
+    child = tmp_path / "child.yml"
+
+    base.write_text(
+        yaml.safe_dump(
+            {
+                "market": "hk",
+                "universe": {
+                    "mode": "pit",
+                    "by_date_file": "artifacts/assets/universe/base_by_date.csv",
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    child.write_text(
+        yaml.safe_dump(
+            {
+                "extends": "base.yml",
+                "research_universe": {
+                    "mode": "pit",
+                    "by_date_file": "artifacts/assets/universe/child_by_date.csv",
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_pipeline_config(str(child)).data
+
+    assert "universe" not in resolved
+    assert (
+        resolved["research_universe"]["by_date_file"]
+        == "artifacts/assets/universe/child_by_date.csv"
+    )
+
+
+def test_resolve_pipeline_config_rejects_conflicting_research_universe_keys(tmp_path):
+    config_path = tmp_path / "conflict.yml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "market": "hk",
+                "universe": {"mode": "pit"},
+                "research_universe": {"mode": "static"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="both research_universe and legacy universe"):
+        resolve_pipeline_config(str(config_path))
+
+
 def test_pipeline_aliases_fail_fast_when_repo_configs_are_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(config_utils, "_iter_repo_root_candidates", lambda: [tmp_path])
 

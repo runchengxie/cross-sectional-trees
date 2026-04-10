@@ -226,6 +226,101 @@ def test_pipeline_run_offline(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
+def test_pipeline_run_writes_research_universe_to_config_used(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=40, freq="B")
+    symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]
+    frames = _build_daily_frames(symbols, dates)
+
+    def fake_init_client(self):
+        self.client = None
+
+    def fake_fetch_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return frames[symbol].copy()
+
+    def fake_load_basic(self, symbols=None) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    monkeypatch.setattr(DataInterface, "_init_client", fake_init_client)
+    monkeypatch.setattr(DataInterface, "fetch_daily", fake_fetch_daily)
+    monkeypatch.setattr(DataInterface, "load_basic", fake_load_basic)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20200101",
+            "end_date": "20200228",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "research_universe": {
+            "mode": "static",
+            "require_by_date": False,
+            "symbols": symbols,
+            "min_symbols_per_date": 3,
+            "drop_suspended": True,
+            "suspended_policy": "mark",
+        },
+        "fundamentals": {"enabled": False},
+        "label": {
+            "horizon_mode": "next_rebalance",
+            "rebalance_frequency": "W",
+            "horizon_days": 5,
+            "shift_days": 1,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["sma_5"],
+            "params": {"sma_windows": [5]},
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "ridge",
+            "params": {"alpha": 1.0},
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 3,
+            "rebalance_frequency": "W",
+            "top_k": 2,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": False,
+            "output_dir": str(output_dir),
+            "run_name": "e2e_research_universe",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {
+            "enabled": True,
+            "top_k": 2,
+            "rebalance_frequency": "W",
+            "transaction_cost_bps": 0,
+            "long_only": True,
+            "exit_mode": "rebalance",
+            "exit_price_policy": "delay",
+        },
+    }
+
+    config_path = tmp_path / "config_research_universe.yml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    pipeline.run(str(config_path))
+
+    run_dirs = list(Path(output_dir).glob("e2e_research_universe_*"))
+    assert len(run_dirs) == 1
+    config_used = yaml.safe_load((run_dirs[0] / "config.used.yml").read_text(encoding="utf-8"))
+    assert "research_universe" in config_used
+    assert "universe" not in config_used
+    assert config_used["research_universe"]["symbols"] == symbols
+
+
+@pytest.mark.integration
 def test_pipeline_run_with_local_rqdata_assets_smoke(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=60, freq="B")
     symbols = ["AAA", "BBB", "CCC", "DDD", "EEE"]

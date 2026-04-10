@@ -192,7 +192,7 @@ def add_hk_daily_mirror_args(
 ) -> None:
     _add_rqdata_credentials_args(
         parser,
-        config_help="Optional config path or alias for rqdata.init and default universe.",
+        config_help="Optional config path or alias for rqdata.init and default research universe.",
     )
     parser.add_argument("--start-date", required=True, help="Date range start, for example 20000101.")
     parser.add_argument("--end-date", required=True, help="Date range end, for example 20260311.")
@@ -211,8 +211,8 @@ def add_hk_daily_mirror_args(
     _add_hk_symbol_selection_args(
         parser,
         symbol_help="HK symbol to mirror, for example 00005.HK. Repeatable.",
-        symbols_file_help="Text file with one HK symbol per line. If provided, this takes precedence over config universe symbols.",
-        by_date_file_help="Universe-by-date CSV. If provided, this takes precedence over config universe symbols.",
+        symbols_file_help="Text file with one HK symbol per line. If provided, this takes precedence over config research_universe symbols.",
+        by_date_file_help="Universe-by-date CSV. If provided, this takes precedence over config research_universe symbols.",
     )
     parser.add_argument(
         "--adjust-type",
@@ -290,7 +290,7 @@ def add_hk_dated_mirror_args(
 ) -> None:
     _add_rqdata_credentials_args(
         parser,
-        config_help="Optional config path or alias for rqdata.init and default universe.",
+        config_help="Optional config path or alias for rqdata.init and default research universe.",
     )
     parser.add_argument("--start-date", required=True, help="Date range start, for example 20000101.")
     parser.add_argument("--end-date", required=True, help="Date range end, for example 20260317.")
@@ -310,8 +310,8 @@ def add_hk_dated_mirror_args(
     _add_hk_symbol_selection_args(
         parser,
         symbol_help="HK symbol to mirror, for example 00005.HK. Repeatable.",
-        symbols_file_help="Text file with one HK symbol per line. If provided, this takes precedence over config universe symbols.",
-        by_date_file_help="Universe-by-date CSV. If provided, this takes precedence over config universe symbols.",
+        symbols_file_help="Text file with one HK symbol per line. If provided, this takes precedence over config research_universe symbols.",
+        by_date_file_help="Universe-by-date CSV. If provided, this takes precedence over config research_universe symbols.",
     )
     parser.add_argument(
         "--batch-size",
@@ -472,14 +472,14 @@ def add_hk_southbound_mirror_args(
 ) -> None:
     _add_rqdata_credentials_args(
         parser,
-        config_help="Optional config path or alias for rqdata.init and default universe.",
+        config_help="Optional config path or alias for rqdata.init and default research universe.",
     )
     parser.add_argument("--start-date", required=True, help="Date range start, for example 20141117.")
     parser.add_argument("--end-date", required=True, help="Date range end, for example 20260318.")
     _add_hk_symbol_selection_args(
         parser,
         symbol_help="HK symbol to keep, for example 00005.HK. Repeatable.",
-        symbols_file_help="Text file with one HK symbol per line. If provided, this takes precedence over config universe symbols.",
+        symbols_file_help="Text file with one HK symbol per line. If provided, this takes precedence over config research_universe symbols.",
         by_date_file_help="Universe-by-date CSV. If provided, both symbols and query dates are resolved from this file.",
     )
     parser.add_argument(
@@ -592,7 +592,7 @@ def add_hk_financial_mirror_args(
 ) -> None:
     _add_rqdata_credentials_args(
         parser,
-        config_help="Optional config path or alias for rqdata.init and default universe.",
+        config_help="Optional config path or alias for rqdata.init and default research universe.",
     )
     parser.add_argument("--start-quarter", required=True, help="Quarter range start, for example 2011q1.")
     parser.add_argument("--end-quarter", required=True, help="Quarter range end, for example 2025q4.")
@@ -628,8 +628,8 @@ def add_hk_financial_mirror_args(
     _add_hk_symbol_selection_args(
         parser,
         symbol_help="HK symbol to mirror, for example 00005.HK. Repeatable.",
-        symbols_file_help="Text file with one HK symbol per line. If provided, this takes precedence over config universe symbols.",
-        by_date_file_help="Universe-by-date CSV. If provided, this takes precedence over config universe symbols.",
+        symbols_file_help="Text file with one HK symbol per line. If provided, this takes precedence over config research_universe symbols.",
+        by_date_file_help="Universe-by-date CSV. If provided, this takes precedence over config research_universe symbols.",
     )
     parser.add_argument(
         "--batch-size",
@@ -833,7 +833,7 @@ def add_hk_pit_coverage_args(parser: argparse.ArgumentParser) -> None:
         "--target-date",
         help=(
             "Optional target date in YYYYMMDD for PIT health. "
-            "Default: latest date from --by-date-file or config universe.by_date_file when available, "
+            "Default: latest date from --by-date-file or config research_universe.by_date_file when available, "
             "else max trade_date in pipeline_fundamentals.parquet."
         ),
     )
@@ -848,7 +848,7 @@ def add_hk_pit_coverage_args(parser: argparse.ArgumentParser) -> None:
         "--by-date-file",
         help=(
             "Optional universe-by-date CSV for PIT health. "
-            "When omitted, defaults to config universe.by_date_file if available."
+            "When omitted, defaults to config research_universe.by_date_file if available."
         ),
     )
     parser.add_argument(

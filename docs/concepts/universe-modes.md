@@ -25,7 +25,7 @@
 - `default` 模板默认用这个模式
 
 ```yaml
-universe:
+research_universe:
   mode: static
   symbols:
     - 00700.HK
@@ -39,7 +39,7 @@ universe:
 - 不想自己维护股票池文件
 
 ```yaml
-universe:
+research_universe:
   mode: auto
   index_code: 000300.SH  # 如需沪深300成分
 ```
@@ -51,7 +51,7 @@ universe:
 - 港股通 PIT 研究
 
 ```yaml
-universe:
+research_universe:
   mode: pit
   by_date_file: artifacts/assets/universe/hk_connect_by_date.csv
 ```

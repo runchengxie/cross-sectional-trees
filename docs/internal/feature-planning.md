@@ -46,7 +46,7 @@
 
 | 模块 | 已实现能力 | 关键参数入口 | 典型风险点 |
 | --- | --- | --- | --- |
-| Universe | `auto/pit/static` 股票池，按日期过滤、停牌/上市天数/成交额过滤 | `universe.*` | 过滤顺序改变结果；PIT 数据缺失 |
+| Universe | `auto/pit/static` 股票池，按日期过滤、停牌/上市天数/成交额过滤 | `research_universe.*` | 过滤顺序改变结果；PIT 数据缺失 |
 | Data | `rqdata`，HK symbol 规则，缓存与重试；支持直接读取本地 daily/instruments 资产 | `market`、`data.*` | 在线/离线双路径结果漂移 |
 | Fundamentals | `provider/file` 两路并入，列映射、`ffill`、缺失策略；支持 `provider_overlay` 叠加 provider 日频估值 | `fundamentals.*` | provider 能力不对齐；PIT 与日频估值 merge 口径不一致 |
 | Industry | 支持从本地 `industry_labels_<freq>.parquet` join 行业标签 | `industry.*` | 行业标签频率与研究频率错配 |

@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from ...config_utils import resolve_pipeline_config
+from ...config_utils import get_research_universe_config, resolve_pipeline_config
 from ...rebalance import get_rebalance_dates
 from ..symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from .build import (
@@ -115,7 +115,7 @@ def _resolve_health_by_date_path(
     if explicit:
         return _resolve_path(explicit), "explicit_by_date_file"
     if isinstance(config_data, Mapping):
-        universe_cfg = config_data.get("universe")
+        universe_cfg = get_research_universe_config(config_data)
         if isinstance(universe_cfg, Mapping):
             path_text = universe_cfg.get("by_date_file")
             if path_text:
@@ -828,7 +828,7 @@ def _estimate_trainable_pit_coverage(
     settings = _resolve_trainable_pit_settings(config_data, selected_features=selected_features)
     rebalance_frequency = str(settings["rebalance_frequency"])
 
-    universe_cfg = config_data.get("universe") if isinstance(config_data, Mapping) else None
+    universe_cfg = get_research_universe_config(config_data)
     universe_cfg = universe_cfg if isinstance(universe_cfg, Mapping) else {}
     universe_by_date = None
     universe_by_date_file = universe_cfg.get("by_date_file")
@@ -1393,7 +1393,7 @@ def inspect_hk_pit_coverage(args) -> int:
         )
     min_symbols = getattr(args, "min_symbols", None)
     if min_symbols is None and isinstance(config_data, Mapping):
-        universe_cfg = config_data.get("universe")
+        universe_cfg = get_research_universe_config(config_data)
         if isinstance(universe_cfg, Mapping):
             min_symbols = universe_cfg.get("min_symbols_per_date")
     if min_symbols is None:

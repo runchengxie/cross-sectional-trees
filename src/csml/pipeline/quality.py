@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..artifacts import resolve_repo_path
-from ..config_utils import resolve_pipeline_config
+from ..config_utils import get_research_universe_config, resolve_pipeline_config
 from ..data_tools import rqdata_assets
 from ..data_tools.rqdata_assets.quality_gate import (
     normalize_fail_on_severity,
@@ -73,7 +73,7 @@ def _build_hk_pit_preflight_args(
     if not fundamentals_file:
         return None
 
-    universe_cfg = _mapping(config.get("universe"))
+    universe_cfg = _mapping(get_research_universe_config(config))
     quality_cfg = _mapping(config.get("quality"))
     by_date_file = universe_cfg.get("by_date_file")
     min_symbols = universe_cfg.get("min_symbols_per_date")

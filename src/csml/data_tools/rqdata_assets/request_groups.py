@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from ...artifacts import RQDATA_ASSETS_DIR as DEFAULT_RQDATA_ASSETS_DIR
-from ...config_utils import resolve_pipeline_config
+from ...config_utils import get_research_universe_config, resolve_pipeline_config
 from ...data_providers import _to_rqdata_symbol
 from ..symbols import ensure_symbol_columns
 from .models import DatedRequestGroup
@@ -31,9 +31,9 @@ _HK_INSTRUMENTS_FRAME_CACHE: dict[Path, pd.DataFrame] = {}
 def _resolve_symbols_from_config(config_ref: str) -> tuple[list[str], dict]:
     resolved = resolve_pipeline_config(config_ref)
     cfg = resolved.data
-    universe_cfg = cfg.get("universe") if isinstance(cfg, Mapping) else None
-    if not isinstance(universe_cfg, Mapping):
-        raise SystemExit("Config is missing universe settings.")
+    universe_cfg = get_research_universe_config(cfg)
+    if not isinstance(universe_cfg, Mapping) or not universe_cfg:
+        raise SystemExit("Config is missing research_universe settings.")
 
     symbols: list[str] = []
     raw_symbols = universe_cfg.get("symbols")
@@ -79,7 +79,8 @@ def _resolve_symbols(args) -> tuple[list[str], dict]:
         symbols, metadata = _resolve_symbols_from_config(args.config)
     else:
         raise SystemExit(
-            "Provide --symbol/--symbols-file/--by-date-file, or pass --config with universe settings."
+            "Provide --symbol/--symbols-file/--by-date-file, or pass --config with "
+            "research_universe settings."
         )
 
     normalized = _dedupe_preserve_order(_normalize_hk_symbol(symbol) for symbol in symbols)

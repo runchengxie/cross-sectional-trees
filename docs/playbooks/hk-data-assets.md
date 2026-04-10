@@ -86,9 +86,9 @@
 
 ## 先厘清一个最容易混淆的关系
 
-`universe.by_date_file` 和本地数据资产控制的是两件不同的事：
+`research_universe.by_date_file` 和本地数据资产控制的是两件不同的事：
 
-1. `universe.by_date_file` 控制的是某只股票在哪些日期能进入研究样本。
+1. `research_universe.by_date_file` 控制的是某只股票在哪些日期能进入研究样本。
 2. daily / PIT / southbound / industry 这类镜像资产控制的是本地保留了这只股票多长的历史。
 
 对港股通 PIT universe 来说，这一点尤其关键：
@@ -180,7 +180,7 @@ csml universe hk-daily-assets \
 
 1. 先镜像一份 full-market daily。
 2. 再跑 `csml universe hk-daily-assets` 派生 `hk_all_full_by_date.csv`。
-3. 需要完全离线时，把配置里的 `universe.by_date_file` 指到 `artifacts/assets/universe/hk_all_full_by_date.csv`。
+3. 需要完全离线时，把配置里的 `research_universe.by_date_file` 指到 `artifacts/assets/universe/hk_all_full_by_date.csv`。
 4. 同时补好 `data.rqdata.daily_asset_dir` 和 `data.rqdata.instruments_file`。
 
 ### 4. 为什么不推荐为了复权再单独重跑一套日线
@@ -780,7 +780,7 @@ data:
   rqdata:
     daily_asset_dir: "/path/to/extract/daily/rqdata/hk/daily/latest"
     instruments_file: "/path/to/extract/instruments/rqdata/hk/instruments/latest.parquet"
-universe:
+research_universe:
   by_date_file: "/path/to/extract/universe/universe/latest_by_date.csv"
 fundamentals:
   source: file

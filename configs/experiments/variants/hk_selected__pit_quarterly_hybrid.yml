@@ -56,7 +56,7 @@ fundamentals:
   ffill: true
   ffill_limit: null
   log_market_cap: false
-universe:
+research_universe:
   mode: pit
   require_by_date: true
   symbols: []

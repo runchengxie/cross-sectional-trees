@@ -97,7 +97,7 @@ csml rqdata inspect-hk-pit-coverage \
 如果 `periods_after_missing_fill=0`，说明即使做了横截面填补，仍然没有足够的季度样本。
 
 **处理方式**：
-1. 放宽 `universe.min_symbols_per_date`
+1. 放宽 `research_universe.min_symbols_per_date`
 2. 减少 PIT 特征数量
 3. 回到资产准备阶段，补全缺失的财报数据
 

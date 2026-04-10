@@ -116,7 +116,7 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 
 先分清楚三件事：
 
-* monthly 研究边界优先由 `universe.by_date_file` 决定，不是 raw daily 或 PIT 文件的最早日期。
+* monthly 研究边界优先由 `research_universe.by_date_file` 决定，不是 raw daily 或 PIT 文件的最早日期。
 * 在当前港股通 PIT monthly 研究池里，可用 rebalance dates 是 `2015-01-30 -> 2026-03-27`，共 `135` 个。
 * 在 `label.horizon_mode=next_rebalance + shift_days=1` 下，最新完整可标注的 monthly 点是 `2026-01-30`，不是 `2026-03-27`。
 
@@ -386,7 +386,7 @@ uv run python -m csml.research.hk_selected_provider_valuation_audit \
 
 * 仓库只把核心研究单元维护成官方模板；研究矩阵里其余格子需要本地派生
 * 季度和年度路线仍然读取日线行情；低频设定改的是标签、评估和回测的 rebalance 频率
-* `universe.by_date_file` 控制的是某只股票在哪些日期能进入研究样本；本地日线和 PIT 资产控制的是你保留了多长历史
+* `research_universe.by_date_file` 控制的是某只股票在哪些日期能进入研究样本；本地日线和 PIT 资产控制的是你保留了多长历史
 * 模型比较必须固定在同一个研究单元里；跨格比较属于路线比较
 * 历史 run 和当前模板不是同一个概念；读旧结果时先看 `config.used.yml`
 

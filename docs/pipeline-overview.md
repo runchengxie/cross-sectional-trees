@@ -36,9 +36,9 @@
 
 ## 三个最容易混淆的边界
 
-### 1. `universe` 和 `fundamentals` 不是一回事
+### 1. `research_universe` 和 `fundamentals` 不是一回事
 
-* `universe.by_date_file` 决定某只股票在哪些日期能参与研究。
+* `research_universe.by_date_file` 决定某只股票在哪些日期能参与研究。
 * `fundamentals.source=file` 决定 pipeline 是否从本地 `pipeline_fundamentals.parquet` 读取 PIT 财务字段。
 
 ### 2. `hk.yml` 不等于“完整 PIT 财务路线”

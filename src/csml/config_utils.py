@@ -11,6 +11,8 @@ from .repo_paths import find_repo_root
 
 
 EXTENDS_KEY = "extends"
+LEGACY_UNIVERSE_KEY = "universe"
+RESEARCH_UNIVERSE_KEY = "research_universe"
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -22,6 +24,37 @@ def _deep_merge(base: dict, override: dict) -> dict:
         else:
             result[key] = value
     return result
+
+
+def normalize_research_universe_root(data: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(data, Mapping):
+        raise SystemExit("Config root must be a mapping.")
+
+    normalized = dict(data)
+    has_legacy = LEGACY_UNIVERSE_KEY in normalized
+    has_canonical = RESEARCH_UNIVERSE_KEY in normalized
+    if has_legacy and has_canonical:
+        raise SystemExit(
+            "Config cannot define both research_universe and legacy universe. "
+            "Use research_universe only."
+        )
+    if has_legacy:
+        normalized[RESEARCH_UNIVERSE_KEY] = normalized.pop(LEGACY_UNIVERSE_KEY)
+    return normalized
+
+
+def get_research_universe_config(config: Mapping[str, Any] | None) -> Mapping[str, Any]:
+    if not isinstance(config, Mapping):
+        return {}
+    canonical = config.get(RESEARCH_UNIVERSE_KEY)
+    legacy = config.get(LEGACY_UNIVERSE_KEY)
+    if canonical is not None and legacy is not None:
+        raise SystemExit(
+            "Config cannot define both research_universe and legacy universe. "
+            "Use research_universe only."
+        )
+    value = canonical if canonical is not None else legacy
+    return value if isinstance(value, Mapping) else {}
 
 
 @dataclass(frozen=True)
@@ -74,6 +107,7 @@ def _resolve_extends(
     _stack: set[str] | None = None,
 ) -> dict:
     """Recursively resolve extends directive."""
+    data = normalize_research_universe_root(data)
     if _stack is None:
         _stack = set()
 
@@ -174,7 +208,7 @@ def _load_yaml_text(text: str) -> dict:
     cfg = yaml.safe_load(text) or {}
     if not isinstance(cfg, dict):
         raise SystemExit("Config root must be a mapping.")
-    return cfg
+    return normalize_research_universe_root(cfg)
 
 
 def load_yaml_path(path: Path) -> dict:
