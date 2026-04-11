@@ -120,6 +120,38 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 
 ## HK 资产健康检查脚本
 
+日常维护 current 资产时，优先用轻量刷新脚本，而不是手工拼完整 workflow：
+
+```bash
+bash scripts/dev/refresh_hk_current.sh --target-date 20260410
+```
+
+默认行为：
+
+* 只跑 `refresh + inspect`，不自动打包或发 release。
+* 固定使用 `--refresh-mode patch`，也就是对支持的资产先回看尾窗再本地 merge。
+* 默认带 `--resume`、`--gate-on-severity warning`、`--inspect-fail-on-severity none`。
+* inspect gate 命中阈值时，底层 workflow 会阻止 latest/current 放行，并以非零状态结束。
+
+常见变体：
+
+```bash
+# inspect 通过后额外打包当前资产 parts
+bash scripts/dev/refresh_hk_current.sh --target-date 20260410 --with-package
+
+# 重要节点冻结一份 current 本地备份
+bash scripts/dev/refresh_hk_current.sh \
+  --target-date 20260410 \
+  --backup-name hk_current_frozen_20260410
+
+# 只刷新部分 patch 支持的资产
+bash scripts/dev/refresh_hk_current.sh \
+  --target-date 20260410 \
+  -- --refresh-asset daily --refresh-asset valuation
+```
+
+这个脚本只是 `scripts/internal/run_hk_asset_workflow.py` 的保守包装，不改变底层 maintainer workflow 的兼容默认值。需要完整整包重拉、repair、release 或更细的 part 控制时，继续直接用维护者 driver。
+
 如果你只是想把本地 HK / RQData 资产健康检查批量跑完、统一落到 `artifacts/reports/`，优先用：
 
 ```bash

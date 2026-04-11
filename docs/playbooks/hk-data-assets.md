@@ -638,6 +638,31 @@ eval:
 
 如果你只是想补最近几天的 freshness gap，而不是重新生成一整版日线目录，这一档通常不是最优选择。
 
+### 日常 current refresh：优先走尾窗 patch
+
+个人或小团队每隔几天刷新一次 current 时，推荐先用轻量脚本：
+
+```bash
+bash scripts/dev/refresh_hk_current.sh --target-date 20260410
+```
+
+这条入口做的是“小而硬”的日常链路：
+
+* 固定走 `--refresh-mode patch`，对支持的资产拉尾窗 patch 后再 merge / dedupe。
+* 默认只跑 `refresh + inspect`，不把每次日常刷新都变成打包或 release。
+* 默认 gate 是 `warning`；inspect 命中阈值时，latest/current 放行会被底层 workflow 阻断。
+* 仍会写结构化 workflow report，便于后续按 repair candidates 做局部重拉。
+
+需要月末、基线 run 或发布前留档时，再显式加一份 current 备份：
+
+```bash
+bash scripts/dev/refresh_hk_current.sh \
+  --target-date 20260410 \
+  --backup-name hk_current_frozen_20260410
+```
+
+需要跨机器共享时，再额外传 `--with-package` 或直接使用下面的 `package_assets --preset hk_current` 流程。
+
 ## 备份、打包与跨机器共享
 
 ### 1. 本地私有备份优先用 `csml backup-data`
