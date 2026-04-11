@@ -2,6 +2,8 @@
 
 使用 RQData 日线数据做港股截面因子研究、评估和持仓快照。当前正式支持的数据输入与研究主链边界是 `market=hk + data.provider=rqdata + 可选本地 HK 资产直读`。
 
+本地 HK 资产直读主要覆盖 daily / instruments；如果同一配置启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，fundamentals cache miss 时仍可能 lazy init `rqdatac` 补拉 provider 数据。
+
 ## 这项目是干嘛的
 
 低频研究与复现实验的工作流，覆盖研究、评估、回测与持仓快照输出。
@@ -40,6 +42,7 @@ cp .env.example .env
 
 * 研究汇总与调参：`csml summarize` / `csml grid` / `csml tune` / `csml sweep-linear`
 * live 结果查看与分配：`csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk`（含 HK 执行前场景矩阵）
+* 配置模板与本地备份：`csml init-config` / `csml backup-data`
 * 数据与运维工具：`csml rqdata ...` / `csml universe ...`
 * 数据分层与查询：`csml data catalog` / `csml data materialize` / `csml data query`
 
@@ -51,7 +54,7 @@ cp .env.example .env
 
 | 层级 | 典型入口 | 当前定位 |
 | --- | --- | --- |
-| 公开主线 CLI | `csml run` / `csml summarize` / `csml grid` / `csml tune` / `csml sweep-linear` / `csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk` / `csml data ...` / `csml rqdata ...` / `csml universe ...` | 当前正式对外说明、持续维护的用户入口 |
+| 公开主线 CLI | `csml run` / `csml summarize` / `csml grid` / `csml tune` / `csml sweep-linear` / `csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk` / `csml init-config` / `csml backup-data` / `csml data ...` / `csml rqdata ...` / `csml universe ...` | 当前正式对外说明、持续维护的用户入口 |
 | 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets` / `release_assets` / `package_runs` / `release_runs` | 已在文档中说明的打包 / 分发工具，但它们不是 `csml` 子命令 |
 | 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details` / `hk_selected_provider_valuation_audit` / `hk_intraday_download` / `hk_asset_patch_merge` | 只在对应 playbook 或专题页里按场景使用；可复用，但不属于新手默认主线 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 前者服务开发与 CI；后者是维护者私有工具，不属于公开研究工作流 |

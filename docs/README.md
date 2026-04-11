@@ -4,7 +4,7 @@
 本页不解决什么：不展开具体命令、配置或概念细节。\
 适合谁：不知道先看哪一页的读者。\
 读完你会得到什么：问题到页面的映射、阅读路径和页面分工边界。\
-相关页面：`README.md`、`docs/get-started.md`、`docs/pipeline-overview.md`、`docs/capabilities.md`、`docs/cookbook.md`、`docs/playbooks/README.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`
+相关页面：`README.md`、`docs/get-started.md`、`docs/pipeline-overview.md`、`docs/capabilities.md`、`docs/cookbook.md`、`docs/playbooks/README.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/dev.md`、`scripts/README.md`
 
 ## 先按问题找页面
 
@@ -21,6 +21,7 @@
 | 我想理解成本、滑点、`tr_close` 和现金分红假设 | `docs/concepts/execution-costs.md` |
 | 我想查输出目录、文件和字段 | `docs/outputs.md` |
 | 我想查 provider 差异、凭证和日期 token | `docs/providers.md` |
+| 我想查开发测试命令和仓库脚本入口 | `docs/dev.md`、`scripts/README.md` |
 | 我想批量跑 HK / RQData 本地资产健康检查，并把结果保存成 report / log | `docs/rqdata/hk-health-checks.md` |
 | 我想看 HK `5m` 分钟线现状、quota 和滑点校准文件 | `docs/playbooks/hk-intraday-assets.md` |
 | 我想理解为什么当前只保留四个模型，以及别的算法何时值得引入 | `docs/concepts/model-landscape.md` |
@@ -44,5 +45,5 @@
 参考手册：`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md` \
 专题资料：`docs/rqdata/` \
 概念解释：`docs/concepts/`（包括 `docs/concepts/execution-costs.md`、`docs/concepts/external-artifacts-root.md`） \
-开发与内部：`docs/dev.md`、`docs/internal/` \
+开发与内部：`docs/dev.md`、`scripts/README.md`、`docs/internal/` \
 研究笔记与论文精读：`docs/research/`

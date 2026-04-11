@@ -21,6 +21,7 @@
 * 数据源差异：`docs/providers.md`
 * 排障：`docs/troubleshooting.md`
 * 开发与测试：`docs/dev.md`
+* 脚本入口清单：`scripts/README.md`
 * 内部规划资料：`docs/internal/feature-planning.md`
 
 ## 常用命令
@@ -30,8 +31,18 @@
 ```bash
 uv venv --seed
 uv sync --extra dev
-uv run pytest
 ```
+
+日常测试优先使用仓库脚本：
+
+```bash
+scripts/dev/run_tests.sh fast
+scripts/dev/run_tests.sh slow
+scripts/dev/run_tests.sh integration
+scripts/dev/run_tests.sh coverage
+```
+
+需要定点排查时再直接调用 `uv run pytest tests/...`。
 
 如需 RQData 相关功能：
 
@@ -59,7 +70,7 @@ uv sync --extra dev --extra rqdata
 * 新增或修改配置键、默认值、兼容规则：更新 `docs/config.md`。
 * 修改输出目录、文件名、`summary.json` 结构或持仓字段：更新 `docs/outputs.md`。
 * 修改 provider、symbol 规则、日期 token 行为：更新 `docs/providers.md`，必要时补 `docs/troubleshooting.md`。
-* 修改开发流程、测试命令或依赖安装方式：更新 `docs/dev.md`。
+* 修改开发流程、测试命令或依赖安装方式：更新 `docs/dev.md` 和 `scripts/README.md`。
 
 ## 配置与研究约定
 

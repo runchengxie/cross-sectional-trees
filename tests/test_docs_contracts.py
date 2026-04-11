@@ -307,11 +307,13 @@ def test_readme_and_capabilities_cover_entrypoint_layers():
     capabilities = (repo_root / "docs" / "capabilities.md").read_text(encoding="utf-8")
 
     missing_readme = sorted(token for token in EXPECTED_README_ENTRYPOINT_LAYER_TOKENS if token not in readme)
+    missing_readme_commands = sorted(token for token in EXPECTED_CAPABILITY_TOKENS if token not in readme)
     missing_capabilities = sorted(
         token for token in EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS if token not in capabilities
     )
 
     assert missing_readme == []
+    assert missing_readme_commands == []
     assert missing_capabilities == []
 
 
