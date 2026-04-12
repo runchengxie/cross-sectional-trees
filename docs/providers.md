@@ -99,7 +99,7 @@ fundamentals:
 * Canonical 格式：`00001.HK`
 * RQData 调接口时会转换成：`00001.XHKG`
 
-仓库内部的 canonical 列名是 `symbol`。旧输入里的 `ts_code` / `stock_ticker` / `order_book_id` 仍然兼容，但新的输出默认以 `symbol` 为主。
+仓库内部的 canonical 列名是 `symbol`。旧输入里的 `ts_code` / `stock_ticker` / `order_book_id` 仍然只作为历史资产读取兼容；新的配置、产物和研究代码应继续以 `symbol` 为主。`order_book_id` 可以保留在 RQData 边界层或 provider 元数据里，不应作为主研究链路列名。
 
 ## 本地 HK 资产直读
 

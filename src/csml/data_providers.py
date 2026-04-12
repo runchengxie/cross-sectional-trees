@@ -1,4 +1,5 @@
 """RQData-backed data access helpers for the HK research workflow."""
+
 from __future__ import annotations
 
 import hashlib
@@ -10,6 +11,14 @@ from typing import Iterable, Mapping, Optional
 import numpy as np
 import pandas as pd
 
+from .data_provider_contracts import (
+    SUPPORTED_MARKETS as SUPPORTED_MARKETS,
+    fundamentals_provider_supported as fundamentals_provider_supported,
+    normalize_market,
+    require_supported_market as _require_supported_market,
+    resolve_provider,
+    to_rqdata_symbol as _to_rqdata_symbol,
+)
 from .data_tools.symbols import (
     PROVIDER_SYMBOL_PRIORITY,
     drop_legacy_symbol_columns,
@@ -22,8 +31,6 @@ from .rqdata_runtime import (
     resolve_rqdatac_init_kwargs as _resolve_rqdatac_init_kwargs_runtime,
 )
 
-
-SUPPORTED_MARKETS = {"hk"}
 logger = logging.getLogger("csml.data_providers")
 
 FUNDAMENTAL_COLUMN_CANDIDATES = {
@@ -61,57 +68,6 @@ REQUIRED_DAILY_COLUMNS = ("trade_date", "symbol", "close", "vol")
 _RQDATA_LISTED_DATE_CACHE: dict[tuple[str, str], pd.Timestamp | None] = {}
 
 
-def normalize_market(market: Optional[str], *, default: Optional[str] = "hk") -> Optional[str]:
-    fallback = None if default is None else str(default).strip().lower() or None
-    value = str(market).strip().lower() if market is not None else None
-    return value or fallback
-
-
-def resolve_provider(data_cfg: Optional[Mapping], *, default: Optional[str] = "rqdata") -> Optional[str]:
-    if not isinstance(data_cfg, Mapping):
-        return default
-    raw = data_cfg.get("provider", default)
-    if raw is None:
-        return None
-    value = str(raw).strip().lower()
-    if value in {"rqdatac", "rqdata"}:
-        return "rqdata"
-    return value or default
-
-
-def fundamentals_provider_supported(provider: str, market: str) -> bool:
-    provider = resolve_provider({"provider": provider}, default="rqdata")
-    market = normalize_market(market)
-    return provider == "rqdata" and market == "hk"
-
-
-def _require_supported_market(market: str) -> str:
-    market = normalize_market(market)
-    if market not in SUPPORTED_MARKETS:
-        raise ValueError(
-            f"Unsupported market '{market}'. This project currently supports only market='hk'."
-        )
-    return market
-
-
-def _hk_to_rqdata_symbol(symbol: str) -> str:
-    text = str(symbol or "").strip().upper()
-    if not text:
-        return text
-    if text.endswith(".XHKG"):
-        return text
-    if text.endswith(".HK"):
-        text = text[:-3]
-    if text.isdigit():
-        text = text.zfill(5)
-    return f"{text}.XHKG"
-
-
-def _to_rqdata_symbol(market: str, symbol: str) -> str:
-    _require_supported_market(market)
-    return _hk_to_rqdata_symbol(symbol)
-
-
 def _prepare_rqdata_daily_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
     df = df.copy()
     if isinstance(df.index, pd.MultiIndex):
@@ -121,7 +77,9 @@ def _prepare_rqdata_daily_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
     df = df.reset_index(drop=True)
     df["trade_date"] = pd.to_datetime(date_index).strftime("%Y%m%d")
     df["symbol"] = symbol
-    return ensure_symbol_columns(df, context="RQData daily frame", priority=PROVIDER_SYMBOL_PRIORITY)
+    return ensure_symbol_columns(
+        df, context="RQData daily frame", priority=PROVIDER_SYMBOL_PRIORITY
+    )
 
 
 def _prepare_rqdata_fundamentals_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
@@ -241,8 +199,7 @@ def _fundamentals_cache_file(
         json.dumps(cache_payload, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()[:12]
     return (
-        cache_dir
-        / f"{prefix}_fundamentals_{symbol}_{start_date}_{end_date}_{cache_digest}.parquet"
+        cache_dir / f"{prefix}_fundamentals_{symbol}_{start_date}_{end_date}_{cache_digest}.parquet"
     )
 
 
@@ -413,7 +370,9 @@ def _load_basic_rqdata(
             )
         df_basic = pd.DataFrame(rows)
         if "list_date" in df_basic.columns:
-            df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
+            df_basic["list_date"] = pd.to_datetime(
+                df_basic["list_date"], errors="coerce"
+            ).dt.strftime("%Y%m%d")
         return _drop_legacy_symbol_aliases(
             ensure_symbol_columns(
                 df_basic,
@@ -440,7 +399,9 @@ def _load_basic_rqdata(
     df_basic = _drop_legacy_symbol_aliases(df_basic)
     df_basic = df_basic[["symbol", "name", "list_date"]].copy()
     if "list_date" in df_basic.columns:
-        df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime("%Y%m%d")
+        df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime(
+            "%Y%m%d"
+        )
     return df_basic
 
 
@@ -567,7 +528,11 @@ def _resolve_local_daily_asset_dir(data_cfg: Mapping | None) -> Path | None:
         candidates.extend([rq_cfg.get("daily_asset_dir"), rq_cfg.get("asset_dir")])
     candidates.extend([data_cfg.get("daily_asset_dir"), data_cfg.get("asset_dir")])
     for candidate in candidates:
-        root = _resolve_local_path(candidate, label="Local RQData daily asset path") if candidate else None
+        root = (
+            _resolve_local_path(candidate, label="Local RQData daily asset path")
+            if candidate
+            else None
+        )
         if root is None:
             continue
         if (root / "data").exists():
@@ -587,7 +552,11 @@ def _resolve_local_instruments_file(data_cfg: Mapping | None) -> Path | None:
         candidates.extend([rq_cfg.get("instruments_file"), rq_cfg.get("basic_file")])
     candidates.extend([data_cfg.get("instruments_file"), data_cfg.get("basic_file")])
     for candidate in candidates:
-        resolved = _resolve_local_path(candidate, label="Local RQData instruments file") if candidate else None
+        resolved = (
+            _resolve_local_path(candidate, label="Local RQData instruments file")
+            if candidate
+            else None
+        )
         if resolved is not None:
             return resolved
     return None
@@ -675,7 +644,9 @@ def _load_local_ex_factors_frame(symbol: str, data_cfg: Mapping | None) -> pd.Da
         frame["ex_cum_factor"] = pd.to_numeric(frame["ex_factor"], errors="coerce").cumprod()
     frame["ex_cum_factor"] = pd.to_numeric(frame["ex_cum_factor"], errors="coerce")
     frame = frame[
-        frame["ex_cum_factor"].notna() & np.isfinite(frame["ex_cum_factor"]) & (frame["ex_cum_factor"] > 0)
+        frame["ex_cum_factor"].notna()
+        & np.isfinite(frame["ex_cum_factor"])
+        & (frame["ex_cum_factor"] > 0)
     ][["ex_date", "ex_cum_factor"]].copy()
     if frame.empty:
         return pd.DataFrame(columns=["ex_date", "ex_cum_factor"])
@@ -712,7 +683,12 @@ def _build_tr_close_payload(
     symbol: str,
     data_cfg: Mapping | None,
 ) -> tuple[pd.Series | None, dict[str, object] | None]:
-    if frame is None or frame.empty or "close" not in frame.columns or "trade_date" not in frame.columns:
+    if (
+        frame is None
+        or frame.empty
+        or "close" not in frame.columns
+        or "trade_date" not in frame.columns
+    ):
         return None, None
     close = pd.to_numeric(frame["close"], errors="coerce")
     trade_dates = pd.to_datetime(frame["trade_date"], errors="coerce")
@@ -839,7 +815,11 @@ def _load_basic_from_local_asset(
             if candidate in work.columns:
                 work["name"] = work[candidate]
                 break
-    if "order_book_id" in work.columns and "symbol" not in work.columns and "ts_code" not in work.columns:
+    if (
+        "order_book_id" in work.columns
+        and "symbol" not in work.columns
+        and "ts_code" not in work.columns
+    ):
         work["symbol"] = work["order_book_id"]
     if "listed_date" in work.columns and "list_date" not in work.columns:
         work["list_date"] = work["listed_date"]
@@ -905,9 +885,9 @@ def fetch_daily(
     prefix = f"{market}_{provider}"
     if tag:
         prefix = f"{prefix}_{tag}"
-    cache_mode = str(
-        data_cfg.get("daily_cache_mode", data_cfg.get("cache_mode", "symbol"))
-    ).strip().lower()
+    cache_mode = (
+        str(data_cfg.get("daily_cache_mode", data_cfg.get("cache_mode", "symbol"))).strip().lower()
+    )
     if cache_mode in {"range", "window"}:
         cache_file = cache_dir / f"{prefix}_daily_{symbol}_{start_date}_{end_date}.parquet"
         if cache_file.exists():
@@ -930,7 +910,9 @@ def fetch_daily(
                 cached = cached.copy(deep=True)
                 cached.to_parquet(cache_file)
             return _drop_legacy_symbol_aliases(cached)
-        df = _fetch_daily_from_provider(provider, market, symbol, start_date, end_date, client, data_cfg)
+        df = _fetch_daily_from_provider(
+            provider, market, symbol, start_date, end_date, client, data_cfg
+        )
         if df is None or df.empty:
             return df
         df, _ = _augment_daily_frame(
@@ -1107,7 +1089,11 @@ def fetch_fundamentals(
     market = _require_supported_market(market)
     data_cfg = data_cfg or {}
     fundamentals_cfg = fundamentals_cfg or {}
-    provider = resolve_provider({"provider": fundamentals_cfg.get("provider")}) if fundamentals_cfg.get("provider") else resolve_provider(data_cfg)
+    provider = (
+        resolve_provider({"provider": fundamentals_cfg.get("provider")})
+        if fundamentals_cfg.get("provider")
+        else resolve_provider(data_cfg)
+    )
     tag = _sanitize_cache_tag(
         fundamentals_cfg.get("cache_tag")
         or fundamentals_cfg.get("cache_version")

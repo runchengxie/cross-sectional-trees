@@ -5,10 +5,12 @@ Usage:
     $ csml run --config hk
     # rqdatac auth may be required (RQDATA_USERNAME/RQDATA_PASSWORD)
 """
+
 import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -22,6 +24,7 @@ from .preflight import prepare_pipeline_setup, resolve_effective_data_inputs
 from .quality import run_quality_preflight
 from .runtime import _prepare_split_context
 from .train_eval_stage import run_train_eval_stage
+
 logger = logging.getLogger("csml")
 
 
@@ -87,6 +90,7 @@ def _load_benchmark_return_series(path: Path) -> pd.Series:
     )
     series.name = "benchmark_return"
     return series
+
 
 def run(
     config_ref: str | Path | None = None,
@@ -249,9 +253,7 @@ def run(
     CS_WINSORIZE_PCT = runtime_settings["CS_WINSORIZE_PCT"]
     FEATURE_MISSING_METHOD = runtime_settings["FEATURE_MISSING_METHOD"]
     FEATURE_MISSING_FEATURES = runtime_settings["FEATURE_MISSING_FEATURES"]
-    FEATURE_MISSING_ADD_INDICATORS = runtime_settings[
-        "FEATURE_MISSING_ADD_INDICATORS"
-    ]
+    FEATURE_MISSING_ADD_INDICATORS = runtime_settings["FEATURE_MISSING_ADD_INDICATORS"]
     FEATURE_MISSING_SUFFIX = runtime_settings["FEATURE_MISSING_SUFFIX"]
     MODEL_TYPE = runtime_settings["MODEL_TYPE"]
     MODEL_PARAMS = runtime_settings["MODEL_PARAMS"]
@@ -264,9 +266,7 @@ def run(
     BACKTEST_ENABLED = runtime_settings["BACKTEST_ENABLED"]
     BACKTEST_TOP_K = runtime_settings["BACKTEST_TOP_K"]
     BACKTEST_REBALANCE_FREQUENCY = runtime_settings["BACKTEST_REBALANCE_FREQUENCY"]
-    BACKTEST_TRADING_DAYS_PER_YEAR = runtime_settings[
-        "BACKTEST_TRADING_DAYS_PER_YEAR"
-    ]
+    BACKTEST_TRADING_DAYS_PER_YEAR = runtime_settings["BACKTEST_TRADING_DAYS_PER_YEAR"]
     BACKTEST_LONG_ONLY = runtime_settings["BACKTEST_LONG_ONLY"]
     BACKTEST_BUFFER_EXIT = runtime_settings["BACKTEST_BUFFER_EXIT"]
     BACKTEST_BUFFER_ENTRY = runtime_settings["BACKTEST_BUFFER_ENTRY"]
@@ -278,9 +278,7 @@ def run(
     BACKTEST_EXIT_MODE = runtime_settings["BACKTEST_EXIT_MODE"]
     BACKTEST_EXIT_HORIZON_DAYS = runtime_settings["BACKTEST_EXIT_HORIZON_DAYS"]
     BACKTEST_EXIT_PRICE_POLICY = runtime_settings["BACKTEST_EXIT_PRICE_POLICY"]
-    BACKTEST_EXIT_FALLBACK_POLICY = runtime_settings[
-        "BACKTEST_EXIT_FALLBACK_POLICY"
-    ]
+    BACKTEST_EXIT_FALLBACK_POLICY = runtime_settings["BACKTEST_EXIT_FALLBACK_POLICY"]
     execution_model = runtime_settings["execution_model"]
     EXECUTION_PRICING_COLS = runtime_settings["EXECUTION_PRICING_COLS"]
     BACKTEST_COST_BPS_EFFECTIVE = runtime_settings["BACKTEST_COST_BPS_EFFECTIVE"]

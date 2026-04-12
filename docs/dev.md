@@ -87,6 +87,18 @@ scripts/dev/run_tests.sh integration
 # 需要 coverage 时显式执行
 scripts/dev/run_tests.sh coverage
 
+# Ruff lint / 基础复杂度检查，并对本次改动的 Python 文件检查 import 排序
+scripts/dev/run_tests.sh lint
+
+# 全仓库 import 排序检查（历史文件可能仍有旧债务）
+scripts/dev/run_tests.sh imports
+
+# Ruff formatter 检查本次改动的 Python 文件
+scripts/dev/run_tests.sh format
+
+# 全仓库 formatter 检查（历史文件可能仍有旧债务）
+scripts/dev/run_tests.sh format-all
+
 # 真实 provider 集成测试（需显式启用 + 配置对应 token/账号）
 CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
 ```
@@ -110,6 +122,8 @@ CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py
 
 * 本地 hook 是提前发现问题，不替代 CI。
 * 如需跳过一次，使用 `git commit --no-verify` 或 `git push --no-verify`。
+* Ruff 已启用 formatter、import 排序和基础复杂度检查；`lint` 会全仓库拦截高风险语法错误和未登记的新增复杂函数，并对本次改动的 Python 文件检查 import 排序。全仓库 import / format 旧债务仍可通过 `imports` 和 `format-all` 单独清点。
+* 当前已有复杂度旧债务先集中登记在 `pyproject.toml` 的 `per-file-ignores`，后续拆分完成后应逐个撤掉对应豁免。
 * `tests/test_docs_contracts.py` 现在只接受指向仓库里受版本控制目标的 Markdown 相对链接；研究笔记里引用本地 `artifacts/...` 运行产物时，用代码文本记录，不要写成可点击相对链接。
 
 说明：

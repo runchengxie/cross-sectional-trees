@@ -1,26 +1,30 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from datetime import datetime, timedelta
-import logging
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 import numpy as np
+from dotenv import load_dotenv
 
-from ..artifacts import cache_dir_for
-from ..artifacts import resolve_configured_artifacts_root
-from ..artifacts import resolve_repo_path
-from ..artifacts import runs_dir_for
+from ..artifacts import (
+    cache_dir_for,
+    resolve_configured_artifacts_root,
+    resolve_repo_path,
+    runs_dir_for,
+)
 from ..config_utils import get_research_universe_config, resolve_pipeline_config
 from ..data_providers import normalize_market, resolve_provider
-from ..date_utils import is_relative_date_token as _is_relative_date_token
-from ..date_utils import resolve_date_token as _resolve_date_token
+from ..date_utils import (
+    is_relative_date_token as _is_relative_date_token,
+    resolve_date_token as _resolve_date_token,
+)
 from ..execution import BpsCostModel, build_execution_model, required_pricing_columns
 from ..modeling import resolve_model_spec
+from .config_eval import normalize_eval_settings
 from .runtime import config_hash, setup_logging
-from .stats import _normalize_bucket_schemes, _normalize_window_months
 from .stats import _ensure_execution_daily_fields
 from .support import load_symbols_file, load_universe_by_date, normalize_symbol_list
 
@@ -53,9 +57,7 @@ def load_run_config(
     backtest_cfg = config.get("backtest", {})
     live_cfg = config.get("live", {})
     if not isinstance(model_cfg, dict):
-        raise SystemExit(
-            "model must be a mapping with keys: type, params, sample_weight_mode."
-        )
+        raise SystemExit("model must be a mapping with keys: type, params, sample_weight_mode.")
     if not isinstance(live_cfg, dict):
         live_cfg = {}
 
@@ -201,16 +203,10 @@ def resolve_date_range_and_label_settings(
         eval_cfg.get("rebalance_frequency", "M"),
     )
     target = label_cfg.get("target_col", "future_return")
-    train_target_transform = str(
-        label_cfg.get("train_target_transform", "none")
-    ).strip().lower()
+    train_target_transform = str(label_cfg.get("train_target_transform", "none")).strip().lower()
     if train_target_transform not in {"none", "zscore", "rank"}:
-        raise SystemExit(
-            "label.train_target_transform must be one of: none, zscore, rank."
-        )
-    train_target = (
-        target if train_target_transform == "none" else f"{target}__train_target"
-    )
+        raise SystemExit("label.train_target_transform must be one of: none, zscore, rank.")
+    train_target = target if train_target_transform == "none" else f"{target}__train_target"
     winsorize_pct = label_cfg.get("winsorize_pct")
     if winsorize_pct is not None:
         winsorize_pct = float(winsorize_pct)
@@ -234,264 +230,6 @@ def resolve_date_range_and_label_settings(
     }
 
 
-def normalize_eval_settings(
-    eval_cfg: Mapping[str, Any] | None,
-    *,
-    backtest_cfg: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    eval_cfg = eval_cfg if isinstance(eval_cfg, Mapping) else {}
-    backtest_cfg = backtest_cfg if isinstance(backtest_cfg, Mapping) else {}
-
-    test_size = float(eval_cfg.get("test_size", 0.2))
-    n_splits = int(eval_cfg.get("n_splits", 5))
-    n_quantiles = int(eval_cfg.get("n_quantiles", 5))
-    top_k = int(eval_cfg.get("top_k", 20))
-    rebalance_frequency = eval_cfg.get("rebalance_frequency", "W")
-    transaction_cost_bps = float(eval_cfg.get("transaction_cost_bps", 10))
-    eval_buffer_exit = int(eval_cfg.get("buffer_exit", backtest_cfg.get("buffer_exit", 0)))
-    eval_buffer_entry = int(
-        eval_cfg.get("buffer_entry", backtest_cfg.get("buffer_entry", 0))
-    )
-    signal_direction_mode = str(
-        eval_cfg.get("signal_direction_mode", "fixed")
-    ).strip().lower()
-    if signal_direction_mode not in {"fixed", "train_ic", "cv_ic"}:
-        raise SystemExit(
-            "eval.signal_direction_mode must be one of: fixed, train_ic, cv_ic."
-        )
-    signal_direction_raw = eval_cfg.get("signal_direction", 1.0)
-    signal_direction = (
-        float(signal_direction_raw) if signal_direction_raw is not None else 1.0
-    )
-    if signal_direction == 0:
-        raise SystemExit("eval.signal_direction cannot be 0.")
-    min_abs_ic_to_flip_raw = eval_cfg.get("min_abs_ic_to_flip", 0.0)
-    min_abs_ic_to_flip = (
-        float(min_abs_ic_to_flip_raw) if min_abs_ic_to_flip_raw is not None else 0.0
-    )
-    if min_abs_ic_to_flip < 0:
-        raise SystemExit("eval.min_abs_ic_to_flip must be >= 0.")
-    embargo_days_raw = eval_cfg.get("embargo_days")
-    embargo_days_cfg = int(embargo_days_raw) if embargo_days_raw is not None else 0
-    purge_days_raw = eval_cfg.get("purge_days")
-    purge_days_cfg = int(purge_days_raw) if purge_days_raw is not None else None
-    report_train_ic = bool(eval_cfg.get("report_train_ic", True))
-    sample_on_rebalance_dates = bool(eval_cfg.get("sample_on_rebalance_dates", False))
-
-    score_postprocess_cfg = eval_cfg.get("score_postprocess")
-    score_postprocess_enabled = False
-    score_postprocess_method = "none"
-    score_postprocess_columns: list[str] = []
-    score_postprocess_strength = 1.0
-    score_postprocess_min_obs: int | None = None
-    if score_postprocess_cfg is not None:
-        if not isinstance(score_postprocess_cfg, Mapping):
-            raise SystemExit("eval.score_postprocess must be a mapping when provided.")
-        score_postprocess_method = str(
-            score_postprocess_cfg.get("method", "none")
-        ).strip().lower()
-        score_postprocess_columns = normalize_symbol_list(
-            score_postprocess_cfg.get("columns")
-        )
-        score_postprocess_strength = float(
-            score_postprocess_cfg.get("strength", 1.0)
-        )
-        score_postprocess_min_obs_raw = score_postprocess_cfg.get("min_obs")
-        if score_postprocess_min_obs_raw is not None:
-            score_postprocess_min_obs = int(score_postprocess_min_obs_raw)
-        enabled_raw = score_postprocess_cfg.get("enabled")
-        score_postprocess_enabled = (
-            bool(enabled_raw)
-            if enabled_raw is not None
-            else score_postprocess_method != "none"
-        )
-        if score_postprocess_method not in {"none", "neutralize"}:
-            raise SystemExit(
-                "eval.score_postprocess.method must be one of: none, neutralize."
-            )
-        if score_postprocess_strength < 0 or score_postprocess_strength > 1:
-            raise SystemExit("eval.score_postprocess.strength must be between 0 and 1.")
-        if score_postprocess_min_obs is not None and score_postprocess_min_obs < 2:
-            raise SystemExit("eval.score_postprocess.min_obs must be >= 2.")
-        if score_postprocess_enabled and score_postprocess_method == "neutralize":
-            if not score_postprocess_columns:
-                raise SystemExit(
-                    "eval.score_postprocess.columns is required when method=neutralize."
-                )
-            required_min_obs = len(score_postprocess_columns) + 1
-            if (
-                score_postprocess_min_obs is not None
-                and score_postprocess_min_obs < required_min_obs
-            ):
-                raise SystemExit(
-                    "eval.score_postprocess.min_obs must be >= len(columns) + 1."
-                )
-        else:
-            score_postprocess_method = "none"
-            score_postprocess_columns = []
-            score_postprocess_min_obs = None
-    if score_postprocess_enabled and score_postprocess_min_obs is None:
-        score_postprocess_min_obs = max(5, len(score_postprocess_columns) + 1)
-
-    rolling_cfg = eval_cfg.get("rolling") if isinstance(eval_cfg, Mapping) else None
-    if isinstance(rolling_cfg, Mapping):
-        rolling_enabled = bool(rolling_cfg.get("enabled", True))
-        if rolling_enabled:
-            rolling_windows_months = _normalize_window_months(
-                rolling_cfg.get("windows_months"),
-                [6, 12],
-            )
-        else:
-            rolling_windows_months = []
-    else:
-        rolling_windows_months = _normalize_window_months(rolling_cfg, [6, 12])
-
-    bucket_ic_cfg = eval_cfg.get("bucket_ic") if isinstance(eval_cfg, Mapping) else None
-    bucket_ic_enabled = False
-    bucket_ic_method = "spearman"
-    bucket_ic_min_count = 0
-    bucket_ic_schemes = []
-    if isinstance(bucket_ic_cfg, Mapping):
-        bucket_ic_enabled = bool(bucket_ic_cfg.get("enabled", False))
-        bucket_ic_method = str(bucket_ic_cfg.get("method", "spearman")).strip().lower()
-        bucket_ic_min_count = int(bucket_ic_cfg.get("min_count", 0) or 0)
-        bucket_ic_schemes = _normalize_bucket_schemes(bucket_ic_cfg.get("schemes"))
-    elif bucket_ic_cfg is not None:
-        bucket_ic_enabled = bool(bucket_ic_cfg)
-    if bucket_ic_method not in {"spearman", "pearson"}:
-        raise SystemExit("eval.bucket_ic.method must be one of: spearman, pearson.")
-
-    perm_cfg = eval_cfg.get("permutation_test") or {}
-    if isinstance(perm_cfg, Mapping):
-        perm_test_enabled = bool(perm_cfg.get("enabled", False))
-        perm_test_runs = int(perm_cfg.get("n_runs", 1))
-        perm_test_seed = perm_cfg.get("seed")
-    else:
-        perm_test_enabled = bool(perm_cfg)
-        perm_test_runs = 1
-        perm_test_seed = None
-    if perm_test_seed is not None:
-        perm_test_seed = int(perm_test_seed)
-    if perm_test_runs < 1:
-        perm_test_enabled = False
-
-    wf_cfg = eval_cfg.get("walk_forward") or {}
-    if isinstance(wf_cfg, Mapping):
-        wf_enabled = bool(wf_cfg.get("enabled", False))
-        wf_n_windows = int(wf_cfg.get("n_windows", 3))
-        wf_test_size = wf_cfg.get("test_size", test_size)
-        wf_step_size = wf_cfg.get("step_size")
-        wf_anchor_end = bool(wf_cfg.get("anchor_end", True))
-        wf_feature_top_k = int(wf_cfg.get("feature_top_k", 5))
-        wf_backtest_enabled = bool(
-            wf_cfg.get("backtest_enabled", backtest_cfg.get("enabled", True))
-        )
-        wf_perm_cfg = wf_cfg.get("permutation_test")
-        if isinstance(wf_perm_cfg, Mapping):
-            wf_perm_test_enabled = bool(wf_perm_cfg.get("enabled", False))
-            wf_perm_test_runs = int(wf_perm_cfg.get("n_runs", perm_test_runs))
-            wf_perm_test_seed = wf_perm_cfg.get("seed", perm_test_seed)
-        elif wf_perm_cfg is None:
-            wf_perm_test_enabled = False
-            wf_perm_test_runs = perm_test_runs
-            wf_perm_test_seed = perm_test_seed
-        else:
-            wf_perm_test_enabled = bool(wf_perm_cfg)
-            wf_perm_test_runs = perm_test_runs
-            wf_perm_test_seed = perm_test_seed
-    else:
-        wf_enabled = bool(wf_cfg)
-        wf_n_windows = 3
-        wf_test_size = test_size
-        wf_step_size = None
-        wf_anchor_end = True
-        wf_feature_top_k = 5
-        wf_backtest_enabled = bool(backtest_cfg.get("enabled", True))
-        wf_perm_test_enabled = False
-        wf_perm_test_runs = perm_test_runs
-        wf_perm_test_seed = perm_test_seed
-    if wf_perm_test_seed is not None:
-        wf_perm_test_seed = int(wf_perm_test_seed)
-    if wf_perm_test_runs < 1:
-        wf_perm_test_enabled = False
-    if wf_feature_top_k < 1:
-        raise SystemExit("eval.walk_forward.feature_top_k must be >= 1.")
-
-    final_oos_cfg = eval_cfg.get("final_oos")
-    final_oos_size_raw = None
-    if isinstance(final_oos_cfg, Mapping):
-        final_oos_size_raw = final_oos_cfg.get("size")
-        final_oos_enabled = bool(final_oos_cfg.get("enabled", False) or final_oos_size_raw)
-    elif final_oos_cfg is None:
-        final_oos_enabled = False
-    else:
-        final_oos_size_raw = final_oos_cfg
-        final_oos_enabled = bool(final_oos_cfg)
-
-    save_artifacts = bool(eval_cfg.get("save_artifacts", True))
-    save_scored_artifact = bool(eval_cfg.get("save_scored_artifact", False))
-    save_dataset = bool(eval_cfg.get("save_dataset", False))
-    output_dir = eval_cfg.get("output_dir")
-    run_name = eval_cfg.get("run_name")
-    if save_scored_artifact and not save_artifacts:
-        raise SystemExit(
-            "eval.save_scored_artifact=true requires eval.save_artifacts=true."
-        )
-    if save_dataset and not save_artifacts:
-        raise SystemExit("eval.save_dataset=true requires eval.save_artifacts=true.")
-
-    return {
-        "TEST_SIZE": test_size,
-        "N_SPLITS": n_splits,
-        "N_QUANTILES": n_quantiles,
-        "TOP_K": top_k,
-        "REBALANCE_FREQUENCY": rebalance_frequency,
-        "TRANSACTION_COST_BPS": transaction_cost_bps,
-        "EVAL_BUFFER_EXIT": eval_buffer_exit,
-        "EVAL_BUFFER_ENTRY": eval_buffer_entry,
-        "SIGNAL_DIRECTION_MODE": signal_direction_mode,
-        "SIGNAL_DIRECTION": signal_direction,
-        "MIN_ABS_IC_TO_FLIP": min_abs_ic_to_flip,
-        "EMBARGO_DAYS_CFG": embargo_days_cfg,
-        "PURGE_DAYS_CFG": purge_days_cfg,
-        "PURGE_STEPS": None,
-        "EMBARGO_STEPS": None,
-        "EFFECTIVE_GAP_STEPS": None,
-        "REPORT_TRAIN_IC": report_train_ic,
-        "SAMPLE_ON_REBALANCE_DATES": sample_on_rebalance_dates,
-        "SCORE_POSTPROCESS_ENABLED": score_postprocess_enabled,
-        "SCORE_POSTPROCESS_METHOD": score_postprocess_method,
-        "SCORE_POSTPROCESS_COLUMNS": score_postprocess_columns,
-        "SCORE_POSTPROCESS_STRENGTH": score_postprocess_strength,
-        "SCORE_POSTPROCESS_MIN_OBS": score_postprocess_min_obs,
-        "ROLLING_WINDOWS_MONTHS": rolling_windows_months,
-        "BUCKET_IC_ENABLED": bucket_ic_enabled,
-        "BUCKET_IC_METHOD": bucket_ic_method,
-        "BUCKET_IC_MIN_COUNT": bucket_ic_min_count,
-        "BUCKET_IC_SCHEMES": bucket_ic_schemes,
-        "PERM_TEST_ENABLED": perm_test_enabled,
-        "PERM_TEST_RUNS": perm_test_runs,
-        "PERM_TEST_SEED": perm_test_seed,
-        "WF_ENABLED": wf_enabled,
-        "WF_N_WINDOWS": wf_n_windows,
-        "WF_TEST_SIZE": wf_test_size,
-        "WF_STEP_SIZE": wf_step_size,
-        "WF_ANCHOR_END": wf_anchor_end,
-        "WF_FEATURE_TOP_K": wf_feature_top_k,
-        "WF_BACKTEST_ENABLED": wf_backtest_enabled,
-        "WF_PERM_TEST_ENABLED": wf_perm_test_enabled,
-        "WF_PERM_TEST_RUNS": wf_perm_test_runs,
-        "WF_PERM_TEST_SEED": wf_perm_test_seed,
-        "FINAL_OOS_ENABLED": final_oos_enabled,
-        "FINAL_OOS_SIZE_RAW": final_oos_size_raw,
-        "SAVE_ARTIFACTS": save_artifacts,
-        "SAVE_SCORED_ARTIFACT": save_scored_artifact,
-        "SAVE_DATASET": save_dataset,
-        "OUTPUT_DIR": output_dir,
-        "RUN_NAME": run_name,
-    }
-
-
 def normalize_universe_filters(
     universe_cfg: Mapping[str, Any] | None,
     *,
@@ -503,7 +241,7 @@ def normalize_universe_filters(
         min_symbols_per_date = n_quantiles
     suspended_policy = str(universe_cfg.get("suspended_policy", "mark")).strip().lower()
     if suspended_policy not in {"mark", "filter"}:
-        raise SystemExit("universe.suspended_policy must be one of: mark, filter.")
+        raise SystemExit("research_universe.suspended_policy must be one of: mark, filter.")
     return {
         "MIN_SYMBOLS_PER_DATE": min_symbols_per_date,
         "MIN_LISTED_DAYS": int(universe_cfg.get("min_listed_days", 0)),
@@ -547,28 +285,20 @@ def resolve_runtime_settings(
     live_cfg = live_cfg if isinstance(live_cfg, Mapping) else {}
 
     fundamentals_enabled = bool(fundamentals_cfg.get("enabled", False))
-    fundamentals_source = str(
-        fundamentals_cfg.get("source", "provider")
-    ).strip().lower()
+    fundamentals_source = str(fundamentals_cfg.get("source", "provider")).strip().lower()
     if fundamentals_source not in {"provider", "file"}:
         raise SystemExit("fundamentals.source must be one of: provider, file.")
     fundamentals_file = fundamentals_cfg.get("file")
     fundamentals_features = normalize_symbol_list(fundamentals_cfg.get("features"))
     fundamentals_auto_add = bool(fundamentals_cfg.get("auto_add_features", True))
-    fundamentals_allow_missing = bool(
-        fundamentals_cfg.get("allow_missing_features", False)
-    )
+    fundamentals_allow_missing = bool(fundamentals_cfg.get("allow_missing_features", False))
     fundamentals_ffill = bool(fundamentals_cfg.get("ffill", True))
     fundamentals_ffill_limit = fundamentals_cfg.get("ffill_limit")
     if fundamentals_ffill_limit is not None:
         fundamentals_ffill_limit = int(fundamentals_ffill_limit)
     fundamentals_log_mcap = bool(fundamentals_cfg.get("log_market_cap", False))
-    fundamentals_mcap_col = str(
-        fundamentals_cfg.get("market_cap_col", "market_cap")
-    ).strip()
-    fundamentals_log_mcap_col = str(
-        fundamentals_cfg.get("log_market_cap_col", "log_mcap")
-    ).strip()
+    fundamentals_mcap_col = str(fundamentals_cfg.get("market_cap_col", "market_cap")).strip()
+    fundamentals_log_mcap_col = str(fundamentals_cfg.get("log_market_cap_col", "log_mcap")).strip()
     fundamentals_required = bool(fundamentals_cfg.get("required", False))
     fundamentals_provider = (
         resolve_provider({"provider": fundamentals_cfg.get("provider")})
@@ -580,12 +310,10 @@ def resolve_runtime_settings(
         provider_overlay_cfg = {}
     if not isinstance(provider_overlay_cfg, Mapping):
         raise SystemExit("fundamentals.provider_overlay must be a mapping when provided.")
-    fundamentals_provider_overlay_enabled = bool(
-        provider_overlay_cfg.get("enabled", False)
+    fundamentals_provider_overlay_enabled = bool(provider_overlay_cfg.get("enabled", False))
+    fundamentals_provider_overlay_source = (
+        str(provider_overlay_cfg.get("source", "provider")).strip().lower()
     )
-    fundamentals_provider_overlay_source = str(
-        provider_overlay_cfg.get("source", "provider")
-    ).strip().lower()
     if fundamentals_provider_overlay_source not in {"provider"}:
         raise SystemExit("fundamentals.provider_overlay.source must be 'provider'.")
     fundamentals_provider_overlay_features = normalize_symbol_list(
@@ -594,9 +322,7 @@ def resolve_runtime_settings(
     fundamentals_provider_overlay_auto_add = bool(
         provider_overlay_cfg.get("auto_add_features", True)
     )
-    fundamentals_provider_overlay_required = bool(
-        provider_overlay_cfg.get("required", False)
-    )
+    fundamentals_provider_overlay_required = bool(provider_overlay_cfg.get("required", False))
     fundamentals_provider_overlay_provider = (
         resolve_provider({"provider": provider_overlay_cfg.get("provider")})
         if provider_overlay_cfg.get("provider")
@@ -616,30 +342,34 @@ def resolve_runtime_settings(
     industry_required = bool(industry_cfg.get("required", False))
 
     feature_list = features_cfg.get("list") or []
-    features = normalize_symbol_list(feature_list) if feature_list else [
-        "sma_20",
-        "sma_60",
-        "sma_120",
-        "sma_5_diff",
-        "sma_10_diff",
-        "sma_20_diff",
-        "sma_60_diff",
-        "sma_120_diff",
-        "rsi_7",
-        "rsi_14",
-        "rsi_21",
-        "macd_hist",
-        "ret_5",
-        "ret_20",
-        "ret_60",
-        "rv_20",
-        "rv_60",
-        "volume_sma5_ratio",
-        "volume_sma20_ratio",
-        "volume_sma60_ratio",
-        "log_vol",
-        "vol",
-    ]
+    features = (
+        normalize_symbol_list(feature_list)
+        if feature_list
+        else [
+            "sma_20",
+            "sma_60",
+            "sma_120",
+            "sma_5_diff",
+            "sma_10_diff",
+            "sma_20_diff",
+            "sma_60_diff",
+            "sma_120_diff",
+            "rsi_7",
+            "rsi_14",
+            "rsi_21",
+            "macd_hist",
+            "ret_5",
+            "ret_20",
+            "ret_60",
+            "rv_20",
+            "rv_60",
+            "volume_sma5_ratio",
+            "volume_sma20_ratio",
+            "volume_sma60_ratio",
+            "log_vol",
+            "vol",
+        ]
+    )
     if fundamentals_enabled and fundamentals_auto_add and fundamentals_features:
         features = list(dict.fromkeys(features + fundamentals_features))
     if (
@@ -647,49 +377,33 @@ def resolve_runtime_settings(
         and fundamentals_provider_overlay_auto_add
         and fundamentals_provider_overlay_features
     ):
-        features = list(
-            dict.fromkeys(features + fundamentals_provider_overlay_features)
-        )
+        features = list(dict.fromkeys(features + fundamentals_provider_overlay_features))
     wf_feature_top_k = min(wf_feature_top_k, max(1, len(features)))
     feature_params = features_cfg.get("params", {})
     cs_cfg = features_cfg.get("cross_sectional") or {}
     cs_method = (
-        str(cs_cfg.get("method", "none")).strip().lower()
-        if isinstance(cs_cfg, Mapping)
-        else "none"
+        str(cs_cfg.get("method", "none")).strip().lower() if isinstance(cs_cfg, Mapping) else "none"
     )
-    cs_winsorize_pct = (
-        cs_cfg.get("winsorize_pct") if isinstance(cs_cfg, Mapping) else None
-    )
+    cs_winsorize_pct = cs_cfg.get("winsorize_pct") if isinstance(cs_cfg, Mapping) else None
     if cs_winsorize_pct is not None:
         cs_winsorize_pct = float(cs_winsorize_pct)
         if not 0 < cs_winsorize_pct < 0.5:
-            raise SystemExit(
-                "features.cross_sectional.winsorize_pct must be between 0 and 0.5."
-            )
+            raise SystemExit("features.cross_sectional.winsorize_pct must be between 0 and 0.5.")
     if cs_method not in {"none", "zscore", "rank"}:
-        raise SystemExit(
-            "features.cross_sectional.method must be one of: none, zscore, rank."
-        )
+        raise SystemExit("features.cross_sectional.method must be one of: none, zscore, rank.")
     missing_cfg = features_cfg.get("missing")
     if missing_cfg is None:
         missing_cfg = {}
     if not isinstance(missing_cfg, Mapping):
         raise SystemExit("features.missing must be a mapping when provided.")
-    feature_missing_method = str(
-        missing_cfg.get("method", "none")
-    ).strip().lower()
+    feature_missing_method = str(missing_cfg.get("method", "none")).strip().lower()
     if feature_missing_method not in {"none", "zero", "cross_sectional_median"}:
         raise SystemExit(
             "features.missing.method must be one of: none, zero, cross_sectional_median."
         )
     feature_missing_features = normalize_symbol_list(missing_cfg.get("features"))
-    feature_missing_add_indicators = bool(
-        missing_cfg.get("add_indicators", False)
-    )
-    feature_missing_suffix = str(
-        missing_cfg.get("indicator_suffix", "_missing")
-    ).strip()
+    feature_missing_add_indicators = bool(missing_cfg.get("add_indicators", False))
+    feature_missing_suffix = str(missing_cfg.get("indicator_suffix", "_missing")).strip()
     if feature_missing_add_indicators and not feature_missing_suffix:
         raise SystemExit("features.missing.indicator_suffix cannot be empty.")
 
@@ -698,9 +412,7 @@ def resolve_runtime_settings(
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     model_cfg_resolved = {"type": model_type, "params": model_params}
-    sample_weight_mode = str(
-        model_cfg.get("sample_weight_mode", "none")
-    ).strip().lower()
+    sample_weight_mode = str(model_cfg.get("sample_weight_mode", "none")).strip().lower()
     sample_weight_params_raw = model_cfg.get("sample_weight_params")
     if sample_weight_params_raw is None:
         sample_weight_params = {}
@@ -715,9 +427,7 @@ def resolve_runtime_settings(
     if sample_weight_mode in {"time_decay", "exp_decay", "exp"}:
         sample_weight_mode = "exp_decay"
     if sample_weight_mode not in {"none", "date_equal", "exp_decay"}:
-        raise SystemExit(
-            "model.sample_weight_mode must be one of: none, date_equal, exp_decay."
-        )
+        raise SystemExit("model.sample_weight_mode must be one of: none, date_equal, exp_decay.")
     if sample_weight_mode == "exp_decay":
         halflife_raw = sample_weight_params.get(
             "halflife",
@@ -736,36 +446,24 @@ def resolve_runtime_settings(
             try:
                 halflife = float(halflife_raw)
             except (TypeError, ValueError) as exc:
-                raise SystemExit(
-                    "model.sample_weight_params.halflife must be a number."
-                ) from exc
+                raise SystemExit("model.sample_weight_params.halflife must be a number.") from exc
             if not np.isfinite(halflife) or halflife <= 0:
-                raise SystemExit(
-                    "model.sample_weight_params.halflife must be > 0."
-                )
+                raise SystemExit("model.sample_weight_params.halflife must be > 0.")
         if decay_rate_raw is not None:
             try:
                 decay_rate = float(decay_rate_raw)
             except (TypeError, ValueError) as exc:
-                raise SystemExit(
-                    "model.sample_weight_params.decay_rate must be a number."
-                ) from exc
+                raise SystemExit("model.sample_weight_params.decay_rate must be a number.") from exc
             if not np.isfinite(decay_rate) or decay_rate <= 0 or decay_rate > 1:
-                raise SystemExit(
-                    "model.sample_weight_params.decay_rate must be in (0, 1]."
-                )
+                raise SystemExit("model.sample_weight_params.decay_rate must be in (0, 1].")
         min_weight_raw = sample_weight_params.get("min_weight")
         if min_weight_raw is not None:
             try:
                 min_weight = float(min_weight_raw)
             except (TypeError, ValueError) as exc:
-                raise SystemExit(
-                    "model.sample_weight_params.min_weight must be a number."
-                ) from exc
+                raise SystemExit("model.sample_weight_params.min_weight must be a number.") from exc
             if not np.isfinite(min_weight) or min_weight < 0:
-                raise SystemExit(
-                    "model.sample_weight_params.min_weight must be >= 0."
-                )
+                raise SystemExit("model.sample_weight_params.min_weight must be >= 0.")
 
     train_window_cfg = model_cfg.get("train_window")
     if train_window_cfg is None:
@@ -782,9 +480,7 @@ def resolve_runtime_settings(
         try:
             train_window_size = int(train_window_size)
         except (TypeError, ValueError) as exc:
-            raise SystemExit(
-                "model.train_window.size must be a positive integer."
-            ) from exc
+            raise SystemExit("model.train_window.size must be a positive integer.") from exc
         if train_window_size <= 0:
             raise SystemExit("model.train_window.size must be a positive integer.")
     train_window_unit = str(train_window_cfg.get("unit", "dates")).strip().lower()
@@ -801,27 +497,19 @@ def resolve_runtime_settings(
         "rebalance_frequency",
         eval_rebalance_frequency,
     )
-    backtest_cost_bps = float(
-        backtest_cfg.get("transaction_cost_bps", eval_transaction_cost_bps)
-    )
-    backtest_trading_days_per_year = int(
-        backtest_cfg.get("trading_days_per_year", 252)
-    )
+    backtest_cost_bps = float(backtest_cfg.get("transaction_cost_bps", eval_transaction_cost_bps))
+    backtest_trading_days_per_year = int(backtest_cfg.get("trading_days_per_year", 252))
     backtest_benchmark = backtest_cfg.get("benchmark_symbol")
     if backtest_benchmark is not None:
         backtest_benchmark = str(backtest_benchmark).strip() or None
     backtest_benchmark_returns_file = backtest_cfg.get("benchmark_returns_file")
     if backtest_benchmark_returns_file is not None:
-        backtest_benchmark_returns_file = (
-            str(backtest_benchmark_returns_file).strip() or None
-        )
+        backtest_benchmark_returns_file = str(backtest_benchmark_returns_file).strip() or None
     if backtest_benchmark and backtest_benchmark_returns_file:
         raise SystemExit(
             "backtest.benchmark_symbol and backtest.benchmark_returns_file are mutually exclusive."
         )
-    backtest_benchmark_compare = _normalize_benchmark_compare(
-        backtest_cfg.get("benchmark_compare")
-    )
+    backtest_benchmark_compare = _normalize_benchmark_compare(backtest_cfg.get("benchmark_compare"))
     backtest_long_only = bool(backtest_cfg.get("long_only", True))
     backtest_buffer_exit = int(backtest_cfg.get("buffer_exit", 0))
     backtest_buffer_entry = int(backtest_cfg.get("buffer_entry", 0))
@@ -836,13 +524,9 @@ def resolve_runtime_settings(
         try:
             backtest_max_names_per_group = int(backtest_max_names_per_group)
         except (TypeError, ValueError) as exc:
-            raise SystemExit(
-                "backtest.max_names_per_group must be a positive integer."
-            ) from exc
+            raise SystemExit("backtest.max_names_per_group must be a positive integer.") from exc
         if backtest_max_names_per_group <= 0:
-            raise SystemExit(
-                "backtest.max_names_per_group must be a positive integer."
-            )
+            raise SystemExit("backtest.max_names_per_group must be a positive integer.")
     backtest_signal_direction_raw = backtest_cfg.get("signal_direction")
     if backtest_signal_direction_raw is not None:
         backtest_signal_direction_raw = float(backtest_signal_direction_raw)
@@ -853,27 +537,19 @@ def resolve_runtime_settings(
         backtest_short_k = int(backtest_short_k)
     backtest_exit_mode = str(backtest_cfg.get("exit_mode", "rebalance")).strip().lower()
     if backtest_exit_mode not in {"rebalance", "label_horizon"}:
-        raise SystemExit(
-            "backtest.exit_mode must be one of: rebalance, label_horizon."
-        )
+        raise SystemExit("backtest.exit_mode must be one of: rebalance, label_horizon.")
     backtest_exit_horizon_days = backtest_cfg.get("exit_horizon_days")
-    backtest_exit_price_policy = str(
-        backtest_cfg.get("exit_price_policy", "strict")
-    ).strip().lower()
-    if backtest_exit_price_policy not in {"strict", "ffill", "delay"}:
-        raise SystemExit(
-            "backtest.exit_price_policy must be one of: strict, ffill, delay."
-        )
-    backtest_exit_fallback_policy = str(
-        backtest_cfg.get("exit_fallback_policy", "ffill")
-    ).strip().lower()
-    if backtest_exit_fallback_policy not in {"ffill", "none"}:
-        raise SystemExit(
-            "backtest.exit_fallback_policy must be one of: ffill, none."
-        )
-    execution_cfg = (
-        backtest_cfg.get("execution") if isinstance(backtest_cfg, Mapping) else None
+    backtest_exit_price_policy = (
+        str(backtest_cfg.get("exit_price_policy", "strict")).strip().lower()
     )
+    if backtest_exit_price_policy not in {"strict", "ffill", "delay"}:
+        raise SystemExit("backtest.exit_price_policy must be one of: strict, ffill, delay.")
+    backtest_exit_fallback_policy = (
+        str(backtest_cfg.get("exit_fallback_policy", "ffill")).strip().lower()
+    )
+    if backtest_exit_fallback_policy not in {"ffill", "none"}:
+        raise SystemExit("backtest.exit_fallback_policy must be one of: ffill, none.")
+    execution_cfg = backtest_cfg.get("execution") if isinstance(backtest_cfg, Mapping) else None
     backtest_execution_source = (
         "explicit_execution_config"
         if isinstance(execution_cfg, Mapping) and bool(execution_cfg)
@@ -995,9 +671,7 @@ def _normalize_benchmark_compare(raw_value: object | None) -> list[dict[str, str
     if raw_value is None:
         return []
     if not isinstance(raw_value, (list, tuple)):
-        raise SystemExit(
-            "backtest.benchmark_compare must be a list of compare benchmark specs."
-        )
+        raise SystemExit("backtest.benchmark_compare must be a list of compare benchmark specs.")
 
     normalized: list[dict[str, str]] = []
     for idx, item in enumerate(raw_value):
@@ -1010,11 +684,7 @@ def _normalize_benchmark_compare(raw_value: object | None) -> list[dict[str, str
             name_raw = item.get("name")
             if name_raw is not None:
                 name = str(name_raw).strip() or None
-            returns_file_raw = (
-                item.get("returns_file")
-                or item.get("file")
-                or item.get("path")
-            )
+            returns_file_raw = item.get("returns_file") or item.get("file") or item.get("path")
             if returns_file_raw is not None:
                 returns_file = str(returns_file_raw).strip() or None
             symbol_raw = item.get("symbol") or item.get("benchmark_symbol")

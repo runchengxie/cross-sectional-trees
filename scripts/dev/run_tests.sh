@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage] [pytest args...]
+Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|imports|format|format-all] [args...]
 
 Modes:
   all          Run the main pytest suite without coverage.
@@ -14,7 +14,30 @@ Modes:
                Real provider integration still requires CSML_RUN_PROVIDER_INTEGRATION=1.
   coverage     Run the main pytest suite with coverage.
                Scope matches 'all'; it is not the full CI matrix.
+  lint         Run Ruff lint and basic complexity checks, plus import-order on changed files.
+  imports      Run Ruff import-order checks across src, tests, and scripts.
+  format       Check Ruff formatting on changed Python files.
+  format-all   Check Ruff formatting across src, tests, and scripts.
 EOF
+}
+
+run_ruff() {
+  if [[ -x .venv/bin/ruff ]]; then
+    .venv/bin/ruff "$@"
+    return
+  fi
+  uv run --no-project --with ruff ruff "$@"
+}
+
+changed_python_files() {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf '%s\n' src tests scripts
+    return
+  fi
+  {
+    git diff --name-only --diff-filter=ACMRT HEAD -- '*.py'
+    git ls-files --others --exclude-standard -- '*.py'
+  } | sort -u
 }
 
 mode="${1:-all}"
@@ -37,6 +60,27 @@ case "$mode" in
     ;;
   coverage)
     exec uv run pytest --cov=csml --cov-report=term-missing "$@"
+    ;;
+  lint)
+    run_ruff check src tests scripts "$@"
+    mapfile -t changed_python < <(changed_python_files)
+    if [[ ${#changed_python[@]} -gt 0 ]]; then
+      run_ruff check --select I "${changed_python[@]}" "$@"
+    fi
+    ;;
+  imports)
+    run_ruff check --select I src tests scripts "$@"
+    ;;
+  format)
+    mapfile -t changed_python < <(changed_python_files)
+    if [[ ${#changed_python[@]} -eq 0 ]]; then
+      echo "No changed Python files to format-check."
+      exit 0
+    fi
+    run_ruff format --check "${changed_python[@]}" "$@"
+    ;;
+  format-all)
+    run_ruff format --check src tests scripts "$@"
     ;;
   -h | --help | help)
     usage

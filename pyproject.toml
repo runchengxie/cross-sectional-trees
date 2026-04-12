@@ -23,6 +23,7 @@ dependencies = [
 dev = [
   "pytest>=7.4",
   "pytest-cov",
+  "ruff>=0.8",
 ]
 duckdb = [
   "duckdb>=1.2",
@@ -54,6 +55,63 @@ markers = [
   "integration: cross-module end-to-end tests",
   "slow: heavier offline regression tests",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+  ".venv",
+  "artifacts",
+  "build",
+  "configs/local",
+  "dist",
+]
+
+[tool.ruff.lint]
+select = ["E9", "F821", "F822", "F823", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 18
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.ruff.lint.per-file-ignores]
+# Existing large orchestration modules are being split incrementally.
+"src/csml/backtest.py" = ["C901"]
+"src/csml/commands/linear_sweep.py" = ["C901"]
+"src/csml/commands/run_grid.py" = ["C901"]
+"src/csml/commands/tune.py" = ["C901"]
+"src/csml/data_providers.py" = ["C901"]
+"src/csml/data_tools/build_hk_connect_universe.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/args.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/asset_health.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/build.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/clean_daily.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/coverage.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/intraday_asset.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/intraday_health.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/mirror_daily.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/mirror_industry_changes.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/mirror_industry_southbound.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/mirror_instrument_industry.py" = ["C901"]
+"src/csml/data_tools/rqdata_assets/mirror_workflow.py" = ["C901"]
+"src/csml/liveops/alloc_core.py" = ["C901"]
+"src/csml/liveops/alloc_hk_allocation.py" = ["C901"]
+"src/csml/liveops/holdings.py" = ["C901"]
+"src/csml/pipeline/config.py" = ["C901"]
+"src/csml/pipeline/config_eval.py" = ["C901"]
+"src/csml/pipeline/eval.py" = ["C901"]
+"src/csml/pipeline/feature_engineering.py" = ["C901"]
+"src/csml/pipeline/output_artifacts.py" = ["C901"]
+"src/csml/pipeline/panel_loader.py" = ["C901"]
+"src/csml/pipeline/preflight.py" = ["C901"]
+"src/csml/pipeline/train_eval_stage.py" = ["C901"]
+"src/csml/portfolio.py" = ["C901"]
+"src/csml/release_tools/hk_asset_workflow.py" = ["C901"]
+"src/csml/release_tools/package_assets.py" = ["C901"]
+"src/csml/release_tools/release_assets.py" = ["C901"]
+"src/csml/split.py" = ["C901"]
 
 [tool.uv]
 # `rqsdk` still imports `pkg_resources` from its sdist build step.

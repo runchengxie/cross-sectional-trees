@@ -8,12 +8,11 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 
-from csml.config_utils import resolve_pipeline_config
 from csml import data_providers
+from csml.config_utils import resolve_pipeline_config
 from csml.data_tools.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from csml.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 from csml.rqdata_runtime import init_rqdatac as _init_rqdatac_runtime
-
 
 REPO_ROOT = find_repo_root(__file__)
 
@@ -26,9 +25,7 @@ DEFAULT_OUTPUT_FILE = (
     "artifacts/assets/rqdata/hk/pit_financials/"
     "hk_selected_pit_2011_2025_latest/pipeline_fundamentals_with_provider_valuation.parquet"
 )
-DEFAULT_PROVIDER_CONFIG = (
-    "configs/local/hk_selected__quarterly_4way_g2_price_provider_valuation_xgb_ranker.yml"
-)
+DEFAULT_PROVIDER_CONFIG = "configs/experiments/baseline/hk_selected.yml"
 DEFAULT_CACHE_DIR = "artifacts/cache/fundamentals/hk/provider_valuation_merge"
 
 
@@ -106,7 +103,9 @@ def fetch_provider_frame(
     client,
 ) -> pd.DataFrame:
     data_cfg = cfg.get("data", {}) if isinstance(cfg.get("data"), dict) else {}
-    fundamentals_cfg = cfg.get("fundamentals", {}) if isinstance(cfg.get("fundamentals"), dict) else {}
+    fundamentals_cfg = (
+        cfg.get("fundamentals", {}) if isinstance(cfg.get("fundamentals"), dict) else {}
+    )
     frames: list[pd.DataFrame] = []
 
     for idx, symbol in enumerate(symbols, start=1):
@@ -191,9 +190,7 @@ def _merge_frames_asof(
         provider_group = provider_group.sort_values("provider_trade_date_dt")
         merged_group = pd.merge_asof(
             pit_group,
-            provider_group[
-                ["provider_trade_date_dt", source_date_col, "symbol"] + value_cols
-            ],
+            provider_group[["provider_trade_date_dt", source_date_col, "symbol"] + value_cols],
             left_on="trade_date_dt",
             right_on="provider_trade_date_dt",
             by="symbol",
@@ -234,7 +231,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Merge provider valuation columns into HK selected PIT fundamentals parquet."
     )
-    parser.add_argument("--pit-file", default=DEFAULT_PIT_FILE, help="Input PIT fundamentals parquet.")
+    parser.add_argument(
+        "--pit-file", default=DEFAULT_PIT_FILE, help="Input PIT fundamentals parquet."
+    )
     parser.add_argument(
         "--provider-config",
         default=DEFAULT_PROVIDER_CONFIG,
