@@ -57,6 +57,15 @@
 * walk-forward IC mean 仍是 `-7.13%`，所以这次改善更像 execution / construction 层增量，而不是 signal 稳定性已经解决。
 * 当前更准确的状态是：`trial_016 + k15_bx25_be12` 可以作为 monthly `no_ret` ranker execution-layer challenger；还不应替代 regressor gated winner 或 monthly 默认入口。
 
+第二波 ranker-native 邻域、bridge sweep 和 `trial_008` fixed-signal construction grid 跑完后，结论还要再更新一次：
+
+* 第二波邻域说明：模型层没有找到一个能同时保住 `trial_016` 的 active IR、又把 walk-forward IC 稳定修正的桥接点。
+* `trial_008` 变成更像 signal-candidate 的点：它的 walk-forward test IC mean 为 `0.07%`，同时 final OOS Sharpe 仍有 `1.99`。
+* 固定 `trial_008` 后，construction grid 的 objective winner 仍是 `k15_bx25_be12`。
+* 它把 final OOS Sharpe 从 `1.99` 提到 `2.19`，final OOS backtest turnover 从 `18.36%` 降到 `15.50%`，final OOS active IR 从 `0.21` 提到 `0.38`。
+* 更激进的 `k15_bx20_be10` 也值得保留：final OOS Sharpe `2.19`，active IR `0.58`，但 turnover 回到 `18.93%`。
+* 当前更准确的状态是：`trial_008 + k15_bx25_be12` 应视为 monthly `no_ret` ranker 的主 challenger，`trial_008 + k15_bx20_be10` 是 aggressive comparator；`trial_016 + k15_bx25_be12` 仍是 execution ceiling，而不是默认主线。
+
 ## 2. 为什么先写这页
 
 这次复核过程中出现了一个容易误导后续研究的细节：
@@ -549,7 +558,10 @@
 7. 对 `trial_016` 做同口径复跑，确认不是单次 run 噪音。已完成。
 8. 如果复跑仍成立，再做 fixed-signal construction grid。已完成，当前首选是 `k15_bx25_be12`。
 9. 做 benchmark active attribution 和 holding concentration 检查。已完成，结论是 active 改善成立，但集中度和大盘 / 低波 / 质量暴露风险仍需下一轮 guardrail。
-10. 下一步优先做 fixed-signal exposure / concentration guardrail probe，而不是继续扩模型 sweep。
+10. 围绕 `trial_016` 补第二波 ranker-native 邻域 sweep，确认 walk-forward 修复是否能在不显著牺牲 active IR 的情况下成立。已完成，当前 signal-side 更像样的候选变成 `trial_008`。
+11. 做一个小的 bridge sweep，测试 `trial_005` 和 `trial_016` 之间有没有可用桥接点。已完成，结论是没有真正 bridge 成功的新点。
+12. 固定 `trial_008` 再做 fixed-signal construction grid。已完成，当前平衡最好的组合是 `k15_bx25_be12`，更激进 comparator 是 `k15_bx20_be10`。
+13. 下一步优先做 `trial_008 + k15_bx25_be12` 的 fixed-signal exposure / concentration guardrail probe，并用 `trial_008 + k15_bx20_be10` 做 aggressiveness 对照，而不是继续扩模型 sweep。
 
 不要先做：
 
@@ -561,3 +573,103 @@
 这些都会让当前最关键的问题变混：
 
 * **ranker 本身有没有稳定排序增量。**
+
+## 13. 第二波邻域与 `trial_008` construction follow-up
+
+这轮后续动作分三步：
+
+* 第二波邻域 sweep：`artifacts/sweeps/hk_m_pit_no_ret_ranker_native_r2_fixed20260402/`
+* bridge sweep：`artifacts/sweeps/hk_m_pit_no_ret_ranker_native_r3_bridge_fixed20260402/`
+* 固定 `trial_008` 的 construction grid：`artifacts/sweeps/hk_m_pit_no_ret_ranker_trial008_construction_r1_fixed20260402/`
+
+### 13.1 第二波邻域给了什么
+
+第二波邻域最重要的结果不是 objective winner 本身，而是把 signal-side 和 implementation-side 的候选分开了：
+
+| trial | combo | test IC IR | WF IC mean | final OOS Sharpe | final OOS turnover | final OOS active IR |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `005` | `d2_mcw20_l10_a05_sub07_col07` | `0.38` | `-0.65%` | `1.95` | `17.00%` | `0.05` |
+| `008` | `d2_mcw10_l10_a05_sub07_col07` | `0.15` | `0.07%` | `1.99` | `18.36%` | `0.21` |
+| `016` | `d2_mcw20_l10_a1_sub07_col07` | `0.35` | `-7.13%` | `2.07` | `16.60%` | `0.38` |
+
+怎么读：
+
+* `trial_005` 证明 `reg_alpha = 0.5` 确实能修一部分 walk-forward IC。
+* 但它把 final OOS active IR 从 `0.38` 明显拉低到 `0.05`，所以不能直接替代 `trial_016`。
+* `trial_008` 虽然不是 objective winner，但它给出了当时最像 signal-candidate 的平衡：walk-forward IC mean 终于接近转正，同时 OOS Sharpe 和 active IR 还保留住一大段。
+
+对应关键 run：
+
+* `trial_005`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_native_r2_fixed20260402_trial_005_20260413_140040_9089382b/`
+* `trial_008`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_native_r2_fixed20260402_trial_008_20260413_140214_b36dc50b/`
+
+### 13.2 Bridge sweep 排除了什么
+
+bridge sweep 的作用不是找新冠军，而是回答：
+
+* `trial_005` 的 walk-forward 修复，能不能和 `trial_016` 的 active IR / implementation 强度合并
+
+结果是否定的。
+
+| trial | combo | WF IC mean | final OOS Sharpe | final OOS active IR |
+| --- | --- | ---: | ---: | ---: |
+| `001` | `d2_mcw12_l10_a05_sub07_col07` | `-1.94%` | `2.02` | `0.25` |
+| `005` | `d2_mcw18_l10_a05_sub07_col07` | `-3.63%` | `1.83` | `-0.02` |
+| `006` | `d2_mcw18_l10_a075_sub07_col07` | `-4.42%` | `2.00` | `0.21` |
+
+怎么读：
+
+* 没有一个点能同时优于 `trial_008` 的 signal 证据和 `trial_016` 的 implementation 强度。
+* 这一步的研究价值主要是排除了一段中间参数区，而不是找到新默认。
+
+关键 sweep：
+
+* `artifacts/sweeps/hk_m_pit_no_ret_ranker_native_r3_bridge_fixed20260402/`
+
+### 13.3 固定 `trial_008` 后的 construction grid
+
+固定 `trial_008` 的模型层后，construction grid 真正给出了可保留的实现增量。
+
+| combo | final OOS Sharpe | final OOS turnover | final OOS active IR | full-sample backtest Sharpe | full-sample backtest IR |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| baseline `k20_bx20_be10` | `1.99` | `18.36%` | `0.21` | `0.35` | `0.35` |
+| `k15_bx20_be10` | `2.19` | `18.93%` | `0.58` | `0.42` | `0.47` |
+| `k20_bx25_be12` | `2.07` | `16.32%` | `0.43` | `0.33` | `0.31` |
+| `k15_bx25_be12` | `2.19` | `15.50%` | `0.38` | `0.39` | `0.44` |
+| `k20_bx15_be8` | `1.95` | `21.13%` | `0.31` | `0.36` | `0.35` |
+| `k25_bx25_be12` | `2.00` | `17.24%` | `0.39` | `0.33` | `0.33` |
+
+怎么读：
+
+* `k15_bx25_be12` 是最平衡的组合：
+  * final OOS Sharpe 与 `k15_bx20_be10` 基本持平
+  * turnover 明显更低
+  * active IR 明显高于 baseline
+* `k15_bx20_be10` 是更激进的 comparator：
+  * active IR 最强
+  * 但 turnover 没有改善
+* `k20_bx25_be12` 是保守备选：
+  * turnover 更低
+  * 但整体增量不如 `k15_bx25_be12`
+
+对应关键 run：
+
+* baseline `trial_008`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_native_r2_fixed20260402_trial_008_20260413_140214_b36dc50b/`
+* `k15_bx25_be12`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_trial008_construction_r1_fixed20260402_trial_004_20260413_152359_03bd4147/`
+* `k15_bx20_be10`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_trial008_construction_r1_fixed20260402_trial_002_20260413_152256_67b2d5da/`
+
+### 13.4 和 `trial_016 + k15_bx25_be12` 怎么摆
+
+当前三个最值得保留的点可以这样分层：
+
+| 角色 | 组合 | 主要理由 |
+| --- | --- | --- |
+| signal + implementation 主 challenger | `trial_008 + k15_bx25_be12` | walk-forward IC 证据最干净，同时 OOS Sharpe / turnover / active IR 都有明显实现增量 |
+| aggressive comparator | `trial_008 + k15_bx20_be10` | active IR 最强，但 turnover 没有同步改善 |
+| execution ceiling | `trial_016 + k15_bx25_be12` | OOS Sharpe / active IR 仍是当前上限，但 walk-forward IC 仍明显为负 |
+
+当前最合理的下一步不是继续开第四轮模型 sweep，而是：
+
+* 固定 `trial_008 + k15_bx25_be12`
+* 做一个很小的 exposure / concentration guardrail probe
+* 用 `trial_008 + k15_bx20_be10` 当 aggressiveness 对照

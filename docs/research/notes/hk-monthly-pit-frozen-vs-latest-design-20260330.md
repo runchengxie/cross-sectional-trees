@@ -1,6 +1,16 @@
-标题：HK Monthly `M-PIT` Frozen vs Latest 稳定性拆解与首轮结果  
-日期：`2026-03-30`  
-状态：`active deep-dive`，这页同时回答“该怎么拆解 `M-PIT` 从 frozen 到 latest 的变化”以及“`R0-R4` 首轮实跑到底说明了什么”，不替代 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)
+# HK Monthly `M-PIT` Frozen vs Latest 稳定性拆解（2026-03-30）
+
+本页解决什么：回答“旧 frozen snapshot 里仍为正 `IC` 的 `M-PIT`，为什么推进到 latest 窗口后会转弱”，并收口 `R0-R4` 首轮结果。  
+本页不解决什么：不替代 `current-state` 页面，也不把后续 monthly overlay / construction 历史全部重写一遍。  
+适合谁：已经接受 monthly 当前主要问题不是“继续加特征”，而是“先解释 latest regime 转弱”的读者。  
+读完你会得到什么：`R0-R4` 的最小实验矩阵、它最该回答的问题，以及为什么当前更该把 baseline 问题理解成 recent regime / latest window 变化。  
+相关页面：`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
+
+页面性质：`research-note`  
+状态：`active deep-dive`，这页同时回答“该怎么拆解 `M-PIT` 从 frozen 到 latest 的变化”以及“`R0-R4` 首轮实跑到底说明了什么”，不替代 [`hk-monthly-current-state-20260330.md`](./hk-monthly-current-state-20260330.md)  
+最后核对时间：`2026-03-30`  
+权威来源：本页列出的 run 目录下 `summary.json` / `config.used.yml`、当前 monthly 研究总笔记和对应资产边界  
+冲突优先级：如果与具体 run 的 `summary.json` / `config.used.yml` 冲突，以 run 产物为准；如果与更晚的 monthly 总收口冲突，以更晚页面为准
 
 ## 一句话结论
 

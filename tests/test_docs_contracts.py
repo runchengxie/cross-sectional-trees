@@ -285,6 +285,42 @@ def test_inline_repo_path_references_exist():
     assert missing == {}
 
 
+def test_research_notes_are_indexed_in_research_readme():
+    repo_root = _repo_root()
+    readme = (repo_root / "docs" / "research" / "README.md").read_text(encoding="utf-8")
+    listed = set(re.findall(r"`notes/([^`]+\.md)`", readme))
+    actual = {
+        path.name
+        for path in sorted((repo_root / "docs" / "research" / "notes").glob("*.md"))
+    }
+
+    assert listed == actual
+
+
+def test_research_notes_have_minimal_metadata():
+    repo_root = _repo_root()
+    missing: dict[str, list[str]] = {}
+
+    for path in sorted((repo_root / "docs" / "research" / "notes").glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        issues: list[str] = []
+
+        if "页面性质：" not in text:
+            issues.append("页面性质")
+        if "最后核对时间：" not in text:
+            issues.append("最后核对时间")
+
+        kind_match = re.search(r"页面性质：\s*`([^`]+)`", text)
+        if kind_match is None or kind_match.group(1) != "current-state":
+            if "状态：" not in text and "> 状态提示：" not in text:
+                issues.append("状态")
+
+        if issues:
+            missing[path.relative_to(repo_root).as_posix()] = issues
+
+    assert missing == {}
+
+
 def test_docs_cli_covers_public_cli_leaf_commands():
     docs_cli = (_repo_root() / "docs" / "cli.md").read_text(encoding="utf-8")
     expected_headings = {
