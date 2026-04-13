@@ -705,3 +705,117 @@ guardrail probe 分两轮：
 | guarded challenger | `trial_008 + k15_bx25_be12 + groupcap4` | 在最小行业约束下保住大部分 Sharpe / turnover / active IR 增量，且 top industry 名字数已压到 `<= 4` |
 | aggressive comparator | `trial_008 + k15_bx20_be10 + groupcap4` | active IR 更强、drawdown 更浅，但换手仍明显更高 |
 | execution ceiling | `trial_016 + k15_bx25_be12` | 纯 OOS 实现仍亮，但 walk-forward IC 仍偏弱 |
+
+### 13.6 主线 vs comparator 稳健性检查清单
+
+在 `positive_cfo_ratio_3y` 和 `positive_cfo_ratio_2y` follow-up 之后，当前 monthly ranker 更准确的两条跟踪线应理解成：
+
+| 角色 | 组合 | 当前定位 |
+| --- | --- | --- |
+| 主 guarded challenger | `trial_008 + positive_cfo_ratio_3y + k15_bx25_be12 + groupcap4` | 当前主动收益最强、实现层最平衡的正 CFO 版本 |
+| aggressive comparator | `trial_008 + positive_cfo_ratio_2y + k15_bx20_be10 + groupcap4` | 更高 Sharpe、较高 active IR，但故事更偏 implementation |
+
+下一轮不该再继续扩慢因子包，也不该重新开模型大 sweep，而应先完成下面这份稳健性检查。
+
+#### 13.6.1 固定口径
+
+先固定不再变化的东西：
+
+* dated `2026-04-02` asset 口径
+* `trial_008` ranker-native 模型参数
+* `groupcap4`
+* benchmark ladder 与 execution cost 口径
+* `final_oos.size = 24`
+
+否则会把“正 CFO 版本差异”和“数据口径漂移”混在一起。
+
+#### 13.6.2 必看结果
+
+每次复核这两条线，先只看下面 6 个指标：
+
+* final OOS `Sharpe`
+* final OOS `active IR`
+* final OOS `active total return`
+* final OOS `avg turnover`
+* walk-forward `test IC mean`
+* `rows_model` / `rows_model_oos`
+
+原因很简单：
+
+* `3Y` 主线当前赢在 `active IR` 和 `active total return`
+* `2Y` aggressive comparator 当前赢在 `Sharpe`
+* 两条线都没有真正修好 walk-forward
+
+所以只看 objective 或只看单个 `IC IR` 都会误判。
+
+#### 13.6.3 先做 4 组切片
+
+先不要加新因子，先把这 4 组切片看清楚：
+
+* 最近 `6m`
+* 最近 `12m`
+* 最近 `24m`
+* full final OOS `24m`
+
+每组都对比：
+
+* `Sharpe`
+* `active IR`
+* `active total return`
+* `avg turnover`
+* `IC mean`
+
+目标不是找“哪条线总是赢”，而是回答：
+
+* `3Y` 的主动收益优势是不是集中在旧窗口
+* `2Y` 的 Sharpe 优势是不是只来自最近一小段
+
+#### 13.6.4 必做 attribution
+
+这两条线至少要补 3 类 attribution：
+
+* 行业：
+  看 top industry 名字数、行业贡献和是否仍然被少数行业主导
+* 市值 / 风格：
+  看大盘、低波、质量暴露是否有明显分化
+* 持仓集中：
+  看 top 5 symbol contribution share 和单票权重尾部
+
+这里真正要回答的是：
+
+* `3Y` 为什么 active IR 更高
+* `2Y` 为什么 Sharpe 更高但主动收益没有同步拉开
+
+#### 13.6.5 实现层检查
+
+两条线都要补这 3 个实现层 sanity check：
+
+* turnover 是否在最近窗口突然抬升
+* cost drag 是否明显放大
+* aggressive comparator 的高 Sharpe 是否主要靠更低 beta / 更贴 benchmark
+
+如果 `2Y` 的 Sharpe 优势主要来自更低 beta，而不是更高 active total return，就不该把它误读成主线升级。
+
+#### 13.6.6 当前决策规则
+
+在没有新增样本前，当前临时决策规则建议固定成：
+
+* 如果优先看主动收益和更平衡的实现层，继续保留 `3Y` 主线
+* 如果优先看更高 Sharpe，并接受更激进 construction，把 `2Y` 保留为 comparator
+* 在 walk-forward 没明显修复前，不把任何一条线包装成“已成熟可重仓”的版本
+
+#### 13.6.7 `accrual_ratio` 怎么处理
+
+`accrual_ratio` 现在只保留为 watchlist，不直接并入主线。
+
+理由是：
+
+* 它能把 eval / IC 指标抬高
+* 但它没有打赢 `positive_cfo_ratio_3y` control 的 `Sharpe / active IR / active total return`
+
+所以下一步如果碰它，应该当成：
+
+* signal-side watchlist
+* 或轻量 filter / gating 候选
+
+而不是重新开一个慢因子 pack。

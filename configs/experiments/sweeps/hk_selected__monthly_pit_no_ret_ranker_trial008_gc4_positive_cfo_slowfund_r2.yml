@@ -1,0 +1,172 @@
+base_config: configs/experiments/variants/hk_selected__monthly_pit_no_ret_ranker_trial008_gc4_k15_bx25_be12.yml
+run_name_prefix: hk_tune_
+tag: hk_selected_monthly_pit_no_ret_ranker_trial008_gc4_positive_cfo_slowfund_r2
+sampler: grid
+
+objective:
+  eval_ic_ir_weight: 1.0
+  walk_forward_test_ic_mean_weight: 1.0
+  backtest_sharpe_weight: 0.5
+  drawdown_penalty_weight: 0.25
+  cost_drag_penalty_weight: 5.0
+  turnover_penalty_weight: 0.1
+  drop_degenerate: true
+  min_cv_ic_valid_folds: 4
+
+search_space:
+  - name: slow_fundamental_probe
+    values:
+      - label: positive_cfo_ratio_3y_control
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_positive_cfo_slowfund_r2_control_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+      - label: positive_cfo_ratio_3y__accrual_ratio
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_positive_cfo_slowfund_r2_accrual_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - accrual_ratio
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - accrual_ratio
+      - label: positive_cfo_ratio_3y__cash_to_assets
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_positive_cfo_slowfund_r2_cash_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - cash_to_assets
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - cash_to_assets
+      - label: positive_cfo_ratio_3y__inventory_to_revenue
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_positive_cfo_slowfund_r2_inventory_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - inventory_to_revenue
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - inventory_to_revenue
