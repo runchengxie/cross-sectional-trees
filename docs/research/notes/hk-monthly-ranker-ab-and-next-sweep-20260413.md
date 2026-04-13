@@ -64,7 +64,8 @@
 * 固定 `trial_008` 后，construction grid 的 objective winner 仍是 `k15_bx25_be12`。
 * 它把 final OOS Sharpe 从 `1.99` 提到 `2.19`，final OOS backtest turnover 从 `18.36%` 降到 `15.50%`，final OOS active IR 从 `0.21` 提到 `0.38`。
 * 更激进的 `k15_bx20_be10` 也值得保留：final OOS Sharpe `2.19`，active IR `0.58`，但 turnover 回到 `18.93%`。
-* 当前更准确的状态是：`trial_008 + k15_bx25_be12` 应视为 monthly `no_ret` ranker 的主 challenger，`trial_008 + k15_bx20_be10` 是 aggressive comparator；`trial_016 + k15_bx25_be12` 仍是 execution ceiling，而不是默认主线。
+* 接入 dated industry labels 后，`groupcap4` 能把 top industry 名字数压到 `<= 4`，同时仍把 `trial_008 + k15_bx25_be12` 的 final OOS Sharpe 保在 `2.20` 左右。
+* `groupcap3` 在这条线上的 active IR 代价偏大，因此当前更准确的状态是：`trial_008 + k15_bx25_be12 + groupcap4` 应视为 monthly `no_ret` ranker 的主 guarded challenger，`trial_008 + k15_bx20_be10 + groupcap4` 是 aggressive comparator；`trial_016 + k15_bx25_be12` 仍是 execution ceiling，而不是默认主线。
 
 ## 2. 为什么先写这页
 
@@ -670,6 +671,37 @@ bridge sweep 的作用不是找新冠军，而是回答：
 
 当前最合理的下一步不是继续开第四轮模型 sweep，而是：
 
-* 固定 `trial_008 + k15_bx25_be12`
-* 做一个很小的 exposure / concentration guardrail probe
-* 用 `trial_008 + k15_bx20_be10` 当 aggressiveness 对照
+* 固定 `trial_008 + k15_bx25_be12 + groupcap4`
+* 用 `trial_008 + k15_bx20_be10 + groupcap4` 当 aggressiveness 对照
+* 停止继续扩 construction / guardrail 小网格，转向前瞻跟踪
+
+### 13.5 Guardrail probe 结果
+
+guardrail probe 分两轮：
+
+* `artifacts/sweeps/hk_m_pit_no_ret_ranker_trial008_guardrail_r1_fixed20260402/`
+* `artifacts/sweeps/hk_m_pit_no_ret_ranker_trial008_guardrail_r2_micro_fixed20260402/`
+
+第一轮说明：
+
+* `groupcap4` 是有效但温和的约束：
+  * `k15_bx25_be12` 下 final OOS Sharpe 基本不变，从 `2.194` 到 `2.198`
+  * final OOS active IR 从 `0.384` 降到 `0.337`
+  * top industry 名字数从均值约 `4.35`、最高 `6`，压到均值约 `3.61`、最高 `4`
+* `groupcap3` 约束太硬：
+  * 虽然能把 top industry 名字数压到 `<= 3`
+  * 但 `k15_bx25_be12` 下 final OOS active IR 只剩 `0.217`
+
+第二轮 micro 说明：
+
+* `gc4_k15_bx25_be12` 仍是平衡最好的 guarded control。
+* `gc4_k15_bx20_be10` 的 active IR 更强，final OOS active IR 约 `0.52`，但 turnover 仍接近 `18.8%`，更适合作为 aggressive comparator。
+* `gc4_k20_bx25_be12` 更分散，但 final OOS Sharpe 和 active IR 都明显回落，不值得继续保留成主分支。
+
+所以当前 ranker 线的收口应理解成：
+
+| 角色 | 组合 | 主要理由 |
+| --- | --- | --- |
+| guarded challenger | `trial_008 + k15_bx25_be12 + groupcap4` | 在最小行业约束下保住大部分 Sharpe / turnover / active IR 增量，且 top industry 名字数已压到 `<= 4` |
+| aggressive comparator | `trial_008 + k15_bx20_be10 + groupcap4` | active IR 更强、drawdown 更浅，但换手仍明显更高 |
+| execution ceiling | `trial_016 + k15_bx25_be12` | 纯 OOS 实现仍亮，但 walk-forward IC 仍偏弱 |
