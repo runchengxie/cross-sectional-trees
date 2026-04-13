@@ -133,6 +133,8 @@ DERIVED_PIT_FEATURES = {
     "profit_margin_std_3y",
     "cfo_to_profit_median_3y",
     "positive_cfo_ratio_3y",
+    "positive_cfo_ratio_2y",
+    "positive_cfo_ratio_3y_min2",
 }
 
 

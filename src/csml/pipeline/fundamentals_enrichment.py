@@ -155,6 +155,22 @@ def _derive_requested_fundamental_fields(
             stat="positive_ratio",
             min_periods=3,
         )
+    if "positive_cfo_ratio_2y" in requested_feature_names:
+        fund_df["positive_cfo_ratio_2y"] = compute_trailing_calendar_window_stat(
+            fund_df,
+            _numeric("cash_flow_from_operating_activities"),
+            years=2,
+            stat="positive_ratio",
+            min_periods=2,
+        )
+    if "positive_cfo_ratio_3y_min2" in requested_feature_names:
+        fund_df["positive_cfo_ratio_3y_min2"] = compute_trailing_calendar_window_stat(
+            fund_df,
+            _numeric("cash_flow_from_operating_activities"),
+            years=3,
+            stat="positive_ratio",
+            min_periods=2,
+        )
     return fund_df
 
 

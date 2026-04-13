@@ -456,7 +456,7 @@ backtest:
 
 说明：
 
-* `features.list` 里的 PIT 派生特征除了 `growth_*`、`delta_*`、`profit_margin` 这类单期派生，也支持像 `sales_cagr_3y`、`eps_cagr_3y`、`cfo_margin_avg_3y`、`profit_margin_std_3y` 这样的长期稳定性特征；这类特征按报表事件序列先计算，再并到 daily panel 做 `ffill`。
+* `features.list` 里的 PIT 派生特征除了 `growth_*`、`delta_*`、`profit_margin` 这类单期派生，也支持像 `sales_cagr_3y`、`eps_cagr_3y`、`cfo_margin_avg_3y`、`profit_margin_std_3y`、`positive_cfo_ratio_2y`、`positive_cfo_ratio_3y_min2` 这样的长期稳定性特征；这类特征按报表事件序列先计算，再并到 daily panel 做 `ffill`。
 
 ### `features.missing`
 

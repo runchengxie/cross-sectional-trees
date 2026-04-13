@@ -574,6 +574,22 @@ def _compute_pit_feature_series(
             stat="positive_ratio",
             min_periods=3,
         ).astype("Float64")
+    elif feature == "positive_cfo_ratio_2y":
+        series = compute_trailing_calendar_window_stat(
+            frame,
+            _get("cash_flow_from_operating_activities"),
+            years=2,
+            stat="positive_ratio",
+            min_periods=2,
+        ).astype("Float64")
+    elif feature == "positive_cfo_ratio_3y_min2":
+        series = compute_trailing_calendar_window_stat(
+            frame,
+            _get("cash_flow_from_operating_activities"),
+            years=3,
+            stat="positive_ratio",
+            min_periods=2,
+        ).astype("Float64")
     elif feature.startswith("delta_"):
         base_feature = feature.removeprefix("delta_")
         base_series = _get(base_feature)

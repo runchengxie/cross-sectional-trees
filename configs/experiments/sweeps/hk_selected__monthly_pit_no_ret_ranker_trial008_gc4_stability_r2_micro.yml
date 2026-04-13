@@ -1,0 +1,138 @@
+base_config: configs/experiments/variants/hk_selected__monthly_pit_no_ret_ranker_trial008_gc4_k15_bx25_be12.yml
+run_name_prefix: hk_tune_
+tag: hk_selected_monthly_pit_no_ret_ranker_trial008_gc4_stability_r2_micro
+sampler: grid
+
+objective:
+  eval_ic_ir_weight: 1.0
+  walk_forward_test_ic_mean_weight: 1.0
+  backtest_sharpe_weight: 0.5
+  drawdown_penalty_weight: 0.25
+  cost_drag_penalty_weight: 5.0
+  turnover_penalty_weight: 0.1
+  drop_degenerate: true
+  min_cv_ic_valid_folds: 4
+
+search_space:
+  - name: stability_pack
+    values:
+      - label: control
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_k15_bx25_be12_v1
+      - label: positive_cfo_ratio_3y
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_stability_r2_micro_pcfo_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+      - label: positive_cfo_ratio_3y__profit_margin_std_3y
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_stability_r2_micro_pcfo_pmstd_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - profit_margin_std_3y
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - profit_margin_std_3y
+      - label: positive_cfo_ratio_3y__profit_margin_std_3y__eps_cagr_3y
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_stability_r2_micro_pcfo_pmstd_epscagr_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - profit_margin_std_3y
+            - eps_cagr_3y
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+            - profit_margin_std_3y
+            - eps_cagr_3y

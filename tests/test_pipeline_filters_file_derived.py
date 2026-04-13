@@ -715,6 +715,8 @@ def test_pipeline_hk_file_fundamentals_supports_trailing_stability_features(
                 "profit_margin_std_3y",
                 "cfo_to_profit_median_3y",
                 "positive_cfo_ratio_3y",
+                "positive_cfo_ratio_2y",
+                "positive_cfo_ratio_3y_min2",
             ],
             "cross_sectional": {"method": "none"},
             "missing": {
@@ -726,6 +728,8 @@ def test_pipeline_hk_file_fundamentals_supports_trailing_stability_features(
                     "profit_margin_std_3y",
                     "cfo_to_profit_median_3y",
                     "positive_cfo_ratio_3y",
+                    "positive_cfo_ratio_2y",
+                    "positive_cfo_ratio_3y_min2",
                 ],
             },
         },
@@ -769,6 +773,12 @@ def test_pipeline_hk_file_fundamentals_supports_trailing_stability_features(
     before_full_history = dataset[
         (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2024-04-30")
     ]
+    relaxed_history = dataset[
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2023-04-30")
+    ]
+    other_relaxed_history = dataset[
+        (dataset["symbol"] == "00011.HK") & (dataset["trade_date"] == "2023-04-30")
+    ]
     report_row = dataset[
         (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-30")
     ]
@@ -800,4 +810,13 @@ def test_pipeline_hk_file_fundamentals_supports_trailing_stability_features(
         expected_cfo_to_profit_median
     )
     assert report_row["positive_cfo_ratio_3y"].iloc[0] == pytest.approx(1.0)
+    assert report_row["positive_cfo_ratio_2y"].iloc[0] == pytest.approx(1.0)
+    assert report_row["positive_cfo_ratio_3y_min2"].iloc[0] == pytest.approx(1.0)
     assert other_symbol_row["positive_cfo_ratio_3y"].iloc[0] == pytest.approx(0.75)
+    assert other_symbol_row["positive_cfo_ratio_2y"].iloc[0] == pytest.approx(2.0 / 3.0)
+    assert other_symbol_row["positive_cfo_ratio_3y_min2"].iloc[0] == pytest.approx(0.75)
+    assert relaxed_history["positive_cfo_ratio_3y"].iloc[0] == pytest.approx(0.0)
+    assert relaxed_history["positive_cfo_ratio_2y"].iloc[0] == pytest.approx(1.0)
+    assert relaxed_history["positive_cfo_ratio_3y_min2"].iloc[0] == pytest.approx(1.0)
+    assert other_relaxed_history["positive_cfo_ratio_2y"].iloc[0] == pytest.approx(0.5)
+    assert other_relaxed_history["positive_cfo_ratio_3y_min2"].iloc[0] == pytest.approx(0.5)

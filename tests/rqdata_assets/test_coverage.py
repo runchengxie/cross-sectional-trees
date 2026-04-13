@@ -238,6 +238,8 @@ def test_inspect_hk_pit_coverage_supports_trailing_stability_features(tmp_path, 
                         "profit_margin_std_3y",
                         "cfo_to_profit_median_3y",
                         "positive_cfo_ratio_3y",
+                        "positive_cfo_ratio_2y",
+                        "positive_cfo_ratio_3y_min2",
                     ],
                 },
                 "universe": {"min_symbols_per_date": 2},
@@ -274,6 +276,8 @@ def test_inspect_hk_pit_coverage_supports_trailing_stability_features(tmp_path, 
         "profit_margin_std_3y",
         "cfo_to_profit_median_3y",
         "positive_cfo_ratio_3y",
+        "positive_cfo_ratio_2y",
+        "positive_cfo_ratio_3y_min2",
     ]
 
     field_map = {item["feature"]: item for item in payload["field_coverage"]}
@@ -283,6 +287,8 @@ def test_inspect_hk_pit_coverage_supports_trailing_stability_features(tmp_path, 
     assert field_map["profit_margin_std_3y"]["nonnull_rows"] == 4
     assert field_map["cfo_to_profit_median_3y"]["nonnull_rows"] == 4
     assert field_map["positive_cfo_ratio_3y"]["nonnull_rows"] == 4
+    assert field_map["positive_cfo_ratio_2y"]["nonnull_rows"] == 6
+    assert field_map["positive_cfo_ratio_3y_min2"]["nonnull_rows"] == 6
 
 
 def test_inspect_hk_pit_coverage_trainable_mode_estimates_fill_recovered_sample(
