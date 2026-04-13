@@ -37,6 +37,7 @@
 `notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`
 `notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
 `notes/hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`
+`notes/hk-monthly-ranker-ab-and-next-sweep-20260413.md`
 `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`
 `notes/hk-monthly-provider-vs-pit-20260330.md`
 `notes/hk-monthly-industry-treatment-20260404.md`
@@ -95,6 +96,7 @@
 | `notes/hk-monthly-pit-slow-sleeve-probes-20260330.md` | 如果想把 `M-PIT` 做得更像“季度看看、平时少动”的主观投资模板，当前更高信息比的做法是保留月频评分，再用更强的 `buffer` 降低换手；首轮 probe 里 `bx20 / be10` 是最平衡的 slow-sleeve 候选 | 否，当前作为 monthly 慢执行 probe 汇总页保留 |
 | `notes/hk-monthly-pit-no-ret-follow-up-20260330.md` | 在 `slow_bx20 / be10` 的基础上去掉直接 trailing-return 特征后，`no_ret` 已经在 latest fixed-`24m`、latest ratio 和 frozen fixed-`24m` 三条口径下同时验证出正 `IC`；后续 local construction probe 说明 `top15` 更适合当激进 sidecar，`bx20 / be12` 在当前窗口基本无新信息 | 否，当前作为 monthly `no_ret` follow-up 汇总页保留 |
 | `notes/hk-monthly-pit-no-ret-tuning-follow-up-20260405.md` | `no_ret + bx20 / be10` 这条 monthly candidate 的第一轮增量主要来自 `exp_decay(h=6) + rolling 48` 结构调参；第二轮 XGB 小邻域进一步提升了实现层表现，但当前最强 balanced challenger 仍受 `cv_ic = NaN` 限制，更适合作为 provisional challenger 而不是直接新默认 | 否，当前作为 monthly `no_ret` 调参 follow-up 汇总页保留 |
+| `notes/hk-monthly-ranker-ab-and-next-sweep-20260413.md` | 把 round 4 gated winner 的参数直接换成 `xgb_ranker` 后，CV 可判分性和组合路径有改善，但 test / final OOS IC、long-short 和 active IR 弱于 regressor；下一轮应做 dated-asset 下的 ranker-native 小 sweep，并同时 gate IC、walk-forward、turnover 和 active metrics | 否，当前作为 monthly ranker A/B 与下一轮 sweep 设计页保留 |
 | `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md` | `R0-R4` 首轮实跑已说明：`2025-12-31` cutoff recut 仍为正 `IC`，`2026-03-27` cutoff recut 已转负，因此 monthly 这轮转弱更像 recent months / latest regime，而不是 split 本身 | 否，当前作为 monthly 稳定性拆解页保留 |
 | `notes/hk-monthly-provider-vs-pit-20260330.md` | `M-PIT` 更适合当月频研究主线，`M-provider rebalance-only` 更适合当正式月频 comparator / 实现候选；provider 的强 OOS 更像 `small-cap + 短周期价格结构` 在发力，而不是纯 value 或纯中期 momentum | 否，当前作为 monthly 线路解释页保留 |
 | `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md` | 当前 monthly 策略几乎打平 `selected_eqw`、但明显落后 `selected_capw`；自制 benchmark 的强势更像同一 research universe 里的 cap-weight / mega-cap 集中度，而不是 signal direction 反了 | 否，当前作为 monthly benchmark 解释层保留 |
@@ -147,6 +149,7 @@
 * `notes/hk-monthly-pit-slow-sleeve-probes-20260330.md`
 * `notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
 * `notes/hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`
+* `notes/hk-monthly-ranker-ab-and-next-sweep-20260413.md`
 * `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
 * `notes/hk-monthly-provider-vs-pit-20260330.md`
 * `notes/hk-monthly-provider-factor-probes-20260330.md`
