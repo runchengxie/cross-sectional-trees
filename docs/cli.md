@@ -158,7 +158,14 @@ csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_
 ```bash
 csml summarize --runs-dir artifacts/runs --sort-by score
 csml summarize --runs-dir artifacts/runs --run-name-prefix hk_grid --latest-n 1
+csml summarize --runs-dir artifacts/runs --comparability-class direct --sort-by dsr
 ```
+
+补充：
+
+* 如果 run 目录里有 `inputs.lock.json`，`summarize` 会优先读取其中的 input provenance，而不是只看 `summary.json` / `config.used.yml`。
+* 输出会新增 `comparability_class`、`comparability_reasons` 和 `provenance_cohort_key`，用来区分直接可比、带漂移风险和 provenance 不足的 run。
+* `--comparability-class direct` 适合只保留 frozen lineage 足够明确、且没有 `latest` / 相对日期漂移信号的 run。
 
 ### csml holdings
 

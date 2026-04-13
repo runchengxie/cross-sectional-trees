@@ -67,6 +67,7 @@ csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.y
 csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
 
 csml summarize --runs-dir artifacts/runs --sort-by score
+csml summarize --runs-dir artifacts/runs --comparability-class direct --sort-by dsr
 ```
 
 这三条配置固定了同一季度研究单元，用来回答“alpha 到底来自 price-only、core PIT，还是 hybrid 增量”。完整分层见 `docs/concepts/benchmark-protocol.md`。

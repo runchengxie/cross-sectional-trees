@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import logging
 import re
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -38,6 +40,18 @@ FIELDNAMES = [
     "config_hash",
     "summary_path",
     "config_path",
+    "inputs_lock_path",
+    "provenance_source",
+    "provenance_has_lock",
+    "provenance_used_relative_start_date",
+    "provenance_used_relative_end_date",
+    "provenance_used_relative_live_as_of",
+    "provenance_used_latest_pointer",
+    "provenance_input_keys",
+    "provenance_inputs_json",
+    "provenance_cohort_key",
+    "comparability_class",
+    "comparability_reasons",
     "market",
     "data_provider",
     "data_start_date",
@@ -108,6 +122,19 @@ DSR_GROUP_FIELDS = (
     "backtest_weighting",
     "transaction_cost_bps",
     "backtest_top_k",
+    "comparability_class",
+    "provenance_cohort_key",
+)
+
+COMPARABILITY_CLASSES = ("direct", "risky", "unknown")
+RELEVANT_PROVENANCE_INPUT_KEYS = (
+    "daily_asset_dir",
+    "instruments_file",
+    "ex_factors_dir",
+    "universe_by_date_file",
+    "fundamentals_file",
+    "industry_file",
+    "benchmark_returns_file",
 )
 
 def _resolve_path(path_text: str | Path) -> Path:
@@ -164,6 +191,17 @@ def _is_relative_end_date(value: Any) -> bool | None:
     if not text:
         return None
     return is_relative_date_token(text, default="today")
+
+
+def _normalize_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _json_dumps_compact(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def _parse_datetime_text(value: str) -> datetime | None:
@@ -366,6 +404,225 @@ def _load_used_config(path: Path) -> tuple[dict[str, Any], str | None]:
     return payload, None
 
 
+def _load_inputs_lock(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    if not path.exists():
+        return None, None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive
+        return None, f"inputs_lock_parse_error: {exc}"
+    if not isinstance(payload, dict):
+        return None, "inputs_lock_parse_error: inputs.lock.json top-level payload must be an object"
+    return payload, None
+
+
+def _normalize_manifest_summary(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, Mapping):
+        return None
+    normalized: dict[str, Any] = {}
+    for key in ("dataset", "status", "snapshot_name", "query_end_date", "output_dir"):
+        text = _normalize_text(payload.get(key))
+        if text is not None:
+            normalized[key] = text
+    return normalized or None
+
+
+def _normalize_current_contract_summary(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, Mapping):
+        return None
+    normalized: dict[str, Any] = {}
+    for key in ("contract_name", "asset_key", "as_of"):
+        text = _normalize_text(payload.get(key))
+        if text is not None:
+            normalized[key] = text
+    return normalized or None
+
+
+def _normalize_input_resolution_entry(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, Mapping):
+        return None
+    normalized: dict[str, Any] = {}
+    for key in ("raw", "configured_path", "resolved_path", "path_kind"):
+        text = _normalize_text(payload.get(key))
+        if text is not None:
+            normalized[key] = text
+    for key in ("exists", "is_symlink", "points_to_latest_name"):
+        if key in payload and payload.get(key) is not None:
+            normalized[key] = bool(payload.get(key))
+    manifest = _normalize_manifest_summary(payload.get("manifest"))
+    if manifest is not None:
+        normalized["manifest"] = manifest
+    current_contract = _normalize_current_contract_summary(payload.get("current_contract"))
+    if current_contract is not None:
+        normalized["current_contract"] = current_contract
+    return normalized or None
+
+
+def _extract_relevant_input_provenance(inputs_lock: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(inputs_lock, Mapping):
+        return {}
+    input_resolution = (
+        inputs_lock.get("input_resolution")
+        if isinstance(inputs_lock.get("input_resolution"), Mapping)
+        else {}
+    )
+    normalized: dict[str, dict[str, Any]] = {}
+    for key in RELEVANT_PROVENANCE_INPUT_KEYS:
+        entry = _normalize_input_resolution_entry(input_resolution.get(key))
+        if entry is not None:
+            normalized[key] = entry
+    return normalized
+
+
+def _build_provenance_cohort_key(
+    inputs_lock: Mapping[str, Any] | None,
+    normalized_inputs: Mapping[str, Mapping[str, Any]],
+) -> str | None:
+    if not isinstance(inputs_lock, Mapping):
+        return None
+    resolved_dates_payload = (
+        inputs_lock.get("resolved_dates")
+        if isinstance(inputs_lock.get("resolved_dates"), Mapping)
+        else {}
+    )
+    resolved_dates = {
+        key: text
+        for key in ("start_date", "end_date", "live_as_of")
+        if (text := _normalize_text(resolved_dates_payload.get(key))) is not None
+    }
+    identities: dict[str, dict[str, Any]] = {}
+    for key, entry in normalized_inputs.items():
+        identity: dict[str, Any] = {}
+        resolved_path = _normalize_text(entry.get("resolved_path"))
+        if resolved_path is not None:
+            identity["resolved_path"] = resolved_path
+        manifest = entry.get("manifest") if isinstance(entry.get("manifest"), Mapping) else {}
+        for field in ("dataset", "snapshot_name", "query_end_date"):
+            text = _normalize_text(manifest.get(field))
+            if text is not None:
+                identity[field] = text
+        current_contract = (
+            entry.get("current_contract") if isinstance(entry.get("current_contract"), Mapping) else {}
+        )
+        for field in ("asset_key", "as_of"):
+            text = _normalize_text(current_contract.get(field))
+            if text is not None:
+                identity[f"current_{field}"] = text
+        if identity:
+            identities[key] = identity
+    if not resolved_dates and not identities:
+        return None
+    payload = {"resolved_dates": resolved_dates, "inputs": identities}
+    return hashlib.md5(_json_dumps_compact(payload).encode("utf-8")).hexdigest()[:12]
+
+
+def _classify_comparability(
+    *,
+    inputs_lock_path: Path,
+    inputs_lock: Mapping[str, Any] | None,
+    normalized_inputs: Mapping[str, Mapping[str, Any]],
+) -> tuple[str, list[str]]:
+    if not inputs_lock_path.exists():
+        return "unknown", ["legacy_no_inputs_lock"]
+    if not isinstance(inputs_lock, Mapping):
+        return "unknown", ["inputs_lock_parse_error"]
+
+    reasons: list[str] = []
+    mutable_inputs = (
+        inputs_lock.get("mutable_inputs")
+        if isinstance(inputs_lock.get("mutable_inputs"), Mapping)
+        else {}
+    )
+    mutable_reason_map = (
+        ("used_relative_start_date", "relative_start_date"),
+        ("used_relative_end_date", "relative_end_date"),
+        ("used_relative_live_as_of", "relative_live_as_of"),
+        ("used_latest_pointer", "used_latest_pointer"),
+    )
+    for field, reason in mutable_reason_map:
+        if mutable_inputs.get(field) is not None and bool(mutable_inputs.get(field)):
+            reasons.append(reason)
+
+    unknown_reasons: list[str] = []
+    resolved_inputs = inputs_lock.get("inputs") if isinstance(inputs_lock.get("inputs"), Mapping) else {}
+    input_resolution = (
+        inputs_lock.get("input_resolution")
+        if isinstance(inputs_lock.get("input_resolution"), Mapping)
+        else {}
+    )
+    for key in RELEVANT_PROVENANCE_INPUT_KEYS:
+        if _normalize_text(resolved_inputs.get(key)) is None and key not in input_resolution:
+            continue
+        entry = normalized_inputs.get(key)
+        if entry is None:
+            unknown_reasons.append(f"missing_resolution_{key}")
+            continue
+        if _normalize_text(entry.get("resolved_path")) is None:
+            unknown_reasons.append(f"missing_resolved_{key}")
+
+    all_reasons = sorted(dict.fromkeys(reasons + unknown_reasons))
+    if unknown_reasons:
+        return "unknown", all_reasons
+    if reasons:
+        return "risky", all_reasons
+    return "direct", []
+
+
+def _populate_provenance(
+    row: dict[str, Any],
+    *,
+    run_dir: Path,
+    inputs_lock: Mapping[str, Any] | None,
+) -> None:
+    inputs_lock_path = run_dir / "inputs.lock.json"
+    row["inputs_lock_path"] = str(inputs_lock_path) if inputs_lock_path.exists() else None
+    row["provenance_source"] = "inputs_lock" if inputs_lock_path.exists() else "legacy"
+    row["provenance_has_lock"] = inputs_lock_path.exists()
+
+    if not isinstance(inputs_lock, Mapping):
+        comparability_class, reasons = _classify_comparability(
+            inputs_lock_path=inputs_lock_path,
+            inputs_lock=inputs_lock,
+            normalized_inputs={},
+        )
+        row["comparability_class"] = comparability_class
+        row["comparability_reasons"] = "|".join(reasons) if reasons else None
+        return
+
+    mutable_inputs = (
+        inputs_lock.get("mutable_inputs")
+        if isinstance(inputs_lock.get("mutable_inputs"), Mapping)
+        else {}
+    )
+    for field in (
+        "used_relative_start_date",
+        "used_relative_end_date",
+        "used_relative_live_as_of",
+        "used_latest_pointer",
+    ):
+        value = mutable_inputs.get(field)
+        if value is not None:
+            row[f"provenance_{field}"] = bool(value)
+
+    normalized_inputs = _extract_relevant_input_provenance(inputs_lock)
+    if normalized_inputs:
+        row["provenance_input_keys"] = "|".join(sorted(normalized_inputs))
+        row["provenance_inputs_json"] = json.dumps(
+            normalized_inputs,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    row["provenance_cohort_key"] = _build_provenance_cohort_key(inputs_lock, normalized_inputs)
+    comparability_class, reasons = _classify_comparability(
+        inputs_lock_path=inputs_lock_path,
+        inputs_lock=inputs_lock,
+        normalized_inputs=normalized_inputs,
+    )
+    row["comparability_class"] = comparability_class
+    row["comparability_reasons"] = "|".join(reasons) if reasons else None
+
+
 def _init_row(source_runs_dir: Path, summary_path: Path) -> dict[str, Any]:
     row = {field: None for field in FIELDNAMES}
     row["source_runs_dir"] = str(source_runs_dir)
@@ -389,11 +646,13 @@ def _apply_flags_and_score(row: dict[str, Any], args: argparse.Namespace) -> Non
     if bt_turnover is not None:
         row["flag_high_turnover"] = bt_turnover > float(args.high_turnover_threshold)
 
-    end_date_source = _first_non_empty(
-        row.get("data_end_date_config"),
-        row.get("data_end_date"),
-    )
-    end_date_relative = _is_relative_end_date(end_date_source)
+    end_date_relative = row.get("provenance_used_relative_end_date")
+    if end_date_relative is None:
+        end_date_source = _first_non_empty(
+            row.get("data_end_date_config"),
+            row.get("data_end_date"),
+        )
+        end_date_relative = _is_relative_end_date(end_date_source)
     if end_date_relative is not None:
         row["flag_relative_end_date"] = end_date_relative
 
@@ -509,6 +768,11 @@ def _extract_row(source_runs_dir: Path, summary_path: Path, args: argparse.Names
     config, config_error = _load_used_config(config_path)
     if config_error:
         errors.append(config_error)
+    inputs_lock_path = run_dir / "inputs.lock.json"
+    inputs_lock, inputs_lock_error = _load_inputs_lock(inputs_lock_path)
+    if inputs_lock_error:
+        errors.append(inputs_lock_error)
+    _populate_provenance(row, run_dir=run_dir, inputs_lock=inputs_lock)
 
     fallback_name, fallback_timestamp, fallback_hash = _parse_run_dir_name(run_dir.name)
 
@@ -756,6 +1020,15 @@ def add_summarize_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPars
         help="Exclude rows where flag_zero_feature_importance=true",
     )
     parser.add_argument(
+        "--comparability-class",
+        action="append",
+        default=None,
+        help=(
+            "Only include runs whose comparability_class matches these values "
+            f"(repeatable, supports comma-separated values; available: {', '.join(COMPARABILITY_CLASSES)})"
+        ),
+    )
+    parser.add_argument(
         "--sort-by",
         default="timestamp",
         choices=["timestamp", "score", "dsr"],
@@ -783,6 +1056,17 @@ def run(args: argparse.Namespace) -> Path:
         for path in (args.runs_dir or [DEFAULT_RUNS_DIR.as_posix()])
     ]
     run_name_prefixes = _parse_prefixes(args.run_name_prefix)
+    comparability_classes = _parse_prefixes(args.comparability_class)
+    invalid_classes = [
+        item for item in comparability_classes if item.lower() not in COMPARABILITY_CLASSES
+    ]
+    if invalid_classes:
+        raise SystemExit(
+            "Invalid --comparability-class value(s): "
+            + ", ".join(sorted(dict.fromkeys(invalid_classes)))
+            + f". Available: {', '.join(COMPARABILITY_CLASSES)}"
+        )
+    allowed_comparability_classes = {item.lower() for item in comparability_classes}
     since_dt = _parse_since(args.since)
     summary_entries = _iter_summary_files(runs_dirs)
     if not summary_entries:
@@ -830,6 +1114,12 @@ def run(args: argparse.Namespace) -> Path:
         candidates = [
             item for item in candidates if not _is_true_flag(item[1].get("flag_zero_feature_importance"))
         ]
+    if allowed_comparability_classes:
+        candidates = [
+            item
+            for item in candidates
+            if _normalize_text(item[1].get("comparability_class")) in allowed_comparability_classes
+        ]
     if not candidates:
         raise SystemExit("No runs matched current summarize filters.")
 
@@ -868,7 +1158,7 @@ def run(args: argparse.Namespace) -> Path:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Summarize saved run results from summary.json + config.used.yml"
+        description="Summarize saved run results from summary.json + config.used.yml + inputs.lock.json"
     )
     add_summarize_args(parser)
     args = parser.parse_args(argv)

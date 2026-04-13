@@ -19,6 +19,13 @@ def _write_run(run_dir, summary, config) -> None:
     )
 
 
+def _write_inputs_lock(run_dir, payload) -> None:
+    (run_dir / "inputs.lock.json").write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
 def _as_bool(value) -> bool:
     if isinstance(value, bool):
         return value
@@ -436,6 +443,257 @@ def test_summarize_runs_marks_relative_end_date_from_config(tmp_path):
     assert str(row["data_end_date"]) == "20260131"
     assert row["data_end_date_config"] == "today"
     assert _as_bool(row["flag_relative_end_date"]) is True
+
+
+def test_summarize_runs_loads_inputs_lock_provenance_and_cohort_key(tmp_path):
+    runs_dir = tmp_path / "runs"
+
+    def _mk(run_name: str, timestamp: str, config_hash: str) -> None:
+        run_dir = runs_dir / f"{run_name}_{timestamp}_{config_hash}"
+        summary = {
+            "run": {"name": run_name, "timestamp": timestamp, "config_hash": config_hash},
+            "data": {"market": "hk", "provider": "rqdata", "start_date": "20200101", "end_date": "20201231"},
+            "eval": {"long_short": 0.02},
+            "backtest": {"stats": {"periods": 36, "sharpe": 1.1, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+        }
+        config = {"market": "hk", "data": {"provider": "rqdata", "start_date": "20200101", "end_date": "20201231"}}
+        _write_run(run_dir, summary, config)
+        _write_inputs_lock(
+            run_dir,
+            {
+                "resolved_dates": {"start_date": "20200101", "end_date": "20201231"},
+                "inputs": {
+                    "daily_asset_dir": str(tmp_path / "assets" / "daily" / "hk_all_2000_20260327_daily_clean"),
+                },
+                "input_resolution": {
+                    "daily_asset_dir": {
+                        "raw": "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_frozen",
+                        "configured_path": str(tmp_path / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_clean_frozen"),
+                        "resolved_path": str(tmp_path / "assets" / "daily" / "hk_all_2000_20260327_daily_clean"),
+                        "path_kind": "directory",
+                        "exists": True,
+                        "is_symlink": False,
+                        "points_to_latest_name": False,
+                        "manifest": {
+                            "dataset": "daily",
+                            "status": "completed",
+                            "snapshot_name": "hk_all_2000_20260327_daily_clean",
+                            "query_end_date": "20260327",
+                            "output_dir": str(tmp_path / "assets" / "daily" / "hk_all_2000_20260327_daily_clean"),
+                        },
+                        "current_contract": {
+                            "contract_name": "hk_current",
+                            "asset_key": "daily_clean",
+                            "as_of": "20260327",
+                        },
+                    }
+                },
+                "mutable_inputs": {
+                    "used_relative_start_date": False,
+                    "used_relative_end_date": False,
+                    "used_relative_live_as_of": False,
+                    "used_latest_pointer": False,
+                },
+            },
+        )
+
+    _mk("alpha", "20260101_120000", "deadbeef")
+    _mk("beta", "20260102_120000", "abcd1234")
+
+    output_csv = tmp_path / "summary.csv"
+    summarize_runs.main(["--runs-dir", str(runs_dir), "--output", str(output_csv)])
+
+    result = pd.read_csv(output_csv)
+    alpha = result[result["run_name"] == "alpha"].iloc[0]
+    beta = result[result["run_name"] == "beta"].iloc[0]
+    assert _as_bool(alpha["provenance_has_lock"]) is True
+    assert alpha["provenance_source"] == "inputs_lock"
+    assert alpha["comparability_class"] == "direct"
+    assert pd.isna(alpha["comparability_reasons"])
+    assert alpha["provenance_input_keys"] == "daily_asset_dir"
+    assert alpha["provenance_cohort_key"] == beta["provenance_cohort_key"]
+
+    provenance = json.loads(alpha["provenance_inputs_json"])
+    assert provenance["daily_asset_dir"]["resolved_path"] == str(
+        tmp_path / "assets" / "daily" / "hk_all_2000_20260327_daily_clean"
+    )
+    assert provenance["daily_asset_dir"]["manifest"]["snapshot_name"] == "hk_all_2000_20260327_daily_clean"
+    assert provenance["daily_asset_dir"]["current_contract"]["asset_key"] == "daily_clean"
+
+
+def test_summarize_runs_classifies_risky_and_unknown_provenance(tmp_path):
+    runs_dir = tmp_path / "runs"
+
+    risky_run = runs_dir / "risky_20260101_120000_deadbeef"
+    risky_summary = {
+        "run": {"name": "risky", "timestamp": "20260101_120000", "config_hash": "deadbeef"},
+        "data": {"market": "hk", "provider": "rqdata", "end_date": "20260131"},
+        "eval": {"long_short": 0.02},
+        "backtest": {"stats": {"periods": 36, "sharpe": 1.0, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+    }
+    risky_config = {"market": "hk", "data": {"provider": "rqdata", "end_date": "20260131"}}
+    _write_run(risky_run, risky_summary, risky_config)
+    _write_inputs_lock(
+        risky_run,
+        {
+            "resolved_dates": {"start_date": "20200101", "end_date": "20260131"},
+            "inputs": {
+                "daily_asset_dir": str(tmp_path / "assets" / "daily" / "hk_all_2000_20260327_daily_clean"),
+            },
+            "input_resolution": {
+                "daily_asset_dir": {
+                    "raw": "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest",
+                    "resolved_path": str(tmp_path / "assets" / "daily" / "hk_all_2000_20260327_daily_clean"),
+                    "path_kind": "directory",
+                    "exists": True,
+                    "is_symlink": True,
+                    "points_to_latest_name": True,
+                }
+            },
+            "mutable_inputs": {
+                "used_relative_start_date": False,
+                "used_relative_end_date": True,
+                "used_relative_live_as_of": False,
+                "used_latest_pointer": True,
+            },
+        },
+    )
+
+    partial_run = runs_dir / "partial_20260102_120000_abcd1234"
+    partial_summary = {
+        "run": {"name": "partial", "timestamp": "20260102_120000", "config_hash": "abcd1234"},
+        "data": {"market": "hk", "provider": "rqdata", "end_date": "20260131"},
+        "eval": {"long_short": 0.01},
+        "backtest": {"stats": {"periods": 36, "sharpe": 0.9, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+    }
+    partial_config = {"market": "hk", "data": {"provider": "rqdata", "end_date": "20260131"}}
+    _write_run(partial_run, partial_summary, partial_config)
+    _write_inputs_lock(
+        partial_run,
+        {
+            "resolved_dates": {"start_date": "20200101", "end_date": "20260131"},
+            "inputs": {
+                "daily_asset_dir": str(tmp_path / "assets" / "daily" / "hk_all_2000_20260327_daily_clean"),
+            },
+            "input_resolution": {
+                "daily_asset_dir": {
+                    "raw": "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_frozen",
+                    "path_kind": "directory",
+                    "exists": True,
+                    "is_symlink": False,
+                    "points_to_latest_name": False,
+                }
+            },
+            "mutable_inputs": {
+                "used_relative_start_date": False,
+                "used_relative_end_date": False,
+                "used_relative_live_as_of": False,
+                "used_latest_pointer": False,
+            },
+        },
+    )
+
+    legacy_run = runs_dir / "legacy_20260103_120000_1234abcd"
+    legacy_summary = {
+        "run": {"name": "legacy", "timestamp": "20260103_120000", "config_hash": "1234abcd"},
+        "data": {"market": "hk", "provider": "rqdata", "end_date": "20260131"},
+        "eval": {"long_short": 0.01},
+        "backtest": {"stats": {"periods": 36, "sharpe": 0.8, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+    }
+    legacy_config = {"market": "hk", "data": {"provider": "rqdata", "end_date": "20260131"}}
+    _write_run(legacy_run, legacy_summary, legacy_config)
+
+    output_csv = tmp_path / "summary.csv"
+    summarize_runs.main(["--runs-dir", str(runs_dir), "--output", str(output_csv)])
+
+    result = pd.read_csv(output_csv)
+    risky = result[result["run_name"] == "risky"].iloc[0]
+    partial = result[result["run_name"] == "partial"].iloc[0]
+    legacy = result[result["run_name"] == "legacy"].iloc[0]
+
+    assert risky["comparability_class"] == "risky"
+    assert risky["comparability_reasons"] == "relative_end_date|used_latest_pointer"
+    assert _as_bool(risky["flag_relative_end_date"]) is True
+
+    assert partial["comparability_class"] == "unknown"
+    assert partial["comparability_reasons"] == "missing_resolved_daily_asset_dir"
+
+    assert legacy["comparability_class"] == "unknown"
+    assert legacy["comparability_reasons"] == "legacy_no_inputs_lock"
+
+
+def test_summarize_runs_can_filter_by_comparability_class(tmp_path):
+    runs_dir = tmp_path / "runs"
+
+    direct_run = runs_dir / "direct_20260101_120000_deadbeef"
+    direct_summary = {
+        "run": {"name": "direct", "timestamp": "20260101_120000", "config_hash": "deadbeef"},
+        "data": {"market": "hk", "provider": "rqdata"},
+        "eval": {"long_short": 0.02},
+        "backtest": {"stats": {"periods": 36, "sharpe": 1.0, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+    }
+    _write_run(direct_run, direct_summary, {"market": "hk", "data": {"provider": "rqdata"}})
+    _write_inputs_lock(
+        direct_run,
+        {
+            "resolved_dates": {"start_date": "20200101", "end_date": "20201231"},
+            "inputs": {},
+            "input_resolution": {},
+            "mutable_inputs": {
+                "used_relative_start_date": False,
+                "used_relative_end_date": False,
+                "used_relative_live_as_of": False,
+                "used_latest_pointer": False,
+            },
+        },
+    )
+
+    risky_run = runs_dir / "risky_20260102_120000_abcd1234"
+    risky_summary = {
+        "run": {"name": "risky", "timestamp": "20260102_120000", "config_hash": "abcd1234"},
+        "data": {"market": "hk", "provider": "rqdata"},
+        "eval": {"long_short": 0.02},
+        "backtest": {"stats": {"periods": 36, "sharpe": 1.0, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+    }
+    _write_run(risky_run, risky_summary, {"market": "hk", "data": {"provider": "rqdata"}})
+    _write_inputs_lock(
+        risky_run,
+        {
+            "resolved_dates": {"start_date": "20200101", "end_date": "20201231"},
+            "inputs": {},
+            "input_resolution": {},
+            "mutable_inputs": {
+                "used_relative_start_date": False,
+                "used_relative_end_date": True,
+                "used_relative_live_as_of": False,
+                "used_latest_pointer": False,
+            },
+        },
+    )
+
+    legacy_run = runs_dir / "legacy_20260103_120000_1234abcd"
+    legacy_summary = {
+        "run": {"name": "legacy", "timestamp": "20260103_120000", "config_hash": "1234abcd"},
+        "data": {"market": "hk", "provider": "rqdata"},
+        "eval": {"long_short": 0.01},
+        "backtest": {"stats": {"periods": 36, "sharpe": 0.8, "avg_turnover": 0.2, "avg_cost_drag": 0.01}},
+    }
+    _write_run(legacy_run, legacy_summary, {"market": "hk", "data": {"provider": "rqdata"}})
+
+    output_csv = tmp_path / "direct_only.csv"
+    summarize_runs.main(
+        [
+            "--runs-dir",
+            str(runs_dir),
+            "--output",
+            str(output_csv),
+            "--comparability-class",
+            "direct",
+        ]
+    )
+
+    result = pd.read_csv(output_csv)
+    assert list(result["run_name"]) == ["direct"]
 
 
 def test_summarize_runs_exclude_flags_and_sort_by_score(tmp_path):
