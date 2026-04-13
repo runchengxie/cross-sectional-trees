@@ -1,0 +1,110 @@
+base_config: configs/experiments/variants/hk_selected__monthly_pit_no_ret_ranker_trial008_gc4_k15_bx25_be12.yml
+run_name_prefix: hk_tune_
+tag: hk_selected_monthly_pit_no_ret_ranker_trial008_gc4_positive_cfo_construction_r1
+sampler: grid
+
+objective:
+  eval_ic_ir_weight: 1.0
+  walk_forward_test_ic_mean_weight: 1.0
+  backtest_sharpe_weight: 0.5
+  drawdown_penalty_weight: 0.25
+  cost_drag_penalty_weight: 5.0
+  turnover_penalty_weight: 0.1
+  drop_degenerate: true
+  min_cv_ic_valid_folds: 4
+
+search_space:
+  - name: positive_cfo_variant
+    values:
+      - label: positive_cfo_ratio_3y
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_positive_cfo_construction_r1_3y_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_3y
+      - label: positive_cfo_ratio_2y
+        overrides:
+          data.cache_tag: hk_sel_m_pit_no_ret_ranker_trial008_gc4_positive_cfo_construction_r1_2y_v1
+          features.list:
+            - rv_20
+            - rv_60
+            - volume_sma20_ratio
+            - volume_sma60_ratio
+            - log_vol
+            - vol
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_2y
+          features.missing.features:
+            - sales
+            - growth_sales
+            - basic_earnings_per_share
+            - growth_basic_earnings_per_share
+            - net_profit
+            - growth_net_profit
+            - cash_flow_from_operating_activities
+            - growth_cash_flow_from_operating_activities
+            - profit_margin
+            - cfo_margin
+            - cfo_to_profit
+            - days_since_report
+            - positive_cfo_ratio_2y
+  - name: construction_variant
+    values:
+      - label: k15_bx25_be12
+        overrides:
+          eval.top_k: 15
+          eval.buffer_exit: 25
+          eval.buffer_entry: 12
+          backtest.top_k: 15
+          backtest.buffer_exit: 25
+          backtest.buffer_entry: 12
+      - label: k15_bx20_be10
+        overrides:
+          eval.top_k: 15
+          eval.buffer_exit: 20
+          eval.buffer_entry: 10
+          backtest.top_k: 15
+          backtest.buffer_exit: 20
+          backtest.buffer_entry: 10
