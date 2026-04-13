@@ -624,3 +624,180 @@ def test_pipeline_hk_file_fundamentals_supports_growth_and_structure_ratios(
     assert report_row["working_capital_to_assets"].iloc[0] == pytest.approx(27.0 / 220.0)
     assert report_row["goodwill_to_assets"].iloc[0] == pytest.approx(6.0 / 220.0)
     assert report_row["net_debt_to_assets"].iloc[0] == pytest.approx(30.0 / 220.0)
+
+
+def test_pipeline_hk_file_fundamentals_supports_trailing_stability_features(
+    tmp_path, monkeypatch
+):
+    dates = pd.date_range("2022-01-31", periods=41, freq="M")
+    symbols = ["00005.HK", "00011.HK"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+    basic_df = pd.DataFrame(
+        {"symbol": symbols, "name": ["HSBC", "Hang Seng"], "list_date": ["20000101", "20000101"]}
+    )
+
+    fundamentals_path = tmp_path / "pit_fundamentals_stability.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(
+                [
+                    "2022-04-30",
+                    "2023-04-30",
+                    "2024-04-30",
+                    "2025-04-30",
+                    "2022-04-30",
+                    "2023-04-30",
+                    "2024-04-30",
+                    "2025-04-30",
+                ]
+            ),
+            "symbol": [
+                "00005.HK",
+                "00005.HK",
+                "00005.HK",
+                "00005.HK",
+                "00011.HK",
+                "00011.HK",
+                "00011.HK",
+                "00011.HK",
+            ],
+            "revenue": [100.0, 110.0, 121.0, 133.1, 200.0, 210.0, 220.0, 231.0],
+            "net_profit": [10.0, 13.2, 16.94, 21.296, 20.0, 21.0, 22.0, 23.1],
+            "basic_earnings_per_share": [1.0, 1.1, 1.21, 1.331, 2.0, 2.1, 2.2, 2.31],
+            "cash_flow_from_operating_activities": [12.0, 14.3, 18.15, 22.627, 18.0, -5.0, 20.0, 21.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20220131",
+            "end_date": "20250531",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+            "rqdata": {"market": "hk"},
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 2,
+            "drop_suspended": False,
+        },
+        "fundamentals": {
+            "enabled": True,
+            "source": "file",
+            "file": str(fundamentals_path),
+            "column_map": {},
+            "features": [
+                "revenue",
+                "net_profit",
+                "basic_earnings_per_share",
+                "cash_flow_from_operating_activities",
+            ],
+            "auto_add_features": False,
+            "allow_missing_features": True,
+            "ffill": True,
+            "required": True,
+        },
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": [
+                "sales_cagr_3y",
+                "eps_cagr_3y",
+                "cfo_margin_avg_3y",
+                "profit_margin_std_3y",
+                "cfo_to_profit_median_3y",
+                "positive_cfo_ratio_3y",
+            ],
+            "cross_sectional": {"method": "none"},
+            "missing": {
+                "method": "zero",
+                "features": [
+                    "sales_cagr_3y",
+                    "eps_cagr_3y",
+                    "cfo_margin_avg_3y",
+                    "profit_margin_std_3y",
+                    "cfo_to_profit_median_3y",
+                    "positive_cfo_ratio_3y",
+                ],
+            },
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.2,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "M",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "hk-file-fundamentals-stability",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames, basic_df=basic_df)
+    dataset = pd.read_parquet(run_dir / "dataset.parquet").reset_index()
+    dataset["trade_date"] = pd.to_datetime(dataset["trade_date"])
+
+    before_full_history = dataset[
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2024-04-30")
+    ]
+    report_row = dataset[
+        (dataset["symbol"] == "00005.HK") & (dataset["trade_date"] == "2025-04-30")
+    ]
+    other_symbol_row = dataset[
+        (dataset["symbol"] == "00011.HK") & (dataset["trade_date"] == "2025-04-30")
+    ]
+
+    elapsed_years = (pd.Timestamp("2025-04-30") - pd.Timestamp("2022-04-30")).days / 365.25
+    expected_sales_cagr = np.exp(np.log(133.1 / 100.0) / elapsed_years) - 1.0
+    expected_eps_cagr = np.exp(np.log(1.331 / 1.0) / elapsed_years) - 1.0
+    expected_cfo_margin_avg = np.mean([0.12, 0.13, 0.15, 0.17])
+    expected_profit_margin_std = np.std([0.10, 0.12, 0.14, 0.16], ddof=0)
+    expected_cfo_to_profit_median = np.median(
+        [
+            12.0 / 10.0,
+            14.3 / 13.2,
+            18.15 / 16.94,
+            22.627 / 21.296,
+        ]
+    )
+
+    assert before_full_history["sales_cagr_3y"].iloc[0] == pytest.approx(0.0)
+    assert before_full_history["eps_cagr_3y"].iloc[0] == pytest.approx(0.0)
+    assert report_row["sales_cagr_3y"].iloc[0] == pytest.approx(expected_sales_cagr)
+    assert report_row["eps_cagr_3y"].iloc[0] == pytest.approx(expected_eps_cagr)
+    assert report_row["cfo_margin_avg_3y"].iloc[0] == pytest.approx(expected_cfo_margin_avg)
+    assert report_row["profit_margin_std_3y"].iloc[0] == pytest.approx(expected_profit_margin_std)
+    assert report_row["cfo_to_profit_median_3y"].iloc[0] == pytest.approx(
+        expected_cfo_to_profit_median
+    )
+    assert report_row["positive_cfo_ratio_3y"].iloc[0] == pytest.approx(1.0)
+    assert other_symbol_row["positive_cfo_ratio_3y"].iloc[0] == pytest.approx(0.75)

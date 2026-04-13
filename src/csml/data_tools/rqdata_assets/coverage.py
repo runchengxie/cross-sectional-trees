@@ -9,6 +9,10 @@ import numpy as np
 import pandas as pd
 
 from ...config_utils import get_research_universe_config, resolve_pipeline_config
+from ...pit_feature_stats import (
+    compute_calendar_cagr,
+    compute_trailing_calendar_window_stat,
+)
 from ...rebalance import get_rebalance_dates
 from ..symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from .build import (
@@ -570,6 +574,42 @@ def _compute_pit_coverage_series(
         series = _safe_ratio(net_debt, _get("total_assets"))
     elif feature == "days_since_report":
         series = pd.Series(0.0, index=index, dtype=float)
+    elif feature == "sales_cagr_3y":
+        series = compute_calendar_cagr(frame, _get("sales"), years=3)
+    elif feature == "eps_cagr_3y":
+        series = compute_calendar_cagr(frame, _get("basic_earnings_per_share"), years=3)
+    elif feature == "cfo_margin_avg_3y":
+        series = compute_trailing_calendar_window_stat(
+            frame,
+            _get("cfo_margin"),
+            years=3,
+            stat="mean",
+            min_periods=3,
+        )
+    elif feature == "profit_margin_std_3y":
+        series = compute_trailing_calendar_window_stat(
+            frame,
+            _get("profit_margin"),
+            years=3,
+            stat="std",
+            min_periods=3,
+        )
+    elif feature == "cfo_to_profit_median_3y":
+        series = compute_trailing_calendar_window_stat(
+            frame,
+            _get("cfo_to_profit"),
+            years=3,
+            stat="median",
+            min_periods=3,
+        )
+    elif feature == "positive_cfo_ratio_3y":
+        series = compute_trailing_calendar_window_stat(
+            frame,
+            _get("cash_flow_from_operating_activities"),
+            years=3,
+            stat="positive_ratio",
+            min_periods=3,
+        )
     elif feature.startswith("delta_"):
         base_feature = feature.removeprefix("delta_")
         base_series = _get(base_feature)

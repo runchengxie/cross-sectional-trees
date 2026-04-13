@@ -146,6 +146,145 @@ def test_inspect_hk_pit_coverage_supports_config_selected_derived_features(tmp_p
         },
     ]
 
+
+def test_inspect_hk_pit_coverage_supports_trailing_stability_features(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    asset_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "pit_financials",
+                "query": {
+                    "fields": [
+                        "revenue",
+                        "net_profit",
+                        "basic_earnings_per_share",
+                        "cash_flow_from_operating_activities",
+                    ]
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    fundamentals_path = asset_dir / "pipeline_fundamentals.parquet"
+    pd.DataFrame(
+        {
+            "trade_date": [
+                "20220430",
+                "20230430",
+                "20240430",
+                "20250430",
+                "20220430",
+                "20230430",
+                "20240430",
+                "20250430",
+            ],
+            "symbol": [
+                "00005.HK",
+                "00005.HK",
+                "00005.HK",
+                "00005.HK",
+                "00011.HK",
+                "00011.HK",
+                "00011.HK",
+                "00011.HK",
+            ],
+            "revenue": [100.0, 110.0, 121.0, 133.1, 200.0, 210.0, 220.0, 231.0],
+            "net_profit": [10.0, 13.2, 16.94, 21.296, 20.0, 21.0, 22.0, 23.1],
+            "basic_earnings_per_share": [1.0, 1.1, 1.21, 1.331, 2.0, 2.1, 2.2, 2.31],
+            "cash_flow_from_operating_activities": [12.0, 14.3, 18.15, 22.627, 18.0, -5.0, 20.0, 21.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
+
+    (asset_dir / "pipeline_fundamentals.manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "pit_fundamentals_file",
+                "source_asset_dir": str(asset_dir),
+                "totals": {
+                    "input_rows": 8,
+                    "output_rows": 8,
+                    "symbols": 2,
+                    "dropped_all_missing_fields": 0,
+                    "duplicate_rows_seen": 0,
+                    "duplicate_rows_dropped": 0,
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    config_path = repo_root / "config" / "pit_stability.yml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "fundamentals": {
+                    "enabled": True,
+                    "source": "file",
+                    "file": str(fundamentals_path),
+                    "features": [
+                        "sales_cagr_3y",
+                        "eps_cagr_3y",
+                        "cfo_margin_avg_3y",
+                        "profit_margin_std_3y",
+                        "cfo_to_profit_median_3y",
+                        "positive_cfo_ratio_3y",
+                    ],
+                },
+                "universe": {"min_symbols_per_date": 2},
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    out_path = repo_root / "coverage_stability.json"
+    args = SimpleNamespace(
+        config=str(config_path),
+        asset_dir=None,
+        fundamentals_file=None,
+        field_profile=[],
+        field=[],
+        fields_file=[],
+        min_symbols=None,
+        top=10,
+        quarter_limit=12,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_pit_coverage(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["selection"]["selected_features"] == [
+        "sales_cagr_3y",
+        "eps_cagr_3y",
+        "cfo_margin_avg_3y",
+        "profit_margin_std_3y",
+        "cfo_to_profit_median_3y",
+        "positive_cfo_ratio_3y",
+    ]
+
+    field_map = {item["feature"]: item for item in payload["field_coverage"]}
+    assert field_map["sales_cagr_3y"]["nonnull_rows"] == 2
+    assert field_map["eps_cagr_3y"]["nonnull_rows"] == 2
+    assert field_map["cfo_margin_avg_3y"]["nonnull_rows"] == 4
+    assert field_map["profit_margin_std_3y"]["nonnull_rows"] == 4
+    assert field_map["cfo_to_profit_median_3y"]["nonnull_rows"] == 4
+    assert field_map["positive_cfo_ratio_3y"]["nonnull_rows"] == 4
+
+
 def test_inspect_hk_pit_coverage_trainable_mode_estimates_fill_recovered_sample(
     tmp_path, monkeypatch
 ):

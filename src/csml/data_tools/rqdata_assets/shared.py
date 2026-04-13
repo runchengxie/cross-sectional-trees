@@ -127,6 +127,12 @@ DERIVED_PIT_FEATURES = {
     "working_capital_to_assets",
     "net_debt_to_assets",
     "days_since_report",
+    "sales_cagr_3y",
+    "eps_cagr_3y",
+    "cfo_margin_avg_3y",
+    "profit_margin_std_3y",
+    "cfo_to_profit_median_3y",
+    "positive_cfo_ratio_3y",
 }
 
 

@@ -454,6 +454,10 @@ backtest:
 | `ffill` | 财报沿用 | `true` / `false` |
 | `provider_overlay.enabled` | 在 `source=file` 基础上叠加 provider 日频估值 | `true` / `false` |
 
+说明：
+
+* `features.list` 里的 PIT 派生特征除了 `growth_*`、`delta_*`、`profit_margin` 这类单期派生，也支持像 `sales_cagr_3y`、`eps_cagr_3y`、`cfo_margin_avg_3y`、`profit_margin_std_3y` 这样的长期稳定性特征；这类特征按报表事件序列先计算，再并到 daily panel 做 `ffill`。
+
 ### `features.missing`
 
 | 键 | 说明 | 常见值 |
