@@ -38,6 +38,7 @@
 `notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
 `notes/hk-monthly-provider-vs-pit-20260330.md`
 `notes/hk-monthly-industry-treatment-20260404.md`
+`notes/hk-monthly-slowfund-five-line-wrap-up-20260413.md`
 
 追溯降级路线时再读：
 `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
@@ -89,6 +90,7 @@
 | `notes/hk-monthly-provider-vs-pit-20260330.md` | monthly 里 `provider vs PIT` 的语义差异和当前分工。 |
 | `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md` | 解释 monthly 当前差距为什么更像 cap-weight / mega-cap 暴露问题。 |
 | `notes/hk-monthly-industry-treatment-20260404.md` | monthly 行业异质性的处理顺序和当前代码边界。 |
+| `notes/hk-monthly-slowfund-five-line-wrap-up-20260413.md` | monthly 慢财务五线对比的收口页；说明 `main / comp / accrual / fin / nonfin` 各自该扮演什么角色。 |
 | `notes/hk-quarterly-benchmark-and-interpretation-20260405.md` | quarterly 主线、challenger、结构 probe 和纯基本面 sidecar 的解释层。 |
 | `notes/hk-quarterly-holdings-analysis-20260329.md` | quarterly 持仓稳定性、集中度和组合差异分析。 |
 | `notes/hk-quarterly-construction-grid-20260329.md` | quarterly fixed-signal construction shortlist；当前仍更适合当 shortlist，不是升级证据。 |
@@ -148,6 +150,7 @@
 * `notes/hk-monthly-provider-vs-pit-20260330.md`
 * `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`
 * `notes/hk-monthly-industry-treatment-20260404.md`
+* `notes/hk-monthly-slowfund-five-line-wrap-up-20260413.md`
 * `notes/hk-monthly-pit-valuation-overlay-probes-20260330.md`
 * `notes/hk-monthly-provider-factor-probes-20260330.md`
 * `notes/hk-quarterly-current-state-20260329.md`

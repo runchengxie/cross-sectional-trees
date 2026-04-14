@@ -819,3 +819,21 @@ guardrail probe 分两轮：
 * 或轻量 filter / gating 候选
 
 而不是重新开一个慢因子 pack。
+
+#### 13.6.8 最小对比入口
+
+为了避免每次都手工翻 `summary.json` 和 OOS CSV，当前这两条线的固定对比入口建议直接用：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m csml.research.hk_monthly_run_compare \
+  --run main=artifacts/runs/hk_tune_hk_selected_monthly_pit_no_ret_ranker_trial008_gc4_positive_cfo_construction_r1_trial_001_20260413_182023_86054f72 \
+  --run comp=artifacts/runs/hk_tune_hk_selected_monthly_pit_no_ret_ranker_trial008_gc4_positive_cfo_construction_r1_trial_004_20260413_182239_fdedb9db \
+  --out-dir artifacts/reports/hk_monthly_positive_cfo_compare_20260413
+```
+
+这个入口会固定产出两张表：
+
+* `window_metrics.csv`：`6m / 12m / 24m / full` 下的 `Sharpe / active IR / active total return / avg turnover / IC mean / IC IR`
+* `attribution_summary.csv`：同样窗口下的轻量 exposure / industry / 持仓持续性摘要
+
+定位上它不是新的主工作流，只是为了把这份稳健性检查清单低摩擦地重复执行。
