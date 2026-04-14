@@ -46,13 +46,13 @@
 
 五条线分别是：
 
-| label | 角色 | 配置 / 来源 |
+| label | 角色 | 派生配置名 / 来源 |
 | --- | --- | --- |
 | `main` | guarded challenger | `positive_cfo_ratio_3y + k15_bx25_be12 + groupcap4` |
 | `comp` | aggressive comparator | `positive_cfo_ratio_2y + k15_bx20_be10 + groupcap4` |
 | `accrual` | slowfund watchlist | `positive_cfo_ratio_3y + accrual_ratio + k15_bx25_be12 + groupcap4` |
-| `nonfin` | 非金融诊断项 | `configs/local/hk_selected__m_pit_no_ret_ranker_trial008_gc4_k15_bx25_be12_nonfinancial_fixed20260402.yml` |
-| `fin` | 金融诊断项 | `configs/local/hk_selected__m_pit_no_ret_ranker_trial008_gc4_k15_bx25_be12_financial_only_fixed20260402.yml` |
+| `nonfin` | 非金融诊断项 | author-local derived config `hk_selected__m_pit_no_ret_ranker_trial008_gc4_k15_bx25_be12_nonfinancial_fixed20260402` |
+| `fin` | 金融诊断项 | author-local derived config `hk_selected__m_pit_no_ret_ranker_trial008_gc4_k15_bx25_be12_financial_only_fixed20260402` |
 
 ## 3. 24m / full 怎么读
 
