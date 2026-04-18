@@ -574,6 +574,62 @@ def test_cli_parses_rqdata_asset_commands():
     assert current_health.out == "artifacts/reports/hk_current_health.json"
     assert callable(current_health.func)
 
+    data_asset_audit = parser.parse_args(
+        [
+            "rqdata",
+            "inspect-hk-data-assets",
+            "--artifacts-root",
+            "artifacts",
+            "--target-date",
+            "20260410",
+            "--asset",
+            "etf_daily",
+            "--scan-family",
+            "daily",
+            "--intraday-mode",
+            "scan",
+            "--health-report",
+            "artifacts/reports/hk_current_health_20260410.json",
+            "--run-refresh",
+            "--refresh-mode",
+            "patch",
+            "--refresh-asset",
+            "daily",
+            "--refresh-dry-run",
+            "--approved-repair-action",
+            "patch-refresh",
+            "--approved-prune-path",
+            "artifacts/assets/rqdata/hk/daily/old_patch",
+            "--sample-limit",
+            "9",
+            "--fail-on-severity",
+            "warning",
+            "--format",
+            "json",
+            "--out",
+            "artifacts/reports/hk_data_asset_audit_20260410.json",
+        ]
+    )
+    assert data_asset_audit.command == "rqdata"
+    assert data_asset_audit.rq_command == "inspect-hk-data-assets"
+    assert data_asset_audit.artifacts_root == "artifacts"
+    assert data_asset_audit.target_date == "20260410"
+    assert data_asset_audit.asset == ["etf_daily"]
+    assert data_asset_audit.scan_family == ["daily"]
+    assert data_asset_audit.intraday_mode == "scan"
+    assert data_asset_audit.health_report == ["artifacts/reports/hk_current_health_20260410.json"]
+    assert data_asset_audit.run_refresh is True
+    assert data_asset_audit.refresh_mode == "patch"
+    assert data_asset_audit.refresh_asset == ["daily"]
+    assert data_asset_audit.refresh_dry_run is True
+    assert data_asset_audit.approved_repair_action == ["patch-refresh"]
+    assert data_asset_audit.approved_prune_path == ["artifacts/assets/rqdata/hk/daily/old_patch"]
+    assert data_asset_audit.sample_limit == 9
+    assert data_asset_audit.fail_on_severity == "warning"
+    assert data_asset_audit.format == "json"
+    assert data_asset_audit.out == "artifacts/reports/hk_data_asset_audit_20260410.json"
+    assert callable(data_asset_audit.func)
+
     intraday_health = parser.parse_args(
         [
             "rqdata",

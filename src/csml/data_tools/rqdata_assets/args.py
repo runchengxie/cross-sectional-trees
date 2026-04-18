@@ -475,6 +475,121 @@ def add_hk_current_health_args(parser: argparse.ArgumentParser) -> None:
     _add_quality_gate_arg(parser)
 
 
+def add_hk_data_asset_audit_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--artifacts-root",
+        default="artifacts",
+        help="Artifacts root used to resolve current contracts, reports, and local snapshots. Default: artifacts.",
+    )
+    parser.add_argument(
+        "--current-contract",
+        help="Optional HK current contract path. Default: <artifacts-root>/metadata/current_assets/hk_current.json.",
+    )
+    parser.add_argument(
+        "--reports-dir",
+        help="Directory containing health/workflow JSON reports. Default: <artifacts-root>/reports.",
+    )
+    parser.add_argument(
+        "--target-date",
+        help="Target date in YYYYMMDD. Default: hk_current target_date when available, else today.",
+    )
+    parser.add_argument(
+        "--asset",
+        action="append",
+        default=[],
+        help="Optional hk_current asset key to include from the current contract. Repeatable. Default: all known.",
+    )
+    parser.add_argument(
+        "--scan-family",
+        action="append",
+        default=[],
+        help="Optional HK asset family directory to scan under assets/rqdata/hk. Repeatable. Default: all known families.",
+    )
+    parser.add_argument(
+        "--metadata-only-etf-daily",
+        action="store_true",
+        help="Use manifest metadata for ETF daily verification instead of scanning ETF parquet files.",
+    )
+    parser.add_argument(
+        "--intraday-mode",
+        choices=["metadata", "scan", "health"],
+        default="metadata",
+        help=(
+            "Intraday freshness evidence mode. metadata reads manifest/as_of only; scan reads parquet dates; "
+            "health runs inspect-hk-intraday-health. Default: metadata."
+        ),
+    )
+    parser.add_argument(
+        "--health-report",
+        action="append",
+        default=[],
+        help="Additional health/workflow JSON report to aggregate. Repeatable.",
+    )
+    parser.add_argument(
+        "--run-refresh",
+        action="store_true",
+        help="Run the existing HK asset workflow refresh+inspect phases before final freshness verdicts.",
+    )
+    parser.add_argument(
+        "--refresh-mode",
+        choices=["full", "patch"],
+        default="patch",
+        help="Refresh mode forwarded to run_hk_asset_workflow.py when --run-refresh is set. Default: patch.",
+    )
+    parser.add_argument(
+        "--refresh-asset",
+        action="append",
+        default=[],
+        help="Asset forwarded as --refresh-asset/--inspect-asset when --run-refresh is set. Repeatable.",
+    )
+    parser.add_argument(
+        "--refresh-dry-run",
+        action="store_true",
+        help="Forward --dry-run to the refresh workflow when --run-refresh is set.",
+    )
+    parser.add_argument("--config", help="Optional config path or alias forwarded to refresh workflow.")
+    parser.add_argument(
+        "--execute-repair",
+        action="store_true",
+        help="Execute approved automatic repair commands. Default: report candidates only.",
+    )
+    parser.add_argument(
+        "--approved-repair-action",
+        action="append",
+        choices=["repoint", "patch-refresh", "targeted-rebuild", "manual-review", "provider-boundary"],
+        default=[],
+        help="Repair action class approved for --execute-repair. Repeatable.",
+    )
+    parser.add_argument(
+        "--delete-prune-candidates",
+        action="store_true",
+        help="Delete explicitly approved prune candidate paths. Default: dry-run only.",
+    )
+    parser.add_argument(
+        "--approved-prune-path",
+        action="append",
+        default=[],
+        help="Exact prune candidate path approved for deletion. Repeatable and only used with --delete-prune-candidates.",
+    )
+    parser.add_argument(
+        "--sample-limit",
+        type=int,
+        default=5,
+        help="Number of sample rows/symbols retained in audit sections. Default: 5.",
+    )
+    parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format. Default: text.",
+    )
+    parser.add_argument(
+        "--out",
+        help="Optional output path. Default: print to stdout.",
+    )
+    _add_quality_gate_arg(parser)
+
+
 def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--input",

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from ...artifacts import RQDATA_ASSETS_DIR as DEFAULT_RQDATA_ASSETS_DIR
 from . import args as _args
 from .asset_health import inspect_hk_asset_health
+from .audit_assets import inspect_hk_data_assets
 from .build import build_hk_industry_labels_file, build_hk_pit_fundamentals_file
 from .clean_daily import build_hk_daily_clean_layer
 from .coverage import inspect_hk_pit_coverage
@@ -231,6 +232,10 @@ def _add_hk_current_health_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_current_health_args(parser)
 
 
+def _add_hk_data_asset_audit_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_data_asset_audit_args(parser)
+
+
 def _add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_intraday_health_args(parser)
 
@@ -387,6 +392,12 @@ def rqdata_asset_command_specs() -> Sequence[RQDataAssetCommandSpec]:
             help="Inspect hk_current contract and alias alignment without scanning large parquet assets",
             add_args=_add_hk_current_health_args,
             runner=inspect_hk_current_health,
+        ),
+        RQDataAssetCommandSpec(
+            name="inspect-hk-data-assets",
+            help="Audit HK data assets, freshness, repair candidates, and conservative prune plans",
+            add_args=_add_hk_data_asset_audit_args,
+            runner=inspect_hk_data_assets,
         ),
         RQDataAssetCommandSpec(
             name="inspect-hk-intraday-health",

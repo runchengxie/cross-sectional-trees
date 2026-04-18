@@ -10,14 +10,16 @@
 
 推荐顺序：
 
-1. 先跑 `inspect-hk-current-health`
-2. 再跑 `daily_clean` 和 `valuation` 的 `inspect-hk-asset-health`
-3. 再跑 `inspect-hk-pit-coverage --include-health`
-4. 只有确实需要分钟线时，再跑 `inspect-hk-intraday-health`
-5. 如果你要把多条检查聚合成一份维护者 workflow report，再额外跑 `scripts/internal/run_hk_asset_workflow.py --phase inspect`
+1. 先跑 `inspect-hk-data-assets` 或 `scripts/dev/run_hk_data_asset_audit.sh`，拿统一资产清单和 dry-run 计划。
+2. 如果要下钻，再跑 `inspect-hk-current-health`。
+3. 再跑 `daily_clean` 和 `valuation` 的 `inspect-hk-asset-health`。
+4. 再跑 `inspect-hk-pit-coverage --include-health`。
+5. 只有确实需要分钟线时，再跑 `inspect-hk-intraday-health`。
+6. 如果你要把多条检查聚合成一份维护者 workflow report，再额外跑 `scripts/internal/run_hk_asset_workflow.py --phase inspect`。
 
 原因：
 
+* `data-assets` 聚合命令默认不刷新、不修复、不删除，适合作为维护者审计入口。
 * `current-health` 只看 contract、alias、manifest 和 `as_of`，最轻。
 * `asset-health` 才会真的扫 snapshot 数据；`--include-history` 会更重。
 * `pit-coverage --include-health` 回答的是“到目标调仓日为止，PIT 是否还能安全前推”。
@@ -41,12 +43,25 @@ read_current_path() { ... }
 
 所以它本身不需要当成“一条检查”去跑；更适合固化成脚本。仓库现在已经提供：
 
+* `scripts/dev/run_hk_data_asset_audit.sh`
 * `scripts/dev/run_hk_health_checks.sh`
 * `scripts/dev/run_hk_pit_health.sh`
 
 这份脚本把上面的 helper 包起来了，不需要你再手动先定义 shell 函数。
 
 ## 最推荐：直接跑脚本
+
+先生成统一审计 report：
+
+```bash
+bash scripts/dev/run_hk_data_asset_audit.sh --target-date 20260409
+```
+
+如果要在审计里串一个 patch refresh dry-run：
+
+```bash
+bash scripts/dev/run_hk_data_asset_audit.sh --target-date 20260409 --run-refresh
+```
 
 最小用法：
 
@@ -101,6 +116,7 @@ bash scripts/dev/run_hk_pit_health.sh \
 
 批量脚本默认会产出：
 
+* `artifacts/reports/hk_data_asset_audit_<date>.json`（仅 `run_hk_data_asset_audit.sh`）
 * `artifacts/reports/hk_current_health_<date>.json`
 * `artifacts/reports/hk_daily_clean_health_<date>.json`
 * `artifacts/reports/hk_valuation_health_<date>.json`
@@ -246,25 +262,23 @@ python scripts/internal/run_hk_asset_workflow.py \
 
 优先级建议：
 
-1. `hk_current_health_<date>.json`
-2. `hk_daily_clean_health_<date>.json`
-3. `hk_valuation_health_<date>.json`
-4. `hk_pit_health_<date>.json`
-5. `hk_intraday_health_<date>.json`
-6. `*_hk_health_check_summary.txt`
-7. 各条 `*.log`
+1. `hk_data_asset_audit_<date>.json`
+2. `hk_current_health_<date>.json`
+3. `hk_daily_clean_health_<date>.json`
+4. `hk_valuation_health_<date>.json`
+5. `hk_pit_health_<date>.json`
+6. `hk_intraday_health_<date>.json`
+7. `*_hk_health_check_summary.txt`
+8. 各条 `*.log`
 
 如果你要让代理复核，优先把 JSON report 和 summary 发过来，不要先把大 parquet 发过来。
 
-## 什么时候值得升级成正式命令
+## 聚合命令和单项命令怎么分工
 
-值得，但建议分两步看：
+`csml rqdata inspect-hk-data-assets` 已经是公开 CLI 入口，适合先回答“当前资产是否新鲜、缺口在哪里、哪些路径可考虑清理”。它默认只读和 dry-run。
 
-1. 现在这一步先用 `scripts/dev/run_hk_health_checks.sh` 固化本地 runbook。
-2. 如果后面这套检查已经稳定成团队日常入口，再考虑升成公开 `csml rqdata inspect-hk-health-bundle` 之类的聚合子命令。
+保留单项命令的原因：
 
-当前先不直接升成公开 CLI 的原因：
-
-* 仓库已经有单项 health 命令，缺的是“安全地组织执行”的外壳。
-* 这套顺序和默认配置仍然偏 HK + RQData 本地运维口径。
-* 先用脚本迭代，成本更低，也不容易过早承诺 CLI 稳定性。
+* 聚合命令偏审计和决策，不替代 `inspect-hk-asset-health` 的字段级深扫。
+* intraday 扫描 I/O 重，默认仍由 `--intraday-mode` 显式控制。
+* refresh、repair 和 delete 都需要显式参数解锁，避免审计命令被误用成破坏性维护入口。

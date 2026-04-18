@@ -189,6 +189,18 @@ bash scripts/dev/run_hk_health_checks.sh --target-date 20260409 --with-workflow-
 * 默认会产出 `current / daily_clean / valuation / pit` 四份 JSON report，并把 stdout / stderr 分别落到 `artifacts/reports/health_logs/`。
 * 逐条手动命令和 report 阅读顺序见 `docs/rqdata/hk-health-checks.md`。
 
+如果你要按 current contract 做一份“资产清单 + 数据新鲜度 + repair 候选 + prune dry-run”的统一审计，优先用：
+
+```bash
+bash scripts/dev/run_hk_data_asset_audit.sh --target-date 20260410
+```
+
+说明：
+
+* 这是 `csml rqdata inspect-hk-data-assets` 的本地包装，默认只读和 dry-run，不执行 refresh、repair 或 delete。
+* 默认输出 `artifacts/reports/hk_data_asset_audit_<date>.json`，适合在大数据重扫前先让维护者或代理复核。
+* 真要联动 patch refresh 时，先用 `--run-refresh` 保持 dry-run；确认后再显式加 `--refresh-execute`。
+
 ## HK 资产维护 Driver
 
 如果你在做 HK + RQData 资产维护，而不是日常研究 / pipeline 开发，可以直接用维护者 driver：

@@ -541,6 +541,26 @@ csml rqdata inspect-hk-current-health --asset daily_clean --asset valuation --as
 * 这条命令适合作为大范围 parquet 扫描前的第一道轻检查，尤其适合笔记本环境或 agent 上下文容易被大文件拖垮的场景。
 * 命中 `--fail-on-severity` 时，命令会和其他 health 检查一样以非零退出。
 
+### csml rqdata inspect-hk-data-assets
+
+聚合检查 HK current 资产清单、ETF daily 起止覆盖、intraday 新鲜度、已有 health report、repair 候选项和保守 prune 计划。默认不刷新、不修复、不删除。
+
+```bash
+csml rqdata inspect-hk-data-assets --target-date 20260410 --format json --out artifacts/reports/hk_data_asset_audit_20260410.json
+csml rqdata inspect-hk-data-assets --target-date 20260410 --intraday-mode metadata --fail-on-severity warning
+csml rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refresh-mode patch --refresh-dry-run --format json --out artifacts/reports/hk_data_asset_audit_20260410_refresh_dry_run.json
+```
+
+说明：
+
+* 默认读取 `artifacts/metadata/current_assets/hk_current.json`；如果 contract 缺失，会回退到 `artifacts/` 下的默认 alias，并把证据写进 `inventory`。
+* `inventory.records[]` 会把 current 引用、report / release 引用、manifest 状态和路径分类合并成统一清单；分类包括 `current`、`retained`、`unreferenced`、`metadata-inconsistent`。
+* `freshness.etf_daily` 默认扫描 ETF daily parquet，检查是否从 2000-01-01 附近的首个交易日覆盖到 `--target-date`，并区分 `provider-boundary` 和 `local-gap`。
+* `freshness.intraday` 默认用 manifest / contract 元数据判断最新日期；`--intraday-mode scan` 会扫描 intraday parquet，`--intraday-mode health` 会复用 `inspect-hk-intraday-health`，这两种模式都可能明显更重。
+* `health` 会聚合 `artifacts/reports/` 下同一目标日的 current / daily / valuation / PIT / intraday / workflow report；预期 report 缺失会记为 warning，而不是静默忽略。
+* `repair.candidates[]` 只生成候选和建议命令。只有同时传 `--execute-repair` 和对应的 `--approved-repair-action`，才会执行允许的自动修复动作。
+* `prune.candidates[]` 是删除计划。默认只 dry-run；只有同时传 `--delete-prune-candidates` 和逐条 `--approved-prune-path`，才会删除候选路径。
+
 ### csml rqdata sync-hk-intraday
 
 串起 HK `5m` 的常用维护路径：先下载本地 intraday cache，再跑健康检查，通过后把这批 cache 提升成正式 `intraday` 资产并更新 `hk_intraday_latest`；只有显式加 `--package` / `--release` 时，才继续做 tarball / GitHub Release。
