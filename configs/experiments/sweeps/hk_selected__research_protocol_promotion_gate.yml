@@ -1,0 +1,43 @@
+promotion_gate:
+  baseline_run: artifacts/runs/<baseline_run_dir>
+  candidate_run: artifacts/runs/<candidate_run_dir>
+  comparability_keys:
+    - market
+    - data.provider
+    - universe.mode
+    - universe.by_date_file
+    - label.target_col
+    - label.horizon_days
+    - label.shift_days
+    - label.train_target_transform
+    - features.list
+    - features.exclude
+    - eval.rebalance_frequency
+    - backtest.rebalance_frequency
+    - backtest.transaction_cost_bps
+    - data.benchmark_returns_file
+  required_evidence:
+    - main_eval
+    - backtest
+    - walk_forward
+    - final_oos
+    - cost_turnover
+    - feature_stability
+    - benchmark
+  hard_rejections:
+    constant_prediction: true
+    zero_feature_importance: true
+    require_final_oos: true
+    min_cv_ic_valid_folds: 2
+  soft_thresholds:
+    min_eval_ic_ir: 0.0
+    min_eval_long_short: 0.0
+    min_walk_forward_test_ic_mean: 0.0
+    min_final_oos_ic_mean: 0.0
+    min_final_oos_long_short: 0.0
+    min_backtest_sharpe_delta: 0.0
+    max_backtest_drawdown: 0.3
+    max_backtest_avg_turnover: 0.7
+    max_backtest_avg_cost_drag: 0.02
+  output_json: artifacts/reports/hk_selected_promotion_gate.json
+  output_csv: artifacts/reports/hk_selected_promotion_gate.csv

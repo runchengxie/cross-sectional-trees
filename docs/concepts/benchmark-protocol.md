@@ -51,6 +51,15 @@ HK 研究默认用：
 * `backtest_benchmark_compare_summary.csv`
 * `backtest_benchmark_compare_<name>.csv`
 
+如果要在不同 benchmark 文件之间做正式报告层比较，可以用独立 ladder：
+
+```bash
+csml benchmark-ladder \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_benchmark_ladder.yml
+```
+
+这层不改变单次 run 的主 benchmark，只读取已有策略收益和 benchmark 收益，输出每条 benchmark 的 active total return、IR、tracking error、beta、alpha、相关性、可比状态和 attribution 文件可用性。
+
 ## 2. HK selected 默认 benchmark 阶梯
 
 当前仓库把 HK selected 的 benchmark protocol 定成下面这套：
@@ -73,7 +82,32 @@ HK 研究默认用：
 3. 再加慢量价后有没有继续增量
 4. 在同一条 hybrid 路线上，模型差异到底带来了什么
 
-## 3. 为什么这样分层
+## 3. 主线晋升门槛
+
+候选 run 不能只因为某个 summary 指标更高就替换主基线。当前推荐把晋升判断拆成四类：
+
+* 可比性：`market`、provider、universe、label、features、rebalance frequency、成本和主 benchmark 口径必须一致。
+* 必备证据：至少有 main eval、backtest、walk-forward、final OOS、cost / turnover；正式替换主线时还应有 feature stability 和 benchmark evidence。
+* 硬拒绝：常数预测、零 feature importance、缺 final OOS、有效 CV folds 不足。
+* 软门槛：IC / long-short / walk-forward / final OOS / Sharpe delta / drawdown / turnover / cost drag 达不到门槛时进入 reviewable，而不是直接 promotable。
+
+执行入口：
+
+```bash
+csml promotion-gate \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_promotion_gate.yml \
+  --baseline-run artifacts/runs/<baseline_run_dir> \
+  --candidate-run artifacts/runs/<candidate_run_dir>
+```
+
+`promotion_status` 的解释：
+
+* `promotable`：可比，证据齐，硬拒绝为零，软门槛全部通过。
+* `reviewable`：可比且无硬拒绝，但存在软门槛未过。
+* `rejected`：证据缺失或触发硬拒绝。
+* `non-comparable`：关键配置口径不一致，不能用来替换 baseline。
+
+## 4. 为什么这样分层
 
 ### `ridge` 是 sanity benchmark
 
@@ -102,7 +136,7 @@ HK 研究默认用：
 
 它们应该回答“同一研究单元里，换目标函数或线性归纳偏好后会不会更好”。
 
-## 4. 跑 benchmark 时什么必须固定
+## 5. 跑 benchmark 时什么必须固定
 
 做特征 benchmark 时，至少固定这些块：
 
@@ -124,7 +158,7 @@ HK 研究默认用：
 
 如果这些块一起变了，你比较的就不是 benchmark，而是整条研究路线。
 
-## 5. 同一研究单元里的特征研究 protocol
+## 6. 同一研究单元里的特征研究 protocol
 
 这套 protocol 只用于下面这种场景：
 
@@ -134,7 +168,7 @@ HK 研究默认用：
 
 它的作用是统一研究口径，避免后续配置一会儿靠直觉加列、一会儿随手删列，最后没人能解释为什么结果变化。
 
-### 5.1 先按特征簇组织，而不是按单列组织
+### 6.1 先按特征簇组织，而不是按单列组织
 
 默认先把当前候选特征拆成几个可解释的 family，再决定删哪组、加哪组。
 
@@ -150,7 +184,7 @@ HK selected 当前常见 family 可以按下面理解：
 
 如果当前研究线刻意不包含某一类，例如 monthly `no_ret` 候选不再直接使用 trailing-return 动量，这种“留白”本身就是研究假设。
 
-### 5.2 默认顺序一：先做 feature family ablation
+### 6.2 默认顺序一：先做 feature family ablation
 
 默认先做 family 级消融，而不是直接盯单个 feature importance 排名。
 
@@ -171,7 +205,19 @@ HK selected 当前常见 family 可以按下面理解：
 
 如果某条线本来就没有某个 family，就不要为了凑表而硬加一个空组。
 
-### 5.3 默认顺序二：对单调变换对先做 raw/log dedup
+现有工具入口：
+
+```bash
+csml feature-evidence generate-ablation \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
+
+csml feature-evidence summarize-ablation \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
+```
+
+`generate-ablation` 只生成配置和 `jobs.csv`；跑完这些配置后，再用 `summarize-ablation` 汇总相对 baseline 的指标变化。
+
+### 6.3 默认顺序二：对单调变换对先做 raw/log dedup
 
 如果当前配置在建模前已经做每期横截面 `rank` 或 `zscore`，默认优先检查这类单调变换对：
 
@@ -185,7 +231,7 @@ HK selected 当前常见 family 可以按下面理解：
 
 先回答“这两列是不是本质重复”，再决定是否继续动 `pb`、`cfo_to_profit`、`ret_120` 这类更可能带独立信息的列。
 
-### 5.4 默认顺序三：新增稀疏 PIT 因子前先做 coverage probe
+### 6.4 默认顺序三：新增稀疏 PIT 因子前先做 coverage probe
 
 对资产负债表风险、杠杆、营运资本这类 PIT 因子的推荐处理顺序：
 
@@ -202,7 +248,7 @@ HK selected 当前常见 family 可以按下面理解：
 
 如果新特征把历史压缩到很短窗口，就先回退到 coverage-safe 版本。
 
-### 5.5 默认顺序四：默认不开启的 missing indicators
+### 6.5 默认顺序四：默认不开启的 missing indicators
 
 `features.missing.add_indicators` 目前应视为专项假设。
 
@@ -219,7 +265,7 @@ HK selected 当前常见 family 可以按下面理解：
 
 这些更容易解释的方式处理时效和覆盖问题。
 
-### 5.6 跑完先看什么
+### 6.6 跑完先看什么
 
 做完这套特征实验后，优先检查：
 
@@ -239,7 +285,7 @@ HK selected 当前常见 family 可以按下面理解：
 
 如果新增特征后只得到“指标略升，但样本覆盖更差、重要度更集中、换手更高”，默认不升主线。
 
-### 5.7 什么时候可以不按这套顺序来
+### 6.7 什么时候可以不按这套顺序来
 
 下面这些场景可以跳过部分步骤，但要在配置名或研究笔记里写清楚：
 
@@ -253,7 +299,26 @@ HK selected 当前常见 family 可以按下面理解：
 * 主线 / benchmark 配置，默认按这套顺序走
 * probe / sidecar 配置，可以只做和当前问题直接相关的那一步
 
-## 6. 推荐执行顺序
+## 7. 固定分数组合层协议
+
+模型和组合构建要分层比较。先固定同一个 scored artifact，再比较 Top-K、buffer、成本、weighting、长短结构和 score postprocess。
+
+执行入口：
+
+```bash
+csml construction-grid \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_construction_grid.yml
+```
+
+这个命令只读取已有 `summary.json` / `eval_scored.parquet`，不会重新训练模型。它适合回答：
+
+* 当前模型分数在不同 `top_k` 下是否稳定。
+* 成本和换手是否吞掉收益。
+* buffer 是否改善净收益而不是只降低交易。
+* `equal` / `signal` weighting 哪个更稳。
+* 中性化或其他 score postprocess 应该放在组合层还是模型层。
+
+## 8. 推荐执行顺序
 
 ```bash
 # 特征 benchmark
@@ -280,7 +345,7 @@ csml summarize \
 
 先确认特征增量，再谈 challenger。
 
-## 7. 跑完先看什么
+## 9. 跑完先看什么
 
 先看：
 
@@ -303,7 +368,7 @@ csml summarize \
 
 如果 `ridge` 和 `xgb_regressor` 都打不动 `price-only -> PIT-only -> hybrid` 的增量顺序，就先别急着继续换模型。
 
-## 8. 和当前季度 PIT 最佳实践的关系
+## 10. 和当前季度 PIT 最佳实践的关系
 
 这套 benchmark protocol 和当前仓库的季度 PIT 最佳实践并不冲突。
 

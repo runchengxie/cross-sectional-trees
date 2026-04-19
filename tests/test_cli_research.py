@@ -3,6 +3,10 @@ from csml.commands import linear_sweep as sweep_tool
 from csml.commands import run_grid as grid_tool
 from csml.commands import tune as tune_tool
 from csml.data_tools import backup_data as backup_data_tool
+from csml.research import benchmark_ladder as benchmark_ladder_tool
+from csml.research import construction_grid as construction_grid_tool
+from csml.research import feature_evidence as feature_evidence_tool
+from csml.research import promotion_gate as promotion_gate_tool
 from csml.research import summarize_runs as summarize_tool
 
 
@@ -116,6 +120,60 @@ def test_cli_parses_research_commands():
     assert summarize.short_sample_periods == 24
     assert summarize.exclude_flag_constant_prediction is True
     assert summarize.exclude_flag_zero_feature_importance is True
+
+    promotion_gate = parser.parse_args(
+        [
+            "promotion-gate",
+            "--config",
+            "configs/experiments/sweeps/hk_selected__promotion_gate.yml",
+            "--baseline-run",
+            "artifacts/runs/baseline",
+            "--candidate-run",
+            "artifacts/runs/candidate",
+            "--output-json",
+            "artifacts/reports/promotion.json",
+        ]
+    )
+    assert promotion_gate.command == "promotion-gate"
+    assert promotion_gate.baseline_run == "artifacts/runs/baseline"
+    assert promotion_gate.output_json == "artifacts/reports/promotion.json"
+
+    construction_grid = parser.parse_args(
+        [
+            "construction-grid",
+            "--config",
+            "configs/experiments/sweeps/hk_selected__construction_grid.yml",
+            "--output",
+            "artifacts/reports/construction.csv",
+        ]
+    )
+    assert construction_grid.command == "construction-grid"
+    assert construction_grid.output == "artifacts/reports/construction.csv"
+
+    feature_evidence = parser.parse_args(
+        [
+            "feature-evidence",
+            "permutation-importance",
+            "--config",
+            "configs/experiments/sweeps/hk_selected__feature_evidence.yml",
+            "--output",
+            "artifacts/reports/features.csv",
+        ]
+    )
+    assert feature_evidence.command == "feature-evidence"
+    assert feature_evidence.mode == "permutation-importance"
+
+    benchmark_ladder = parser.parse_args(
+        [
+            "benchmark-ladder",
+            "--config",
+            "configs/experiments/sweeps/hk_selected__benchmark_ladder.yml",
+            "--output-json",
+            "artifacts/reports/benchmarks.json",
+        ]
+    )
+    assert benchmark_ladder.command == "benchmark-ladder"
+    assert benchmark_ladder.output_json == "artifacts/reports/benchmarks.json"
 
     backup = parser.parse_args(
         [
@@ -239,6 +297,32 @@ def test_cli_main_summarize_passes_namespace_to_runner(monkeypatch):
     assert args.run_name_prefix == ["hk_sel_q_benchmark_"]
     assert args.exclude_flag_constant_prediction is True
     assert args.exclude_flag_zero_feature_importance is True
+
+
+def test_cli_main_research_protocol_tools_pass_namespace_to_runners(monkeypatch):
+    calls: dict[str, object] = {}
+
+    def _capture(name):
+        def _inner(args):
+            calls[name] = args
+            return 0
+
+        return _inner
+
+    monkeypatch.setattr(promotion_gate_tool, "run", _capture("promotion"))
+    monkeypatch.setattr(construction_grid_tool, "run", _capture("construction"))
+    monkeypatch.setattr(feature_evidence_tool, "run", _capture("feature"))
+    monkeypatch.setattr(benchmark_ladder_tool, "run", _capture("benchmark"))
+
+    assert cli.main(["promotion-gate", "--config", "gate.yml"]) == 0
+    assert cli.main(["construction-grid", "--config", "construction.yml"]) == 0
+    assert cli.main(["feature-evidence", "generate-ablation", "--config", "features.yml"]) == 0
+    assert cli.main(["benchmark-ladder", "--config", "ladder.yml"]) == 0
+
+    assert calls["promotion"].config == "gate.yml"
+    assert calls["construction"].config == "construction.yml"
+    assert calls["feature"].mode == "generate-ablation"
+    assert calls["benchmark"].config == "ladder.yml"
 
 
 def test_cli_main_sweep_linear_passes_through_args(monkeypatch):

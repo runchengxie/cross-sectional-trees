@@ -1,0 +1,23 @@
+benchmark_ladder:
+  strategy_returns_file: artifacts/runs/<run_dir>/backtest_net.csv
+  strategy_return_col: net_return
+  periods_per_year: 12
+  primary_benchmark:
+    name: hk_selected_cap_weight
+    source_type: universe_cap_weight
+    returns_file: artifacts/benchmarks/hk_selected_capw.csv
+    attribution_file: artifacts/reports/hk_selected_capw_attribution.csv
+  comparisons:
+    - name: hk_selected_equal_weight
+      source_type: universe_equal_weight
+      returns_file: artifacts/benchmarks/hk_selected_equalw.csv
+      attribution_file: artifacts/reports/hk_selected_equalw_attribution.csv
+    - name: hk_connect_full_cap_weight
+      source_type: universe_cap_weight
+      returns_file: artifacts/benchmarks/hk_connect_full_capw.csv
+      attribution_file: artifacts/reports/hk_connect_full_capw_attribution.csv
+    - name: tracker_02800
+      source_type: etf_proxy
+      returns_file: artifacts/benchmarks/02800_HK.csv
+  output_csv: artifacts/reports/hk_selected_benchmark_ladder.csv
+  output_json: artifacts/reports/hk_selected_benchmark_ladder.json

@@ -1,0 +1,35 @@
+construction_grid:
+  summary_file: artifacts/runs/<run_dir>/summary.json
+  output_csv: artifacts/reports/hk_selected_construction_grid.csv
+  output_json: artifacts/reports/hk_selected_construction_grid.json
+  variants:
+    - name: k10_equal_bps25
+      top_k: 10
+      cost_bps: 25
+      buffer_exit: 0
+      buffer_entry: 0
+      weighting: equal
+    - name: k15_equal_bps25_buffer
+      top_k: 15
+      cost_bps: 25
+      buffer_exit: 25
+      buffer_entry: 15
+      weighting: equal
+    - name: k15_signal_bps40_buffer
+      top_k: 15
+      cost_bps: 40
+      buffer_exit: 25
+      buffer_entry: 15
+      weighting: signal
+    - name: k15_equal_neutralize_log_mcap
+      top_k: 15
+      cost_bps: 25
+      buffer_exit: 25
+      buffer_entry: 15
+      weighting: equal
+      score_postprocess:
+        method: neutralize
+        columns:
+          - log_mcap
+        strength: 1.0
+        min_obs: 20

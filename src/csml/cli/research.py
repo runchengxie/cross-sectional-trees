@@ -117,6 +117,33 @@ def handle_summarize(args) -> int:
     return 0
 
 
+def handle_promotion_gate(args) -> int:
+    from ..research import promotion_gate
+
+    return promotion_gate.run(args)
+
+
+def handle_construction_grid(args) -> int:
+    from ..research import construction_grid
+
+    construction_grid.run(args)
+    return 0
+
+
+def handle_feature_evidence(args) -> int:
+    from ..research import feature_evidence
+
+    feature_evidence.run(args)
+    return 0
+
+
+def handle_benchmark_ladder(args) -> int:
+    from ..research import benchmark_ladder
+
+    benchmark_ladder.run(args)
+    return 0
+
+
 def handle_backup_data(args) -> int:
     from ..data_tools import backup_data
 
@@ -144,6 +171,10 @@ def handle_backup_data(args) -> int:
 def register_research_commands(subparsers) -> None:
     from ..commands import linear_sweep, run_grid, tune
     from ..data_tools import backup_data as backup_data_tool
+    from ..research import benchmark_ladder as benchmark_ladder_tool
+    from ..research import construction_grid as construction_grid_tool
+    from ..research import feature_evidence as feature_evidence_tool
+    from ..research import promotion_gate as promotion_gate_tool
     from ..research import summarize_runs
 
     grid = subparsers.add_parser(
@@ -173,6 +204,34 @@ def register_research_commands(subparsers) -> None:
     )
     summarize_runs.add_summarize_args(summarize)
     summarize.set_defaults(func=handle_summarize)
+
+    promotion_gate = subparsers.add_parser(
+        "promotion-gate",
+        help="Evaluate a candidate run against a baseline promotion gate",
+    )
+    promotion_gate_tool.add_promotion_gate_args(promotion_gate)
+    promotion_gate.set_defaults(func=handle_promotion_gate)
+
+    construction_grid = subparsers.add_parser(
+        "construction-grid",
+        help="Compare portfolio construction variants from an existing scored artifact",
+    )
+    construction_grid_tool.add_construction_grid_args(construction_grid)
+    construction_grid.set_defaults(func=handle_construction_grid)
+
+    feature_evidence = subparsers.add_parser(
+        "feature-evidence",
+        help="Generate and summarize profit-aware feature evidence reports",
+    )
+    feature_evidence_tool.add_feature_evidence_args(feature_evidence)
+    feature_evidence.set_defaults(func=handle_feature_evidence)
+
+    benchmark_ladder = subparsers.add_parser(
+        "benchmark-ladder",
+        help="Compare strategy returns against a benchmark ladder",
+    )
+    benchmark_ladder_tool.add_benchmark_ladder_args(benchmark_ladder)
+    benchmark_ladder.set_defaults(func=handle_benchmark_ladder)
 
     backup_data = subparsers.add_parser(
         "backup-data",

@@ -81,6 +81,7 @@ FIELDNAMES = [
     "eval_ic_ir",
     "eval_long_short",
     "eval_turnover_mean",
+    "walk_forward_test_ic_mean",
     "eval_pred_nunique",
     "feature_importance_nonzero",
     "backtest_periods",
@@ -106,9 +107,17 @@ FIELDNAMES = [
     "flag_short_sample",
     "flag_negative_long_short",
     "flag_high_turnover",
+    "flag_high_cost_drag",
     "flag_relative_end_date",
     "flag_constant_prediction",
     "flag_zero_feature_importance",
+    "objective_component_eval_ic_ir",
+    "objective_component_walk_forward_test_ic_mean",
+    "objective_component_backtest_sharpe",
+    "objective_component_drawdown_penalty",
+    "objective_component_cost_drag_penalty",
+    "objective_component_turnover_penalty",
+    "objective_score",
     "score",
     "status",
     "error",
@@ -202,6 +211,12 @@ def _normalize_text(value: Any) -> str | None:
 
 def _json_dumps_compact(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return float(np.mean(values))
 
 
 def _parse_datetime_text(value: str) -> datetime | None:
@@ -402,6 +417,22 @@ def _load_used_config(path: Path) -> tuple[dict[str, Any], str | None]:
     if not isinstance(payload, dict):
         return {}, "config_parse_error: config.used.yml top-level payload must be an object"
     return payload, None
+
+
+def _extract_walk_forward_test_ic_mean(summary: dict[str, Any]) -> float | None:
+    results = _get_nested(summary, "walk_forward", "results")
+    if not isinstance(results, list):
+        return None
+    values: list[float] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status") or "").strip().lower() != "ok":
+            continue
+        value = _to_float(_get_nested(item, "test_ic", "mean"))
+        if value is not None:
+            values.append(value)
+    return _mean(values)
 
 
 def _load_inputs_lock(path: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -646,6 +677,10 @@ def _apply_flags_and_score(row: dict[str, Any], args: argparse.Namespace) -> Non
     if bt_turnover is not None:
         row["flag_high_turnover"] = bt_turnover > float(args.high_turnover_threshold)
 
+    bt_cost_drag = _to_float(row.get("backtest_avg_cost_drag"))
+    if bt_cost_drag is not None:
+        row["flag_high_cost_drag"] = bt_cost_drag > float(args.high_cost_drag_threshold)
+
     end_date_relative = row.get("provenance_used_relative_end_date")
     if end_date_relative is None:
         end_date_source = _first_non_empty(
@@ -667,11 +702,35 @@ def _apply_flags_and_score(row: dict[str, Any], args: argparse.Namespace) -> Non
         return
     max_drawdown = _to_float(row.get("backtest_max_drawdown"))
     avg_cost_drag = _to_float(row.get("backtest_avg_cost_drag"))
+    eval_ic_ir = _to_float(row.get("eval_ic_ir"))
+    wf_test_ic = _to_float(row.get("walk_forward_test_ic_mean"))
+    avg_turnover = _to_float(row.get("backtest_avg_turnover"))
     drawdown_penalty = abs(max_drawdown) if max_drawdown is not None else 0.0
     cost_penalty = avg_cost_drag if avg_cost_drag is not None else 0.0
-    row["score"] = sharpe - float(args.score_drawdown_weight) * drawdown_penalty - float(
-        args.score_cost_weight
-    ) * cost_penalty
+    turnover_penalty = avg_turnover if avg_turnover is not None else 0.0
+    row["objective_component_eval_ic_ir"] = float(args.score_eval_ic_ir_weight) * (
+        eval_ic_ir or 0.0
+    )
+    row["objective_component_walk_forward_test_ic_mean"] = (
+        float(args.score_walk_forward_weight) * (wf_test_ic or 0.0)
+    )
+    row["objective_component_backtest_sharpe"] = (
+        float(args.score_backtest_sharpe_weight) * sharpe
+    )
+    row["objective_component_drawdown_penalty"] = float(args.score_drawdown_weight) * drawdown_penalty
+    row["objective_component_cost_drag_penalty"] = float(args.score_cost_weight) * cost_penalty
+    row["objective_component_turnover_penalty"] = (
+        float(args.score_turnover_weight) * turnover_penalty
+    )
+    row["score"] = (
+        row["objective_component_eval_ic_ir"]
+        + row["objective_component_walk_forward_test_ic_mean"]
+        + row["objective_component_backtest_sharpe"]
+        - row["objective_component_drawdown_penalty"]
+        - row["objective_component_cost_drag_penalty"]
+        - row["objective_component_turnover_penalty"]
+    )
+    row["objective_score"] = row["score"]
 
 
 def _normalize_group_value(value: Any) -> Any:
@@ -884,6 +943,7 @@ def _extract_row(source_runs_dir: Path, summary_path: Path, args: argparse.Names
     row["eval_ic_ir"] = _get_nested(summary, "eval", "ic", "ir")
     row["eval_long_short"] = _get_nested(summary, "eval", "long_short")
     row["eval_turnover_mean"] = _get_nested(summary, "eval", "turnover_mean")
+    row["walk_forward_test_ic_mean"] = _extract_walk_forward_test_ic_mean(summary)
     _populate_eval_diagnostics(row, summary, run_dir)
 
     backtest_stats = _get_nested(summary, "backtest", "stats")
@@ -978,6 +1038,33 @@ def add_summarize_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPars
         help="Flag high turnover when backtest_avg_turnover exceeds this value (default: 0.7)",
     )
     parser.add_argument(
+        "--high-cost-drag-threshold",
+        type=float,
+        default=0.02,
+        help="Flag high cost drag when backtest_avg_cost_drag exceeds this value (default: 0.02)",
+    )
+    parser.add_argument(
+        "--score-eval-ic-ir-weight",
+        type=float,
+        default=0.0,
+        help="Score reward weight for eval_ic_ir (default: 0.0 to preserve legacy score behavior)",
+    )
+    parser.add_argument(
+        "--score-walk-forward-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Score reward weight for walk_forward_test_ic_mean "
+            "(default: 0.0 to preserve legacy score behavior)"
+        ),
+    )
+    parser.add_argument(
+        "--score-backtest-sharpe-weight",
+        type=float,
+        default=1.0,
+        help="Score reward weight for backtest_sharpe (default: 1.0)",
+    )
+    parser.add_argument(
         "--score-drawdown-weight",
         type=float,
         default=0.5,
@@ -990,6 +1077,12 @@ def add_summarize_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPars
         help="Score penalty weight for avg_cost_drag (default: 10.0)",
     )
     parser.add_argument(
+        "--score-turnover-weight",
+        type=float,
+        default=0.0,
+        help="Score penalty weight for backtest_avg_turnover (default: 0.0)",
+    )
+    parser.add_argument(
         "--exclude-flag-short-sample",
         action="store_true",
         help="Exclude rows where flag_short_sample=true",
@@ -998,6 +1091,11 @@ def add_summarize_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPars
         "--exclude-flag-high-turnover",
         action="store_true",
         help="Exclude rows where flag_high_turnover=true",
+    )
+    parser.add_argument(
+        "--exclude-flag-high-cost-drag",
+        action="store_true",
+        help="Exclude rows where flag_high_cost_drag=true",
     )
     parser.add_argument(
         "--exclude-flag-negative-long-short",
@@ -1043,6 +1141,71 @@ def add_summarize_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPars
     return parser
 
 
+def _allowed_comparability_classes(args: argparse.Namespace) -> set[str]:
+    comparability_classes = _parse_prefixes(args.comparability_class)
+    invalid_classes = [
+        item for item in comparability_classes if item.lower() not in COMPARABILITY_CLASSES
+    ]
+    if invalid_classes:
+        raise SystemExit(
+            "Invalid --comparability-class value(s): "
+            + ", ".join(sorted(dict.fromkeys(invalid_classes)))
+            + f". Available: {', '.join(COMPARABILITY_CLASSES)}"
+        )
+    return {item.lower() for item in comparability_classes}
+
+
+def _filter_candidates(
+    candidates: list[tuple[datetime, dict[str, Any]]],
+    args: argparse.Namespace,
+    allowed_comparability_classes: set[str],
+) -> list[tuple[datetime, dict[str, Any]]]:
+    flag_filters = (
+        ("exclude_flag_short_sample", "flag_short_sample"),
+        ("exclude_flag_high_turnover", "flag_high_turnover"),
+        ("exclude_flag_high_cost_drag", "flag_high_cost_drag"),
+        ("exclude_flag_negative_long_short", "flag_negative_long_short"),
+        ("exclude_flag_relative_end_date", "flag_relative_end_date"),
+        ("exclude_flag_constant_prediction", "flag_constant_prediction"),
+        ("exclude_flag_zero_feature_importance", "flag_zero_feature_importance"),
+    )
+    rows = candidates
+    for arg_name, field_name in flag_filters:
+        if getattr(args, arg_name):
+            rows = [item for item in rows if not _is_true_flag(item[1].get(field_name))]
+    if allowed_comparability_classes:
+        rows = [
+            item
+            for item in rows
+            if _normalize_text(item[1].get("comparability_class")) in allowed_comparability_classes
+        ]
+    return rows
+
+
+def _sort_candidates(
+    candidates: list[tuple[datetime, dict[str, Any]]],
+    sort_by: str,
+) -> None:
+    if sort_by == "score":
+        candidates.sort(
+            key=lambda item: (
+                _to_float(item[1].get("score")) is None,
+                -(_to_float(item[1].get("score")) or 0.0),
+                -item[0].timestamp(),
+            )
+        )
+    elif sort_by == "dsr":
+        candidates.sort(
+            key=lambda item: (
+                _to_float(item[1].get("dsr")) is None,
+                -(_to_float(item[1].get("dsr")) or 0.0),
+                -item[0].timestamp(),
+            )
+        )
+    else:
+        candidates.sort(key=lambda item: item[0], reverse=True)
+
+
 def run(args: argparse.Namespace) -> Path:
     logging.basicConfig(
         level=getattr(logging, str(args.log_level).upper(), logging.INFO),
@@ -1056,17 +1219,7 @@ def run(args: argparse.Namespace) -> Path:
         for path in (args.runs_dir or [DEFAULT_RUNS_DIR.as_posix()])
     ]
     run_name_prefixes = _parse_prefixes(args.run_name_prefix)
-    comparability_classes = _parse_prefixes(args.comparability_class)
-    invalid_classes = [
-        item for item in comparability_classes if item.lower() not in COMPARABILITY_CLASSES
-    ]
-    if invalid_classes:
-        raise SystemExit(
-            "Invalid --comparability-class value(s): "
-            + ", ".join(sorted(dict.fromkeys(invalid_classes)))
-            + f". Available: {', '.join(COMPARABILITY_CLASSES)}"
-        )
-    allowed_comparability_classes = {item.lower() for item in comparability_classes}
+    allowed_comparability_classes = _allowed_comparability_classes(args)
     since_dt = _parse_since(args.since)
     summary_entries = _iter_summary_files(runs_dirs)
     if not summary_entries:
@@ -1094,55 +1247,13 @@ def run(args: argparse.Namespace) -> Path:
     if not candidates:
         raise SystemExit("No runs matched current summarize filters.")
 
-    if args.exclude_flag_short_sample:
-        candidates = [item for item in candidates if not _is_true_flag(item[1].get("flag_short_sample"))]
-    if args.exclude_flag_high_turnover:
-        candidates = [item for item in candidates if not _is_true_flag(item[1].get("flag_high_turnover"))]
-    if args.exclude_flag_negative_long_short:
-        candidates = [
-            item for item in candidates if not _is_true_flag(item[1].get("flag_negative_long_short"))
-        ]
-    if args.exclude_flag_relative_end_date:
-        candidates = [
-            item for item in candidates if not _is_true_flag(item[1].get("flag_relative_end_date"))
-        ]
-    if args.exclude_flag_constant_prediction:
-        candidates = [
-            item for item in candidates if not _is_true_flag(item[1].get("flag_constant_prediction"))
-        ]
-    if args.exclude_flag_zero_feature_importance:
-        candidates = [
-            item for item in candidates if not _is_true_flag(item[1].get("flag_zero_feature_importance"))
-        ]
-    if allowed_comparability_classes:
-        candidates = [
-            item
-            for item in candidates
-            if _normalize_text(item[1].get("comparability_class")) in allowed_comparability_classes
-        ]
+    candidates = _filter_candidates(candidates, args, allowed_comparability_classes)
     if not candidates:
         raise SystemExit("No runs matched current summarize filters.")
 
     _compute_grouped_dsr([row for _, row in candidates])
 
-    if args.sort_by == "score":
-        candidates.sort(
-            key=lambda item: (
-                _to_float(item[1].get("score")) is None,
-                -(_to_float(item[1].get("score")) or 0.0),
-                -item[0].timestamp(),
-            )
-        )
-    elif args.sort_by == "dsr":
-        candidates.sort(
-            key=lambda item: (
-                _to_float(item[1].get("dsr")) is None,
-                -(_to_float(item[1].get("dsr")) or 0.0),
-                -item[0].timestamp(),
-            )
-        )
-    else:
-        candidates.sort(key=lambda item: item[0], reverse=True)
+    _sort_candidates(candidates, str(args.sort_by))
     if args.latest_n is not None:
         candidates = candidates[: int(args.latest_n)]
     rows = [row for _, row in candidates]

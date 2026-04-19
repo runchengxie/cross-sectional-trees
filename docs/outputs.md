@@ -702,7 +702,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 ## 研究工具输出契约
 
-下面三类文件不在单个 run 目录内，但属于研究流程中的核心对比产物。
+下面这些文件不在单个 run 目录内，但属于研究流程中的核心对比产物。
 
 ### `csml summarize`：`runs_summary.csv`
 
@@ -720,28 +720,37 @@ best-effort（可能为空、缺失或未产出文件）：
 列契约（当前稳定列顺序）：
 
 ```text
-source_runs_dir,run_dir,run_name,run_timestamp,config_hash,summary_path,config_path,inputs_lock_path,provenance_source,provenance_has_lock,provenance_used_relative_start_date,provenance_used_relative_end_date,provenance_used_relative_live_as_of,provenance_used_latest_pointer,provenance_input_keys,provenance_inputs_json,provenance_cohort_key,comparability_class,comparability_reasons,market,data_provider,data_start_date,data_end_date,data_end_date_config,data_rows,data_rows_model,data_rows_model_in_sample,data_rows_model_oos,data_dropped_dates,universe_mode,label_horizon_days,label_shift_days,eval_top_k,backtest_top_k,transaction_cost_bps,eval_rebalance_frequency,backtest_rebalance_frequency,backtest_exit_price_policy,backtest_exit_fallback_policy,backtest_weighting,eval_buffer_exit,eval_buffer_entry,backtest_buffer_exit,backtest_buffer_entry,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,eval_pred_nunique,feature_importance_nonzero,backtest_periods,backtest_periods_per_year,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_skew,backtest_kurtosis_excess,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,backtest_tracking_error,backtest_information_ratio,backtest_beta,backtest_alpha,backtest_corr,dsr,dsr_sr0,dsr_n_trials,dsr_var_trials,flag_short_sample,flag_negative_long_short,flag_high_turnover,flag_relative_end_date,flag_constant_prediction,flag_zero_feature_importance,score,status,error
+source_runs_dir,run_dir,run_name,run_timestamp,config_hash,summary_path,config_path,inputs_lock_path,provenance_source,provenance_has_lock,provenance_used_relative_start_date,provenance_used_relative_end_date,provenance_used_relative_live_as_of,provenance_used_latest_pointer,provenance_input_keys,provenance_inputs_json,provenance_cohort_key,comparability_class,comparability_reasons,market,data_provider,data_start_date,data_end_date,data_end_date_config,data_rows,data_rows_model,data_rows_model_in_sample,data_rows_model_oos,data_dropped_dates,universe_mode,label_horizon_days,label_shift_days,eval_top_k,backtest_top_k,transaction_cost_bps,eval_rebalance_frequency,backtest_rebalance_frequency,backtest_exit_price_policy,backtest_exit_fallback_policy,backtest_weighting,eval_buffer_exit,eval_buffer_entry,backtest_buffer_exit,backtest_buffer_entry,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,walk_forward_test_ic_mean,eval_pred_nunique,feature_importance_nonzero,backtest_periods,backtest_periods_per_year,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_skew,backtest_kurtosis_excess,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,backtest_tracking_error,backtest_information_ratio,backtest_beta,backtest_alpha,backtest_corr,dsr,dsr_sr0,dsr_n_trials,dsr_var_trials,flag_short_sample,flag_negative_long_short,flag_high_turnover,flag_high_cost_drag,flag_relative_end_date,flag_constant_prediction,flag_zero_feature_importance,objective_component_eval_ic_ir,objective_component_walk_forward_test_ic_mean,objective_component_backtest_sharpe,objective_component_drawdown_penalty,objective_component_cost_drag_penalty,objective_component_turnover_penalty,objective_score,score,status,error
 ```
 
 `score` 计算规则：
 
 ```text
-score = backtest_sharpe
+score = objective_component_eval_ic_ir
+      + objective_component_walk_forward_test_ic_mean
+      + objective_component_backtest_sharpe
       - score_drawdown_weight * abs(backtest_max_drawdown)
       - score_cost_weight * backtest_avg_cost_drag
+      - score_turnover_weight * backtest_avg_turnover
 ```
 
 默认权重（可由 CLI 覆盖）：
 
+1. `score_eval_ic_ir_weight = 0.0`
+1. `score_walk_forward_weight = 0.0`
+1. `score_backtest_sharpe_weight = 1.0`
 1. `score_drawdown_weight = 0.5`
 1. `score_cost_weight = 10.0`
+1. `score_turnover_weight = 0.0`
 
 补充：
 
 1. 若 `backtest_sharpe` 缺失，则 `score` 为空。
 1. 若 `backtest_max_drawdown` 或 `backtest_avg_cost_drag` 缺失，会按 0 处理惩罚项。
+1. 若 `walk_forward_test_ic_mean` 缺失，默认权重为 0 时不影响 `score`；如果显式给了正权重，缺失值按 0 参与对应 component。
 1. `backtest_tracking_error`、`backtest_information_ratio`、`backtest_beta`、`backtest_alpha`、`backtest_corr` 来自 `summary.json -> backtest.active`。
 1. 若命中 `flag_constant_prediction=true` 或 `flag_zero_feature_importance=true`，会把 `score` 和 `dsr` 留空，避免退化模型排到前面。
+1. `objective_score` 与 `score` 使用同一套 component 口径，便于和 `csml tune` 的 `objective_score` 对齐。
 1. `dsr` 为 Deflated Sharpe Ratio（0-1），在 summarize 阶段按可比策略分组计算；当前分组会额外纳入 `comparability_class` 与 `provenance_cohort_key`，避免把不同 lineage 的 run 混在一起估计组内尝试次数；`dsr_sr0` 为组内多重比较修正后的 Sharpe 阈值（原频率）。
 1. `dsr_n_trials` 使用分组内尝试次数（attempts count）；`dsr_var_trials` 为分组内原频率 Sharpe 的样本方差（`ddof=1`）。
 
@@ -749,6 +758,8 @@ score = backtest_sharpe
 
 1. `eval_pred_nunique` 记录评估打分列 `pred` 的唯一值数量；`<=1` 会触发 `flag_constant_prediction=true`。
 1. `feature_importance_nonzero` 记录 `feature_importance.csv` 中非零重要度个数；对线性模型它等价于“非零系数个数”。
+1. `walk_forward_test_ic_mean` 从 `summary.json -> walk_forward.results[].test_ic.mean` 的成功窗口均值派生。
+1. `flag_high_cost_drag=true` 表示 `backtest_avg_cost_drag` 超过 `--high-cost-drag-threshold`。
 1. `inputs_lock_path` 指向 run 目录里的 `inputs.lock.json`；缺失时说明这是 legacy run。
 1. `provenance_inputs_json` 是按 input key 组织的 JSON 字符串，保存 `resolved_path`、manifest 摘要和 current-contract 摘要等 comparison-relevant lineage 信息。
 1. `comparability_class` 当前取值为 `direct`、`risky`、`unknown`：
@@ -796,13 +807,139 @@ artifacts/sweeps/<tag>/
 其中：
 
 1. `jobs.csv` 固定前缀列为 `order,run_name,config_path`，后面按 `search_space.name` 展开每个维度列，最后带 `overrides_json`。
-1. `trial_results.csv` 固定前缀列为 `order,run_name,config_path`，后面按 `search_space.name` 展开维度列，再写 `summary_path,objective_score,eval_ic_ir,eval_cv_ic_mean,eval_cv_ic_valid_folds,eval_cv_ic_total_folds,walk_forward_test_ic_mean,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,flag_constant_prediction,flag_zero_feature_importance,flag_cv_ic_insufficient,status,error,dimensions_json`。
+1. `trial_results.csv` 固定前缀列为 `order,run_name,config_path`，后面按 `search_space.name` 展开维度列，再写 `summary_path,objective_score,eval_ic_ir,eval_cv_ic_mean,eval_cv_ic_valid_folds,eval_cv_ic_total_folds,walk_forward_test_ic_mean,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,objective_component_eval_ic_ir,objective_component_walk_forward_test_ic_mean,objective_component_backtest_sharpe,objective_component_drawdown_penalty,objective_component_cost_drag_penalty,objective_component_turnover_penalty,flag_constant_prediction,flag_zero_feature_importance,flag_cv_ic_insufficient,status,error,dimensions_json`。
 1. `objective_score` 当前是 repo-native 组合分数：以 `eval.ic.ir`、walk-forward `test_ic.mean` 和 backtest Sharpe 为正向项，对 `max_drawdown`、`avg_cost_drag`、`avg_turnover` 加惩罚；权重可在 tune spec 的 `objective` 段覆盖。
 1. 若命中 `flag_constant_prediction=true` 或 `flag_zero_feature_importance=true` 且 `objective.drop_degenerate=true`，该 trial 会保留结果行，但 `objective_score` 留空，不参与 best trial 选择。
 1. 若 tune spec 里设置了 `objective.min_cv_ic_valid_folds`，则 `eval.cv_ic.scores` 里有效折数不足的 trial 会标成 `flag_cv_ic_insufficient=true`；这类 trial 同样会保留结果行，但 `objective_score` 留空，不参与 best trial 选择。
 1. `best_trial.json` 当前记录 `run_name`、`config_path`、`summary_path`、`objective_score`、`dimensions` 和同一份度量快照。
 1. `best_config.yml` 是 `best_trial.json` 对应的 trial config 副本，方便后续直接复跑或继续做 construction grid。
 1. `--dry-run` 只会生成 `configs/`、`jobs.csv` 和一个空表头的 `trial_results.csv`，不会调用 `pipeline.run` 或 `summarize`。
+
+### `csml promotion-gate`：晋升门报告
+
+默认不写文件；如果传 `--output-json` 或 `--output-csv`，会写到指定路径。
+
+来源：
+
+1. 读取 promotion gate YAML 的 `baseline_run` 与 `candidate_run`。
+1. 分别读取 run 目录下的 `summary.json` 与 `config.used.yml`。
+1. 按配置里的 comparability keys、required evidence、hard rejections、soft thresholds 产出单条晋升记录。
+
+JSON 顶层常用字段：
+
+* `baseline_run`
+* `candidate_run`
+* `promotion_status`
+* `is_comparable`
+* `comparability_mismatches`
+* `missing_evidence`
+* `hard_failures`
+* `soft_failures`
+* `baseline_evidence`
+* `candidate_evidence`
+
+CSV 平面列契约：
+
+```text
+baseline_run,candidate_run,promotion_status,is_comparable,comparability_mismatches,missing_evidence,hard_failures,soft_failures,baseline_backtest_sharpe,candidate_backtest_sharpe,candidate_eval_ic_ir,candidate_walk_forward_test_ic_mean,candidate_final_oos_ic_mean,candidate_final_oos_long_short,candidate_backtest_avg_turnover,candidate_backtest_avg_cost_drag
+```
+
+`promotion_status` 当前稳定取值：
+
+* `promotable`：可比、证据完整、没有硬拒绝，且通过软阈值。
+* `reviewable`：可比、没有硬拒绝，但一个或多个软阈值未通过，需要人工复核。
+* `rejected`：可比，但命中硬拒绝或缺少被配置为必需的晋升证据。
+* `non-comparable`：baseline 与 candidate 的研究单元不一致，不产出可晋升结论。
+
+### `csml construction-grid`：固定分数组合层对比
+
+默认不写文件；如果传 `--output` 或 `output_csv`，会写 CSV。如果传 `--output-json`，会写 JSON。
+
+来源：
+
+1. 读取 construction-grid YAML。
+1. 读取指定 run 的 `summary.json` 和既有 `eval_scored.parquet`。
+1. 在同一份固定 score 上评估多组组合构建参数，不重训模型。
+
+列契约（CSV 与 JSON 行字段一致）：
+
+```text
+variant,scored_file,summary_path,target_col,price_col,eval_signal_col,backtest_signal_col,top_k,short_k,long_only,cost_bps,buffer_exit,buffer_entry,weighting,score_postprocess_method,score_postprocess_columns,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,backtest_periods,backtest_total_return,backtest_gross_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,active_total_return,information_ratio,tracking_error,beta,alpha,corr,benchmark_name,benchmark_returns_file,exposure_available,status,error
+```
+
+补充：
+
+1. `status=ok` 表示该 variant 成功形成组合并完成回测。
+1. `status=failed` 表示该 variant 缺少 scored artifact、列、benchmark 或无法形成组合；`error` 给出原因。
+1. `backtest_total_return` 是扣除成本后的净收益；`backtest_gross_total_return` 是同一持仓路径下未扣成本的收益。
+1. `active_*`、`information_ratio`、`tracking_error`、`beta`、`alpha`、`corr` 只在配置了可用 benchmark returns 时有值。
+1. `exposure_available` 仅表示该 variant 有可用于后续暴露/归因检查的输入线索；当前不隐式执行行业或风格中性化。
+
+### `csml feature-evidence`：特征证据报告
+
+`feature-evidence` 有三个模式。
+
+`generate-ablation` 输出目录：
+
+```text
+<output_dir>/
+  configs/
+    baseline.yml
+    minus_<family>.yml
+  jobs.csv
+```
+
+`jobs.csv` 列契约：
+
+```text
+family,run_name,config_path,removed_features,removed_count
+```
+
+`summarize-ablation` CSV / JSON 行常用字段：
+
+```text
+family,run_dir,summary_path,eval_ic_mean,eval_ic_ir,eval_long_short,walk_forward_test_ic_mean,final_oos_ic_mean,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,active_information_ratio,flag_constant_prediction,flag_zero_feature_importance,feature_stability_available,feature_stability_top_k_hit_rate,feature_stability_nonzero_hit_rate,feature_stability_path,delta_eval_ic_ir_vs_baseline,delta_eval_long_short_vs_baseline,delta_walk_forward_test_ic_mean_vs_baseline,delta_final_oos_ic_mean_vs_baseline,delta_backtest_sharpe_vs_baseline,delta_backtest_avg_turnover_vs_baseline,delta_backtest_avg_cost_drag_vs_baseline,delta_active_information_ratio_vs_baseline
+```
+
+`permutation-importance` CSV / JSON 行常用字段：
+
+```text
+name,kind,features,feature_count,top_k,n_dates,baseline_score_metric,baseline_score_n_dates,feature_metric,permuted_metric,permutation_importance,delta_vs_baseline_score
+```
+
+补充：
+
+1. `kind` 当前取值为 `feature` 或 `family`。
+1. `baseline_score_metric` 是原始 score 选 top-k 后的目标均值，作为当前 scored artifact 的参考。
+1. `feature_metric` 是使用特征或特征簇横截面 z-score proxy 排序后的目标均值。
+1. `permutation_importance = feature_metric - permuted_metric`。
+1. 如果 run 目录存在 `walk_forward_feature_stability.csv`，`summarize-ablation` 会带出 `feature_stability_*` 字段；不存在时 `feature_stability_available=false`。
+
+### `csml benchmark-ladder`：benchmark 阶梯报告
+
+默认不写文件；如果传 `--output` 或 `output_csv`，会写 CSV。如果传 `--output-json`，会写 JSON。
+
+来源：
+
+1. 读取 benchmark-ladder YAML。
+1. 读取策略收益文件。
+1. 读取 `primary_benchmark` 与 `comparisons` 里配置的 benchmark returns 文件。
+1. 对每个 benchmark 单独对齐日期并计算 active metrics。
+
+列契约：
+
+```text
+benchmark_name,role,source_type,strategy_returns_file,benchmark_returns_file,attribution_file,attribution_available,aligned_periods,strategy_total_return,benchmark_total_return,active_total_return,active_mean,tracking_error,information_ratio,beta,alpha,corr,status,error
+```
+
+补充：
+
+1. `role=primary` 表示主 benchmark；`role=comparison` 表示报告层 benchmark。
+1. `source_type` 可用于区分 `etf`、`universe_cap_weight`、`universe_equal_weight` 等来源口径。
+1. `status=ok` 表示策略与 benchmark 有可用重叠期。
+1. `status=unavailable` 表示 benchmark returns 文件缺失或无法读取。
+1. `status=incompatible` 表示文件存在但没有可重叠的收益日期。
+1. `attribution_file` 只是引用归因产物，不会改变主 benchmark 或训练标签。
 
 ### `csml sweep-linear`：`artifacts/sweeps/<tag>/`
 

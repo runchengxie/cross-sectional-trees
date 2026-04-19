@@ -44,14 +44,16 @@
 
 ## 2. 主线流程
 
-HK selected 主线研究，按下面 6 步推进最稳妥：
+HK selected 主线研究，按下面 8 步推进最稳妥：
 
 1. 先选频率：`M` / `Q` / `Y`
 2. 再选数据路线：`纯量价` / `量价 + provider 基本面` / `量价 + PIT 财务`
 3. 如果配置里用了 `fundamentals.source=file`，先准备 `pipeline_fundamentals.parquet`
 4. 如果走季度 PIT 路线，先跑 `inspect-hk-pit-coverage`
 5. 固定同一研究单元后，先跑特征 benchmark，再做模型比较
-6. `provider_overlay`、抗漂移和更细的验证，放到主线稳定之后再展开
+6. 对候选模型先跑固定分数组合层比较，不要把模型输出和仓位构建混在一起解释
+7. 候选要替换主线前，先过 promotion gate：可比性、walk-forward、final OOS、成本换手和 benchmark evidence 都要齐
+8. `provider_overlay`、抗漂移和更细的验证，放到主线稳定之后再展开
 
 这里的“研究单元”至少包含这几件事：
 
@@ -148,6 +150,26 @@ HK selected 主线研究，按下面 6 步推进最稳妥：
 * `30m final OOS` 更适合当 stress sidecar。
 * `2016-12-05` / `2017+` modern-only 窗口更适合当 robustness sidecar，不适合直接替换默认主线。
 * 对月频来说，约 `2` 年 `final_oos` 够做候选筛选，不够当“长期稳健性已充分验证”的最终证据。
+
+如果你要把某个 monthly challenger 升成新主线，建议额外跑：
+
+```bash
+csml construction-grid \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_construction_grid.yml
+
+csml feature-evidence summarize-ablation \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
+
+csml benchmark-ladder \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_benchmark_ladder.yml
+
+csml promotion-gate \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_promotion_gate.yml \
+  --baseline-run artifacts/runs/<baseline_run_dir> \
+  --candidate-run artifacts/runs/<candidate_run_dir>
+```
+
+这些命令的目标不是再造一个模型，而是把 RF 项目里更硬的研究协议迁移过来：固定 OOS / final holdout、成本换手前置、分数到仓位独立比较、利润导向特征证据和 benchmark ladder。
 
 为避免混淆，再单独记一条：
 

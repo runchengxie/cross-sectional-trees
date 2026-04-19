@@ -364,6 +364,12 @@ def _write_trial_results_csv(path: Path, rows: list[dict[str, Any]], dimension_n
         "backtest_max_drawdown",
         "backtest_avg_turnover",
         "backtest_avg_cost_drag",
+        "objective_component_eval_ic_ir",
+        "objective_component_walk_forward_test_ic_mean",
+        "objective_component_backtest_sharpe",
+        "objective_component_drawdown_penalty",
+        "objective_component_cost_drag_penalty",
+        "objective_component_turnover_penalty",
         "flag_constant_prediction",
         "flag_zero_feature_importance",
         "flag_cv_ic_insufficient",
@@ -506,6 +512,23 @@ def _score_summary(summary: dict[str, Any], objective: ObjectiveSpec) -> dict[st
         and (eval_cv_ic_valid_folds or 0) < objective.min_cv_ic_valid_folds
     )
 
+    objective_component_eval_ic_ir = objective.eval_ic_ir_weight * (eval_ic_ir or 0.0)
+    objective_component_walk_forward = (
+        objective.walk_forward_test_ic_mean_weight * (walk_forward_test_ic_mean or 0.0)
+    )
+    objective_component_backtest_sharpe = objective.backtest_sharpe_weight * (
+        backtest_sharpe or 0.0
+    )
+    objective_component_drawdown_penalty = objective.drawdown_penalty_weight * abs(
+        backtest_max_drawdown or 0.0
+    )
+    objective_component_cost_drag_penalty = objective.cost_drag_penalty_weight * (
+        backtest_avg_cost_drag or 0.0
+    )
+    objective_component_turnover_penalty = objective.turnover_penalty_weight * (
+        backtest_avg_turnover or 0.0
+    )
+
     objective_score: float | None = None
     if (
         not (objective.drop_degenerate and (flag_constant_prediction or flag_zero_feature_importance))
@@ -513,12 +536,12 @@ def _score_summary(summary: dict[str, Any], objective: ObjectiveSpec) -> dict[st
     ):
         if eval_ic_ir is not None:
             objective_score = (
-                objective.eval_ic_ir_weight * eval_ic_ir
-                + objective.walk_forward_test_ic_mean_weight * (walk_forward_test_ic_mean or 0.0)
-                + objective.backtest_sharpe_weight * (backtest_sharpe or 0.0)
-                - objective.drawdown_penalty_weight * abs(backtest_max_drawdown or 0.0)
-                - objective.cost_drag_penalty_weight * (backtest_avg_cost_drag or 0.0)
-                - objective.turnover_penalty_weight * (backtest_avg_turnover or 0.0)
+                objective_component_eval_ic_ir
+                + objective_component_walk_forward
+                + objective_component_backtest_sharpe
+                - objective_component_drawdown_penalty
+                - objective_component_cost_drag_penalty
+                - objective_component_turnover_penalty
             )
 
     return {
@@ -532,6 +555,12 @@ def _score_summary(summary: dict[str, Any], objective: ObjectiveSpec) -> dict[st
         "backtest_max_drawdown": backtest_max_drawdown,
         "backtest_avg_turnover": backtest_avg_turnover,
         "backtest_avg_cost_drag": backtest_avg_cost_drag,
+        "objective_component_eval_ic_ir": objective_component_eval_ic_ir,
+        "objective_component_walk_forward_test_ic_mean": objective_component_walk_forward,
+        "objective_component_backtest_sharpe": objective_component_backtest_sharpe,
+        "objective_component_drawdown_penalty": objective_component_drawdown_penalty,
+        "objective_component_cost_drag_penalty": objective_component_cost_drag_penalty,
+        "objective_component_turnover_penalty": objective_component_turnover_penalty,
         "flag_constant_prediction": flag_constant_prediction,
         "flag_zero_feature_importance": flag_zero_feature_importance,
         "flag_cv_ic_insufficient": flag_cv_ic_insufficient,
@@ -570,6 +599,24 @@ def _write_best_trial_files(
             "backtest_max_drawdown": _to_float(best_row.get("backtest_max_drawdown")),
             "backtest_avg_turnover": _to_float(best_row.get("backtest_avg_turnover")),
             "backtest_avg_cost_drag": _to_float(best_row.get("backtest_avg_cost_drag")),
+            "objective_component_eval_ic_ir": _to_float(
+                best_row.get("objective_component_eval_ic_ir")
+            ),
+            "objective_component_walk_forward_test_ic_mean": _to_float(
+                best_row.get("objective_component_walk_forward_test_ic_mean")
+            ),
+            "objective_component_backtest_sharpe": _to_float(
+                best_row.get("objective_component_backtest_sharpe")
+            ),
+            "objective_component_drawdown_penalty": _to_float(
+                best_row.get("objective_component_drawdown_penalty")
+            ),
+            "objective_component_cost_drag_penalty": _to_float(
+                best_row.get("objective_component_cost_drag_penalty")
+            ),
+            "objective_component_turnover_penalty": _to_float(
+                best_row.get("objective_component_turnover_penalty")
+            ),
             "flag_constant_prediction": bool(best_row.get("flag_constant_prediction")),
             "flag_zero_feature_importance": bool(best_row.get("flag_zero_feature_importance")),
             "flag_cv_ic_insufficient": bool(best_row.get("flag_cv_ic_insufficient")),
@@ -848,6 +895,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "backtest_max_drawdown": None,
                 "backtest_avg_turnover": None,
                 "backtest_avg_cost_drag": None,
+                "objective_component_eval_ic_ir": None,
+                "objective_component_walk_forward_test_ic_mean": None,
+                "objective_component_backtest_sharpe": None,
+                "objective_component_drawdown_penalty": None,
+                "objective_component_cost_drag_penalty": None,
+                "objective_component_turnover_penalty": None,
                 "flag_constant_prediction": None,
                 "flag_zero_feature_importance": None,
                 "flag_cv_ic_insufficient": None,
@@ -915,6 +968,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             started_at,
             "--output",
             str(summary_output),
+            "--score-eval-ic-ir-weight",
+            str(objective_spec.eval_ic_ir_weight),
+            "--score-walk-forward-weight",
+            str(objective_spec.walk_forward_test_ic_mean_weight),
+            "--score-backtest-sharpe-weight",
+            str(objective_spec.backtest_sharpe_weight),
+            "--score-drawdown-weight",
+            str(objective_spec.drawdown_penalty_weight),
+            "--score-cost-weight",
+            str(objective_spec.cost_drag_penalty_weight),
+            "--score-turnover-weight",
+            str(objective_spec.turnover_penalty_weight),
             "--log-level",
             log_level,
         ]

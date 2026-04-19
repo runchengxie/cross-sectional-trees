@@ -32,8 +32,15 @@
 目前还没有直接落地的指标（或者只做到间接模拟）：
 
 * 容量：当前没有直接输出“可承载资金规模”“按 ADV 需要几天出清”“成交占比上限触发率”这类标准容量指标。
-* 单因子边际贡献：当前没有自动输出 `drop-column`、系统化 ablation、feature permutation importance、SHAP 这类“去掉某个因子后损失多少”的结论。
+* SHAP：当前没有自动输出树模型 SHAP 这类局部解释。
 * spread win rate：当前没有单独汇总成 `summary.json` 字段，但可以从 `quantile_returns.csv` 自己派生每期 `Q_high - Q_low` 为正的比例。
+
+已经有离线研究工具落地、但不属于单次 `csml run` 默认产物的指标：
+
+* `csml feature-evidence generate-ablation` / `summarize-ablation`：生成系统化 feature family ablation 配置，并汇总相对 baseline 的 `eval_ic_ir`、`walk_forward_test_ic_mean`、`final_oos_ic_mean`、`backtest_sharpe`、turnover、cost drag 和 active IR delta。
+* `csml feature-evidence permutation-importance`：从已有 scored artifact 输出单特征和 feature family 的 top-k profit proxy、permutation metric 与 `permutation_importance`。
+* `csml construction-grid`：从固定模型分数输出组合层变体的 IC、long-short、turnover、gross/net return、Sharpe、drawdown、cost drag 和 active return 指标。
+* `csml benchmark-ladder`：从策略收益和多个 benchmark 收益输出 benchmark ladder 的 active total return、IR、tracking error、beta、alpha 和相关性。
 
 另外要特别区分三件事：
 
@@ -62,6 +69,7 @@
 * `backtest_net.csv` / `backtest_gross.csv`
 * `backtest_turnover.csv`
 * `walk_forward_summary.csv`
+* 离线协议报告：`csml promotion-gate`、`csml construction-grid`、`csml feature-evidence`、`csml benchmark-ladder` 写出的 `artifacts/reports/*.csv` / `*.json`
 
 完整产物列表见 `docs/outputs.md`。
 

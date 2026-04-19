@@ -1,0 +1,44 @@
+feature_evidence:
+  base_config: configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
+  output_dir: artifacts/sweeps/hk_selected_feature_evidence
+  run_name_prefix: hk_selected_feature_
+  families:
+    vol_liq:
+      - rv_20
+      - rv_60
+      - volume_sma20_ratio
+      - log_vol
+    growth:
+      - growth_sales
+      - growth_net_profit
+      - growth_cash_flow_from_operating_activities
+    quality:
+      - profit_margin
+      - operating_margin
+      - cfo_margin
+      - cfo_to_profit
+    valuation_size:
+      - market_cap
+      - log_mcap
+      - pe_ttm
+      - pb
+    freshness:
+      - days_since_report
+      - valuation_age_days
+
+  # Used by summarize-ablation after the generated configs have been run.
+  runs:
+    - family: baseline
+      run_dir: artifacts/runs/<baseline_run_dir>
+    - family: minus_vol_liq
+      run_dir: artifacts/runs/<minus_vol_liq_run_dir>
+
+  # Used by permutation-importance on an existing scored artifact.
+  scored_file: artifacts/runs/<run_dir>/eval_scored.parquet
+  score_col: signal_backtest
+  target_col: future_return
+  top_k: 15
+  n_repeats: 5
+  seed: 42
+  output_csv: artifacts/reports/hk_selected_feature_evidence.csv
+  output_json: artifacts/reports/hk_selected_feature_evidence.json

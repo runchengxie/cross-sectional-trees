@@ -15,6 +15,10 @@
 | 敏感性分析 | `csml grid --config <> --top-k 10,20` |
 | 模型调参 | `csml tune --tune-config <>` |
 | 线性模型搜索 | `csml sweep-linear --sweep-config <>` |
+| 候选升主线检查 | `csml promotion-gate --config <>` |
+| 固定分数组合层比较 | `csml construction-grid --config <>` |
+| 特征证据生成 / 汇总 | `csml feature-evidence <mode> --config <>` |
+| Benchmark 阶梯报告 | `csml benchmark-ladder --config <>` |
 | 查看持仓 | `csml holdings --config <> --as-of t-1` |
 | 生成快照 | `csml snapshot --config <live.yml>` |
 | 手数分配 | `csml alloc --config <> --source live --top-n 20` |
@@ -138,6 +142,7 @@ csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tu
 * `values` 既可以是简单标量，也可以是 `{label, value}` 或 `{label, overrides}` 这种组合覆盖。
 * `--sampler grid|random` 决定是全量组合还是随机抽样；`random` 下可配 `--n-trials` 和 `--seed`。
 * `objective` 段现在支持 `min_cv_ic_valid_folds`；当 monthly / 小样本研究里想把 `cv_ic` 可判分性纳入筛选时，可以要求 trial 至少有若干个有效 CV folds，否则该 trial 会保留结果行，但不参与 best trial 选择。
+* `objective` 还会把 `eval_ic_ir`、`walk_forward_test_ic_mean`、`backtest_sharpe`、`drawdown`、`cost_drag` 和 `turnover` 的加权分量写入 `trial_results.csv` / `best_trial.json`，方便检查最佳 trial 到底靠哪一项胜出。
 * v1 更适合扫 `model.params`、`model.sample_weight_*`、`model.train_window.*` 这类训练结构；Top-K / 成本 / buffer 这类 construction 敏感性仍优先用 `csml grid`。
 * 默认会在 `artifacts/sweeps/<tag>/` 下写 `jobs.csv`、`trial_results.csv`、`best_trial.json`、`best_config.yml` 和 `runs_summary.csv`；传 `--skip-summarize` 或 `--dry-run` 时会跳过自动汇总。
 
@@ -166,6 +171,78 @@ csml summarize --runs-dir artifacts/runs --comparability-class direct --sort-by 
 * 如果 run 目录里有 `inputs.lock.json`，`summarize` 会优先读取其中的 input provenance，而不是只看 `summary.json` / `config.used.yml`。
 * 输出会新增 `comparability_class`、`comparability_reasons` 和 `provenance_cohort_key`，用来区分直接可比、带漂移风险和 provenance 不足的 run。
 * `--comparability-class direct` 适合只保留 frozen lineage 足够明确、且没有 `latest` / 相对日期漂移信号的 run。
+* 输出还会包含 cost-aware objective 的显式分量：`objective_component_eval_ic_ir`、`objective_component_walk_forward_test_ic_mean`、`objective_component_backtest_sharpe`、`objective_component_drawdown_penalty`、`objective_component_cost_drag_penalty`、`objective_component_turnover_penalty` 和 `objective_score`。
+* 如果你想把高成本 run 直接从汇总里排除，可以用 `--high-cost-drag-threshold` 配合 `--exclude-flag-high-cost-drag`。
+
+### csml promotion-gate
+
+按固定 evidence / comparability / hard rejection / soft threshold 规则，判断 candidate 是否可以替换 baseline。
+
+```bash
+csml promotion-gate \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_promotion_gate.yml \
+  --baseline-run artifacts/runs/<baseline_run_dir> \
+  --candidate-run artifacts/runs/<candidate_run_dir>
+```
+
+输出：
+
+* `promotion_status`: `promotable` / `reviewable` / `rejected` / `non-comparable`
+* `comparability_mismatches`
+* `missing_evidence`
+* `hard_failures`
+* `soft_failures`
+* baseline / candidate 的主评估、walk-forward、final OOS、成本换手和 benchmark evidence
+
+### csml construction-grid
+
+从已有 `eval_scored.parquet` 和 `summary.json` 读取固定模型分数，对组合构建层做离线比较。它不会重新训练模型。
+
+```bash
+csml construction-grid \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_construction_grid.yml
+```
+
+适合比较：
+
+* `top_k`
+* `cost_bps`
+* `buffer_exit` / `buffer_entry`
+* `weighting`
+* long-only / long-short
+* score postprocess，例如 `neutralize`
+
+### csml feature-evidence
+
+特征证据工具有三个模式：
+
+```bash
+csml feature-evidence generate-ablation \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
+
+csml feature-evidence summarize-ablation \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
+
+csml feature-evidence permutation-importance \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
+```
+
+说明：
+
+* `generate-ablation` 根据 `families` 写出 baseline 和 `minus_<family>` 配置，同时生成 `jobs.csv`。
+* `summarize-ablation` 读取已跑完 run 的 `summary.json`，输出相对 baseline 的指标变化和 feature stability 摘要。
+* `permutation-importance` 从已有 scored artifact 计算单特征 / feature family 的 profit proxy 和 permutation importance。
+
+### csml benchmark-ladder
+
+把同一条策略收益和多个 benchmark 收益并排比较。
+
+```bash
+csml benchmark-ladder \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_benchmark_ladder.yml
+```
+
+输出会标记每个 benchmark 的角色、来源、可比状态、active total return、IR、tracking error、beta、alpha、相关性，以及 attribution 文件是否存在。
 
 ### csml holdings
 
