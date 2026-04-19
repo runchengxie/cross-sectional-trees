@@ -1,16 +1,17 @@
 # cross-sectional-machine-learning
 
-使用 RQData 日线数据做港股截面因子研究、评估和持仓快照。当前正式支持的数据输入与研究主链边界是 `market=hk + data.provider=rqdata + 可选本地 HK 资产直读`。
+本项目使用 RQData 日线数据进行港股截面因子研究、模型评估以及持仓快照输出。当前正式支持的数据输入与研究主线边界为 `market=hk` 结合 `data.provider=rqdata`，同时支持可选的本地 HK 资产直读功能。
 
-本地 HK 资产直读主要覆盖 daily / instruments；如果同一配置启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，fundamentals cache miss 时仍可能 lazy init `rqdatac` 补拉 provider 数据。
+本地 HK 资产直读主要覆盖日线（daily）和合约信息（instruments）。在同一配置下，若启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，当基本面缓存未命中（cache miss）时，系统依然会延迟加载（lazy init）`rqdatac` 以补充拉取服务商数据。
 
-## 这项目是干嘛的
+## 项目定位
 
-低频研究与复现实验的工作流，覆盖研究、评估、回测与持仓快照输出。
+本项目提供一套适用于低频因子研究与实验复现的完整工作流，核心能力涵盖模型研究、指标评估、历史回测以及持仓快照输出。
 
-## 我能不能跑起来
+## 环境准备与安装
 
-Python 3.12+，推荐 `uv`。如果你需要 RQData 能力，安装时加 `--extra rqdata`；如果你要把 `csml alloc-hk` 导出成 Excel，再额外加 `--extra liveops-hk`。
+运行环境要求 Python 3.12 及以上版本，推荐使用 `uv` 进行依赖管理。
+需要使用 RQData 相关功能时，请在安装时添加 `--extra rqdata` 参数。若需将 `csml alloc-hk` 的分配结果导出为 Excel 格式，请额外添加 `--extra liveops-hk` 参数。
 
 ```bash
 uv venv --seed
@@ -18,58 +19,71 @@ uv sync --extra dev --extra rqdata
 cp .env.example .env
 ```
 
-鉴权与 provider 选择见 `docs/providers.md`。
+数据鉴权配置与服务商（provider）的详细说明，请参考 `docs/providers.md`。
 
-常见命令和依赖关系：
+常见命令及其依赖关系如下：
 
-| 任务 | 典型命令 | 需要的 extra | 额外凭证 |
-| --- | --- | --- | --- |
-| 跑默认 HK starter | `csml run --config default` | `rqdata` | RQData 账号 |
-| 跑 HK 季频 PIT fundamentals | `csml run --config configs/presets/hk_quarterly_pit_hybrid.yml` | `rqdata` | RQData 账号 |
-| DuckDB 查询标准层 | `csml data query --sql "..."` | `duckdb` | 无 |
-| 导出 HK Excel 分配表 | `csml alloc-hk --format xlsx --out ...` | `liveops-hk` | 如果走 live/provider 路径，仍需要对应数据源凭证 |
-| 计算带 `p_value` 的统计检验 | Python / `csml` 下游分析调用 `summarize_ic` | `stats` | 无 |
+| 任务                        | 典型命令                                                     | 所需 Extra 依赖 | 额外凭证                               |
+| --------------------------- | ------------------------------------------------------------ | --------------- | -------------------------------------- |
+| 运行默认港股入门模板        | `csml run --config default`                                  | `rqdata`        | RQData 账号                            |
+| 运行港股季频 PIT 基本面路线 | `csml run --config configs/presets/hk_quarterly_pit_hybrid.yml` | `rqdata`        | RQData 账号                            |
+| 使用 DuckDB 查询标准层数据  | `csml data query --sql "..."`                                | `duckdb`        | 无                                     |
+| 导出港股 Excel 分配表       | `csml alloc-hk --format xlsx --out ...`                      | `liveops-hk`    | 若走实时或服务商路径，需对应数据源凭证 |
+| 计算包含 P 值的统计检验     | Python 或 `csml` 下游分析调用 `summarize_ic`                 | `stats`         | 无                                     |
 
-`default` / `hk` 这些内置别名，以及 `csml init-config`，都读取仓库根目录的 `configs/`。也就是说，日常使用应在包含 `configs/` 的源码 checkout 或导出源码目录里运行。
+`default` 和 `hk` 等内置别名，以及 `csml init-config` 命令，均会默认读取仓库根目录下的 `configs/` 文件夹。日常使用时，请确保在包含 `configs/` 目录的源码工作区或导出的源码目录内执行相关命令。
 
-## 最短命令是什么
+## 快速开始
 
-`csml run --config default`
+最短的跑通命令如下：
 
-`default` 当前指向 HK starter 模板，默认 `data.provider=rqdata`。第一次跑 `default` 或 `hk` 前，先安装 `uv sync --extra dev --extra rqdata`。
+```bash
+csml run --config default
+```
 
-## 这仓库还有哪些入口
+内置别名 `default` 当前指向港股（HK）入门模板，默认配置为 `data.provider=rqdata`。首次运行 `default` 或 `hk` 别名前，请务必先执行 `uv sync --extra dev --extra rqdata` 安装所需的依赖。
 
-* 研究汇总与调参：`csml summarize` / `csml grid` / `csml tune` / `csml sweep-linear`
-* live 结果查看与分配：`csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk`（含 HK 执行前场景矩阵）
-* 配置模板与本地备份：`csml init-config` / `csml backup-data`
-* 数据与运维工具：`csml rqdata ...` / `csml universe ...`
-* 数据分层与查询：`csml data catalog` / `csml data materialize` / `csml data query`
+## 核心入口清单
 
-完整能力地图见 `docs/capabilities.md`。
+除主流程外，系统还提供以下功能入口：
 
-## 入口分层
+* **研究汇总与调参**：`csml summarize`、`csml grid`、`csml tune`、`csml sweep-linear`
+* **实盘结果与持仓分配**：`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`（包含港股执行前场景矩阵分析）
+* **配置模板与本地备份**：`csml init-config`、`csml backup-data`
+* **数据与资产运维工具**：`csml rqdata ...`、`csml universe ...`
+* **数据分层与查询**：`csml data catalog`、`csml data materialize`、`csml data query`
 
-当前建议按下面四层理解：
+完整的能力地图请参考 `docs/capabilities.md`。
 
-| 层级 | 典型入口 | 当前定位 |
-| --- | --- | --- |
-| 公开主线 CLI | `csml run` / `csml summarize` / `csml grid` / `csml tune` / `csml sweep-linear` / `csml holdings` / `csml snapshot` / `csml alloc` / `csml alloc-hk` / `csml init-config` / `csml backup-data` / `csml data ...` / `csml rqdata ...` / `csml universe ...` | 当前正式对外说明、持续维护的用户入口 |
-| 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets` / `release_assets` / `package_runs` / `release_runs` | 已在文档中说明的打包 / 分发工具，但它们不是 `csml` 子命令 |
-| 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details` / `hk_selected_provider_valuation_audit` / `hk_intraday_download` / `hk_asset_patch_merge` | 只在对应 playbook 或专题页里按场景使用；可复用，但不属于新手默认主线 |
-| 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 前者服务开发与 CI；后者是维护者私有工具，不属于公开研究工作流 |
+## 入口分层说明
 
-如果你拿不准某个入口算不算“正式支持”，优先看 `README.md`、`docs/capabilities.md`、`docs/cli.md` 和对应 playbook 是否把它当作主线入口写出来。
+为了便于理解和维护，当前仓库的能力入口分为以下四个层级：
 
-## 跑完先看什么
+| 层级               | 典型入口                                                     | 当前定位                                                     |
+| ------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| 公开主线 CLI       | `csml run`、`csml summarize`、`csml grid`、`csml tune`、`csml sweep-linear`、`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`、`csml init-config`、`csml backup-data`、`csml data ...`、`csml rqdata ...`、`csml universe ...` | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
+| 公开附属模块工具   | `python -m csml.release_tools.package_assets`、`release_assets`、`package_runs`、`release_runs` | 已经在文档中公开的打包与分发工具。它们属于独立可复用模块，不作为 `csml` 的直接子命令调用。 |
+| 研究与专题模块工具 | `python -m csml.research.hk_financial_details`、`hk_selected_provider_valuation_audit`、`hk_intraday_download`、`hk_asset_patch_merge` | 针对特定操作手册（playbook）或专题场景使用的工具。具备复用价值，排除在新手默认主线之外。 |
+| 维护与开发辅助     | `scripts/dev/run_tests.sh`、`scripts/internal/`              | 前者服务于日常开发与持续集成（CI）；后者属于仓库维护者的私有工具，不计入公开的研究工作流。 |
 
-优先看 `summary.json`、`config.used.yml` 和 `positions_current.csv`。最短跑通步骤和产物检查清单放在 `docs/get-started.md`。
+如果你在使用中无法确定某个入口是否属于正式支持的范畴，请优先查阅 `README.md`、`docs/capabilities.md`、`docs/cli.md` 以及对应的 playbook 页面。只要在上述文档中作为主线被提及，即代表正式受支持。
 
-## 后续按什么路径读文档
+## 运行后产物检查
 
-从 [docs/README.md](docs/README.md) 作为起点。\
-初次使用直接看 `docs/get-started.md`\
-先建立系统地图看 `docs/pipeline-overview.md`\
-正式研究路线从 `docs/playbooks/README.md` 进入\
-通用工作流速查看 `docs/cookbook.md`\
-按对象查细节看 `docs/cli.md` / `docs/config.md` / `docs/outputs.md`。
+任务运行结束后，建议优先检查以下三个文件：
+
+1. `summary.json`
+2. `config.used.yml`
+3. `positions_current.csv`
+
+关于最短跑通步骤以及详细的产物检查清单，请查阅 `docs/get-started.md`。
+
+## 文档阅读指南
+
+推荐以 `docs/README.md` 作为全局文档的起点。根据不同使用阶段，建议的阅读路径如下：
+
+* **初次接触**：直接阅读 `docs/get-started.md` 完成首次跑通。
+* **建立系统认知**：阅读 `docs/pipeline-overview.md` 了解架构与数据流向。
+* **开展正式研究**：从 `docs/playbooks/README.md` 切入具体的业务路线。
+* **日常工作速查**：查阅 `docs/cookbook.md` 获取常见任务指南。
+* **查询具体细节**：根据开发或排障需求，分别查阅 `docs/cli.md`（命令）、`docs/config.md`（配置）或 `docs/outputs.md`（产物字段）。
