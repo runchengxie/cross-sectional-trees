@@ -1,14 +1,14 @@
 # 指标与结果解读
 
-本页解决什么：指标与结果文件的解读方式。\
-本页不解决什么：不展开输出字段的完整契约。\
-适合谁：需要解释 run 结果的人。\
-读完你会得到什么：从 `summary.json` 与 CSV 解读结果的路径。\
+本文档的核心目标：说明各项评估指标的具体含义以及运行结果文件的正确解读方式。
+本文档的范围限制：不展开探讨输出字段在代码层面的完整技术契约。
+目标读者：需要分析和解释模型 run 结果的研究员或开发者。
+阅读收益：掌握从 `summary.json` 及各类 CSV 文件中有效提取并解读策略表现的正确路径。
 相关页面：`docs/outputs.md`、`docs/config.md`
 
-本页只说明当前仓库已经实现、并且会写入 run 目录的指标与结果文件。
+本文档专职说明当前仓库中业已实现，并会在每次 run 结束后默认落盘的各项指标与分析文件。
 
-如果你只想先看一次 run 的结果，先读这几个文件：
+若希望快速概览一次 run 的全貌，建议优先检视以下几份核心文件：
 
 * `summary.json`
 * `config.used.yml`
@@ -17,51 +17,51 @@
 * `quantile_returns.csv`
 * `backtest_net.csv`
 
-默认 run 目录是 `artifacts/runs/<run_name>_<timestamp>_<hash>/`。
+默认的 run 产物落盘路径通常为：`artifacts/runs/<run_name>_<timestamp>_<hash>/`。
 
-## 先回答一个常见问题
+## 常见问题先导
 
-当前已经成熟输出落地的指标，主要包括：
+当前体系内已成熟固化并常规输出的指标域主要包含：
 
-* 评估侧：`ic` / `pearson_ic`、`error_metrics`、`quantile_mean`、`long_short`、`hit_rate`、`topk_positive_ratio`、`turnover_mean`
-* 稳健性：`train_ic` / `cv_ic`、`final_oos`、`walk_forward`、`rolling_ic`、`permutation_test`
-* 诊断拆解：`bucket_ic`、`feature_importance`
-* 回测侧：净/毛收益、回撤、Sharpe、Sortino、Calmar、benchmark / active、rolling Sharpe
-* 组合层诊断：`backtest.exposure` 下的风格暴露、行业暴露和主动暴露摘要
+* 预测评估侧：`ic` / `pearson_ic`、`error_metrics`、`quantile_mean`、`long_short`、`hit_rate`、`topk_positive_ratio`、`turnover_mean`
+* 稳健性检验侧：`train_ic` / `cv_ic`、`final_oos`、`walk_forward`、`rolling_ic`、`permutation_test`
+* 诊断与拆解侧：`bucket_ic`、`feature_importance`
+* 策略回测侧：净/毛收益曲线、回撤幅度、Sharpe 比率、Sortino 比率、Calmar 比率、benchmark / active 主动偏离统计、rolling Sharpe
+* 组合层诊断侧：位于 `backtest.exposure` 节点下的风格暴露、行业暴露与主动暴露摘要
 
-目前还没有直接落地的指标（或者只做到间接模拟）：
+现阶段暂未直接作为默认输出落地的指标（或仅能提供间接的模拟推演）：
 
-* 容量：当前没有直接输出“可承载资金规模”“按 ADV 需要几天出清”“成交占比上限触发率”这类标准容量指标。
-* SHAP：当前没有自动输出树模型 SHAP 这类局部解释。
-* spread win rate：当前没有单独汇总成 `summary.json` 字段，但可以从 `quantile_returns.csv` 自己派生每期 `Q_high - Q_low` 为正的比例。
+* 资金容量：当前缺乏直接宣示“可承载资金上限规模”、“按照 ADV 计算需几日出清”或是“成交占比上限触达率”等标准的机构级容量指标。
+* 归因解释（SHAP）：当前不会自动针对树模型实施 SHAP 局部解释拆解。
+* 极差胜率（spread win rate）：该指标并未单独抽列为 `summary.json` 里的现成字段。用户可自行从 `quantile_returns.csv` 报表中推算每期 `Q_high - Q_low` 收益差为正的具体比例。
 
-已经有离线研究工具落地、但不属于单次 `csml run` 默认产物的指标：
+当前已具备配套的离线研究工具，但并未作为单次 `csml run` 附带默认产物的分析项包括：
 
-* `csml feature-evidence generate-ablation` / `summarize-ablation`：生成系统化 feature family ablation 配置，并汇总相对 baseline 的 `eval_ic_ir`、`walk_forward_test_ic_mean`、`final_oos_ic_mean`、`backtest_sharpe`、turnover、cost drag 和 active IR delta。
-* `csml feature-evidence permutation-importance`：从已有 scored artifact 输出单特征和 feature family 的 top-k profit proxy、permutation metric 与 `permutation_importance`。
-* `csml construction-grid`：从固定模型分数输出组合层变体的 IC、long-short、turnover、gross/net return、Sharpe、drawdown、cost drag 和 active return 指标。
-* `csml benchmark-ladder`：从策略收益和多个 benchmark 收益输出 benchmark ladder 的 active total return、IR、tracking error、beta、alpha 和相关性。
+* `csml feature-evidence generate-ablation` / `summarize-ablation`：该工具组合用于自动生成系统化的特征族消融（feature family ablation）配置文件，并负责汇总其相对于 baseline 在 `eval_ic_ir`、`walk_forward_test_ic_mean`、`final_oos_ic_mean`、`backtest_sharpe`、换手率（turnover）、成本拖累（cost drag）以及 active IR delta 等多维度的边际影响。
+* `csml feature-evidence permutation-importance`：基于已有的 scored artifact 预估分数资产，计算输出单一特征以及特征族（feature family）的 top-k profit proxy、permutation metric 与具体的 `permutation_importance`。
+* `csml construction-grid`：利用固定的模型预测分数作为底层输入，离线推演组合构建层不同变体下的 IC 表现、long-short 收益差、换手率、gross/net 回报、Sharpe、最大回撤、成本损耗及 active return 指标。
+* `csml benchmark-ladder`：将特定的策略收益曲线与多组基准收益阵列执行平行比对，产出包含 active total return、IR、tracking error、beta、alpha 甚至相关系数在内的 benchmark ladder 阶梯报告。
 
-另外要特别区分三件事：
+此外，需要特别厘清以下三组易混淆的概念界限：
 
-* `backtest.execution` 里的 `adv20_amount`、`participation`、`min_amount` 更接近容量 / 流动性 stress proxy
-* `backtest.exposure` 更接近组合暴露诊断
-* 两者尚未达到完整的机构级容量评估
+* 沉淀于 `backtest.execution` 中的参数设定（如 `adv20_amount`、`participation` 及 `min_amount`）其实质更贴近于容量或流动性视角的压力测试代理（stress proxy）。
+* 位于 `backtest.exposure` 下的数据阵列，主要致力于回答组合层面的风格与行业暴露诊断。
+* 上述两者目前均尚未演进为一套绝对完整、成熟的机构级资金容量评估模型。
 
-## 先看哪里
+## 查阅顺序与导航
 
-`summary.json` 是总览。大多数问题都可以先在这里定位。
+`summary.json` 承担了全局总览的角色。绝大多数的分析疑问皆应以此处为起点展开定位。
 
-常见节点：
+常见的数据存放节点：
 
-* `data`：样本区间、行数、provider、缓存和日期信息。
-* `universe`：股票池模式、最小样本数、丢弃日期数、停牌处理。
-* `eval`：预测质量、分位收益、换手、训练期对照、可选稳健性指标。
-* `backtest`：Top-K 回测参数、回测统计、基准与主动收益。
-* `final_oos`：最终留出期结果。结构和 `eval/backtest` 基本对应。
-* `walk_forward`：滚动窗口验证结果和文件路径。
+* `data`：记录样本的横跨区间、物理行数、选用的 provider 来源、缓存命中标签及日历信息。
+* `universe`：宣示股票池的构建模式、强制设定的单日最小样本存活数、因数据匮乏而遭废弃的日历数量，以及针对停牌标的的具体干预对策。
+* `eval`：集中陈列预测质量、分位数收益分布、评估侧换手率、训练期对照效果以及可选的稳健性检验指标。
+* `backtest`：归档 Top-K 选股下的回测配置参数、历史回测核心统计量，以及比对基准线的主动收益概况。
+* `final_oos`：展示针对最终留出期的纯净测试结果。该节点内部的结构排布与 `eval/backtest` 维持高度对应。
+* `walk_forward`：收录滚动窗口验证法下的检验总纲及各子窗口独立输出明细文件的指路路径。
 
-如果你想看时序而不是摘要，继续读 CSV：
+若需追踪细致的时间序列变动轨迹，请进一步查阅各配套的 CSV 报表：
 
 * `ic_test.csv` / `ic_pearson_test.csv`
 * `quantile_returns.csv`
@@ -69,103 +69,103 @@
 * `backtest_net.csv` / `backtest_gross.csv`
 * `backtest_turnover.csv`
 * `walk_forward_summary.csv`
-* 离线协议报告：`csml promotion-gate`、`csml construction-grid`、`csml feature-evidence`、`csml benchmark-ladder` 写出的 `artifacts/reports/*.csv` / `*.json`
+* 离线协议生成的专题报告：如通过 `csml promotion-gate`、`csml construction-grid`、`csml feature-evidence` 或 `csml benchmark-ladder` 等工具写出的位于 `artifacts/reports/*.csv` 或 `*.json` 目录下的研究文件。
 
-完整产物列表见 `docs/outputs.md`。
+全量产物清单请参阅 `docs/outputs.md`。
 
-## 数据与样本质量
+## 数据基座与样本质量研判
 
-这些字段主要在 `summary.json -> data` 和 `summary.json -> universe`。
+此类校验字段集中留存于 `summary.json -> data` 与 `summary.json -> universe` 节点之下。
 
-重点先看：
+建议优先查证：
 
-* `symbols`：本次样本里实际出现过多少只股票。
-* `rows`：原始数据总行数。
-* `rows_model`：真正进入建模的数据行数。这里已经经过特征、label 和过滤步骤。
-* `min_symbols_per_date`：单个交易日至少要有多少只股票才保留。
-* `dropped_dates`：因为股票数不足而被丢弃的交易日数量。
-* `mode`：股票池模式，常见是 `static`、`pit`、`auto`。
-* `drop_suspended` / `suspended_policy`：停牌股票是否剔除，或仅标记为不可交易。
+* `symbols`：统计在此次划定的样本时空中，实际现身过的标的总数。
+* `rows`：未经任何筛选的原始数据初始行数。
+* `rows_model`：历经特征对齐、标签贴合以及各项过滤清洗工序后，真正获准放行进入建模核心区的有效样本行数。
+* `min_symbols_per_date`：维持单日截面存续所必需达到的标的底线数量。
+* `dropped_dates`：因当日幸存标的数量跌破阈值而遭到整体整日废弃的日历总数。
+* `mode`：阐明股票池的运管模式，通常见于 `static`、`pit` 以及 `auto`。
+* `drop_suspended` / `suspended_policy`：揭示对待停牌标的的态度，是实施彻底的物理剔除，还是仅打上不可交易的业务标签。
 
-这些字段先回答两个问题：
+上述字段旨在优先响应以下两项根本疑虑：
 
-* 样本够不够大。
-* 样本有没有因为股票池、停牌或缺失值而被大幅压缩。
+* 提供给模型咀嚼的样本规模是否足够庞大。
+* 样本群体是否因为严苛的股票池更迭、大面积停牌或特征大范围空缺而遭遇了严重缩水。
 
-如果 `rows_model` 明显小于 `rows`，或者 `dropped_dates` 很多，后面的 IC、分位收益和回测都需要谨慎解读。
+若察觉到 `rows_model` 呈现出显著劣于 `rows` 的断崖式下跌，或者 `dropped_dates` 的数值畸高，后续对诸如 IC、分位收益乃至最终回测净值的解读，务必秉持更为审慎和保留的态度。
 
-## 标签定义
+## 模型标签定义解读
 
-标签定义决定“模型到底在预测什么”。相关配置主要在 `label`。
+标签的定义从根本上回答了“模型当前究竟在尝试预测什么”。相关的指令配置绝大多数均盘踞在 `label` 命名空间下。
 
-高频字段：
+高频查阅字段：
 
-* `target_col`：默认是 `future_return`。
-* `horizon_days`：固定持有期长度。
-* `horizon_mode`：`fixed` 或 `next_rebalance`。
-* `rebalance_frequency`：在 `next_rebalance` 模式下决定未来收益窗口。
-* `shift_days`：信号日和入场日之间的偏移。
-* `train_target_transform`：训练时是否先把标签做横截面 `zscore` / `rank` 变换。
+* `target_col`：常规默认值为 `future_return`，即远期收益率。
+* `horizon_days`：用以锚定固定持仓期的观测跨度。
+* `horizon_mode`：标识观测窗形态，可为 `fixed`（固定天数）或 `next_rebalance`（对齐至下一次调仓动作）。
+* `rebalance_frequency`：当选用 `next_rebalance` 模式时，由该参数具体裁定未来收益的结算视窗。
+* `shift_days`：调和信号生成日与实际持仓入场日之间的时滞天数差。
+* `train_target_transform`：裁决在交由模型训练前，是否预先对原生标签列施加诸如横截面 `zscore` 或是 `rank` 排序等变形映射手术。
 
-先确认标签定义，再解释指标。否则你看到的 IC 和回测收益，可能并不是你以为的持有期。
+在试图诠释任何评估指标前，请务必率先确认标签的真实定义范畴。若越过此步，你所面对的 IC 读数或回测收益，极有可能是基于一套完全偏离你直觉假设的持仓周期计算而出的产物。
 
-### 先确认你在读什么指标
+### 明确分数的物理意义
 
-如果启用了 `eval.save_scored_artifact=true`，`eval_scored.parquet` 里通常会保留三列分数：
+当在配置中启用了 `eval.save_scored_artifact=true`，系统产出的 `eval_scored.parquet` 宽表内通常会沉淀下三列派生分数：
 
-* `pred`：模型原始输出。
-* `signal_eval`：乘上评估侧方向因子后的分数。
-* `signal_backtest`：乘上回测侧方向因子后的分数。
+* `pred`：模型输出的原始预测值。
+* `signal_eval`：将原始分数与评估侧判定的方向因子（如 `-1` 翻转）相乘后得出的校正分数。
+* `signal_backtest`：将原始分数与回测侧方向因子相乘后得出的最终指导分数。
 
-大多数排序、分位收益、Top-K 和回测结论，应该优先按 `signal_eval` / `signal_backtest` 来理解，而不是只看裸 `pred`。
+在绝大多数场景下，针对模型输出的排序核对、分位收益追踪、Top-K 精选摘取以及回测交割结论，均应以 `signal_eval` 或 `signal_backtest` 作为判定准绳，请尽量避免直接使用未经方向校正的原始 `pred` 值。
 
-### Ranker 和 Regressor 的输出含义不同
+### Ranker 与 Regressor 输出语义的本质分歧
 
-同样是分数，不同模型家族的语义并不完全一样：
+纵然外在表现皆为分数，但不同算法家族的模型，其输出语义存在着深层次的差异：
 
-* `xgb_regressor` / 线性回归类输出，更接近连续预测值。但它到底像不像预期收益率，还取决于训练标签是否做过 `train_target_transform`。
-* `xgb_ranker` 输出更应该读成同日相对排序分数。它天然更偏向回答谁该排前面。
+* 针对 `xgb_regressor` 或传统的线性回归模型，其输出在形态上更趋近于连续的绝对预测值。但它究竟在多大程度上能够拟合真实世界的预期收益率，很大程度上取决于其所吞吐的训练标签是否曾经历过 `train_target_transform` 的改造。
+* 针对 `xgb_ranker` 的输出，应当将其解读为特定同日横截面内部的相对排序分数。它主要用于回答横截面内标的的相对优劣顺序。
 
-最容易误读的是这句：
+此处最易滋生误解的盲区在于：
 
-* 只有当训练标签本身就是原始 `future_return`，且没有再做会改变尺度的变换时，模型输出才比较接近预期收益率。
-* 如果训练标签做了 `zscore`、`rank` 或别的横截面标准化，那输出更稳妥的叫法是alpha score或排序分数。
+* 只有当训练模型使用的标签本身即为纯粹的 `future_return` 原始收益率，并且中途未经过任何改变尺度的换算操作时，模型的最终输出才可视为预期收益率的代理。
+* 一旦训练标签经历了 `zscore`、`rank` 或其他的横截面标准化处理，此时更为严谨的称谓应当是 alpha score（超额得分）或者纯粹的排序分数。
 
-也因此：
+基于上述原理：
 
-* `quantile_mean` / `long_short` 的价值之一，就是把模型分数重新接回未来收益表现。
-* `error_metrics` 在 `train_target_transform != none` 时，更适合当诊断值。
+* `quantile_mean` 与 `long_short` 的核心价值之一，正是建立起模型抽象分数与现实未来收益表现之间的映射桥梁。
+* 当配置了 `label.train_target_transform != none` 时，`error_metrics` 组内反馈的各类绝对误差指标，其属性更宜作为内部排障使用的辅助诊断值。
 
-## 预测质量指标
+## 预测质量核心指标
 
-这些字段主要在 `summary.json -> eval`。
+此类指标通常驻扎于 `summary.json -> eval` 目录下。
 
-### IC
+### 核心 IC 指标
 
-默认会输出两类 IC：
+系统默认会双线并行输出两类截然不同的 IC 读数：
 
-* `ic`：Spearman Rank IC。看排序是否有效。
-* `pearson_ic`：Pearson IC。看预测幅度和真实收益的线性关系。
+* `ic`：即 Spearman Rank IC。用于侦测模型对标的相对位次的排序能力。
+* `pearson_ic`：即 Pearson IC。用于审视模型给出的预测幅度与标的真实收益之间是否具有线性关系。
 
-直观理解：
+直观释义：
 
-* `ic` 可以理解成“模型给股票排的名次，和未来收益排出来的名次像不像”。
-* `pearson_ic` 可以理解成“模型不只排对顺序，连强弱幅度也大致对不对”。
+* `ic` 用以解答“模型给出的预测排名，与未来真实收益的排位是否相似”。
+* `pearson_ic` 用以解答“模型不仅排名正确，其预测强度的相对大小是否吻合了现实收益的幅度差异”。
 
-对应文件：
+依赖的源文件档案：
 
 * `ic_test.csv`
 * `ic_pearson_test.csv`
 
-计算机制是统一的：
+统计核算机制：
 
-1. 先按 `trade_date` 分组，在每个交易日横截面里计算一次相关系数。
-2. 把这些按日期排好的单期 IC 串起来，形成一条 IC 时序。
-3. `summary.json` 里的 `mean`、`std`、`ir`、`t_stat`、`p_value`，都是对这条 IC 时序再做汇总。
+1. 按照 `trade_date` 交易日切片执行分组，在每个独立的单日横截面内部发起一次相关系数运算。
+2. 将这些按日期排列的单期 IC 串联，形成一条连贯的 IC 时间序列。
+3. `summary.json` 中罗列的 `mean`、`std`、`ir`、`t_stat`、`p_value` 等汇总数据，皆是对这条时序数据实施的二次汇总计算。
 
-所以这里的 `ic` / `pearson_ic` 回答的是“这个信号能不能在很多个交易日里持续把股票排对”。
+由此可知，呈现在这里的 `ic` 或 `pearson_ic`，其根本使命在于证明信号体系是否具备在多个交易日中持续稳定地进行标的排序的能力。
 
-汇总字段常见为：
+汇总统计维度的常见字段：
 
 * `n`
 * `mean`
@@ -174,30 +174,30 @@
 * `t_stat`
 * `p_value`
 
-这组汇总字段不仅包括`ic`，也常用于 `pearson_ic`、`train_ic`、`train_ic_raw`、`train_pearson_ic`、`cv_ic`、`cv_ic_raw` 和 `bucket_ic`：
+这套统计字段不仅用于 `ic`，同样高频活跃于 `pearson_ic`、`train_ic`、`train_ic_raw`、`train_pearson_ic`、`cv_ic`、`cv_ic_raw` 乃至 `bucket_ic` 等多项统计场景中：
 
-* `n`：参与统计的有效交易日数或有效截面数。越小，结论越容易偶然波动。
-* `mean`：这个指标在整个评估区间里的平均水平。
-* `std`：这个指标在时间上的波动大小。越大，说明好坏时段差得越多。
-* `ir`：这里就是 `mean / std`。代表是IC 的稳定度。
-* `t_stat`：平均值相对标准误有多大，可粗看偏离 0 是否明显。
-* `p_value`：和 `t_stat` 对应的概率值。越小，越不像纯随机噪声；但在金融时间序列里只能当弱参考。
+* `n`：参与统计的有效交易日天数或横截面数量。此值越小，统计结论就越容易受到偶然波动的干扰。
+* `mean`：该项指标在整段考察期内的平均值。
+* `std`：该指标在时间序列上的波动标准差。该值越大，说明模型表现好坏参差，稳定性较弱。
+* `ir`：即 `mean / std`。它直观地表征了 IC 预测能力的稳定性。
+* `t_stat`：用来衡量平均值相对于标准误的偏离倍数，可粗略窥探其偏离零轴的明显程度。
+* `p_value`：与 `t_stat` 相关的概率测算值。数值越小，越说明其具有统计显著性；但鉴于金融时间序列的复杂性，仅建议将其作为参考。
 
 解读建议：
 
-* `mean` 看方向和平均强度。
-* `ir` 看稳定性。
-* `t_stat` / `p_value` 只能当简化参考。金融时间序列通常不满足独立同分布。
+* 观察 `mean` 把握预测的整体方向与平均效力。
+* 观察 `ir` 确认其表现的稳定性。
+* 对待 `t_stat` 与 `p_value`，仅作简化参考视之，金融时间序列往往并不遵循严格的独立同分布假设。
 
-简短理解：
+速读心法：
 
-* `mean` 越高，说明平均来说越能排对。
-* `ir` 越高，说明预测是比较稳定地灵。
-* `std` 很大时，通常说明信号只在部分时间段有效。
+* `mean` 越高，表明模型平均而言越擅长正确排序。
+* `ir` 越高，证实这项预测表现稳健且经常奏效。
+* 一旦察觉 `std` 较大，通常说明信号很可能仅在特定的行情区间有效，泛化能力存疑。
 
-### 训练期对照与方向校正
+### 训练期对照与自动方向校正
 
-这些字段用于判断信号方向和稳定性：
+这组字段用于判断信号的最终方向及其底层的可靠程度：
 
 * `train_ic`
 * `train_ic_raw`
@@ -207,197 +207,196 @@
 * `signal_direction`
 * `signal_direction_mode`
 
-`signal_direction_mode` 支持 `fixed`、`train_ic`、`cv_ic`。当模型学到的是稳定负相关信号时，系统可以自动翻转方向。
+`signal_direction_mode` 支持 `fixed`、`train_ic` 以及 `cv_ic` 三种模式。当系统侦测到模型在训练段内学习到稳定的负相关特征时，可以自动执行方向翻转操作。
 
-字段速记：
+字段速记要诀：
 
-* `train_ic`：训练期、方向校正后的 Rank IC。看训练段里排序有没有用。
-* `train_ic_raw`：训练期、未翻转方向前的原始 Rank IC。它主要用来判断要不要把信号乘以 `-1`。
-* `train_pearson_ic`：训练期、方向校正后的 Pearson IC。看训练段里幅度关系是否也对。
-* `cv_ic`：交叉验证后的 IC 汇总，偏向回答“换几个时间窗以后，这个信号还灵不灵”。
-* `cv_ic_raw`：交叉验证里未翻转方向前的原始 IC。主要用于初步的方向判断。
-* `signal_direction`：最终作用在预测分数上的方向因子，常见是 `1` 或 `-1`。`-1` 表示原始高分其实该反着用。
-* `signal_direction_mode`：方向因子是固定给的，还是由 `train_ic` / `cv_ic` 自动推出来的。
+* `train_ic`：训练周期内、且已经历过方向翻转校正的 Rank IC。用于确认在训练集里排序逻辑是否成立。
+* `train_ic_raw`：训练周期内、尚未接受过方向翻转的原始 Rank IC。它作为决定是否需将最终信号乘上 `-1` 的核心依据。
+* `train_pearson_ic`：训练周期内、历经方向校正的 Pearson IC。用以探查在训练段内，预测幅度的线性映射关系是否达标。
+* `cv_ic`：交叉验证后的 IC 汇总成绩。偏向于解答“在更换了时间窗口后，信号是否依旧有效”。
+* `cv_ic_raw`：交叉验证环节中、尚未历经翻转的原始 IC。多用于初步探明信号的方向。
+* `signal_direction`：最终施加在预测分数上的方向因子，通常为 `1` 或 `-1`。为 `-1` 时意味着原始高分应作为空头对象反向运用。
+* `signal_direction_mode`：揭露上述方向因子的确立途径，是由配置模板硬性指定，还是依据 `train_ic` 或 `cv_ic` 的表现自动推演。
 
-直观理解：
+直观释义：
 
-* 这一步是在判断“高分到底该买，还是其实应该反着用”。
+* 这一流程的目的在于确定高分预测到底对应多头还是空头信号。
 
-### 误差指标
+### 模型误差度量
 
-`error_metrics` 包含：
+`error_metrics` 阵列囊括了以下指标：
 
 * `n`
 * `mae`
 * `rmse`
 * `r2`
 
-这组指标为第二梯队，相比之前的指标出现频率更低，主要适合排查退化模型、常数预测和标签异常。
+这组参数属于第二梯队的观察指标，其主要作用在于排查模型严重退化、输出常数预测以及标签存在严重异常等情况。
 
-直观理解：
+直观释义：
 
-* `n`：参与误差统计的样本数。样本太少时，不要过度解读这组值。
-* `mae`：平均每次大概错多少。
-* `rmse`：对大错更敏感，适合抓明显失真。
-* `r2`：模型解释了多少波动。它在截面选股里不一定高，但过低时值得排查。
+* `n`：被卷入误差统计的样本总量。如果样本量较少，请避免过度解读这批数值。
+* `mae`：评估模型平均每次预测的绝对偏离误差。
+* `rmse`：对巨大的错判极为敏感，适合用于识别模型的严重失真预测。
+* `r2`：衡量模型解释了多大比例的现实方差波动。它在截面选股任务中往往数值不高，但若低至底线以下，便值得排查。
 
-补充边界：
+补充认知边界：
 
-* 对 `xgb_ranker` 这类排序任务，这组值主要用于发现退化、常数预测或标签异常。
-* 当 `label.train_target_transform != none` 时，模型训练目标和评估标签不在同一量纲，`mae` / `rmse` / `r2` 的绝对大小更不宜过度解释。
-* 如果有人只因为 `r2` 不高就否定截面模型，通常是在拿回归直觉硬套排序任务。
+* 对于类似 `xgb_ranker` 这样专注于排序任务的模型而言，这组数值的主要使命在于报警，用以侦测模型是否退化为常数发生器，或是底层标签体系出了大纰漏。
+* 倘若你在配置中设定了 `label.train_target_transform != none`，这意味着模型的训练目标与最终评估用的真实标签已经不在同一个量纲体系内，此时强行解读 `mae`、`rmse` 或 `r2` 的绝对大小意义不大。
+* 在截面选股任务中，由于其本质在于相对排序，因此不能单纯因为 `r2` 得分不高就全盘否定模型的价值。
 
-### 分位收益
+### 分位数收益分布检测
 
-分位收益用于回答“高分股票是否真的系统性更好”。
+引入分位数收益的核心目的在于验证：高分股票群体是否在整体表现上系统性地优于低分群体。
 
-对应文件：
+依赖的源文件档案：
 
 * `quantile_returns.csv`
 
-对应摘要字段：
+对应的摘要字段：
 
 * `quantile_mean`
 * `long_short`
 
-解读建议：
+解读方略建议：
 
-* `quantile_mean` 看各分位平均收益是否单调。
-* `long_short` 看最高分位和最低分位之间的收益跨度。
+* 审视 `quantile_mean`，确认由低到高的各个分位阵营，其平均收益是否保持了单调递增的趋势。
+* 审视 `long_short`，探究最高分位群体与最低分位群体之间的收益差值跨度。
 
-计算机制：
+背后的统计核算机制：
 
-1. 每个 `trade_date` 里，先按分数把股票排序。
-2. 再把当日股票切成 `n_quantiles` 个分位组。
-3. 对每个分位组计算未来收益均值，得到一条按日期展开的 `quantile_returns.csv`。
-4. `summary.json -> eval.quantile_mean` 是这张时序表在时间维度上的均值。
-5. `long_short` 就是 `quantile_mean` 里最高分位减最低分位。
+1. 在每个 `trade_date` 截面内，依据预测分数将标的进行排序。
+2. 将当日标的等分为 `n_quantiles` 组。
+3. 针对每个分位组分别测算未来收益的均值，生成时序层面的 `quantile_returns.csv` 报表。
+4. `summary.json -> eval.quantile_mean` 是该时序报表在时间轴上的均值汇总。
+5. `long_short` 为 `quantile_mean` 中最高分位均值与最低分位均值之差。
 
-直观理解：
+直观释义：
 
-* `quantile_mean`：把股票按模型分数分组后，每一组的平均未来收益。它回答“高分组是不是整体更好”。
-* `long_short`：最高分位平均收益减去最低分位平均收益。它回答“最好和最差这两头到底拉开了多少”。
-* 如果模型真有用，通常高分组应该整体好于低分组。
-* `long_short` 可以粗看“最看好的那组”和“最不看好的那组”差了多少。
+* `quantile_mean`：反映将股票依据模型分数分组后，各组的平均未来收益表现，用于检验“高分群体的表现是否整体更优”。
+* `long_short`：最高分位与最低分位的平均收益差值。用于检验“最看多梯队与最看空梯队之间拉开了多大的收益差距”。
+* 如果模型有效，高分阵营应当在整体走势上明显优于低分阵营。
 
-补充边界：
+补充认知边界：
 
-* 如果某个交易日股票数少于 `n_quantiles`，那一天不会进入分位统计。
-* 对截面模型来说，`quantile_mean` 的**单调性**通常比某一个分位点的绝对数值更重要。
-* 如果分数本身不是收益率口径，`long_short` 往往比 `pred` 更值得直接拿来和未来收益对照。
-* 如果你想看 “spread win rate”，当前仓库没有单独汇总字段，但可以从 `quantile_returns.csv` 自己计算每期最高分位减最低分位是否为正。
+* 倘若在某一个交易日内，符合条件的股票总数少于设定的 `n_quantiles` 份数，该日历日将不会被纳入分位统计。
+* 针对截面模型，我们对其 `quantile_mean` 展现出的单调递增属性的关注，通常优先于某一独立分位点上的绝对数值。
+* 如果分数自身的量纲与绝对收益率不匹配，直接使用 `long_short` 与未来的真实收益表现进行对照，往往比直接分析预测原始分 `pred` 更有价值。
+* 若需要单独查看极差胜率（spread win rate），当前仓库并未提供现成的汇总字段，但可以通过 `quantile_returns.csv` 明细表自行计算每期最高分位减最低分位差值为正的概率。
 
-### 换手与缓冲区
+### 换手率监控与减震缓冲区
 
-评估侧换手相关字段：
+评估侧的换手率相关字段包括：
 
 * `turnover_mean`
 * `turnover_count`
 * `buffer_exit`
 * `buffer_entry`
 
-对应文件：
+依赖的源文件档案：
 
 * `turnover_eval.csv`
 
-`buffer_exit` 和 `buffer_entry` 用来降低调仓抖动。排名轻微波动时，缓冲区可以减少不必要的换手。
+`buffer_exit` 与 `buffer_entry` 的设立旨在削弱因策略频繁调仓而引发的无谓抖动。当标的排名仅发生微弱波动时，缓冲区机制能够有效拦截不必要的无效换手。
 
-字段速记：
+字段速记要诀：
 
-* `turnover_mean`：每次评估调仓时，平均有多大比例的持仓被换掉。
-* `turnover_count`：实际参与换手统计的调仓次数。次数太少时，`turnover_mean` 参考性会变弱。
-* `buffer_exit`：已有持仓允许“掉出 Top-K 一点点”仍先保留。数值越大，越不容易因为小波动被卖掉。
-* `buffer_entry`：新股票必须比 Top-K 再更靠前一些才允许挤进来。数值越大，越不容易频繁换新票。
+* `turnover_mean`：在每一次评估触发换仓时，平均有多大比例的原有持仓被替换。
+* `turnover_count`：实际被纳入换手统计的有效调仓回合数。当此数值偏低时，`turnover_mean` 的参考价值将有所下降。
+* `buffer_exit`：允许既有持仓即使“排名略微跌出 Top-K 门槛”也能暂时保留。该数值设定越宽泛，标的越不容易因为名次的小幅滑坡而被替换。
+* `buffer_entry`：要求新入选标的不仅名次要达标，还必须比 Top-K 门槛具有更显著的优势方可入选。此数值越高，组合纳入新标的的频率就越低。
 
-直观理解：
+直观释义：
 
-* `turnover_mean` 越高，说明组合换得越勤。
-* 缓冲区的作用就是少做“今天刚买、下次又卖”的小幅抖动调仓。
+* `turnover_mean` 越高，意味着组合换手的频次越快。
+* 缓冲区的价值在于减少那些“刚买入不久便因微小排名变动而卖出”的高频震荡调仓动作。
 
-### 命中率与 Top-K 正收益占比
+### 靶向命中率与 Top-K 正向收益占比
 
-这两个字段更直观：
+这两项参数提供了关于预测准确率的直观统计：
 
 * `hit_rate`
 * `topk_positive_ratio`
 
-它们适合回答两个问题：
+它们分别解答了以下疑问：
 
-* 方向判断是否经常做对。
-* 选出来的 Top-K 标的里，未来收益为正的比例高不高。
+* 模型判定的大方向是否经常正确。
+* 选出的 Top-K 标的池中，未来收益为正的比例是否可观。
 
-直观理解：
+直观释义：
 
-* `hit_rate`：预测值和真实收益同号的比例。它更像“方向对了多少次”。
-* `topk_positive_ratio`：每个调仓日里，Top-K 名单中未来收益为正的比例，再对这些日期求平均。它更像“真正买进名单里，赚钱的票占多少”。
+* `hit_rate`：揭示了预测方向与真实收益方向一致的概率，类似于评价“总共蒙对了多少次方向”。
+* `topk_positive_ratio`：在每个调仓日，统计跻身 Top-K 榜单的标的之中未来收益大于零的占比，并将这些单日比例汇总求取平均值。它代表了“实际买入名单中最终实现正收益的标的份额”。
 
-计算机制：
+背后的统计核算机制：
 
-* `hit_rate`：把预测值和真实收益逐行对齐后，只看符号是否一致。
-* `topk_positive_ratio`：对每个交易日先取分数最高的 `K` 只股票，再看其中未来收益大于 0 的占比，最后对日期求平均。
+* `hit_rate`：将预测值与真实收益按行比对，若双方符号一致则记为命中。
+* `topk_positive_ratio`：针对每个交易日提取分数靠前的 `K` 只标的，统计其中未来收益大于 0 的占比，再将这些单日占比求取平均。
 
-补充边界：
+补充认知边界：
 
-* 这两项都更偏“方向感”，想要了解排序质量还是看前面的指标。
-* 对截面 `ranker` / 截面 `regressor`，主指标通常还是 `RankIC`、分位单调性和 `long_short`。
-* 在全市场一起涨跌的阶段，一个排序正确但没有把绝对涨跌符号猜准的模型，`hit_rate` 也可能并不亮眼。
-* 如果未来要单独看spread 胜率，更自然的口径通常是每期 `top-bottom spread` 为正的比例。
+* 这两项指标偏向于展示“方向感”。若需深入透析模型排序质量，仍应重点参考前面列举的硬核排序指标。
+* 对于截面 `ranker` 或截面 `regressor`，核心的衡量标尺依然是 `RankIC`、分位数单调性以及 `long_short` 的跨度表现。
+* 在面临全市场同涨或同跌的单边行情时，即使排序逻辑优秀但未能准确预测绝对涨跌符号的模型，其 `hit_rate` 成绩也可能表现不佳。
+* 如果未来需要单独评估极差（spread）胜率，更为合理的统计口径是考察每期 `top-bottom spread` 数值为正向的概率占比。
 
-### 可选拆解
+### 进阶的可选切面拆解
 
-按配置启用时，还会写这些结果：
+当通过配置主动启用时，系统还将输出以下高阶分析报告：
 
-* `bucket_ic` / `bucket_ic_file`：按行业、市值、流动性等分桶后分别计算 IC。
-* `rolling_ic`：滚动 IC 均值与滚动 IC IR。
-* `permutation_test`：置换检验结果。
+* `bucket_ic` / `bucket_ic_file`：依据行业、市值、流动性等特征实施分桶后，各组独立计算的 IC 表现。
+* `rolling_ic`：呈现滚动视窗下的 IC 均值与滚动 IC IR 表现。
+* `permutation_test`：基于置换检验法输出的验证结论。
 
-常见文件：
+常见的落盘文件档案：
 
 * `bucket_ic.csv`
 * `ic_rolling_6m.csv`
 * `ic_rolling_12m.csv`
 * `permutation_test.csv`
 
-字段速记：
+字段速记要诀：
 
-* `bucket_ic`：把样本拆成几个桶后，各桶分别算出来的 IC 汇总。它适合查“信号是不是只在某类股票上有效”。
-* `bucket_ic_file`：对应分桶 IC 明细 CSV 的路径。
-* `rolling_ic`：滚动窗口里的 IC 表现，常看最新窗口的 `ic_mean` 和 `ic_ir`。
-* `permutation_test`：把训练标签打乱后重复评估得到的噪声基线。如果真实结果只比它好一点，就要警惕过拟合。
+* `bucket_ic`：将样本大群拆解成分桶后，各自计算出的内部 IC 表现汇总。用于探查“信号是否仅在某些特定群体上生效”。
+* `bucket_ic_file`：指引至对应分桶 IC 明细底稿 CSV 报表的路径。
+* `rolling_ic`：呈现滚动窗口期内的 IC 表现轨迹，通常重点关注最新窗口期的 `ic_mean` 与 `ic_ir` 读数。
+* `permutation_test`：通过打乱训练标签并重复模拟评估构建出的噪音基准线。如果真实模型结果仅略高于该噪音线，则需警惕模型可能存在过拟合。
 
-直观理解：
+直观释义：
 
-* `bucket_ic` 看信号是不是只在某个角落有效。
-* `rolling_ic` 看信号是不是只在某几年有效。
-* `permutation_test` 看你看到的效果，是否只是训练噪声。
+* 借助 `bucket_ic` 审视信号是否局限于特定子样本群。
+* 借助 `rolling_ic` 审视信号是否仅在特定历史时段有效。
+* 借助 `permutation_test` 审视当前表现是否主要由训练噪音构成。
 
-补充边界：
+补充认知边界：
 
-* `bucket_ic` 回答的是“信号在哪些 bucket 上有效”。
-* `permutation_test` 是打乱训练标签后的噪声基线检验。
-* 如果你想回答“去掉这个因子后整体模型伤了多少”，当前仓库还没有把 drop-column / permutation importance / SHAP 做成 run 默认输出。
+* `bucket_ic` 专门负责解答“信号在哪些子样本桶中更有效”。
+* `permutation_test` 本质上是一套基于打乱训练标签的噪音基线检验。
+* 若期望评估“剔除该因子后，整体模型的预测能力会下降多少”，目前仓库尚未将 drop-column（剔除重训）、permutation importance（特征置换评估）或 SHAP 等高阶归因方法作为默认产出。
 
-## 回测指标
+## 回测阶段考量指标
 
-这些字段主要在 `summary.json -> backtest`。
+此类指标通常位于 `summary.json -> backtest` 节点下。
 
-### 先看净收益
+### 净收益首当其冲
 
-对应文件：
+依赖的源文件档案：
 
 * `backtest_net.csv`
 * `backtest_gross.csv`
 
-日常判断策略时，先看净收益。毛收益只用于看成本前的信号质量。
+在日常评估策略表现时，务必优先查看净收益。毛收益的参考价值仅限于观察未扣除交易成本之前的信号纯净表现。
 
-直观理解：
+直观释义：
 
-* 毛收益像“纸面选股能力”。
-* 净收益像“把成本算进去以后，真正还能剩多少”。
+* 毛收益类似于未考虑磨损的理论选股能力。
+* 净收益则代表扣除各类交易成本与滑点后，实际能够获取的回报。
 
-### 核心统计
+### 核心回测统计基本盘
 
-`summary.json -> backtest.stats` 常见字段：
+位于 `summary.json -> backtest.stats` 节点下的常驻字段包括：
 
 * `periods`
 * `total_return`
@@ -410,28 +409,28 @@
 * `avg_turnover`
 * `avg_cost_drag`
 
-这组字段先回答三个问题：
+这组核心数据主要解答以下问题：
 
-* 赚没赚钱。
-* 波动和回撤大不大。
-* 收益是不是被换手和成本吃掉了。
+* 策略最终的盈亏状况。
+* 收益曲线的波动与最大回撤幅度。
+* 收益是否受到换手率和交易成本的严重侵蚀。
 
-简短理解：
+速读心法：
 
-* `periods`：回测里实际统计了多少个收益周期。
-* `total_return`：整个回测区间从头拿到尾的累计收益。
-* `ann_return`：年化大概能赚多少。
-* `ann_vol`：收益波动有多大。
-* `sharpe`：单位风险换来了多少收益。
-* `max_drawdown`：历史上最痛的一次回撤有多深。
-* `avg_holding`：平均一笔持仓会拿多久，通常可近似理解为平均持有交易日数。
-* `periods_per_year`：一年大约会经历多少个回测收益周期，用于把周期收益换成年化口径。
-* `avg_turnover`：回测里每次调仓平均换掉多少仓位。
-* `avg_cost_drag`：交易成本平均会把每期收益拖低多少。
+* `periods`：整个回测周期内实际参与统计的计息周期数。
+* `total_return`：整个回测区间的累计收益率。
+* `ann_return`：折算为年化口径的预期收益率。
+* `ann_vol`：收益曲线的年化波动率。
+* `sharpe`：衡量单位风险所带来的超额收益补偿。
+* `max_drawdown`：历史回测期间出现的最大回撤幅度。
+* `avg_holding`：单笔持仓的平均持有时间，通常近似表示平均持有交易日天数。
+* `periods_per_year`：一个自然年中包含的回测周期数，用于将微观周期收益换算为年化口径。
+* `avg_turnover`：回测过程中每次调仓的平均换手比例。
+* `avg_cost_drag`：交易成本平均在每期拉低了多少收益（基点）。
 
-### 风险和尾部
+### 风险监控与尾部压力审视
 
-回测还会给出一组更偏交易语境的风险指标：
+回测体系额外提供了一组契合交易视角的风险探查指标：
 
 * `sortino`
 * `calmar`
@@ -444,38 +443,38 @@
 * `var_95`
 * `cvar_95`
 
-它们分别补充：
+它们分别用于补充评估：
 
-* 下行风险和回撤效率。
-* 最大回撤持续多久。
-* 收益分布是否过度依赖少数极端时期。
+* 下行风险抵御能力及回撤区间的运作效率。
+* 处于最大回撤区间的具体时长。
+* 收益分布是否存在过度依赖极端行情的风险。
 
-直观理解：
+直观释义：
 
-* `sortino` 比 `sharpe` 更关注亏钱时的波动。
-* `calmar` 看收益相对最大回撤是否划算。
-* `drawdown_duration`：从前高点跌到最深谷底，经历了多少个回测周期。
-* `recovery_time`：从最深谷底回到前高点，又花了多少个回测周期。
-* `drawdown_duration_days`：同一段回撤，换成自然日大概持续多久。
-* `recovery_time_days`：从谷底恢复到前高点，用自然日看大概花多久。
-* `skew`：收益分布偏向哪一边。明显为负时，通常说明更容易出现突然的大亏。
-* `kurtosis`：收益分布尾巴有多厚。越高，通常说明极端波动更多。
-* `var_95`：按历史分布看，最差 5% 左右单期收益大概会跌到哪里。
-* `cvar_95`：落入最差 5% 以后，平均还会有多差。它通常比 `var_95` 更悲观。
+* 相比 `sharpe`，`sortino` 更聚焦于惩罚出现亏损时的恶性波动。
+* `calmar` 致力于评估收益相较于承受的最大回撤是否具有吸引力。
+* `drawdown_duration`：记录从前高点跌落至最深谷底所经历的回测周期数。
+* `recovery_time`：记录从最深谷底回升至前高点所消耗的回测周期数。
+* `drawdown_duration_days`：将跌落回撤旅程换算为自然日长度。
+* `recovery_time_days`：将从谷底复苏至前高的过程换算为自然日长度。
+* `skew`：探测收益分布的偏度。显著为负的数值预示着策略更易遭遇突发的大幅亏损。
+* `kurtosis`：量度收益分布的峰度。数值越高，发生极端震荡的概率越超出常态分布预期。
+* `var_95`：基于历史分布推演，处于最差 5% 情况下的单期收益预期下限。
+* `cvar_95`：在跌入最差 5% 分布区间后的条件期望收益。它通常比 `var_95` 揭示出更为悲观的极端风险预期。
 
-### 基准与主动收益
+### 参照基准与主动剥离收益
 
-当配置了 `benchmark_symbol` 或 `benchmark_returns_file` 时，还会写：
+当在配置中指定了 `benchmark_symbol` 或 `benchmark_returns_file`，系统将记录下：
 
 * `summary.json -> backtest.benchmark`
 * `summary.json -> backtest.active`
 
-对应文件可能包括：
+相伴产出的文件通常包括：
 
 * `backtest_benchmark.csv`
 * `backtest_active.csv`
 
-主动收益侧常见字段：
+主动收益侧重点关切的字段：
 
 * `tracking_error`
 * `information_ratio`
@@ -484,27 +483,27 @@
 * `corr`
 * `active_total_return`
 
-直观理解：
+直观释义：
 
-* `tracking_error`：你和基准偏离得有多大。
-* `information_ratio`：这种偏离有没有换来稳定超额。
-* `beta`：你到底有多像基准。
-* `alpha`：扣掉 beta 以后，还剩多少独立超额。
-* `corr`：策略收益和基准收益的相关性。越高，说明走势越像基准。
-* `active_total_return`：把收益复利算完后，策略相对基准最终多赚了多少。
+* `tracking_error`：度量策略收益轨迹与基准参照物之间的偏离程度。
+* `information_ratio`：评估这种偏离是否成功换取了长期稳定的超额回报。
+* `beta`：考察策略走势与基准大盘的系统性关联度。
+* `alpha`：在剥离掉由 beta 贡献的被动收益后，策略自身获取的独立超额收益水平。
+* `corr`：策略净值走势与基准收益曲线的相关系数。数值越高，说明走势与基准越为一致。
+* `active_total_return`：复利结算后，策略相对基准累计获取的超额净胜收益。
 
-### 风格与行业暴露
+### 风格侧写与行业偏离度暴露
 
-当回测成功产出持仓，且 panel 里存在可解析的暴露列时，还会写：
+若回测进程产出了具体持仓，且 panel 内包含可供解析的暴露因子列，系统将自动补充以下产出：
 
 * `summary.json -> backtest.exposure`
 * `backtest_style_exposure.csv`
 * `backtest_industry_exposure.csv`
 * `backtest_active_exposure_summary.csv`
 
-这部分当前已经落地，不只是研究备忘。
+请注意，这部分目前已作为实质性的常态落地产物。
 
-风格暴露目前是 best-effort 组合诊断，默认尝试解析六类风格：
+关于风格暴露，目前采用尽力而为（best-effort）的组合诊断机制，系统默认尝试解析以下六大风格维度：
 
 * `size`
 * `value`
@@ -513,47 +512,47 @@
 * `low_vol`
 * `beta`
 
-计算机制可以粗看成：
+核算逻辑概览：
 
-1. 对每个 `rebalance_date`，取当期持仓和同日 panel。
-2. 用可用列或价格历史派生出风格值。
-3. 计算组合 `portfolio_long` / `portfolio_short` / `portfolio_net` 的暴露。
-4. 再和全市场等权、可得时的市值权重基准做比较，得到主动暴露。
+1. 针对每一个调仓日（`rebalance_date`），结合当期实盘持仓与同日的横截面 panel。
+2. 利用现有因子列或历史价格推演出各风格的特征值。
+3. 测算组合内多头（`portfolio_long`）、空头（`portfolio_short`）及净头寸（`portfolio_net`）各自承担的风格暴露量。
+4. 随后引入全市场等权重模型及（在条件允许获取时）市值加权基准模型作为参照，计算主动暴露的净值。
 
-行业暴露则是按行业标签聚合权重，输出：
+行业暴露则是依据行业标签对资金权重进行聚合，最终输出：
 
-* 组合净权重
-* 全市场等权权重
-* 可得时的市值权重
-* 相对等权 / 市值权重的主动偏离
+* 组合最终成型的净权重配比
+* 全市场等权重配置下的理论权重
+* 依据市值加权配置推演的基准权重
+* 相对前两者的真实主动偏离差值
 
-`backtest_active_exposure_summary.csv` 是更方便扫读的一层宽表，按每个调仓期汇总：
+`backtest_active_exposure_summary.csv` 是一张便于快速阅览的宽表视图，按调仓期合并归拢：
 
-* 当前最主要的风格主动暴露
-* 最显著的行业主动偏离
+* 当前时点最显著的风格主动暴露项
+* 当前偏离度最明显的行业主动偏差阵营
 
-解读时要注意：
+在审阅这部分数据时，请注意：
 
-* 这层输出回答的是“组合到底在偏什么”。
-* 目前尚未具备自动约束组合，以及完整 Barra 风险模型。
-* `style_factors[*].available=false` 表示这次 run 缺少可解析列。
-* 如果启用了 `final_oos`，同样结构也会出现在 `summary.json -> final_oos -> backtest -> exposure`。
+* 这些输出仅用于说明“组合当前的风格或行业倾斜方向”。
+* 系统目前尚不具备自动向组合施加硬性风格约束的能力，也未集成完整的 Barra 风险预测模型。
+* 若显示 `style_factors[*].available=false`，代表本次 run 的数据集中缺乏对应可解析的特征列。
+* 若配置开启了 `final_oos`，则在 `summary.json -> final_oos -> backtest -> exposure` 路径下也会呈现类似的结构输出。
 
-### 滚动回测统计
+### 滚动截面下的回测统计动态
 
-按配置启用时，还会写：
+当通过配置启用时，系统将额外生成：
 
 * `summary.json -> backtest.rolling_sharpe`
 * `backtest_rolling_sharpe_6m.csv`
 * `backtest_rolling_sharpe_12m.csv`
 
-这部分适合看策略是否只在某一段行情有效。`rolling_sharpe` 本质上是“拿一个滚动窗口，反复重算那段时间的 `mean`、`std` 和 `sharpe`”。
+这组数据专门用于审视某套策略是否仅在某一段特定的顺风行情中有效。`rolling_sharpe` 的运算本质即为通过设定的滚动抽样窗口，反复计算并更新特定区间内的 `mean`、`std` 及 `sharpe` 指标。
 
-## 最终留出期
+## 最终留出期的纯净检验
 
-如果开启 `eval.final_oos`，`summary.json -> final_oos` 会再给一套独立结果。
+若在配置中启用了 `eval.final_oos`，`summary.json -> final_oos` 将会输出一套完全独立、未受污染的纯净测试结果。
 
-这部分通常包含：
+这部分包含的统计内容通常有：
 
 * `ic`
 * `pearson_ic`
@@ -568,188 +567,183 @@
 * `backtest`
 * `positions`
 
-这是一段真正不参与训练和调参的保留样本。你可以把它当成最后一次单独验收。
+这部分数据样本自始至终被严密隔离，绝对禁止参与任何训练拟合或参数优化过程。它被视为项目正式交付前的最后一关独立验收基准。
 
-直观理解：
+直观释义：
 
-* 如果 in-sample 很好、`final_oos` 很差，通常要优先怀疑过拟合。
+* 假若策略在 in-sample 内的测试表现优异，但在 `final_oos` 数据集上却表现糟糕，最需要优先警惕并排查的原因便是模型过拟合。
 
-## Walk-Forward 与特征重要性
+## 滚动步进前向验证（Walk-Forward）与特征话语权（Feature Importance）
 
-### Walk-Forward
+### 步进前向验证（Walk-Forward）
 
-如果启用了 `eval.walk_forward`，常见文件有：
+在启用 `eval.walk_forward` 的前提下，系统将生成如下档案：
 
 * `walk_forward_summary.csv`
 * `walk_forward_feature_importance.csv`
 * `walk_forward_feature_stability.csv`
 
-这部分主要看两件事：
+审视这部分数据，核心目的在于洞悉以下两点：
 
-* 不同窗口的 IC 和回测是否稳定。
-* 重要特征是否在多个窗口里反复出现。
+* 在切换至不同的截取时间窗口时，IC 表现和回测收益能否保持稳定。
+* 那些被识别出的核心重要特征，是否能在多个相互隔离的观测窗口中反复且稳定地出现。
 
-直观理解：
+直观释义：
 
-* 如果只有一个窗口特别好，其余窗口一般，信号大概率不稳。
-* `walk_forward_summary.csv` 相当于每个窗口单独给一份 mini summary。
-* `walk_forward_feature_stability.csv` 里的 `top_k_hit_rate` / `nonzero_hit_rate`，适合看某个特征是不是只偶尔冒头，还是很多窗口都在稳定出现。
+* 倘若模型仅在单一的观测窗口内表现突出，切换窗口后便效果平平，该信号的稳定性很可能不佳。
+* `walk_forward_summary.csv` 相当于为每个独立的观测窗口提供了一份迷你版的 summary 成绩单。
+* `walk_forward_feature_stability.csv` 内部的 `top_k_hit_rate` 与 `nonzero_hit_rate` 数据，非常适合用于判断某项特征是偶尔生效还是能够在多个验证窗口中持久稳定地发挥作用。
 
-### 特征重要性
+### 特征重要度（Feature Importance）
 
-默认训练成功且模型支持时，会输出：
+在默认的常规模式下，只要训练顺利完成且挂载的模型支持该能力，系统便会输出：
 
 * `feature_importance.csv`
 
-重要性来源会写在 `summary.json -> eval.feature_importance_source`：
+关于重要度数值的计算口径来源，会记录在 `summary.json -> eval.feature_importance_source` 字段中：
 
-* XGBoost 模型通常来自 `feature_importances_`
-* 线性模型通常来自绝对值系数 `coef_abs`
+* 对于 XGBoost 家族模型，通常直接提取自其原生的 `feature_importances_` 接口。
+* 对于纯粹的线性模型，通常是提取其绝对值系数 `coef_abs`。
 
-同时还会给：
+此外还附带以下辅助标识：
 
 * `feature_importance_nonzero`
 * `zero_feature_importance`
 * `constant_prediction`
 
-这几个字段适合快速识别退化 run。做线性模型汇总时，通常应排除或单独标记这些 run。
+这几个辅助字段在快速排查、识别已然退化失效的 run 方面极为有效。在对线性模型进行宏观汇总时，通常应将存在这几项问题的 run 排除在外，或予以显著的警示标记。
 
-直观理解：
+直观释义：
 
-* `feature_importance` 适合看模型主要在用什么。
-* `feature_importance_source`：重要性数值是按什么口径算出来的，不同模型之间不能直接横比绝对值大小。
-* `feature_importance_nonzero`：重要性不为 0 的特征个数。太少时，通常说明模型基本没用上多少信息。
-* 它适合排错和做筛选线索，不适合直接拿来证明因子有效。
-* `zero_feature_importance`：所有特征重要性都为 0，通常说明模型已经退化成“特征几乎没起作用”。
-* `constant_prediction`：模型对不同股票几乎给出同一个分数，通常说明这次 run 已经退化。
+* `feature_importance` 揭示了模型在进行拟合计算时主要依赖了哪些输入特征。
+* `feature_importance_source`：提示重要度数值的计算口径；因此，在不同算法模型之间横向比较其绝对值大小是不可取的。
+* `feature_importance_nonzero`：统计重要性不为零的特征数量。若数量极少，暗示模型在拟合时未能有效利用大部分信息。
+* 此指标更适合作为排障线索和特征筛选参考，不宜直接将其作为证明某项因子必然有效的唯一证据。
+* `zero_feature_importance`：当所有特征重要性均为零时，通常表明模型已退化，特征输入几乎未发挥任何作用。
+* `constant_prediction`：当模型对形态各异的股票重复输出雷同的评分结果时，通常意味着该轮 run 已发生退化。
 
-补充边界：
+补充认知边界：
 
-* `feature_importance` 对于树模型，它通常表示训练时被使用的相对重要程度；对线性模型，这里当前用的是 `coef_abs`，也就是绝对值系数，不带方向。
-* 单因子预测力应该看单因子自己的 `IC` / `quantile_mean` / `long_short`，或者单因子单独跑模型。
-* “对整体模型的边际贡献”则是另一个问题，通常要靠 ablation、drop-column、SHAP 或 feature permutation importance；这些当前还不是默认输出。
+* 对于树模型，`feature_importance` 通常表征了其在训练中被拆分利用的相对频次或增益程度；对于线性模型，当前使用的是 `coef_abs`，即仅提取了不包含方向的纯绝对值系数。
+* 若要评估单一因子的独立预测能力，应参考单因子自身计算出的 `IC`、`quantile_mean` 或 `long_short` 成绩单，或将该因子单独提取出来进行单因子建模验证。
+* 至于评估特定特征“对整体联合模型的边际贡献”属于另一个维度的命题，通常需要借助 ablation（消融实验）、drop-column（剔除重训）、SHAP 或 feature permutation importance（特征置换重要度）等进阶工具进行分析；目前这些方法并非默认的常规输出配置。
 
-## 几个最容易混淆的点
+## 容易引发歧义与认知错位的重点领域
 
-### 分数不一定等于收益率
+### 预测分数并不等价于预期收益率
 
-文档里最容易被跳读的一点，就是模型分数和未来收益率不是天然同一个东西。
+最容易引发误会的一点是，误将模型输出的预测分数与未来真实的收益率画上等号。
 
-可以这样记：
+请注意以下规则：
 
-* `future_return` 是评估标签。
-* `pred` / `signal_eval` / `signal_backtest` 是模型输出分数。
-* 只有在原始收益标签直接入模、且没有再做尺度变换时，这个分数才比较像预期收益率。
+* `future_return` 才是真正的评估标签目标。
+* `pred` / `signal_eval` / `signal_backtest` 仅是模型内部运算得出的打分依据。
+* 只有当模型直接使用未加修饰的原始收益标签进行训练，且过程中未经历任何量纲变换时，其输出的预测分数才勉强具备预期收益率的参考意义。
 
-所以如果训练标签做过 `zscore`、`rank` 或其他标准化：
+因此，倘若训练标签经过了 `zscore`、`rank` 或其他形式的标准化处理：
 
-* 分数更应该叫 `alpha score`
-* 真正把它翻译回“未来收益表现”的桥梁，是 `IC`、`quantile_mean`、`long_short` 和回测
+* 产出的分数应被视为一种 `alpha score` 排序得分。
+* 能够将该抽象分数转化为对“未来真实收益表现”评估的桥梁，是 `IC`、`quantile_mean`、`long_short` 以及回测分析结果。
 
-### Ranker 和 Regressor 的结论可以共用，但语义不同
+### Ranker 与 Regressor 的评估标尺可通用，但业务语境存在差异
 
-很多评估指标两种模型都会产出，但读法不该完全一样：
+尽管许多经典的评估指标在两种模型上均有输出，但解读时需区分其本质差异：
 
-* 对 `regressor`，分数更像连续预测值。
-* 对 `ranker`，分数更像“谁该排前面”的排序分。
+* 对于 `regressor`，分数形态更贴近于连续的预测拟合值。
+* 对于 `ranker`，分数本质上是在进行截面内的相对排序选拔。
 
-因此：
+由此：
 
-* 两者都可以看 `RankIC`、分位收益、Top-K 和回测。
-* 但对 `ranker`，不要太执着于 `mae` / `rmse` / `r2`。
-* 对 `regressor`，如果训练标签已经相对化，分数也不该硬解释成百分比收益。
+* 两者都可以使用 `RankIC`、分位收益阶梯、Top-K 选股以及实盘回测指标来进行评估。
+* 但对于 `ranker` 模型，不应过度关注诸如 `mae`、`rmse` 或 `r2` 这类专为连续回归设计的误差度量指标。
+* 对于 `regressor` 模型，若训练标签已做过相对化处理，同样不应将预测分数强行解释为绝对的百分比预期收益率。
 
-### 模型分数、feature importance、单因子有效性不是一回事
+### 预测分值、特征重要度与单因子有效性是完全不同的概念
 
-这三件事经常被混成一句话，但其实分别回答不同问题：
+这三个概念常常被混为一谈，但它们各自衡量了不同的维度：
 
-* 模型分数：这只股票当前该排多前面。
-* `feature_importance`：模型训练时主要在利用哪些输入。
-* 单因子有效性：某个因子单独拿出来，自己有没有预测力。
+* 模型分值：决定了当前标的在选股队列中的相对排序位置。
+* `feature_importance`：反映了模型在训练拟合时主要依赖了哪些输入特征。
+* 单因子有效性：评估如果将某项特定因子单独提取出来，其自身是否具备独立的预测能力。
 
-所以：
+理清脉络后可知：
 
-* `feature_importance` 高，不等于单因子自己一定有稳定 alpha。
-* 某个因子单独很有效，也不等于它在多因子模型里还有同样大的边际贡献。
+* `feature_importance` 较高，并不意味着该单项因子自身必然能够稳定产生 alpha 超额收益。
+* 反之，某个单因子表现出众，也不代表将其放入包含众多特征的多因子模型中后，它仍能维持同样显著的边际贡献。
 
-### 单因子预测力、边际贡献、噪声检验也是三件事
+### 单兵预测能力、边际提携贡献、噪音探底检验也是三个独立维度
 
-当前仓库里已经有的是：
+当前仓库武器库中已提供的工具包括：
 
-* 单模型层面的 `IC` / `quantile_mean` / `long_short`
-* `permutation_test` 这种标签打乱后的噪声基线
+* 位于单模型评估基座层面的 `IC` / `quantile_mean` / `long_short` 阵列。
+* 通过打乱标签次序重组生成的噪音探测基准，如 `permutation_test`。
 
-当前还没有默认落地的是：
+目前尚未作为默认产出配置落地的工具包括：
 
-* feature permutation importance
-* drop-column / ablation
-* SHAP
+* feature permutation importance（特征扰动重要度评估）
+* drop-column / ablation（剔除单特征重训测试）
+* SHAP（基于博弈论的局部归因解释）
 
-所以不要把：
+因此，请注意区分：
 
-* `permutation_test`
+* 默认提供的 `permutation_test` 是一套基于打乱训练整体标签重组而确立的噪音干扰基线检验。
+* 切勿将其误认为是在评估某项具体 feature 的 permutation importance，两者目标完全不同。
 
-误读成：
+### 命中率 `hit_rate` 仅是辅助指标，不应替代核心的排序评价标准
 
-* “这个 feature 的 permutation importance”
+在截面选股场景中，更核心的问题在于：
 
-两者名字像，但完全不是一回事。
+* 高分股票群体是否在总体收益走势上系统性地优于低分群体。
+* 这种收益差异的阶层关系是否稳固。
 
-### `hit_rate` 是辅助指标，不该盖过排序指标
-
-在截面选股里，更核心的问题通常是：
-
-* 高分股有没有系统性强于低分股
-* 这个强弱关系是否稳定
-
-所以通常优先级更高的是：
+因此，通常排在更优先查验序列的核心标尺应为：
 
 * `RankIC`
-* `quantile_mean` 的单调性
-* `long_short`
-* 回测净收益和主动收益
+* `quantile_mean` 展现出的单调递增阶梯特性
+* `long_short` 计算出的上下端极差收益
+* 历史回测结果中的净收益与剥离 beta 后的主动收益余量
 
-`hit_rate` 和 `topk_positive_ratio` 更像是：
+而 `hit_rate` 与 `topk_positive_ratio` 这对指标的作用定位主要在于：
 
-* 补充方向感
-* 给人更直观的“命中率”视角
+* 从侧面补充提供整体的涨跌方向感参考。
+* 赋予一个更为通俗易懂的“胜率”观测视角。
 
-它们很有用，但不宜单独替代排序类指标。
+它们是极佳的辅助参考，但不应单独替代上述提及的核心排序与收益指标。
 
-### `bucket_ic`、暴露分析、容量 stress 也不是一回事
+### `bucket_ic` 分层探测、偏离暴露分析与资金容量极限压测各自独立
 
-这三者分别回答：
+这三项分析工具分别致力于解决不同维度的命题：
 
-* `bucket_ic`：信号在哪些子样本里更有效。
-* `backtest.exposure`：组合最后实际偏到了哪些风格 / 行业。
-* execution / `adv20_amount` / `participation`：如果放进交易约束和冲击假设，回测会不会明显恶化。
+* `bucket_ic`：探明在哪些具体的特征子样本群体（如特定行业或市值区间）中，模型信号的预测能力更强。
+* `backtest.exposure`：审查在完成一系列组合调仓后，实际的投资组合在风格或行业上存在怎样的偏离与暴露。
+* execution 模块 / `adv20_amount` / `participation` 参数：推演在施加了实际的交易流动性约束与市场冲击成本后，策略回测表现是否会遭遇显著滑坡。
 
-因此：
+由此可以厘清：
 
-* `bucket_ic` 强，不代表组合就一定有对应暴露。
-* 组合有明显行业偏离，也不代表模型只是在那个行业里有效。
-* execution stress 明显恶化，通常是在提醒流动性 / 容量问题，不是风格暴露问题。
+* 某一阵营中的 `bucket_ic` 表现抢眼，不代表最终构建的投资组合就一定会在该领域积累高强度的风险暴露头寸。
+* 同样，即便投资组合呈现出向某一特定行业明显倾斜的态势，也绝不意味着该模型仅在这个特定行业内具备有效性。
+* 若 execution 层的压力测试结果出现显著衰退，通常是在警示流动性枯竭或触及了资金容量上限的风险，而非由于风格偏离所导致的问题。
 
-最后一句最重要：
+请务必注意：
 
-* 当前仓库已经有不少**容量相关 proxy**，但还没有形成一套正式的**容量指标板**。
+* 目前本仓库内虽然布置了一定数量的、用于从侧面探测评估资金容量的代理参数（proxy），但至今仍未构筑并发布一套完备、正式的资金容量核算指标体系。
 
-## 建议阅读顺序
+## 建议的阅读顺序指南
 
-如果你在做一次常规研究，建议按这个顺序读：
+在开展一次常规流水线式的策略研究验收时，建议遵循下述检阅次序以提升效率：
 
 1. `summary.json -> data / universe`
 2. `summary.json -> eval.ic / eval.pearson_ic / eval.quantile_mean / eval.long_short`
 3. `summary.json -> backtest.stats`
-4. `summary.json -> backtest.active` 或 `backtest.benchmark`
+4. `summary.json -> backtest.active` 或者 `backtest.benchmark`
 5. `summary.json -> final_oos`
 6. `walk_forward_summary.csv`
 7. `feature_importance.csv`
 
-如果你只想先判断这次 run 值不值得继续看，最短路径是：
+若仅为快速概览以决定某次 run 是否具备进一步分析的价值，建议执行以下最短路径核验：
 
-1. 样本有没有被压缩得太厉害。
-2. `eval.ic.mean` 和 `eval.ic.ir` 是否稳定。
-3. `quantile_mean` 是否有基本单调性。
-4. `backtest.stats` 的净收益、回撤和成本拖累是否还能接受。
-5. `final_oos` 和 `walk_forward` 是否延续了同样的结论。
+1. 查验基础样本集是否存在被过度剔除或压缩的情况。
+2. 观察 `eval.ic.mean` 及其配套的 `eval.ic.ir` 表现是否扎实稳定。
+3. 审视 `quantile_mean` 是否维持了基本的单调递增特征。
+4. 确认 `backtest.stats` 中的净收益结余、最大回撤深度以及换手成本拖累是否处于可接受的容忍范围内。
+5. 最终对比 `final_oos` 以及 `walk_forward` 交出的独立盲测结果，看其结论是否与前面在训练集/验证集上得出的评估基调保持一致。
