@@ -8,8 +8,8 @@
 
 ## 前置条件
 
-* Python 3.12+
-* `uv`
+* Python 3.12 及以上版本
+* `uv` 包管理器
 
 ## 最短跑通
 
@@ -20,27 +20,29 @@ cp .env.example .env
 csml run --config default
 ```
 
-按 `data.provider` 配好鉴权变量，详见 `docs/providers.md`。
+请按 `data.provider` 配置好鉴权变量，详情参见 `docs/providers.md` 文件。
 
-注意：`default` 是内置别名，当前会解析到仓库 `configs/` 下的 `configs/presets/default.yml`。
-这些内置别名读取仓库根目录的 `configs/`，所以应在包含 `configs/` 的源码 checkout 或导出源码目录里运行。
+注意：`default` 是内置别名，当前会解析到仓库 `configs/` 目录下的 `configs/presets/default.yml`。
+这些内置别名会读取仓库根目录的 `configs/` 文件夹，因此请确保在包含 `configs/` 目录的源码工作区或导出的源码目录内执行命令。
 
-如果你只安装基础依赖：
+如果你只需要安装基础依赖：
 
 ```bash
 uv sync --extra dev
 ```
 
-## 跑完先看
+## 运行后检查
+
+建议优先查看以下三个产出物：
 
 * `summary.json`
 * `config.used.yml`
 * `positions_current.csv`
 
-## 下一步去哪
+## 下一步建议
 
 * 想继续按流程做研究：`docs/cookbook.md`
 * 想先建立系统心智模型：`docs/pipeline-overview.md`
-* 想做 HK selected 研究：`docs/playbooks/README.md`
+* 想做港股精选研究：`docs/playbooks/README.md`
 * 想查命令或配置定义：`docs/cli.md`、`docs/config.md`
 * 想理解产物结构：`docs/outputs.md`
