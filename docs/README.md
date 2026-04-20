@@ -38,12 +38,12 @@
 
 ## 页面分工
 
-入口：`README.md`、本页
-任务路径：`docs/get-started.md`、`docs/playbooks/`
-系统总览：`docs/pipeline-overview.md`、`docs/capabilities.md`
-通用工作流速查：`docs/cookbook.md`
-参考手册：`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md`
-专题资料：`docs/rqdata/`
-概念解释：`docs/concepts/`（包括 `docs/concepts/execution-costs.md`、`docs/concepts/external-artifacts-root.md`）
-开发与内部：`docs/dev.md`、`scripts/README.md`、`docs/internal/`
-研究笔记与论文精读：`docs/research/`
+入口：`README.md`、本页\
+任务路径：`docs/get-started.md`、`docs/playbooks/`\
+系统总览：`docs/pipeline-overview.md`、`docs/capabilities.md`\
+通用工作流速查：`docs/cookbook.md`\
+参考手册：`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`、`docs/metrics.md`、`docs/troubleshooting.md`\
+专题资料：`docs/rqdata/`\
+概念解释：`docs/concepts/`（包括 `docs/concepts/execution-costs.md`、`docs/concepts/external-artifacts-root.md`）\
+开发与内部：`docs/dev.md`、`scripts/README.md`、`docs/internal/`\
+研究笔记与论文精读：`docs/research/`\
