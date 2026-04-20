@@ -1,13 +1,13 @@
-# HK Monthly 现行口径（文件名保留 20260330，内容核对至 2026-04-13）
+# HK Monthly 现行口径（文件名保留 20260330，内容核对至 2026-04-20）
 
 本页解决什么：把当前 HK monthly 研究线真正需要保留的默认分工、升级边界和下一步动作压成一页。  
 本页不解决什么：不替代单次 run 的 `summary.json` / `config.used.yml`，也不重写每轮 probe 的完整实验流水账。  
 适合谁：重新接手 monthly 研究，想先知道“现在默认怎么看、什么是 challenger、哪些方向已降级”的读者。  
 读完你会得到什么：当前默认口径、最需要跟踪的 challenger、已明确降级的方向，以及继续推进时最值得读的专题页。  
-相关页面：`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`、`docs/research/notes/hk-monthly-pit-no-ret-follow-up-20260330.md`、`docs/research/notes/hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`、`docs/research/notes/hk-monthly-ranker-ab-and-next-sweep-20260413.md`、`docs/research/notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`、`docs/research/notes/hk-monthly-provider-vs-pit-20260330.md`、`docs/playbooks/hk-selected.md`、`docs/research/README.md`
+相关页面：`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`、`docs/research/notes/hk-monthly-pit-no-ret-follow-up-20260330.md`、`docs/research/notes/hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`、`docs/research/notes/hk-monthly-ranker-ab-and-next-sweep-20260413.md`、`docs/research/notes/hk-monthly-trial016-cfo2y-overlay-20260420.md`、`docs/research/notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`、`docs/research/notes/hk-monthly-provider-vs-pit-20260330.md`、`docs/playbooks/hk-selected.md`、`docs/research/README.md`
 
 页面性质：`current-state`  
-最后核对时间：`2026-04-13`  
+最后核对时间：`2026-04-20`
 权威来源：本页引用的 monthly deep-dive 页面，以及这些页面对应 run 目录下的 `summary.json` / `config.used.yml` / `run.log`  
 冲突优先级：如果与具体 run 的 `summary.json` / `config.used.yml` 冲突，以 run 产物为准；如果与更晚样本或更晚的 `current-state` 收口冲突，以更晚页面为准
 
@@ -22,6 +22,7 @@
 | `trial_008 + k15_bx25_be12 + groupcap4` | 当前 guarded ranker challenger | 当前 monthly `no_ret` ranker 的主 guarded challenger；适合继续作为 shadow / paper ranker 口径跟踪 |
 | `trial_008 + k15_bx20_be10 + groupcap4` | aggressive comparator | 保留作更激进的实现对照；不作为默认 |
 | `trial_016 + k15_bx25_be12` | execution ceiling | OOS 实现很亮，但 walk-forward IC 仍偏弱，不能升成默认 |
+| `trial_016 + CFO2Y rank floor` | 组合层 guardrail 候选 | `trial016` 没有直接使用 2Y 慢因子；但 `positive_cfo_ratio_2y` 作为轻量 floor 能改善当前 final OOS 的收益、回撤、换手和主动 IR，先文档化跟踪，不直接工具化 |
 | `M-provider rebalance-only` | 正式月频 comparator / shadow 候选 | 更像实现候选，不像最干净的研究主线 |
 | `Q-PIT` | 低频 benchmark | 保留 benchmark 角色，不回升为 monthly 主线 |
 
@@ -39,6 +40,7 @@
 * 现在不该再把 `pb / pe / size` overlay 组合当 monthly 第一优先方向；这条线已经给出“证据不够干净”的结论。
 * 现在也不该继续把 provider 的 `size-neutral` / `hard-cap` / `soft size control` 当主战场；这些 probe 的边际信息已经明显下降。
 * `trial_016` 不再是 ranker 默认候选，它更适合当 execution ceiling；signal-side 更应该盯 `trial_008`。
+* `trial_016` 的 `final_oos.size: 24` 不是 2 年慢因子窗口；`positive_cfo_ratio_2y` 当前只适合作为轻量组合层 guardrail，不该被误写成 `trial_016` 的模型特征升级。
 * ranker 线当前最好的状态不是“无 guardrail 的最好曲线”，而是“加了最小 `groupcap4` 之后还能保住大部分实现增量”。
 * 当前这条线已经够资格做 `shadow / paper`，但还不够资格被包装成“已能放心重仓上线的成熟单策略”。
 
@@ -68,7 +70,8 @@
 3. [`hk-monthly-pit-frozen-vs-latest-design-20260330.md`](./hk-monthly-pit-frozen-vs-latest-design-20260330.md)：理解 `R0-R4` 为什么把问题指向 recent regime，而不是 split。
 4. [`hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`](./hk-monthly-pit-no-ret-tuning-follow-up-20260405.md)：看当前 default candidate 是怎么收敛出来的。
 5. [`hk-monthly-ranker-ab-and-next-sweep-20260413.md`](./hk-monthly-ranker-ab-and-next-sweep-20260413.md)：看 ranker challenger、`trial_008` 和 construction follow-up 的现状。
-6. [`hk-monthly-benchmark-ladder-and-attribution-20260405.md`](./hk-monthly-benchmark-ladder-and-attribution-20260405.md)：看当前差距为什么更像 cap-weight / mega-cap 暴露问题。
+6. `hk-monthly-trial016-cfo2y-overlay-20260420.md`：看 `trial016` 是否用了 2Y 慢因子、CFO2Y floor 当前支持到什么程度，以及为什么先不工具化。
+7. [`hk-monthly-benchmark-ladder-and-attribution-20260405.md`](./hk-monthly-benchmark-ladder-and-attribution-20260405.md)：看当前差距为什么更像 cap-weight / mega-cap 暴露问题。
 
 ## 8. 一句话结论
 

@@ -31,6 +31,7 @@
 `notes/hk-monthly-pit-frozen-vs-latest-design-20260330.md`
 `notes/hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`
 `notes/hk-monthly-ranker-ab-and-next-sweep-20260413.md`
+`notes/hk-monthly-trial016-cfo2y-overlay-20260420.md`
 `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`
 
 按需再读：
@@ -87,6 +88,7 @@
 | `notes/hk-monthly-pit-no-ret-follow-up-20260330.md` | `no_ret` 为什么能成为 monthly PIT 候选的第一轮证据页。 |
 | `notes/hk-monthly-pit-no-ret-tuning-follow-up-20260405.md` | `no_ret + bx20 / be10` 的结构调参和局部模型调参收口页。 |
 | `notes/hk-monthly-ranker-ab-and-next-sweep-20260413.md` | monthly ranker A/B、dated-asset 复现约束、`trial_008` / `trial_016` challenger 与 construction follow-up。 |
+| `notes/hk-monthly-trial016-cfo2y-overlay-20260420.md` | `trial016` 与 `positive_cfo_ratio_2y` 的关系、CFO2Y 轻量组合层 floor 复核，以及为什么当前只文档化不工具化。 |
 | `notes/hk-monthly-provider-vs-pit-20260330.md` | monthly 里 `provider vs PIT` 的语义差异和当前分工。 |
 | `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md` | 解释 monthly 当前差距为什么更像 cap-weight / mega-cap 暴露问题。 |
 | `notes/hk-monthly-industry-treatment-20260404.md` | monthly 行业异质性的处理顺序和当前代码边界。 |
@@ -147,6 +149,7 @@
 * `notes/hk-monthly-pit-no-ret-follow-up-20260330.md`
 * `notes/hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`
 * `notes/hk-monthly-ranker-ab-and-next-sweep-20260413.md`
+* `notes/hk-monthly-trial016-cfo2y-overlay-20260420.md`
 * `notes/hk-monthly-provider-vs-pit-20260330.md`
 * `notes/hk-monthly-benchmark-ladder-and-attribution-20260405.md`
 * `notes/hk-monthly-industry-treatment-20260404.md`
