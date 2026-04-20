@@ -1,10 +1,10 @@
 # 文档首页
 
-本页解决什么：提供唯一文档入口、问题索引和阅读路径。
-本页不解决什么：不展开具体命令、配置或概念细节。
-适合谁：不知道先看哪一页的读者。
-读完你会得到什么：问题到页面的映射、阅读路径和页面分工边界。
-相关页面：`README.md`、`docs/get-started.md`、`docs/pipeline-overview.md`、`docs/capabilities.md`、`docs/cookbook.md`、`docs/playbooks/README.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/dev.md`、`scripts/README.md`
+本页解决什么：提供唯一文档入口、问题索引和阅读路径。\
+本页不解决什么：不展开具体命令、配置或概念细节。\
+适合谁：不知道先看哪一页的读者。\
+读完你会得到什么：问题到页面的映射、阅读路径和页面分工边界。\
+相关页面：`README.md`、`docs/get-started.md`、`docs/pipeline-overview.md`、`docs/capabilities.md`、`docs/cookbook.md`、`docs/playbooks/README.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/dev.md`、`scripts/README.md`\
 
 ## 先按问题找页面
 
