@@ -1,10 +1,10 @@
 # 快速上手
 
-本页解决什么：用最短路径跑通一次完整流程。
-本页不解决什么：不展开配置细节与模型选择。
-适合谁：第一次进入仓库或只想验证环境的人。
-读完你会得到什么：一套可重复的最小跑通流程与产物检查清单。
-相关页面：`README.md`、`docs/cookbook.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`
+本页解决什么：用最短路径跑通一次完整流程。\
+本页不解决什么：不展开配置细节与模型选择。\
+适合谁：第一次进入仓库或只想验证环境的人。\
+读完你会得到什么：一套可重复的最小跑通流程与产物检查清单。\
+相关页面：`README.md`、`docs/cookbook.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`\
 
 ## 前置条件
 
