@@ -47,11 +47,11 @@ csml run --config default
 
 除主流程外，系统还提供以下功能入口：
 
-* **研究汇总与参数调优**：`csml summarize`、`csml grid`、`csml tune`、`csml sweep-linear`
-* **实盘结果与持仓分配**：`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`（包含港股执行前场景矩阵分析）
-* **配置模板与本地备份**：`csml init-config`、`csml backup-data`
-* **数据与资产运维工具**：`csml rqdata ...`、`csml universe ...`
-* **数据分层与查询**：`csml data catalog`、`csml data materialize`、`csml data query`
+* 研究汇总与参数调优：`csml summarize`、`csml grid`、`csml tune`、`csml sweep-linear`
+* 实盘结果与持仓分配：`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`（包含港股执行前场景矩阵分析）
+* 配置模板与本地备份：`csml init-config`、`csml backup-data`
+* 数据与资产运维工具：`csml rqdata ...`、`csml universe ...`
+* 数据分层与查询：`csml data catalog`、`csml data materialize`、`csml data query`
 
 完整的能力地图请参考 `docs/capabilities.md` 文件。
 
@@ -82,8 +82,8 @@ csml run --config default
 
 推荐以 `docs/README.md` 作为全局文档的起点。根据不同使用阶段，建议的阅读路径如下：
 
-* **初次接触**：直接阅读 `docs/get-started.md` 完成首次跑通。
-* **建立系统认知**：阅读 `docs/pipeline-overview.md` 了解架构与数据流向。
-* **开展正式研究**：从 `docs/playbooks/README.md` 切入具体的业务路线。
-* **日常工作速查**：查阅 `docs/cookbook.md` 获取常见任务指南。
-* **查询具体细节**：根据开发或排障需求，分别查阅 `docs/cli.md`（命令）、`docs/config.md`（配置）或 `docs/outputs.md`（产物字段）。
+* 初次接触：直接阅读 `docs/get-started.md` 完成首次跑通。
+* 建立系统认知：阅读 `docs/pipeline-overview.md` 了解架构与数据流向。
+* 开展正式研究：从 `docs/playbooks/README.md` 切入具体的业务路线。
+* 日常工作速查：查阅 `docs/cookbook.md` 获取常见任务指南。
+* 查询具体细节：根据开发或排障需求，分别查阅 `docs/cli.md`（命令）、`docs/config.md`（配置）或 `docs/outputs.md`（产物字段）。
