@@ -63,20 +63,35 @@ EXPECTED_DEV_CHANGE_MAP_TOKENS = [
     "`tests/test_run_release_scripts.py`",
     "`tests/test_hk_intraday_download.py`",
 ]
-EXPECTED_README_ENTRYPOINT_LAYER_TOKENS = [
+EXPECTED_README_ENTRYPOINT_NAV_TOKENS = [
     "## 入口分层",
-    "公开主线 CLI",
-    "公开但非 CLI 模块工具",
-    "研究 / 专题模块工具",
-    "维护与开发辅助",
-    "`python -m csml.research.hk_financial_details`",
-    "`scripts/dev/run_tests.sh`",
+    "docs/capabilities.md",
+    "docs/cli.md",
+]
+EXPECTED_README_PUBLIC_CLI_TOKENS = [
+    "`csml run`",
+    "`csml summarize`",
+    "`csml grid`",
+    "`csml tune`",
+    "`csml sweep-linear`",
+    "`csml holdings`",
+    "`csml snapshot`",
+    "`csml alloc`",
+    "`csml alloc-hk`",
+    "`csml init-config`",
+    "`csml backup-data`",
+    "csml data",
+    "csml rqdata",
+    "csml universe",
 ]
 EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "## 入口分层与稳定性",
+    "公开主线 CLI",
     "公开但非 CLI 模块工具",
     "`python -m csml.release_tools.package_assets`",
+    "`python -m csml.research.hk_financial_details`",
     "`python -m csml.research.hk_intraday_download`",
+    "`scripts/dev/run_tests.sh`",
     "不是 `csml` CLI 子命令",
 ]
 EXPECTED_ARTIFACT_ROOT_TOKENS = [
@@ -342,8 +357,8 @@ def test_readme_and_capabilities_cover_entrypoint_layers():
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
     capabilities = (repo_root / "docs" / "capabilities.md").read_text(encoding="utf-8")
 
-    missing_readme = sorted(token for token in EXPECTED_README_ENTRYPOINT_LAYER_TOKENS if token not in readme)
-    missing_readme_commands = sorted(token for token in EXPECTED_CAPABILITY_TOKENS if token not in readme)
+    missing_readme = sorted(token for token in EXPECTED_README_ENTRYPOINT_NAV_TOKENS if token not in readme)
+    missing_readme_commands = sorted(token for token in EXPECTED_README_PUBLIC_CLI_TOKENS if token not in readme)
     missing_capabilities = sorted(
         token for token in EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS if token not in capabilities
     )

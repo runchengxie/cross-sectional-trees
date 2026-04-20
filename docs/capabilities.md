@@ -44,10 +44,10 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线命令行 | `csml run`、`csml summarize`、`csml grid`、`csml tune`、`csml sweep-linear`、`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`、`csml init-config`、`csml backup-data`、`csml data ...`、`csml rqdata ...`、`csml universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
-| 公开但非独立命令的模块 | `python -m csml.release_tools.package_assets`、`python -m csml.release_tools.release_assets`、`python -m csml.release_tools.package_runs`、`python -m csml.release_tools.release_runs` | 已提供文档并具备复用性，但不作为 `csml` 命令行工具的直接子命令 |
-| 研究与专题模块工具 | `python -m csml.research.hk_financial_details`、`python -m csml.research.hk_selected_provider_valuation_audit`、`python -m csml.research.hk_intraday_download`、`python -m csml.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
-| 维护与开发辅助脚本 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
+| 公开主线 CLI | `csml run`、`csml summarize`、`csml grid`、`csml tune`、`csml sweep-linear`、`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`、`csml init-config`、`csml backup-data`、`csml data ...`、`csml rqdata ...`、`csml universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets`、`python -m csml.release_tools.release_assets`、`python -m csml.release_tools.package_runs`、`python -m csml.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `csml` CLI 子命令 |
+| 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details`、`python -m csml.research.hk_selected_provider_valuation_audit`、`python -m csml.research.hk_intraday_download`、`python -m csml.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
+| 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
 
 ## 主流程能力
 
