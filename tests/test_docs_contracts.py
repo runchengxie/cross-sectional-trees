@@ -1,4 +1,5 @@
 import argparse
+import fnmatch
 import re
 import subprocess
 from pathlib import Path
@@ -48,16 +49,16 @@ EXPECTED_DEV_TEST_TOKENS = [
     "scripts/dev/run_tests.sh integration",
     "scripts/dev/run_tests.sh coverage",
     "CSML_RUN_PROVIDER_INTEGRATION=1",
-    "不等于完整复现 CI",
+    "不完全等同于在 CI 环境下的完整复现",
 ]
 EXPECTED_DEV_TEST_MATRIX_TOKENS = [
-    "### 测试矩阵",
-    "`all != 完整 CI`",
-    "最小 DuckDB 查询",
-    "最小 xlsx 写出",
+    "### 测试矩阵维度剖析",
+    "不代表完整 CI",
+    "最小 DuckDB query 执行",
+    "xlsx 文件的基本写入能力",
 ]
 EXPECTED_DEV_CHANGE_MAP_TOKENS = [
-    "## 改哪里跑哪些测试",
+    "## 修改模块与对应测试指南",
     "`tests/test_data_warehouse.py`",
     "`tests/test_asset_release_scripts.py`",
     "`tests/test_run_release_scripts.py`",
@@ -194,6 +195,14 @@ def _looks_like_inline_repo_ref(value: str) -> bool:
     return normalized.startswith(INLINE_REPO_REF_DIR_PREFIXES)
 
 
+def _has_glob_magic(value: str) -> bool:
+    return any(char in value for char in "*?[")
+
+
+def _is_tracked_repo_glob(pattern: str, tracked_paths: set[str]) -> bool:
+    return any(fnmatch.fnmatchcase(path, pattern) for path in tracked_paths)
+
+
 def _command_tree(parser: argparse.ArgumentParser) -> dict[str, dict]:
     tree: dict[str, dict] = {}
     for action in parser._actions:
@@ -280,6 +289,7 @@ def test_markdown_relative_links_exist():
 
 def test_inline_repo_path_references_exist():
     repo_root = _repo_root()
+    tracked_paths = _tracked_repo_paths(repo_root)
     missing: dict[str, list[str]] = {}
 
     for path in _doc_targets(repo_root):
@@ -291,8 +301,14 @@ def test_inline_repo_path_references_exist():
             target_path = _split_fragment(value).rstrip("/")
             if not target_path:
                 continue
+
+            if _has_glob_magic(target_path):
+                if not _is_tracked_repo_glob(target_path, tracked_paths):
+                    refs.append(value)
+                continue
+
             resolved = (repo_root / target_path).resolve()
-            if not resolved.exists():
+            if not _is_tracked_repo_target(repo_root, resolved, tracked_paths):
                 refs.append(value)
         if refs:
             missing[path.relative_to(repo_root).as_posix()] = sorted(set(refs))
