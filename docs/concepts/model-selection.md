@@ -1,13 +1,13 @@
 # 模型选择指南
 
-本页解决什么：四个模型之间的选择与取舍。
-本页不解决什么：不展开参数定义与配置细节。
-适合谁：需要在模型之间做选择的人。
-读完你会得到什么：模型选择的快速决策与对比视角。
+本页解决什么：四个模型之间的选择与取舍。\
+本页不解决什么：不展开参数定义与配置细节。\
+适合谁：需要在模型之间做选择的人。\
+读完你会得到什么：模型选择的快速决策与对比视角。\
 相关页面：`docs/config.md`、`docs/cookbook.md`、`docs/concepts/benchmark-protocol.md`、`docs/concepts/model-landscape.md`
 
-这个文档帮助你在 `xgb_regressor`、`xgb_ranker`、`ridge`、`elasticnet` 这四个模型之间做选择。
-本页只回答“在仓库已维护的四个模型里，这次该选谁”；如果你在问“为什么现在只保留这四个、以后什么时候该扩模型”，那是 [model-landscape.md](model-landscape.md) 的范围。
+这个文档帮助你在 `xgb_regressor`、`xgb_ranker`、`ridge`、`elasticnet` 这四个模型之间做选择。\
+本页只回答“在仓库已维护的四个模型里，这次该选谁”；如果你在问“为什么现在只保留这四个、以后什么时候该扩模型”，那是 [model-landscape.md](model-landscape.md) 的范围。\
 如果你想看更广的算法宇宙，或者想知道为什么当前没有把 `Logistic`、`KNN`、`PCA`、`Autoencoder` 这些方法纳入主线，请先看 [model-landscape.md](model-landscape.md)。
 
 ## 快速决策

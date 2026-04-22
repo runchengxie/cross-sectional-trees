@@ -77,7 +77,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 注意：
 
 * 两段的 symbol 数不同是正常现象，不代表坏数据；这是不同年份实际有分钟线返回的 symbol 集不同。
-* `2024-03-27` 到 `2024-04-30` 这一段不是“还没下”，而是 provider 当前拿不到。
+* `2024-03-27` 到 `2024-04-30` 这一段 provider 当前拿不到，不能按“还没下载”处理。
 
 ## provider 边界
 
@@ -109,7 +109,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 这两点很重要：
 
 * 如果实例中途挂掉，现在可以从 part 目录继续，不需要整段重下。
-* `src/csml/research/hk_intraday_slippage_report.py` 和 `cstree rqdata inspect-hk-intraday-health` 现在都会优先使用同名 `.parts/` 目录，而不是整块读取巨大的最终 parquet，所以不会再因为全市场大文件而轻易内存爆掉。
+* `src/csml/research/hk_intraday_slippage_report.py` 和 `cstree rqdata inspect-hk-intraday-health` 现在都会优先使用同名 `.parts/` 目录，避免整块读取巨大的最终 parquet，降低全市场大文件导致内存爆掉的风险。
 
 ## 当前已经产出的滑点校准结果
 
@@ -184,7 +184,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
   `buy_open_to_vwap_bps` 中位数约 `1.75 bps`，`p75` 约 `146.91 bps`
 * 两条线在 `50M` 档都落到 `buy_open_to_vwap_bps` 中位数约 `4` 到 `5 bps`，但 `p90` 仍在 `339` 到 `370 bps`
 
-所以当前更适合落成三档 execution 候选，而不是假装自己已经做完 broker TCA。仓库里现在已经落成了两条 calibrated 入口，加上一条 lagged-ADV stress baseline：
+所以当前更适合先落成三档执行候选。仓库里现在已经有两条校准入口，加上一条滞后 ADV 压力基线：
 
 * `balanced`
   对应 [hk_selected__execution_balanced_local.yml](../../configs/experiments/variants/hk_selected__execution_balanced_local.yml)
@@ -249,7 +249,7 @@ backtest:
 解释：
 
 * 这里的 `base_bps` 对齐的是研究池过滤后的 `open -> VWAP proxy` 中位数量级。
-* `impact_bps` 不是直接拟合 `p75/p90`，而是把这批分钟线结果当成“压力带”来定一个更保守的 participation 曲线。
+* `impact_bps` 使用这批分钟线结果作为“压力带”，据此设定更保守的 participation 曲线，不直接拟合 `p75/p90`。
 * `stress baseline` 保留得更宽松一些，适合先替代 flat `25bps`；如果你要直接上校准后的研究线，优先从 `balanced` 或 `connect_conservative` 开始。
 * 在当前 `portfolio_value=1m`、`top_k=20` 的设定下，单笔 trade participation 通常很低，真正决定结果的大多还是 `base_bps` 和 `min_amount`；如果你要做容量分析，先改 `portfolio_value`，再谈 `impact_bps`。
 

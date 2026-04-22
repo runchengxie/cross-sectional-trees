@@ -1,9 +1,9 @@
 # 输出产物与字段约定
 
-本页解决什么：run 目录与产物字段的权威说明。
-本页不解决什么：不展开指标含义与研究流程。
-适合谁：要写下游消费脚本或核对输出结构的人。
-读完你会得到什么：完整的目录与字段约定。
+本页解决什么：run 目录与产物字段的权威说明。\
+本页不解决什么：不展开指标含义与研究流程。\
+适合谁：要写下游消费脚本或核对输出结构的人。\
+读完你会得到什么：完整的目录与字段约定。\
 相关页面：`docs/metrics.md`、`docs/config.md`、`docs/cookbook.md`
 
 本页说明 run 目录中的关键文件与字段约定，便于写自动化消费脚本（风控、报表、下游执行等）。
@@ -128,7 +128,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
     exchange_rate.parquet
 ```
 
-这类目录不按 symbol 拆文件，而是把整个时间窗的汇率结果写入单个 `data/exchange_rate.parquet`。
+这类目录按整个时间窗保存汇率结果，写入单个 `data/exchange_rate.parquet`，不再按 symbol 拆文件。
 
 字段约定：
 
@@ -184,7 +184,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 * `catalog.sqlite` 是控制面，不存行情本体。
 * `catalog_summary.csv` 是给人看和临时筛选的平面导出，不替代 SQLite。
-* `current_assets/hk_current.json` 是一份轻量 current contract，记录当前 HK 资产 alias 的 resolved snapshot/file、manifest 摘要和 `as_of`；`package_assets --preset hk_current` 与 run 侧 `inputs.lock.json` 会优先消费它，而不是把 `latest` alias 直接当审计依据。
+* `current_assets/hk_current.json` 是一份轻量 current contract，记录当前 HK 资产 alias 的 resolved snapshot/file、manifest 摘要和 `as_of`；`package_assets --preset hk_current` 与 run 侧 `inputs.lock.json` 会优先消费它，审计时不直接依赖 `latest` alias。
 
 ## Standardized Layer
 
@@ -1011,7 +1011,7 @@ artifacts/sweeps/<tag>/
 * `scenario_capital`
 * `scenario_top_n`
 
-多场景 `--format=csv` 时，当前输出 `scenario_overview` 的平面表，而不是逐标的 `allocations` 明细。
+多场景 `--format=csv` 时，当前输出 `scenario_overview` 的平面表；逐标的 `allocations` 明细请使用 json 或单场景输出。
 
 `allocations` 行级常用字段：
 
@@ -1057,7 +1057,7 @@ artifacts/snapshots/<name>/
 
 ### 历史 run Release staging：`python -m csml.release_tools.package_runs`
 
-如果你要把历史研究结果拆成可上传 GitHub Release 的独立包，建议用模块级打包流程，而不是直接复制整个 `artifacts/runs/`。
+如果要把历史研究结果拆成可上传 GitHub Release 的独立包，建议用模块级打包流程，避免直接复制整个 `artifacts/runs/`。
 
 默认 staging 结构：
 

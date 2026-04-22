@@ -27,6 +27,16 @@
 * 先写“本页结论”和“该怎么用”，再列实验细节和历史过程。
 * 链接只指向受版本控制的仓库文件；本地 `artifacts/...` 产物用代码文本记录。
 
+推荐新写或重写 notes 时使用这个顺序：
+
+1. 一句话结论。
+2. 当前是否仍生效。
+3. 证据强度：强 / 中 / 弱，并说明依据哪些 run。
+4. 该怎么用：默认入口、候选路线、对照路线或只作追溯。
+5. 边界说明：哪些结论不能外推。
+6. 下一步动作。
+7. 追溯入口和关键产物。
+
 ## 快速入口
 
 如果你只是要重新接手，不必先读下面所有表格，先按这组入口走。
@@ -85,8 +95,8 @@
 
 | 页面 | 当前一句话 |
 | --- | --- |
-| `notes/hk-monthly-current-state-20260330.md` | 当前 monthly 默认分工是：`M-PIT baseline` 留作研究锚点，`M-PIT + no_ret + bx20 / be10` 继续当默认 PIT candidate，`trial_008 + k15_bx25_be12` 升为 ranker 主 challenger，`M-provider rebalance-only` 保留实现 comparator / shadow 候选。 |
-| `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 默认分工是：`ranker h12_w16 + close + balanced execution` 保持主线，`reg_zscore h12_w16 + tr_close` 保持第一 challenger，`raw-scale dedup + groupcap3` 继续当结构 probe，`provider_dense` 只保留为 coverage-sensitive 变体。 |
+| `notes/hk-monthly-current-state-20260330.md` | 当前 monthly 默认分工是：`M-PIT baseline` 留作研究锚点，`M-PIT + no_ret + bx20 / be10` 继续当默认 PIT 候选，`trial_008 + k15_bx25_be12` 升为 ranker 主候选，`M-provider rebalance-only` 保留为实现对照 / 前瞻候选。 |
+| `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 默认分工是：`ranker h12_w16 + close + balanced execution` 保持主线，`reg_zscore h12_w16 + tr_close` 保持第一候选路线，`raw-scale dedup + groupcap3` 继续当结构探针，`provider_dense` 只保留为 coverage-sensitive 变体。 |
 
 ### 专题分析（Active Deep-Dive）
 
@@ -105,7 +115,7 @@
 | `notes/hk-monthly-slowfund-five-line-wrap-up-20260413.md` | monthly 慢财务五线对比的收口页；说明 `main / comp / accrual / fin / nonfin` 各自该扮演什么角色。 |
 | `notes/hk-quarterly-benchmark-and-interpretation-20260405.md` | quarterly 主线、challenger、结构 probe 和纯基本面 sidecar 的解释层。 |
 | `notes/hk-quarterly-holdings-analysis-20260329.md` | quarterly 持仓稳定性、集中度和组合差异分析。 |
-| `notes/hk-quarterly-construction-grid-20260329.md` | quarterly fixed-signal construction shortlist；当前仍更适合当 shortlist，不是升级证据。 |
+| `notes/hk-quarterly-construction-grid-20260329.md` | quarterly 固定分数组合构造 shortlist；当前仍更适合当 shortlist，暂不足以作为升级证据。 |
 | `notes/hk-quarterly-next-step-configs-20260329.md` | quarterly 下一阶段配置建议。 |
 | `notes/hk-quarterly-oos-evidence-20260329.md` | quarterly 最近 OOS 亮点与“已得到证据”的边界说明。 |
 | `notes/hk-quarterly-pure-fundamentals-20260329.md` | quarterly 纯 PIT 基本面 sidecar 路线。 |

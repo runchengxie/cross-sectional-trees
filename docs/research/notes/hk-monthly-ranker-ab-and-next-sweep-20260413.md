@@ -1,14 +1,14 @@
 # HK Monthly Ranker A/B 与下一轮探索设计（2026-04-13）
 
-> 状态提示：本页属于 active deep-dive，用于记录 monthly `no_ret` family 上的 ranker A/B、artifact 口径陷阱、第一波 ranker-native 小 sweep，以及后续 fixed-signal construction grid。当前 monthly 默认入口仍是 [hk-monthly-current-state-20260330.md](./hk-monthly-current-state-20260330.md)。
+> 状态提示：本页属于专题分析（`active deep-dive`），记录 monthly `no_ret` 族上的 ranker A/B、artifact 口径陷阱、ranker 原生小 sweep，以及后续固定分数组合网格。当前 monthly 默认入口仍是 [hk-monthly-current-state-20260330.md](./hk-monthly-current-state-20260330.md)。
 
-本页解决什么：回答“把 round 4 gated winner 的 XGB 参数换成 ranker 后，到底比 regressor 和旧 ranker 好在哪里、差在哪里”，并记录第一波 ranker-native 小 sweep 与 fixed-signal construction grid 的结果。
+本页解决什么：回答“把 round 4 gated winner 的 XGB 参数换成 ranker 后，比 regressor 和旧 ranker 好在哪里、差在哪里”，并记录第一波 ranker 原生小 sweep 与固定分数组合网格的结果。
 
 本页不解决什么：不把单次 ranker A/B 升级成新主线，不替代 `summary.json` / `config.used.yml`，也不重新解释季度 ranker 主线。
 
 适合谁：已经看过 `hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`，并想决定 monthly 下一轮是继续调 regressor、ranker 还是 construction 的人。
 
-读完你会得到什么：一个可复现 A/B 结论、一个关于 `latest` artifact 的复现风险提醒、第一波 ranker-native sweep 的 shortlist、fixed-signal construction grid 的结果，以及当前 execution-layer challenger 的初步归因风险。
+读完你会得到什么：一个可复现 A/B 结论、一个关于 `latest` artifact 的复现风险提醒、第一波 ranker 原生 sweep 的 shortlist、固定分数组合网格结果，以及当前执行层候选路线的初步归因风险。
 
 相关页面：[hk-monthly-current-state-20260330.md](./hk-monthly-current-state-20260330.md)、[hk-monthly-pit-no-ret-tuning-follow-up-20260405.md](./hk-monthly-pit-no-ret-tuning-follow-up-20260405.md)、[hk-monthly-benchmark-ladder-and-attribution-20260405.md](./hk-monthly-benchmark-ladder-and-attribution-20260405.md)、[hk-quarterly-benchmark-and-interpretation-20260405.md](./hk-quarterly-benchmark-and-interpretation-20260405.md)
 
@@ -22,12 +22,22 @@
 
 冲突优先级：如果与具体 run 的 `summary.json` / `config.used.yml` 冲突，以 run 产物为准；如果与更晚样本或正式 sweep 结果冲突，以更晚样本或正式 sweep 为准
 
-## 1. 先说结论
+## 1. 术语速查
 
-这次 A/B 的最重要结论原本不是“ranker 已经赢了”，而是：
+| 本页写法 | 含义 |
+| --- | --- |
+| gated winner | 通过当前 CV gate 的调参 winner |
+| ranker 原生 sweep | 按 ranker 自身参数空间做的小范围搜索 |
+| 固定分数组合网格 | 固定模型分数，只扫组合构造参数 |
+| 执行层候选 | 主要改善执行和组合层表现的候选路线 |
+| 带约束候选 | 带组合约束后仍有增量的候选路线 |
+
+## 2. 先说结论
+
+这次 A/B 的最重要结论是：
 
 * monthly `no_ret` family 上，ranker 确实值得继续探索。
-* 直接把 round 4 gated regressor winner 的参数换成 `xgb_ranker + rank:pairwise`，不是一个足够好的最终答案。
+* 直接把 round 4 gated regressor winner 的参数换成 `xgb_ranker + rank:pairwise`，还不是足够好的最终答案。
 * ranker 的组合路径有亮点，但信号证据不够干净：
   * CV fold 覆盖更完整
   * walk-forward Sharpe 改善
@@ -39,35 +49,35 @@
 
 一句话收口：
 
-* **下一轮最值得做的是 ranker-native 小 sweep，而不是继续把 regressor 的最优参数原样套给 ranker。**
+* **下一轮最值得做的是 ranker 原生小 sweep，不要继续把 regressor 的最优参数原样套给 ranker。**
 
-第一波 ranker-native 小 sweep 跑完后，需要把结论更新为：
+第一波 ranker 原生小 sweep 跑完后，需要把结论更新为：
 
-* **ranker-native 调参已经找到一个更像样的 monthly challenger，但还不应直接升主线。**
+* **ranker 原生调参已经找到一个更像样的 monthly 候选路线，但还不应直接升主线。**
 * 最强候选是 `trial_016`：`max_depth=2`、`min_child_weight=20`、`reg_lambda=10`、`reg_alpha=1.0`、`subsample=0.7`、`colsample_bytree=0.7`。
 * 它修掉了直接 ranker A/B 的两个硬伤：final OOS long-short 转正，final OOS turnover 明显下降。
-* 但它的 walk-forward IC mean 仍为负，说明还需要一次复跑 / construction grid 验证，不能只凭 final OOS Sharpe 升级。
+* 但它的 walk-forward IC mean 仍为负，说明还需要一次复跑 / 组合网格验证，不能只凭 final OOS Sharpe 升级。
 
-同口径复跑和 fixed-signal construction grid 跑完后，结论再更新一次：
+同口径复跑和固定分数组合网格跑完后，结论再更新一次：
 
 * `trial_016` 同口径复跑完全贴回原 run，说明它不是单次产物噪音。
-* construction grid 的最强组合是 `k15_bx25_be12`：`top_k=15`、`buffer_exit=25`、`buffer_entry=12`。
+* 组合网格的最强组合是 `k15_bx25_be12`：`top_k=15`、`buffer_exit=25`、`buffer_entry=12`。
 * 它把 final OOS Sharpe 从 `2.07` 提到 `2.26`，backtest avg turnover 从 `16.60%` 降到 `14.56%`，active IR 从 `0.38` 提到 `0.55`。
 * 初步 attribution 说明，`k15_bx25_be12` 的 active IR 改善在多个 benchmark 下都成立，但组合更集中，并且长期明显偏向大盘、低波和质量暴露。
-* walk-forward IC mean 仍是 `-7.13%`，所以这次改善更像 execution / construction 层增量，而不是 signal 稳定性已经解决。
-* 当前更准确的状态是：`trial_016 + k15_bx25_be12` 可以作为 monthly `no_ret` ranker execution-layer challenger；还不应替代 regressor gated winner 或 monthly 默认入口。
+* walk-forward IC mean 仍是 `-7.13%`，所以这次改善更像执行 / 组合构造层增量；signal 稳定性还没有解决。
+* 当前更准确的状态是：`trial_016 + k15_bx25_be12` 可以作为 monthly `no_ret` ranker 执行层候选；还不应替代 regressor gated winner 或 monthly 默认入口。
 
-第二波 ranker-native 邻域、bridge sweep 和 `trial_008` fixed-signal construction grid 跑完后，结论还要再更新一次：
+第二波 ranker 原生邻域、bridge sweep 和 `trial_008` 固定分数组合网格跑完后，结论还要再更新一次：
 
 * 第二波邻域说明：模型层没有找到一个能同时保住 `trial_016` 的 active IR、又把 walk-forward IC 稳定修正的桥接点。
 * `trial_008` 变成更像 signal-candidate 的点：它的 walk-forward test IC mean 为 `0.07%`，同时 final OOS Sharpe 仍有 `1.99`。
-* 固定 `trial_008` 后，construction grid 的 objective winner 仍是 `k15_bx25_be12`。
+* 固定 `trial_008` 后，组合网格的 objective winner 仍是 `k15_bx25_be12`。
 * 它把 final OOS Sharpe 从 `1.99` 提到 `2.19`，final OOS backtest turnover 从 `18.36%` 降到 `15.50%`，final OOS active IR 从 `0.21` 提到 `0.38`。
 * 更激进的 `k15_bx20_be10` 也值得保留：final OOS Sharpe `2.19`，active IR `0.58`，但 turnover 回到 `18.93%`。
 * 接入 dated industry labels 后，`groupcap4` 能把 top industry 名字数压到 `<= 4`，同时仍把 `trial_008 + k15_bx25_be12` 的 final OOS Sharpe 保在 `2.20` 左右。
-* `groupcap3` 在这条线上的 active IR 代价偏大，因此当前更准确的状态是：`trial_008 + k15_bx25_be12 + groupcap4` 应视为 monthly `no_ret` ranker 的主 guarded challenger，`trial_008 + k15_bx20_be10 + groupcap4` 是 aggressive comparator；`trial_016 + k15_bx25_be12` 仍是 execution ceiling，而不是默认主线。
+* `groupcap3` 在这条线上的 active IR 代价偏大，因此当前更准确的状态是：`trial_008 + k15_bx25_be12 + groupcap4` 应视为 monthly `no_ret` ranker 的主带约束候选，`trial_008 + k15_bx20_be10 + groupcap4` 是激进对照；`trial_016 + k15_bx25_be12` 仍是执行层上限参考，不是默认主线。
 
-## 2. 为什么先写这页
+## 3. 为什么先写这页
 
 这次复核过程中出现了一个容易误导后续研究的细节：
 
@@ -76,7 +86,7 @@
 * 直接用原 `best_config.yml` 改成 ranker 并跑当前 `latest`，会在切分阶段失败：
   * `eval.final_oos.size leaves no in-sample dates.`
 
-失败原因不是 ranker 本身，而是当前 `hk_selected_pit_research_by_date.csv` 已经变成更小的 universe：
+失败原因来自当前 `hk_selected_pit_research_by_date.csv` 已经变成更小的 universe，不能归因于 ranker 本身：
 
 | by-date file | symbols | dates | date range |
 | --- | ---: | ---: | --- |
@@ -95,7 +105,7 @@
 * 后续 monthly sweep 不应再默认使用 `latest`
 * 否则模型差异会和数据口径差异混在一起
 
-## 3. 本次 A/B 设置
+## 4. 本次 A/B 设置
 
 基准来自 round 4 gated winner：
 
@@ -130,7 +140,7 @@
 * regressor fixed run：`artifacts/runs/hk_sel_m_pit_no_ret_r4_trial020_regressor_ab_fixed20260402_20260413_110214_5604297b/`
 * ranker fixed run：`artifacts/runs/hk_sel_m_pit_no_ret_r4_trial020_ranker_ab_fixed20260402_20260413_110312_85ffa390/`
 
-## 4. 和原 round 4 winner 的复现检查
+## 5. 和原 round 4 winner 的复现检查
 
 先看 regressor fixed 是否能贴回原 round 4。
 
@@ -154,9 +164,9 @@
 这个复现足够接近，说明：
 
 * fixed dated asset A/B 是可用比较口径
-* ranker 差异主要来自 model/objective，而不是数据漂移
+* ranker 差异主要来自 model/objective，数据漂移不是主要解释
 
-## 5. Ranker A/B 结果
+## 6. Ranker A/B 结果
 
 | 指标 | regressor fixed | ranker fixed |
 | --- | ---: | ---: |
@@ -186,15 +196,11 @@
 * 但 ranker 的 test / final OOS IC 都明显弱，final OOS long-short 还变负。
 * ranker 的 turnover 更高，且 active IR 更差。
 
-所以不能说：
-
-* ranker 已经优于 regressor
-
-更准确是：
+更准确的读法是：
 
 * **ranker 解决了一部分验证可判分和组合路径问题，但没有保住 regressor 的信号强度。**
 
-## 6. 和季度 ranker 主线的关系
+## 7. 和季度 ranker 主线的关系
 
 季度当前主线仍是：
 
@@ -240,9 +246,9 @@
 
 * **monthly ranker 是一个值得单独推进的分支，但它回答的是 monthly `no_ret` family 的问题，不是季度主线替换问题。**
 
-## 7. 为什么不能直接升 ranker
+## 8. 为什么不能直接升 ranker
 
-这次 ranker A/B 最大的问题不是收益账面，而是证据结构：
+这次 ranker A/B 最大的问题在证据结构，不在收益账面：
 
 * signal 层：
   * test IC IR 比 regressor 低
@@ -261,9 +267,9 @@
 * 不能把 final OOS Sharpe 单独当作升级依据
 * 下一轮必须同时看 IC、walk-forward、turnover 和 active metrics
 
-## 8. 下一轮最值得探索的方向
+## 9. 下一轮最值得探索的方向
 
-下一轮不是“大扫模型”，而是小范围 ranker-native sweep。
+下一轮应做小范围 ranker 原生 sweep，避免“大扫模型”。
 
 目标：
 
@@ -297,7 +303,7 @@
 * 只保留少数 `min_child_weight=5` 和 `20` 的边界探针
 * `buffer` 第一波先不扫，避免把 model 和 construction 混在一起
 
-## 9. 下一轮 gate
+## 10. 下一轮 gate
 
 下一轮 best selection 不应只用一个 objective。
 
@@ -325,7 +331,7 @@
 * final OOS Sharpe 太容易被 2024-2026 regime 和 benchmark 背景放大
 * 如果 signal 层不稳，Sharpe 再亮也只能当线索，不能当主线证据
 
-## 10. 第一波 ranker-native sweep 结果
+## 11. 第一波 ranker 原生 sweep 结果
 
 第一波按本页第 8 节设计跑了 16 个手工候选：
 
@@ -334,7 +340,7 @@
 * result table：`artifacts/sweeps/hk_m_pit_no_ret_ranker_native_r1_fixed20260402/trial_results.csv`
 * run summary table：`artifacts/sweeps/hk_m_pit_no_ret_ranker_native_r1_fixed20260402/runs_summary.csv`
 
-### 10.1 主要候选
+### 11.1 主要候选
 
 | trial | combo | strict gate | loose gate | test IC IR | WF IC mean | WF Sharpe mean | final OOS IC | final OOS long-short | final OOS Sharpe | final OOS turnover | final OOS active IR |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -347,9 +353,9 @@
 
 `loose gate` 只放宽 test IC IR，不放宽 final OOS signal / turnover / active 要求。
 
-### 10.2 和直接 A/B 的增量
+### 11.2 和直接 A/B 的增量
 
-| 指标 | regressor fixed | direct ranker fixed | ranker-native trial016 |
+| 指标 | regressor fixed | direct ranker fixed | ranker 原生 trial016 |
 | --- | ---: | ---: | ---: |
 | test IC mean | `4.64%` | `2.26%` | `4.99%` |
 | test IC IR | `0.35` | `0.15` | `0.35` |
@@ -367,17 +373,17 @@
 
 怎么读：
 
-* `trial_016` 已经不是“regressor 参数硬套 ranker”，它是 ranker-native 下的强候选。
+* `trial_016` 已经不是“regressor 参数硬套 ranker”，它是 ranker 原生搜索下的强候选。
 * 它相对 direct ranker fixed 的改善很干净：final OOS IC、long-short、Sharpe、turnover、active IR 全部改善。
 * 它相对 regressor fixed 也有亮点：final OOS IC 接近或略高，Sharpe 更高，drawdown 更浅，turnover 更低，active IR 转正。
-* 主要保留意见是 walk-forward IC mean 仍然较差；它靠 walk-forward Sharpe gate 过关，而不是靠 walk-forward IC 过关。
+* 主要保留意见是 walk-forward IC mean 仍然较差；它靠 walk-forward Sharpe gate 过关，walk-forward IC 还没过关。
 
 所以在 construction grid 前，更准确的状态是：
 
-* **`trial_016` 可以升级为 monthly `no_ret` ranker challenger。**
+* **`trial_016` 可以升级为 monthly `no_ret` ranker 候选路线。**
 * **它不应直接替代 regressor gated winner；当时下一步应做一次小范围 construction grid 和一次同口径复跑。**
 
-### 10.3 同口径复跑与 construction grid
+### 11.3 同口径复跑与组合网格
 
 先对 `trial_016` 做了同口径复跑：
 
@@ -416,7 +422,7 @@
 
 怎么读：
 
-* `k15_bx25_be12` 是这轮 construction grid 里最值得保留的 execution-layer challenger。
+* `k15_bx25_be12` 是这轮组合网格里最值得保留的执行层候选。
 * 它相对 `trial_016` baseline 同时改善 final OOS Sharpe、backtest turnover、active IR，并且 max drawdown 基本持平。
 * `k15_bx20_be10` test / WF Sharpe 更好，但 final OOS drawdown 明显更深，且 turnover 没有明显下降。
 * `k20_bx25_be12` 是保守备选：保留 `top_k=20`，也能降低 OOS turnover，但 active IR 不如 `k15_bx25_be12`。
@@ -426,9 +432,9 @@
 
 * model score、IC、long-short 完全相同，因为模型层没有变。
 * walk-forward IC mean 仍为负。
-* 因此它只能把 `trial_016` 从 model-layer challenger 推进成 execution-layer challenger，不能把它升级成已解决稳定性的主线。
+* 因此它只能把 `trial_016` 从模型层候选推进成执行层候选，不能把它升级成已解决稳定性的主线。
 
-### 10.4 Benchmark active attribution 和持仓集中度
+### 11.4 Benchmark active attribution 和持仓集中度
 
 对 `k15_bx25_be12` 做了一次初步 attribution / concentration check：
 
@@ -509,21 +515,21 @@
 * `k15_bx25_be12` 的 active improvement 是真实可见的，不是 primary benchmark 特有现象。
 * 它比 `k20_bx20_be10` 更像一个低 beta、大盘、低波、质量倾斜组合。
 * 它也明显更集中，top symbols 和 top month 对结果贡献不小。
-* 因此它适合作为 execution-layer challenger；但下一步应该先做 exposure guardrail / concentration guardrail probe，而不是马上升 monthly 默认。
+* 因此它适合作为执行层候选；下一步应该先做暴露防线 / 集中度防线 probe，不能马上升为 monthly 默认。
 
-## 11. Construction grid 之后怎么决策
+## 12. 组合网格之后怎么决策
 
 同口径复跑和 construction grid 跑完后，建议把判断收口成三层：
 
-### 11.1 Signal 层
+### 12.1 Signal 层
 
 `trial_016` 比 direct ranker fixed 明显更强，但 walk-forward IC mean 仍弱：
 
 * 不能说 ranker signal 已经稳定优于 regressor
 * 也不能说 construction grid 解决了 signal 稳定性
-* 下一次模型层探索应优先围绕 walk-forward IC 做，而不是继续追 final OOS Sharpe
+* 下一次模型层探索应优先围绕 walk-forward IC 做，避免继续追 final OOS Sharpe
 
-### 11.2 Construction 层
+### 12.2 Construction 层
 
 `k15_bx25_be12` 是当前最清楚的增量：
 
@@ -534,9 +540,9 @@
 
 所以它可以保留为：
 
-* monthly `no_ret` ranker execution-layer challenger
+* monthly `no_ret` ranker 执行层候选
 
-### 11.3 主线升级层
+### 12.3 主线升级层
 
 当前仍不应直接升主线，除非后续还能给出至少一个额外证据：
 
@@ -546,23 +552,23 @@
 
 在这之前，`trial_016 + k15_bx25_be12` 更适合当 challenger，不适合当默认。初步 attribution 没有推翻它，但也没有消除集中度和暴露风险。
 
-## 12. 当前推荐执行顺序
+## 13. 当前推荐执行顺序
 
 最务实的顺序是：
 
 1. 写本页并固定证据边界。已完成。
-2. 基于 dated asset 写一个 ranker-native tune spec。已完成。
+2. 基于 dated asset 写一个 ranker 原生 tune spec。已完成。
 3. 先跑 dry-run 检查 configs 和 jobs。已完成。
 4. 跑 12-18 个小 trial。已完成，实际 16 个。
 5. 统一 summarize。已完成。
-6. 按本页 gate 选 shortlist，而不是只看 best objective。当前 shortlist 是 `trial_016`，观察候选是 `trial_008` / `trial_015`。
+6. 按本页 gate 选 shortlist，避免只看 best objective。当前 shortlist 是 `trial_016`，观察候选是 `trial_008` / `trial_015`。
 7. 对 `trial_016` 做同口径复跑，确认不是单次 run 噪音。已完成。
-8. 如果复跑仍成立，再做 fixed-signal construction grid。已完成，当前首选是 `k15_bx25_be12`。
+8. 如果复跑仍成立，再做固定分数组合网格。已完成，当前首选是 `k15_bx25_be12`。
 9. 做 benchmark active attribution 和 holding concentration 检查。已完成，结论是 active 改善成立，但集中度和大盘 / 低波 / 质量暴露风险仍需下一轮 guardrail。
-10. 围绕 `trial_016` 补第二波 ranker-native 邻域 sweep，确认 walk-forward 修复是否能在不显著牺牲 active IR 的情况下成立。已完成，当前 signal-side 更像样的候选变成 `trial_008`。
+10. 围绕 `trial_016` 补第二波 ranker 原生邻域 sweep，确认 walk-forward 修复是否能在不显著牺牲 active IR 的情况下成立。已完成，当前 signal-side 更像样的候选变成 `trial_008`。
 11. 做一个小的 bridge sweep，测试 `trial_005` 和 `trial_016` 之间有没有可用桥接点。已完成，结论是没有真正 bridge 成功的新点。
-12. 固定 `trial_008` 再做 fixed-signal construction grid。已完成，当前平衡最好的组合是 `k15_bx25_be12`，更激进 comparator 是 `k15_bx20_be10`。
-13. 下一步优先做 `trial_008 + k15_bx25_be12` 的 fixed-signal exposure / concentration guardrail probe，并用 `trial_008 + k15_bx20_be10` 做 aggressiveness 对照，而不是继续扩模型 sweep。
+12. 固定 `trial_008` 再做固定分数组合网格。已完成，当前平衡最好的组合是 `k15_bx25_be12`，更激进 comparator 是 `k15_bx20_be10`。
+13. 下一步优先做 `trial_008 + k15_bx25_be12` 的固定分数暴露 / 集中度防线 probe，并用 `trial_008 + k15_bx20_be10` 做激进对照，避免继续扩模型 sweep。
 
 不要先做：
 
@@ -575,7 +581,7 @@
 
 * **ranker 本身有没有稳定排序增量。**
 
-## 13. 第二波邻域与 `trial_008` construction follow-up
+## 14. 第二波邻域与 `trial_008` 组合构造跟进
 
 这轮后续动作分三步：
 
@@ -583,9 +589,9 @@
 * bridge sweep：`artifacts/sweeps/hk_m_pit_no_ret_ranker_native_r3_bridge_fixed20260402/`
 * 固定 `trial_008` 的 construction grid：`artifacts/sweeps/hk_m_pit_no_ret_ranker_trial008_construction_r1_fixed20260402/`
 
-### 13.1 第二波邻域给了什么
+### 14.1 第二波邻域给了什么
 
-第二波邻域最重要的结果不是 objective winner 本身，而是把 signal-side 和 implementation-side 的候选分开了：
+第二波邻域最重要的结果是把 signal-side 和 implementation-side 的候选分开；objective winner 本身不是重点：
 
 | trial | combo | test IC IR | WF IC mean | final OOS Sharpe | final OOS turnover | final OOS active IR |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -604,9 +610,9 @@
 * `trial_005`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_native_r2_fixed20260402_trial_005_20260413_140040_9089382b/`
 * `trial_008`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_native_r2_fixed20260402_trial_008_20260413_140214_b36dc50b/`
 
-### 13.2 Bridge sweep 排除了什么
+### 14.2 Bridge sweep 排除了什么
 
-bridge sweep 的作用不是找新冠军，而是回答：
+bridge sweep 的作用是回答：
 
 * `trial_005` 的 walk-forward 修复，能不能和 `trial_016` 的 active IR / implementation 强度合并
 
@@ -621,13 +627,13 @@ bridge sweep 的作用不是找新冠军，而是回答：
 怎么读：
 
 * 没有一个点能同时优于 `trial_008` 的 signal 证据和 `trial_016` 的 implementation 强度。
-* 这一步的研究价值主要是排除了一段中间参数区，而不是找到新默认。
+* 这一步的研究价值主要是排除了一段中间参数区；它没有给出新默认。
 
 关键 sweep：
 
 * `artifacts/sweeps/hk_m_pit_no_ret_ranker_native_r3_bridge_fixed20260402/`
 
-### 13.3 固定 `trial_008` 后的 construction grid
+### 14.3 固定 `trial_008` 后的组合网格
 
 固定 `trial_008` 的模型层后，construction grid 真正给出了可保留的实现增量。
 
@@ -659,23 +665,23 @@ bridge sweep 的作用不是找新冠军，而是回答：
 * `k15_bx25_be12`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_trial008_construction_r1_fixed20260402_trial_004_20260413_152359_03bd4147/`
 * `k15_bx20_be10`：`artifacts/runs/hk_sel_m_tune_hk_m_pit_no_ret_ranker_trial008_construction_r1_fixed20260402_trial_002_20260413_152256_67b2d5da/`
 
-### 13.4 和 `trial_016 + k15_bx25_be12` 怎么摆
+### 14.4 和 `trial_016 + k15_bx25_be12` 怎么摆
 
 当前三个最值得保留的点可以这样分层：
 
 | 角色 | 组合 | 主要理由 |
 | --- | --- | --- |
-| signal + implementation 主 challenger | `trial_008 + k15_bx25_be12` | walk-forward IC 证据最干净，同时 OOS Sharpe / turnover / active IR 都有明显实现增量 |
-| aggressive comparator | `trial_008 + k15_bx20_be10` | active IR 最强，但 turnover 没有同步改善 |
-| execution ceiling | `trial_016 + k15_bx25_be12` | OOS Sharpe / active IR 仍是当前上限，但 walk-forward IC 仍明显为负 |
+| signal + implementation 主候选 | `trial_008 + k15_bx25_be12` | walk-forward IC 证据最干净，同时 OOS Sharpe / turnover / active IR 都有明显实现增量 |
+| 激进对照（aggressive comparator） | `trial_008 + k15_bx20_be10` | active IR 最强，但 turnover 没有同步改善 |
+| 执行层上限参考（execution ceiling） | `trial_016 + k15_bx25_be12` | OOS Sharpe / active IR 仍是当前上限，但 walk-forward IC 仍明显为负 |
 
-当前最合理的下一步不是继续开第四轮模型 sweep，而是：
+当前最合理的下一步是：
 
 * 固定 `trial_008 + k15_bx25_be12 + groupcap4`
 * 用 `trial_008 + k15_bx20_be10 + groupcap4` 当 aggressiveness 对照
 * 停止继续扩 construction / guardrail 小网格，转向前瞻跟踪
 
-### 13.5 Guardrail probe 结果
+### 14.5 Guardrail probe 结果
 
 guardrail probe 分两轮：
 
@@ -702,27 +708,27 @@ guardrail probe 分两轮：
 
 | 角色 | 组合 | 主要理由 |
 | --- | --- | --- |
-| guarded challenger | `trial_008 + k15_bx25_be12 + groupcap4` | 在最小行业约束下保住大部分 Sharpe / turnover / active IR 增量，且 top industry 名字数已压到 `<= 4` |
-| aggressive comparator | `trial_008 + k15_bx20_be10 + groupcap4` | active IR 更强、drawdown 更浅，但换手仍明显更高 |
-| execution ceiling | `trial_016 + k15_bx25_be12` | 纯 OOS 实现仍亮，但 walk-forward IC 仍偏弱 |
+| 带约束候选（guarded challenger） | `trial_008 + k15_bx25_be12 + groupcap4` | 在最小行业约束下保住大部分 Sharpe / turnover / active IR 增量，且 top industry 名字数已压到 `<= 4` |
+| 激进对照（aggressive comparator） | `trial_008 + k15_bx20_be10 + groupcap4` | active IR 更强、drawdown 更浅，但换手仍明显更高 |
+| 执行层上限参考（execution ceiling） | `trial_016 + k15_bx25_be12` | 纯 OOS 实现仍亮，但 walk-forward IC 仍偏弱 |
 
-### 13.6 主线 vs comparator 稳健性检查清单
+### 14.6 主线 vs comparator 稳健性检查清单
 
 在 `positive_cfo_ratio_3y` 和 `positive_cfo_ratio_2y` follow-up 之后，当前 monthly ranker 更准确的两条跟踪线应理解成：
 
 | 角色 | 组合 | 当前定位 |
 | --- | --- | --- |
-| 主 guarded challenger | `trial_008 + positive_cfo_ratio_3y + k15_bx25_be12 + groupcap4` | 当前主动收益最强、实现层最平衡的正 CFO 版本 |
-| aggressive comparator | `trial_008 + positive_cfo_ratio_2y + k15_bx20_be10 + groupcap4` | 更高 Sharpe、较高 active IR，但故事更偏 implementation |
+| 主带约束候选（guarded challenger） | `trial_008 + positive_cfo_ratio_3y + k15_bx25_be12 + groupcap4` | 当前主动收益最强、实现层最平衡的正 CFO 版本 |
+| 激进对照（aggressive comparator） | `trial_008 + positive_cfo_ratio_2y + k15_bx20_be10 + groupcap4` | 更高 Sharpe、较高 active IR，但故事更偏 implementation |
 
 下一轮不该再继续扩慢因子包，也不该重新开模型大 sweep，而应先完成下面这份稳健性检查。
 
-#### 13.6.1 固定口径
+#### 14.6.1 固定口径
 
 先固定不再变化的东西：
 
 * dated `2026-04-02` asset 口径
-* `trial_008` ranker-native 模型参数
+* `trial_008` ranker 原生模型参数
 * `groupcap4`
 * benchmark ladder 与 execution cost 口径
 * `final_oos.size = 24`
@@ -765,12 +771,12 @@ guardrail probe 分两轮：
 * `avg turnover`
 * `IC mean`
 
-目标不是找“哪条线总是赢”，而是回答：
+目标是回答：
 
 * `3Y` 的主动收益优势是不是集中在旧窗口
 * `2Y` 的 Sharpe 优势是不是只来自最近一小段
 
-#### 13.6.4 必做 attribution
+#### 14.6.4 必做 attribution
 
 这两条线至少要补 3 类 attribution：
 
@@ -786,7 +792,7 @@ guardrail probe 分两轮：
 * `3Y` 为什么 active IR 更高
 * `2Y` 为什么 Sharpe 更高但主动收益没有同步拉开
 
-#### 13.6.5 实现层检查
+#### 14.6.5 实现层检查
 
 两条线都要补这 3 个实现层 sanity check：
 
@@ -794,9 +800,9 @@ guardrail probe 分两轮：
 * cost drag 是否明显放大
 * aggressive comparator 的高 Sharpe 是否主要靠更低 beta / 更贴 benchmark
 
-如果 `2Y` 的 Sharpe 优势主要来自更低 beta，而不是更高 active total return，就不该把它误读成主线升级。
+如果 `2Y` 的 Sharpe 优势主要来自更低 beta，且 active total return 没有同步更高，就不该把它误读成主线升级。
 
-#### 13.6.6 当前决策规则
+#### 14.6.6 当前决策规则
 
 在没有新增样本前，当前临时决策规则建议固定成：
 
@@ -804,7 +810,7 @@ guardrail probe 分两轮：
 * 如果优先看更高 Sharpe，并接受更激进 construction，把 `2Y` 保留为 comparator
 * 在 walk-forward 没明显修复前，不把任何一条线包装成“已成熟可重仓”的版本
 
-#### 13.6.7 `accrual_ratio` 怎么处理
+#### 14.6.7 `accrual_ratio` 怎么处理
 
 `accrual_ratio` 现在只保留为 watchlist，不直接并入主线。
 
@@ -818,9 +824,9 @@ guardrail probe 分两轮：
 * signal-side watchlist
 * 或轻量 filter / gating 候选
 
-而不是重新开一个慢因子 pack。
+避免重新开一个慢因子 pack。
 
-#### 13.6.8 最小对比入口
+#### 14.6.8 最小对比入口
 
 为了避免每次都手工翻 `summary.json` 和 OOS CSV，当前这两条线的固定对比入口建议直接用：
 

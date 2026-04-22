@@ -8,7 +8,9 @@
 
 ## 一句话说明
 
-给定一份配置，`cstree` 会完成数据读取、股票池处理、标签生成、特征构建、模型训练、评估以及回测，并将结果写到 `artifacts/` 目录下。
+给定一份配置，`cstree run` 会完成数据读取、股票池处理、标签生成、特征构建、模型训练、评估和回测，并将结果写到 `artifacts/` 目录下。
+
+主流程之外，仓库还提供结果汇总、候选策略晋升检查、固定分数组合层比较、特征证据、benchmark 阶梯、数据资产运维和发布打包工具。完整参数见 `docs/cli.md`。
 
 ## 用户可见入口
 
@@ -19,6 +21,10 @@
 | `cstree grid` | 在已有评分结果上做选股数量、成本、缓冲区的敏感性分析 | `grid_summary.csv` |
 | `cstree tune` | 按 YAML 搜索空间批量生成实验配置、运行流水线、打分并自动汇总 | `artifacts/sweeps/<tag>/` |
 | `cstree sweep-linear` | 批量运行港股精选路线的岭回归（`ridge`）或弹性网络（`elasticnet`）模型并自动汇总 | `artifacts/sweeps/<tag>/` |
+| `cstree promotion-gate` | 对比 baseline 与 candidate，检查候选策略是否具备升主线证据 | `artifacts/reports/*promotion_gate*` |
+| `cstree construction-grid` | 固定模型分数，比较 Top-K、buffer、权重和执行参数 | `artifacts/reports/*construction_grid*` |
+| `cstree feature-evidence ...` | 生成特征族消融、汇总消融结果或计算特征置换重要度 | `artifacts/reports/*feature*` |
+| `cstree benchmark-ladder` | 把策略收益和多组 benchmark 分层对比 | `artifacts/reports/*benchmark_ladder*` |
 | `cstree holdings` | 读取当前持仓 | 文本 / csv / json |
 | `cstree snapshot` | 运行实盘快照，或从现有的运行结果中导出快照 | 文本 / csv / json |
 | `cstree alloc` | 基于持仓做等权手数分配 | 文本 / csv / json |
@@ -46,7 +52,7 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree rqdata ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree rqdata ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
 | 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets`、`python -m csml.release_tools.release_assets`、`python -m csml.release_tools.package_runs`、`python -m csml.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
 | 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details`、`python -m csml.research.hk_selected_provider_valuation_audit`、`python -m csml.research.hk_intraday_download`、`python -m csml.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
@@ -82,6 +88,7 @@
 * 评估：提供信息系数（IC）、分位数收益、换手率、训练期表现对照、滚动评估（rolling）以及分桶信息系数（bucket IC）。
 * 稳健性：内置特征置换检验（permutation test）、滚动前向验证（walk-forward）以及最终留出期检验（final OOS）。
 * 研究编排：支持结果汇总（`summarize`）、参数网格分析（`grid`）、超参搜索（`tune`）以及线性模型搜索（`sweep-linear`）。
+* 研究证据：支持候选策略晋升检查（`promotion-gate`）、固定分数组合层比较（`construction-grid`）、特征证据生成与汇总（`feature-evidence`）以及 benchmark 阶梯报告（`benchmark-ladder`）。
 
 具体的评估指标说明请参阅 `docs/metrics.md`。
 

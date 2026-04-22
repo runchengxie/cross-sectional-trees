@@ -65,7 +65,7 @@
 
 ## 推荐准备顺序
 
-建议按下面的顺序做，而不是见到哪个接口就先拉哪个：
+建议按下面的顺序做，避免一看到接口就先拉数据：
 
 1. 先检查本地已有 snapshot、alias 和 `manifest.yml`，再看 `cstree rqdata quota --pretty`。大资产优先复用现有目录，不要先重下。
 2. 先确定研究股票池入口。
@@ -286,7 +286,7 @@ cstree rqdata build-hk-pit-fundamentals \
 构建时还有几个常用参数：
 
 * `--duplicate-policy error`
-  如果你不想自动保留最后一行，而是希望发现重复后直接报错
+  如果希望发现重复后直接报错，而不自动保留最后一行
 * `--keep-meta`
   如果你还想保留 `quarter`、`info_date`、`fiscal_year`、`rice_create_tm` 等 PIT 元数据列
 * `--field-profile`、`--field`、`--fields-file`
@@ -329,7 +329,7 @@ cstree rqdata mirror-hk-shares \
 * 它们更像原料层，给后续复权、总回报、市值、流通股本等派生使用。
 * `mirror-hk-shares` 默认会拉一组常用股本字段；需要额外列时再补 `--field` 或 `--fields-file`。
 
-如果你的目标不是“以后自己从价格和股本近似重建”，而是要把 provider 的日频估值口径原样冻住，再单独补一份：
+如果目标是把 provider 的日频估值口径原样冻住，再单独补一份：
 
 ```bash
 cstree rqdata mirror-hk-valuation \
@@ -408,7 +408,7 @@ cstree rqdata mirror-hk-financial-details \
 
 * 优先显式传 `--symbol` 和 `--field`
 * 不要把 `--field-profile full` 当成默认选择
-* 它当前更像“验证原始细项结构、积累 subject 归并规则”的增强层，而不是研究主链路的基础资产
+* 它当前更适合作为增强层，用来验证原始细项结构、积累 subject 归并规则；研究主链路不依赖它
 
 如果你已经拉了一版 probe，后续研究入口是：
 
@@ -636,7 +636,7 @@ eval:
 3. 从该 snapshot 派生 `hk_all_full_by_date.csv`
 4. 立刻用 `cstree backup-data` 固化为本地快照
 
-如果你只是想补最近几天的 freshness gap，而不是重新生成一整版日线目录，这一档通常不是最优选择。
+如果只是想补最近几天的新鲜度缺口，重新生成一整版日线目录通常不是最优选择。
 
 ### 日常 current refresh：优先走尾窗 patch
 
@@ -841,7 +841,7 @@ fundamentals:
 
 ## RQData 权限失效前冻结清单
 
-如果你已经判断后面大概率不会再续 RQData，优先级不是“继续自动刷新”，而是把未来离线还要用的东西冻好。
+如果已经判断后面大概率不会再续 RQData，优先级应放在冻结未来离线还要用的资产和入口上。
 
 先做这三件事：
 

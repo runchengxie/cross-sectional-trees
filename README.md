@@ -1,12 +1,12 @@
 # cross-sectional-hk-trees
 
-本项目使用 RQData 日线数据进行港股截面树模型研究、benchmark 对照、模型评估以及持仓快照输出。当前正式支持的数据输入与研究主线边界为 `market=hk` 结合 `data.provider=rqdata`，同时支持可选的本地港股资产直读功能。
+本项目使用 RQData 日线数据进行港股截面树模型研究、benchmark 对照、模型评估、回测、持仓快照和研究证据管理。当前正式支持的数据输入与研究主线边界为 `market=hk` 结合 `data.provider=rqdata`，同时支持可选的本地港股资产直读功能。
 
 本地港股资产直读主要覆盖日线和合约信息。在同一配置下，若启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，当基本面缓存未命中时，系统依然会延迟加载 `rqdatac` 以补充拉取服务商数据。
 
 ## 项目定位
 
-本项目提供一套适用于低频因子研究与实验复现的完整工作流，核心能力涵盖模型研究、指标评估、历史回测以及持仓快照输出。
+本项目提供一套适用于低频因子研究与实验复现的工作流，核心能力涵盖模型研究、指标评估、历史回测、候选策略治理、特征证据、benchmark 对照、数据资产维护以及持仓快照输出。
 
 ## 环境准备与安装
 
@@ -49,7 +49,9 @@ cstree run --config default
 
 除主流程外，系统还提供以下功能入口：
 
+* 主流程：`cstree run`
 * 研究汇总与参数调优：`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`
+* 研究治理与证据工具：`cstree promotion-gate`、`cstree construction-grid`、`cstree feature-evidence`、`cstree benchmark-ladder`
 * 实盘结果与持仓分配：`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`（包含港股执行前场景矩阵分析）
 * 配置模板与本地备份：`cstree init-config`、`cstree backup-data`
 * 数据与资产运维工具：`cstree rqdata ...`、`cstree universe ...`
@@ -57,13 +59,13 @@ cstree run --config default
 
 完整的能力地图请参考 `docs/capabilities.md` 文件。
 
-## 入口分层说明
+## 入口分层
 
 为了便于理解和维护，当前仓库的能力入口分为以下四个层级：
 
 | 层级 | 典型入口 | 当前定位 |
 | --- | --- | --- |
-| 公开主线命令行 | `cstree run` 等常用命令 | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
+| 公开主线命令行 | `cstree run`、研究汇总、研究治理、持仓分配、数据资产和标准层命令 | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
 | 公开附属模块工具 | 打包与分发相关模块 | 已经在文档中公开的打包与分发工具。它们属于独立可复用模块，不作为 `cstree` 的直接子命令调用。 |
 | 研究与专题模块工具 | 针对特定专题的模块 | 针对特定操作手册或专题场景使用的工具。具备复用价值，排除在新手默认主线之外。 |
 | 维护与开发辅助 | 测试与内部脚本 | 前者服务于日常开发与持续集成；后者属于仓库维护者的私有工具，不计入公开的研究工作流。 |
