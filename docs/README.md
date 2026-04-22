@@ -46,4 +46,4 @@
 专题资料：`docs/rqdata/`\
 概念解释：`docs/concepts/`（包括 `docs/concepts/execution-costs.md`、`docs/concepts/external-artifacts-root.md`）\
 开发与内部：`docs/dev.md`、`scripts/README.md`、`docs/internal/`\
-研究笔记与论文精读：`docs/research/`
+研究笔记：`docs/research/`

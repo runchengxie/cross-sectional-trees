@@ -8,7 +8,7 @@
 
 > 注：部分 `current-state` 文件名保留了旧日期以避免破坏仓库内已有链接；阅读时以页内“最后核对时间”为准。
 
-## 现在怎么读这些 notes
+## 现在怎么读这些研究笔记
 
 建议把 `notes/` 里的页面按下面四类理解。英文标签保留给文件名、表格和旧链接使用；正文里优先使用中文说明。
 
@@ -141,9 +141,9 @@
 
 带时间语义的研究页，建议至少写清下面几项：
 
-* 页面性质：`research-note` / `current-state` / `paper-digest`
+* 页面性质：`research-note` / `current-state`
 * 最后核对时间
-* 权威来源：实验 run、当前配置、外部论文或资产目录
+* 权威来源：实验 run、当前配置或资产目录
 * 冲突优先级：和哪一页或哪个产物冲突时，以谁为准
 
 如果页面不是 `current-state`，建议再加一行状态提示：
@@ -158,9 +158,7 @@
 * `summary.json`
 * 当前仍在使用的 preset / playbook
 
-## 当前文件
-
-研究笔记：
+## 当前研究笔记文件
 
 * `notes/hk-monthly-current-state-20260330.md`
 * `notes/hk-monthly-time-window-design-20260330.md`
@@ -188,8 +186,3 @@
 * `notes/hk-h12-w16-target-transform-review-20260324.md`
 * `notes/hk-quarterly-target-design-and-direction-20260324.md`
 * `notes/hk-quarterly-price-col-ab-20260325.md`
-
-论文摘要：
-
-* `papers/fundamental-analysis-via-machine-learning-digest.md`
-* `papers/predicting-future-earnings-changes-using-machine-learning.md`
