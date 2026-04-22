@@ -1,26 +1,45 @@
 # HK RQData 状态矩阵
 
-本页解决什么：记录当前仓库里 HK / RQData 资产的真实本地状态，区分哪些已经是主线入口、哪些只是 probe、哪些其实已经失败或过时。\
+本页解决什么：记录当前仓库里 HK / RQData 资产的真实本地状态，区分哪些是主线入口、哪些只是 probe、哪些已经失败或过时。\
 本页不解决什么：不代替 CLI 参数文档，也不展开完整研究路线。\
 适合谁：准备继续补 HK 资产、清理旧目录，或先判断“哪些能直接用、哪些别误用”的人。  
-读完你会得到什么：当前有效入口、各接口接入状态、目录清理规则，以及下一步应该补哪里的判断。\
+读完你会得到什么：已核对入口、各接口接入状态、目录清理规则，以及下一步应该补哪里的判断。\
 相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
-页面性质：`current-state` \
-最后核对时间：`2026-03-26`（Asia/Shanghai）\
+页面性质：`current-state`\
+状态数据核对时间：`2026-03-26`（Asia/Shanghai）\
+文档职责核对时间：`2026-04-22`（Asia/Shanghai）\
 权威来源：当前工作区里的真实目录、alias / symlink、`manifest.yml`、`configs/presets/hk.yml`、`configs/presets/hk_quarterly_pit_hybrid.yml`\
 冲突优先级：如果本页和 `config.used.yml`、当前 preset、或当前资产目录实际状态冲突，以后者为准
 
 重要说明：
 
+* 本页是 HK / RQData 资产状态的单点真相页。`hk-data-assets.md` 只维护准备流程，不复制这页的 snapshot / alias 清单。
+* 这次文档职责核对没有重跑大数据扫描，也没有刷新真实资产目录。凡是会影响下载、清理、打包或发布的操作，请先生成新的资产审计报告。
 * quota 是即时信息，不写死在这页；现场执行 `cstree rqdata quota --pretty`。
 * 本页只写“当前这个工作区里真实存在的状态”。旧笔记里提过的 bundle、probe、历史 snapshot，如果本地现在没有，就不算当前有效资产。
-* 主线资产指已经适合被研究配置、临时脚本或后续打包复用的入口；probe只说明做过验证，不等于已经升成默认入口。
+* 主线资产指已经适合被研究配置、临时脚本或后续打包复用的入口；probe 只说明做过验证，不等于已经升成默认入口。
 * 名字里带 `latest` 不自动等于可靠入口；要以 `manifest.yml` 的 `status` 和当前 preset / alias 指向为准。`exchange_rate` 就是反例。
+
+## 如何刷新本页
+
+更新这页之前，先拿一份结构化报告，再改正文：
+
+```bash
+cstree rqdata inspect-hk-data-assets \
+  --target-date YYYYMMDD \
+  --intraday-mode metadata \
+  --format json \
+  --out artifacts/reports/hk_data_asset_audit_YYYYMMDD.json
+```
+
+如果要核对 intraday 内容，再把 `--intraday-mode` 从 `metadata` 改成 `scan` 或 `health`。这类检查可能扫大文件，优先按 `docs/rqdata/hk-health-checks.md` 把 stdout / stderr 落到日志。
 
 ## 先看结论
 
-当前可以直接当主线入口继续维护的：
+下面状态来自 `2026-03-26` 的核对结果。做资产刷新、清理或发布前，先按上一节重跑审计。
+
+当时可以直接当主线入口继续维护的：
 
 * `instruments`
   `artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet` -> `hk_all_instruments_20260318.parquet`
@@ -48,7 +67,7 @@
   `artifacts/assets/rqdata/hk/announcement/hk_selected_2000_20260324_announcement_latest/`
   当前只有 `hk_selected` 范围的小规模原始镜像；查询窗口已前推到 `2000-01-01`，但当前最早实际 `info_date` 仍是 `2014-08-01`
 * `intraday_5m`
-  当前已经有 `hk_connect_research` 最近 `1` 年样本，以及全市场 `2024-05-01` 到 `2026-03-26` 的两段 `5m` parquet；细节和 quota 见 `docs/playbooks/hk-intraday-assets.md`
+  当时已经有 `hk_connect_research` 最近 `1` 年样本，以及全市场 `2024-05-01` 到 `2026-03-26` 的两段 `5m` parquet；细节和 quota 见 `docs/playbooks/hk-intraday-assets.md`
 * `universe`
   `artifacts/assets/universe/hk_connect_full_by_date.csv`
   `artifacts/assets/universe/hk_connect_full_research_by_date.csv`
@@ -57,7 +76,7 @@
   `artifacts/assets/universe/hk_selected_pit_research_symbols.txt`
   `artifacts/assets/universe/hk_all_full_by_date.csv`
 
-当前有用，但不要写成默认主线入口的：
+当时有用，但不要写成默认主线入口的：
 
 * `valuation`
   `artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260326_valuation_full_market_latest/`
@@ -116,7 +135,7 @@
 * `2026-03-27` 已按当前 `hk_all_daily_latest` 重新构建 `industry_labels_d/m/q`；三份文件现在都对齐到 `2026-03-26` 这版 daily grid。
 * `hk_connect_full_by_date.csv`、`hk_connect_full_research_by_date.csv`、`hk_selected_pit_research_by_date.csv` 都是按 rebalance date 落盘的成员明细，不是“每个交易日一整张全量成员表”。
 
-## 当前有效入口
+## 已核对入口
 
 ### 配置默认会读的入口
 
@@ -132,7 +151,7 @@
 * `hk_selected` 相关实验配置
   当前基本都收口到 `hk_selected_pit_research_by_date.csv` 这一组 research universe
 
-### 当前建议直接引用的 alias / snapshot
+### 已核对可引用的 alias / snapshot
 
 * `artifacts/assets/rqdata/hk/daily/hk_all_daily_latest`
   当前 alias，指向 `hk_all_2000_20260326_daily_final_latest`
@@ -180,7 +199,7 @@
 * `artifacts/assets/rqdata/hk/announcement/hk_selected_2000_20260324_announcement_latest`
   当前已落盘的 `announcement` raw snapshot；范围是 `hk_selected`，查询窗口从 `2000-01-01` 开始，但当前实际返回的最早公告日期仍是 `2014-08-01`
 
-### 当前有效的 universe 入口
+### 已核对的 universe 入口
 
 * `artifacts/assets/universe/hk_connect_full_by_date.csv`
   `2014-11-28` 到 `2026-03-17`
@@ -199,7 +218,7 @@
   `314` 个 rebalance date
   历史并集 `3195` symbols
 
-### 当前保留但不是默认入口的有效目录
+### 已核对保留但不是默认入口的有效目录
 
 * `artifacts/assets/rqdata/hk/financial_details/hk_financial_details_hk_all3203_superset_2000_2025_20260319/`
   全市场窄字段 raw probe
@@ -226,23 +245,23 @@
 * `artifacts/assets/universe/hk_connect_probe_2025q4_2026q1_starter_20260324_research_by_date.csv`
   对应 `20260324` `hk_connect` starter 增量派生出的 research universe
 
-### 当前运行时 cache 补充
+### 已核对的运行时 cache 补充
 
 * `artifacts/cache/`
   当前不是只有一层日线 symbol cache。
 * `artifacts/cache/intraday/`
-  当前已经有 `hk_connect_research` `5m` 样本，以及全市场 `hk_all_5m_20240501_20250326`、`hk_all_5m_20250327_20260326` 两段分钟线 cache；两段都保留了 `.parts/` checkpoint，可直接断点续跑或分批做滑点聚合
+  当时已经有 `hk_connect_research` `5m` 样本，以及全市场 `hk_all_5m_20240501_20250326`、`hk_all_5m_20250327_20260326` 两段分钟线 cache；两段都保留了 `.parts/` checkpoint，可直接断点续跑或分批做滑点聚合
 * `artifacts/cache/hk_rqdata_daily_<symbol>.parquet`
-  当前本地有 `328` 个 HK 日线 cache 文件；这层会在 provider / local asset 读取后继续回写。
+  当时本地有 `328` 个 HK 日线 cache 文件；这层会在 provider / local asset 读取后继续回写。
   当前没看到 `hk_rqdata_daily_<symbol>_<start>_<end>.parquet` 这类 `range/window` 命名，说明现有日线 runtime cache 仍全部落在 `symbol` 模式。
 * `artifacts/cache/hk_rqdata_basic_*.parquet`
-  当前本地有 `2` 个 basic cache 文件，而且都是带 digest 的 symbol-subset cache；当前没有未加哈希的 `hk_rqdata_basic.parquet`。
+  当时本地有 `2` 个 basic cache 文件，而且都是带 digest 的 symbol-subset cache；当时没有未加哈希的 `hk_rqdata_basic.parquet`。
 * `artifacts/cache/fundamentals/hk/`
   当前顶层有 `1194` 个 fundamentals cache 文件；其中默认 namespace `hk_rqdata_*` 有 `972` 个，`hk_selected_tr_close` 这个 `cache_tag` namespace 另有 `222` 个。
 * `artifacts/cache/fundamentals/hk/provider_valuation_merge/`
   当前还有 `222` 个 merge-stage parquet；把这层也算上时，`artifacts/cache/fundamentals/hk/` 下总共有 `1416` 个 parquet。它们都是 runtime valuation overlay / merge cache，不是离线 raw mirror 资产。
 
-### 当前不要引用成默认入口的路径
+### 已核对不应引用成默认入口的路径
 
 * `artifacts/assets/rqdata/hk/exchange_rate/hk_all_2000_20260319_exchange_rate_latest/`
 * `artifacts/assets/rqdata/hk/exchange_rate/hk_all_2000_20260319_exchange_rate_chunked_latest/`
@@ -347,7 +366,7 @@
 * `daily/_archive_20260314/`
   这是历史中间产物归档，不是默认入口
 * `artifacts/snapshots/`
-  当前已经有 `hk_trial_snapshot_20260324/`，但它是本地试验快照，不等于发布级 bundle
+  当时已经有 `hk_trial_snapshot_20260324/`，但它是本地试验快照，不等于发布级 bundle
 
 ## 现在推荐的默认组合
 

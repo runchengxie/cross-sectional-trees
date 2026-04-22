@@ -1,28 +1,35 @@
-# HK Intraday 资产与滑点校准
+# HK Intraday 资产与滑点校准快照
 
-本页解决什么：记录当前工作区里已经落盘的 HK `5m` 资产、provider 边界、quota 成本和滑点校准产物。\
+本页解决什么：记录截至上次核对时工作区里已经落盘的 HK `5m` 资产、provider 边界、quota 成本和滑点校准产物。\
 本页不解决什么：不代替 `docs/cli.md` 的命令参数说明，也不直接给出生产级 broker TCA 参数。\
 适合谁：准备继续补 HK 分钟线、复用现有 `5m` parquet、或想知道“这批数据现在能拿来做什么”的读者。\
-读完你会得到什么：当前可用的 intraday 入口、已知边界、经验滑点报告位置，以及今天还能不能继续下数据的判断。\
+读完你会得到什么：已核对的 intraday 入口、provider 边界、经验滑点报告位置，以及继续下载前要先核对哪些东西。\
 相关页面：`docs/playbooks/hk-rqdata-status.md`、`docs/concepts/execution-costs.md`、`docs/rqdata/README.md`、`src/csml/research/hk_intraday_download.py`、`src/csml/research/hk_intraday_slippage_report.py`
 
-页面性质：`current-state`\
-最后核对时间：`2026-04-03`（Asia/Shanghai）\
-权威来源：`artifacts/cache/intraday/*.meta.json`、`artifacts/assets/rqdata/hk/intraday/*/manifest.yml`、`artifacts/reports/*slippage*`、当前工作区脚本和真实 quota
+页面性质：`operational-snapshot`\
+资产与报告核对时间：`2026-04-03`（Asia/Shanghai）\
+文档职责核对时间：`2026-04-22`（Asia/Shanghai）\
+权威来源：`artifacts/cache/intraday/*.meta.json`、`artifacts/assets/rqdata/hk/intraday/*/manifest.yml`、`artifacts/reports/*slippage*`、工作区脚本和现场 quota
+
+状态边界：
+
+* 本页保留 intraday 资产和滑点校准的上次操作快照，不负责每天更新 quota。
+* 当前 `hk_intraday_latest` 指向、可用块数和健康状态，优先看 [hk-rqdata-status.md](./hk-rqdata-status.md) 以及最新 `artifacts/reports/hk_data_asset_audit_*.json`。
+* 继续下载或发布前，先跑 `cstree rqdata quota --pretty` 和 `cstree rqdata inspect-hk-data-assets --intraday-mode metadata`；需要深度核对时再用 `inspect-hk-intraday-health`。
 
 ## 先说结论
 
-当前本地已经有三组可直接复用的 HK `5m` 数据：
+截至 `2026-04-03`，本地已经核对到三组可复用的 HK `5m` 数据：
 
 * `hk_connect_research` 最近 `1` 年样本，可用来先校准港股通研究池。
 * 全市场 `2025-03-27` 到 `2026-03-26` 的 `5m` 全年块。
 * 全市场 `2024-05-01` 到 `2025-03-26` 的 `5m` 年度块。
 
-这意味着：
+这组快照说明：
 
-* 全市场 `5m` 现在已经足够支持经验滑点校准，不需要再回到“先下数据再说”的状态。
+* 全市场 `5m` 已经足够支持经验滑点校准，不需要再回到“先下数据再说”的状态。
 * provider 当前 HK 分钟线最早只能拿到 `2024-05-01`，所以“完整过去两年全市场 `5m`”在这个 provider 上并不存在。
-* 试用 quota `1GB/day` 足够做全市场 `5m` 的年度块，但不够继续舒适地做更重的 `1m` 全市场历史。
+* 试用 quota `1GB/day` 当时足够做全市场 `5m` 的年度块，但不适合继续做更重的 `1m` 全市场历史。
 
 ## 正式资产层
 
@@ -43,7 +50,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 
 如果你只是想临时保留一下本地状态，`artifacts/snapshots/` 仍然适合做冻结备份；如果你要给下游长期复用，优先用这里的正式资产层。
 
-## 当前已经落盘的 intraday 入口
+## 已核对落盘的 intraday 入口
 
 ### 港股通 research 样本
 
@@ -69,7 +76,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 * `artifacts/cache/intraday/hk_all_5m_20240501_20250326.meta.json`
   实际耗 quota `247,094,080` bytes
 
-两段合起来的当前可用范围是：
+两段合起来的可用范围是：
 
 * `2024-05-01` 到 `2026-03-26`
 * 并集 `2827` symbols
@@ -101,7 +108,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 * 现在也支持 `--adjust-type none|pre|post|pre_volume|post_volume`；后续如果要补更严肃的盘中执行样本，优先考虑单独下载 `--adjust-type none`
 * `--symbols-file` 默认按 canonical `symbol` 读入；旧文件里的 `ts_code` / `stock_ticker` / `order_book_id` 仍会自动兼容。最终落盘 parquet 会统一把 `symbol` 规范成 canonical 的五位 `.HK` 代码；`rq_order_book_id` 只作为 provider 元数据列保留
 
-当前已经保留的 checkpoint 目录：
+上次核对时已经保留的 checkpoint 目录：
 
 * `artifacts/cache/intraday/hk_all_5m_20250327_20260326.parts/`
 * `artifacts/cache/intraday/hk_all_5m_20240501_20250326.parts/`
@@ -111,7 +118,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 * 如果实例中途挂掉，现在可以从 part 目录继续，不需要整段重下。
 * `src/csml/research/hk_intraday_slippage_report.py` 和 `cstree rqdata inspect-hk-intraday-health` 现在都会优先使用同名 `.parts/` 目录，避免整块读取巨大的最终 parquet，降低全市场大文件导致内存爆掉的风险。
 
-## 当前已经产出的滑点校准结果
+## 已核对产出的滑点校准结果
 
 ### 报告文件
 
@@ -253,7 +260,7 @@ backtest:
 * `stress baseline` 保留得更宽松一些，适合先替代 flat `25bps`；如果你要直接上校准后的研究线，优先从 `balanced` 或 `connect_conservative` 开始。
 * 在当前 `portfolio_value=1m`、`top_k=20` 的设定下，单笔 trade participation 通常很低，真正决定结果的大多还是 `base_bps` 和 `min_amount`；如果你要做容量分析，先改 `portfolio_value`，再谈 `impact_bps`。
 
-## quota 现实
+## quota 快照
 
 `2026-03-26` 现场核对到的 quota：
 
@@ -265,7 +272,7 @@ backtest:
 * 全市场 `5m` 一整年大约是 `247 MB` 到 `312 MB` quota 量级
 * 港股通 research `5m` 一整年大约 `114 MB`
 * 当天这些轻量 tail patch 合计只额外消耗了约 `7.48 MB`
-* 今天剩余 quota 仍然不适合再开新的大段分钟线下载
+* 当时剩余 quota 不适合再开新的大段分钟线下载
 
 但这不影响继续做两类事情：
 

@@ -1,45 +1,45 @@
 # HK 数据下载与整备
 
-本页解决什么：说明 HK 研究里各类离线资产怎么准备、落到哪里、彼此怎么衔接。\
+本页解决什么：说明 HK 研究里各类离线资产按什么顺序准备、落到哪里、彼此怎么衔接。\
 本页不解决什么：不展开模型路线选择，也不代替完整 CLI 参数文档。\
 适合谁：准备做 HK PIT 研究、整理本地 HK RQData 资产，或准备跨机器复用资产的人。\
 读完你会得到什么：一套按优先级可执行的数据准备顺序，以及“股票池、日线、PIT、行业、备份”之间的清晰关系。\
 相关页面：`docs/playbooks/hk-selected.md`、`docs/playbooks/hk-rqdata-status.md`、`docs/rqdata/README.md`、`docs/playbooks/research-template-design.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/providers.md`
 
-页面性质：`current-state`\
-最后核对时间：`2026-03-25`\
-权威来源：当前仓库代码、preset 配置、工作区 alias / `manifest.yml` 与本页引用的默认入口 \
-冲突优先级：如果与当前 preset、`manifest.yml`、`docs/playbooks/hk-rqdata-status.md` 或真实资产目录冲突，以更具体的资产状态和目录为准
+页面性质：`playbook`\
+流程说明核对时间：`2026-04-22`\
+状态事实来源：`docs/playbooks/hk-rqdata-status.md`、真实资产目录、alias / `manifest.yml`\
+冲突优先级：如果本页提到的示例路径与当前 preset、`manifest.yml`、`docs/playbooks/hk-rqdata-status.md` 或真实资产目录冲突，以更具体的资产状态和目录为准
 
-本页已经按当前仓库代码、配置默认值和工作区里的 alias 重新整理。\
-它的重点是“怎么准备”和“各层之间怎么配合”；如果你要看当前有哪些 snapshot 已完成、哪些只是 probe、哪些目录已经过时，请再看 [hk-rqdata-status.md](./hk-rqdata-status.md)。
+本页只维护稳定流程和依赖关系。\
+凡是具体 snapshot、alias 指向、probe 成败、quota、报告路径和可清理目录，都以 [hk-rqdata-status.md](./hk-rqdata-status.md) 为准。
 
 ## 先看结论
 
 1. 先定研究入口，再准备资产。当前仓库里，月频 HK 预设默认读 `artifacts/assets/universe/hk_connect_full_research_by_date.csv`；季度 PIT 预设和 `hk_selected` 系列默认读 `artifacts/assets/universe/hk_selected_pit_research_by_date.csv`。
 2. 日线层优先分成两套看待：可复用、可备份的 `daily snapshot`，以及日常研究会自动刷新的 `symbol cache`。前者用于归档和离线复用，后者用于平时跑研究补尾部。
 3. PIT 路线的关键不只是把 raw mirror 拉下来，还要继续生成 `pipeline_fundamentals.parquet`；需要时再顺手派生一份 research-ready `universe by-date`。
-4. `ex_factors`、`dividends`、`shares`、`industry_changes` 属于长期有价值的底层原料层。`southbound` 是高价值补充层。`exchange_rate` 和 `financial_details` 当前仍应按 probe / staged backfill 思路推进。
+4. `ex_factors`、`dividends`、`shares`、`industry_changes` 属于长期有价值的底层原料层。`southbound` 是高价值补充层。`exchange_rate` 和 `financial_details` 更适合按 probe / staged backfill 思路推进。
 5. HK 日频估值默认仍建议走 runtime `provider_overlay`；但如果你要在 provider 访问结束前冻结 `market_cap / pe_ttm / pb` 口径，现在也支持单独镜像 `valuation` 资产。
-6. 研究配置通常走 alias；打包和 Release 工具走静态 preset。两者不是一回事，不能默认“打包脚本会自动跟随 alias”。
+6. 研究配置通常走 alias；打包和 Release 工具走静态 preset。打包前要显式核对关键 snapshot。
 
-## 当前默认入口
+## 主链路入口与状态边界
 
-下面这些入口是当前仓库主链路里真正会被默认配置读到的东西：
+下面这些入口是主链路会用到的稳定入口名和配置位置。它们的当前指向、覆盖日期和健康状态，请以 [hk-rqdata-status.md](./hk-rqdata-status.md) 和 `manifest.yml` 为准。
 
-| 场景 | 当前默认入口 | 说明 |
+| 场景 | 入口 | 说明 |
 | --- | --- | --- |
 | HK 月频研究 | `configs/presets/hk.yml` | 默认使用 `artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest`、`artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet`、`artifacts/assets/universe/hk_connect_full_research_by_date.csv` |
 | HK 季频 PIT 研究 | `configs/presets/hk_quarterly_pit_hybrid.yml` | 默认使用 `artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet` 和 `artifacts/assets/universe/hk_selected_pit_research_by_date.csv` |
-| 全市场离线 alias | `artifacts/assets/rqdata/hk/.../hk_all_*_latest` | 当前工作区里 `daily`、`instruments`、`ex_factors`、`dividends`、`shares`、`industry_changes` 这些 alias 已切到当前可用的 canonical snapshot；其中价格与 reference 层已前移到 `2026-03-26` |
-| 行业标签 alias 所在目录 | `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/` | 当前目录下已经有 `industry_labels_d/m/q.parquet`，研究直接 join 时优先用这些派生文件 |
+| 全市场离线 alias | `artifacts/assets/rqdata/hk/.../hk_all_*_latest` | 稳定命名习惯；具体指向、是否过期、是否可当主线入口，以状态矩阵和 manifest 为准 |
+| 行业标签 alias 所在目录 | `artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/` | 研究 join 行业标签时优先看这里的 `industry_labels_d/m/q.parquet`；日期范围以状态矩阵和文件元数据为准 |
 
 需要单独注意的一点：
 
 * 研究默认读取的 `daily` alias 现在是 `hk_all_daily_clean_latest`；`hk_all_daily_latest` 继续保留原始日线底座，给资产巡检、patch merge 和 clean-layer 重建用。
 * `src/csml/release_tools/package_assets.py` 里的 preset 是静态快照名，不是 alias 解析器。
-* 当前 `hk_full` / `hk_connect` preset 里的 `daily_snapshot` 已更新到 `hk_all_2000_20260326_daily_final_latest`，但它依然是静态名字，不会自动跟着 alias 再往前走。
-* `southbound` 和 `financial_details` 现在也能打成独立 part；`exchange_rate` 默认走的是一个已完成的短窗 probe snapshot，不是假装“2000-至今”的长窗都已经成功。
+* `hk_full` / `hk_connect` preset 里的 `daily_snapshot` 是静态名字，会落后于 alias；打包前要查状态矩阵。
+* `southbound` 和 `financial_details` 现在也能打成独立 part；`exchange_rate` 默认走短窗 probe snapshot，长窗是否完成要查状态矩阵。
 * 如果你要打包“当前 alias 指向的版本”，请显式传 `--daily-snapshot`、`--instruments-file`、`--pit-snapshot`、`--exchange-rate-snapshot`、`--southbound-snapshot`、`--financial-details-snapshot` 等参数，不要默认 preset 会自动前进。
 
 ## 资产地图
