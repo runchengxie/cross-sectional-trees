@@ -23,7 +23,7 @@ HK 研究默认用：
 
 * `backtest.benchmark_returns_file: artifacts/benchmarks/hk_connect_capw.csv`
 
-接入同一条回测，而不是强行用单一 ETF 近似。
+接入同一条回测，避免强行用单一 ETF 近似。
 当前仓库可用 `python -m csml.research.hk_connect_cap_weight_benchmark ...` 从
 `by_date universe + backtest_periods + local daily/valuation assets` 生成这类收益文件。
 如果你想把“universe 选得好”与“cap-weight 吃到大票”拆开看，同一个 builder 也支持
@@ -89,7 +89,7 @@ cstree benchmark-ladder \
 * 可比性：`market`、provider、universe、label、features、rebalance frequency、成本和主 benchmark 口径必须一致。
 * 必备证据：至少有 main eval、backtest、walk-forward、final OOS、cost / turnover；正式替换主线时还应有 feature stability 和 benchmark evidence。
 * 硬拒绝：常数预测、零 feature importance、缺 final OOS、有效 CV folds 不足。
-* 软门槛：IC / long-short / walk-forward / final OOS / Sharpe delta / drawdown / turnover / cost drag 达不到门槛时进入 reviewable，而不是直接 promotable。
+* 软门槛：IC / long-short / walk-forward / final OOS / Sharpe delta / drawdown / turnover / cost drag 达不到门槛时进入 reviewable，不能直接进入 promotable。
 
 执行入口：
 
@@ -156,11 +156,11 @@ cstree promotion-gate \
 * `model`
 * `eval.run_name`
 
-如果这些块一起变了，你比较的就不是 benchmark，而是整条研究路线。
+如果这些块一起变化，比较对象会变成整条研究路线，benchmark 结论也会失去可比性。
 
-## 6. 同一研究单元里的特征研究 protocol
+## 6. 同一研究单元里的特征研究协议
 
-这套 protocol 只用于下面这种场景：
+这套协议只用于下面这种场景：
 
 * `universe`、`label`、`eval`、`backtest`、`market/data` 已经固定
 * 你还在同一个研究矩阵单元里
@@ -168,7 +168,7 @@ cstree promotion-gate \
 
 它的作用是统一研究口径，避免后续配置一会儿靠直觉加列、一会儿随手删列，最后没人能解释为什么结果变化。
 
-### 6.1 先按特征簇组织，而不是按单列组织
+### 6.1 先按特征簇组织
 
 默认先把当前候选特征拆成几个可解释的 family，再决定删哪组、加哪组。
 
@@ -184,9 +184,9 @@ HK selected 当前常见 family 可以按下面理解：
 
 如果当前研究线刻意不包含某一类，例如 monthly `no_ret` 候选不再直接使用 trailing-return 动量，这种“留白”本身就是研究假设。
 
-### 6.2 默认顺序一：先做 feature family ablation
+### 6.2 默认顺序一：先做特征族消融
 
-默认先做 family 级消融，而不是直接盯单个 feature importance 排名。
+默认先做特征族（feature family）级消融。单个 `feature_importance` 排名容易受到模型和窗口影响，适合放在后面辅助解释。
 
 推荐顺序：
 
@@ -314,7 +314,7 @@ cstree construction-grid \
 
 * 当前模型分数在不同 `top_k` 下是否稳定。
 * 成本和换手是否吞掉收益。
-* buffer 是否改善净收益而不是只降低交易。
+* buffer 是否在降低交易之外改善了净收益。
 * `equal` / `signal` weighting 哪个更稳。
 * 中性化或其他 score postprocess 应该放在组合层还是模型层。
 

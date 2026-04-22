@@ -10,12 +10,22 @@
 
 ## 现在怎么读这些 notes
 
-建议把 `notes/` 里的页面按下面四类理解：
+建议把 `notes/` 里的页面按下面四类理解。英文标签保留给文件名、表格和旧链接使用；正文里优先使用中文说明。
 
-* `current-state`：现行口径和默认入口，重新接手时先读。
-* `active deep-dive`：当前仍有直接信息价值的专题分析、probe 汇总或解释层。
-* `implementation caveat`：数据覆盖、freshness、build / health 这类实现边界说明；只在相关问题出现时再读。
-* `historical provenance`：保留追溯路径，不再作为默认入口。
+* 当前入口（`current-state`）：现行口径和默认入口，重新接手时先读。
+* 专题分析（`active deep-dive`）：仍有直接信息价值的专题分析、probe 汇总或解释层。
+* 实现边界（`implementation caveat`）：数据覆盖、新鲜度、build / health 这类实现说明；只在相关问题出现时再读。
+* 历史追溯（`historical provenance`）：保留追溯路径，默认不用先读。
+
+## 写作风格约定
+
+研究笔记允许保留必要英文术语、配置名和 run 名，但正文尽量让没跟过上下文的人也能读下去。
+
+* 英文术语第一次出现时，优先写成“中文解释（English term）”，例如“可选依赖冒烟检查（optional extra smoke）”。
+* `candidate`、`challenger`、`comparator`、`sidecar`、`probe` 这类内部 shorthand，第一次出现时要说明它在本页里的角色。
+* 少用 A/B 式连续纠偏句。可以直接写结论，再补一行边界说明。
+* 先写“本页结论”和“该怎么用”，再列实验细节和历史过程。
+* 链接只指向受版本控制的仓库文件；本地 `artifacts/...` 产物用代码文本记录。
 
 ## 快速入口
 
@@ -71,14 +81,14 @@
 
 ## 状态快照
 
-### Current State
+### 当前入口（Current State）
 
 | 页面 | 当前一句话 |
 | --- | --- |
 | `notes/hk-monthly-current-state-20260330.md` | 当前 monthly 默认分工是：`M-PIT baseline` 留作研究锚点，`M-PIT + no_ret + bx20 / be10` 继续当默认 PIT candidate，`trial_008 + k15_bx25_be12` 升为 ranker 主 challenger，`M-provider rebalance-only` 保留实现 comparator / shadow 候选。 |
 | `notes/hk-quarterly-current-state-20260329.md` | 当前 quarterly 默认分工是：`ranker h12_w16 + close + balanced execution` 保持主线，`reg_zscore h12_w16 + tr_close` 保持第一 challenger，`raw-scale dedup + groupcap3` 继续当结构 probe，`provider_dense` 只保留为 coverage-sensitive 变体。 |
 
-### Active Deep-Dive
+### 专题分析（Active Deep-Dive）
 
 | 页面 | 当前角色 |
 | --- | --- |
@@ -100,13 +110,13 @@
 | `notes/hk-quarterly-oos-evidence-20260329.md` | quarterly 最近 OOS 亮点与“已得到证据”的边界说明。 |
 | `notes/hk-quarterly-pure-fundamentals-20260329.md` | quarterly 纯 PIT 基本面 sidecar 路线。 |
 
-### Implementation Caveat
+### 实现边界（Implementation Caveat）
 
 | 页面 | 当前角色 |
 | --- | --- |
 | `notes/hk-quarterly-pit-provider-coverage-20260411.md` | quarterly PIT freshness / coverage warning 的解释页；说明 `provider_dense` 为什么存在以及何时才该使用。 |
 
-### Historical Provenance
+### 历史追溯（Historical Provenance）
 
 | 页面 | 当前角色 |
 | --- | --- |
@@ -128,8 +138,8 @@
 
 如果页面不是 `current-state`，建议再加一行状态提示：
 
-* 说明自己属于 `active deep-dive`、`implementation caveat` 还是 `historical provenance`
-* 明确自己不该作为默认入口
+* 说明自己属于专题分析（`active deep-dive`）、实现边界（`implementation caveat`）还是历史追溯（`historical provenance`）
+* 明确默认入口是哪一页
 * 直接指向对应的 `current-state` 页面
 
 复现具体历史 run 时，优先级始终高于研究笔记的是：

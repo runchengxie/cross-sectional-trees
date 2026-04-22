@@ -11,7 +11,7 @@
 如果你现在的问题是“下一步该跑哪条路线”，先从这里开始。
 如果你现在的问题是“HK / RQData 离线资产和 API 快照资料该从哪里看”，更适合从 `docs/rqdata/README.md` 进入。
 如果你现在的问题是“RQData 快到期了，最后应该冻结什么”，直接看 [hk-data-assets.md](./hk-data-assets.md#rqdata-权限失效前冻结清单)。
-如果你只是想按通用任务顺序推进，而不是选择正式研究路线，回到 `docs/cookbook.md` 更合适。
+只想按通用任务顺序推进时，回到 `docs/cookbook.md` 更合适。
 
 ## 新手阅读顺序
 
