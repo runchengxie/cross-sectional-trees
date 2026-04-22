@@ -17,10 +17,12 @@
 uv venv --seed
 uv sync --extra dev --extra rqdata
 cp .env.example .env
-csml run --config default
+cstree run --config default
 ```
 
 请按 `data.provider` 配置好鉴权变量，详情参见 `docs/providers.md` 文件。
+
+`cstree` 是当前推荐的 CLI 名称；旧入口 `csml` 仍然可用，适合继续运行既有脚本和历史命令。
 
 注意：`default` 是内置别名，当前会解析到仓库 `configs/` 下的 `configs/presets/default.yml`。
 这些内置别名会读取仓库根目录的 `configs/` 文件夹，因此请确保在包含 `configs/` 目录的源码工作区或导出的源码目录内执行命令。

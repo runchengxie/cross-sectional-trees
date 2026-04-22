@@ -1,6 +1,6 @@
-# cross-sectional-machine-learning
+# cross-sectional-hk-trees
 
-本项目使用 RQData 日线数据进行港股截面因子研究、模型评估以及持仓快照输出。当前正式支持的数据输入与研究主线边界为 `market=hk` 结合 `data.provider=rqdata`，同时支持可选的本地港股资产直读功能。
+本项目使用 RQData 日线数据进行港股截面树模型研究、benchmark 对照、模型评估以及持仓快照输出。当前正式支持的数据输入与研究主线边界为 `market=hk` 结合 `data.provider=rqdata`，同时支持可选的本地港股资产直读功能。
 
 本地港股资产直读主要覆盖日线和合约信息。在同一配置下，若启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，当基本面缓存未命中时，系统依然会延迟加载 `rqdatac` 以补充拉取服务商数据。
 
@@ -11,7 +11,7 @@
 ## 环境准备与安装
 
 运行环境要求 Python 3.12 及以上版本，推荐使用 `uv` 进行依赖管理。
-需要使用 RQData 相关功能时，请在安装时添加 `--extra rqdata` 参数。若需将 `csml alloc-hk` 的分配结果导出为 Excel 格式，请额外添加 `--extra liveops-hk` 参数。
+需要使用 RQData 相关功能时，请在安装时添加 `--extra rqdata` 参数。若需将 `cstree alloc-hk` 的分配结果导出为 Excel 格式，请额外添加 `--extra liveops-hk` 参数。
 
 ```bash
 uv venv --seed
@@ -31,14 +31,16 @@ cp .env.example .env
 | 导出港股 Excel 分配表 | `csml alloc-hk --format xlsx --out ...` | `liveops-hk` | 若走实时或服务商路径，需对应数据源凭证 |
 | 计算包含 P 值的统计检验 | Python 或 `csml` 下游分析调用 `summarize_ic` | `stats` | 无 |
 
-`default` 和 `hk` 等内置别名，以及 `csml init-config` 命令，均会默认读取仓库根目录下的 `configs/` 文件夹。日常使用时，请确保在包含 `configs/` 目录的源码工作区或导出的源码目录内执行相关命令。
+CLI 入口优先使用 `cstree`。为兼容既有脚本、文档示例和用户 shell 历史，`csml` 会继续作为同等入口保留，两者当前指向同一套实现。
+
+`default` 和 `hk` 等内置别名，以及 `cstree init-config` / `csml init-config` 命令，均会默认读取仓库根目录下的 `configs/` 文件夹。日常使用时，请确保在包含 `configs/` 目录的源码工作区或导出的源码目录内执行相关命令。
 
 ## 快速开始
 
 最短的跑通命令如下：
 
 ```bash
-csml run --config default
+cstree run --config default
 ```
 
 内置别名 `default` 当前指向港股入门模板，默认配置为 `data.provider=rqdata`。首次运行 `default` 或 `hk` 别名前，请务必先执行 `uv sync --extra dev --extra rqdata` 安装所需的依赖。
@@ -61,7 +63,7 @@ csml run --config default
 
 | 层级 | 典型入口 | 当前定位 |
 | --- | --- | --- |
-| 公开主线命令行 | `csml run` 等常用命令 | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
+| 公开主线命令行 | `cstree run` / `csml run` 等常用命令 | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
 | 公开附属模块工具 | 打包与分发相关模块 | 已经在文档中公开的打包与分发工具。它们属于独立可复用模块，不作为 `csml` 的直接子命令调用。 |
 | 研究与专题模块工具 | 针对特定专题的模块 | 针对特定操作手册或专题场景使用的工具。具备复用价值，排除在新手默认主线之外。 |
 | 维护与开发辅助 | 测试与内部脚本 | 前者服务于日常开发与持续集成；后者属于仓库维护者的私有工具，不计入公开的研究工作流。 |

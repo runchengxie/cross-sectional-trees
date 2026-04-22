@@ -10,10 +10,10 @@ from .rqdata import register_rqdata_command
 from .universe import register_universe_command
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, prog: str | None = "cstree") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="csml",
-        description="Cross-sectional Machine Learning CLI",
+        prog=prog,
+        description="Cross-sectional HK Trees CLI",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+    parser = build_parser(prog=None if argv is None else "cstree")
     args = parser.parse_args(argv)
     func = getattr(args, "func", None)
     if func is None:

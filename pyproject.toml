@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cross-sectional-machine-learning"
+name = "cross-sectional-hk-trees"
 version = "0.1.0"
-description = "Cross-sectional factor mining with pluggable machine learning models"
+description = "Hong Kong cross-sectional tree-model research with linear benchmarks"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -42,6 +42,7 @@ stats = [
 
 [project.scripts]
 csml = "csml.cli:main"
+cstree = "csml.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
