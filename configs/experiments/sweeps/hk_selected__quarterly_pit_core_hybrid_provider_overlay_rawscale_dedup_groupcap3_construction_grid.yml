@@ -1,6 +1,6 @@
 ## Construction-grid base around the current structural challenger.
 ## Keep the signal fixed at raw-scale dedup + groupcap3, then compare only
-## top_k / cost / buffer / weighting choices with csml grid.
+## top_k / cost / buffer / weighting choices with cstree grid.
 extends:
   - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3.yml
 

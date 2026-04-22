@@ -2,7 +2,7 @@
 
 > 状态提示：本页属于 active deep-dive，用于记录 quarterly 线固定信号后的组合构造 follow-up。当前默认研究入口请先读 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
 
-本页解决什么：记录 `raw-scale dedup + groupcap3` 这条结构 challenger 的前两轮 `csml grid` 结果，并明确固定信号后下一步最值得扫的组合构造维度。  
+本页解决什么：记录 `raw-scale dedup + groupcap3` 这条结构 challenger 的前两轮 `cstree grid` 结果，并明确固定信号后下一步最值得扫的组合构造维度。
 本页不解决什么：不替代主线/副线的总收口，也不重新讨论模型、`tr_close` 或纯基本面路线。  
 适合谁：已经接受“当前更该看组合构造，不该继续大扫模型参数”的读者。  
 读完你会得到什么：第一轮 buffer sweep、第二轮 `top_k` sweep 的实际结果，它们各自能支持到什么程度，以及为什么这些 grid 结果现在只能当 shortlist，而不能直接升级成新默认。  
@@ -45,7 +45,7 @@
 * 在不改模型评分的前提下，组合层参数能不能进一步压一点换手和成本
 * 哪个维度更值得继续扫
 
-## 3. 一个前提：`csml grid` 现在终于能正确带 execution 列了
+## 3. 一个前提：`cstree grid` 现在终于能正确带 execution 列了
 
 这轮 sweep 之前，`grid` 实际上会失败，因为 `eval_scored.parquet` 没把 execution backtest 需要的 `open` 和 `adv20_amount` 一起带过去。  
 修完之后，`grid_summary.csv` 里的 4 个组合都已经是 `status = ok`，所以这轮结果终于是可解释的 construction 结果，而不是工具链误报。
@@ -151,7 +151,7 @@
 
 ## 7. 关键补充：独立 full run 没有确认 `bx2_be1` 和 `top_k25`
 
-`csml grid` 的作用是固定同一份评分，只比较 construction。  
+`cstree grid` 的作用是固定同一份评分，只比较 construction。
 所以它适合做 shortlist，不适合直接决定“当前默认候选已经换成谁”。
 
 `2026-03-29` 当晚这轮独立 full run 复验，把这件事讲清楚了：
@@ -165,7 +165,7 @@
 这张表的含义很直接：
 
 * 第一轮和第二轮 grid 给出的 `bx2_be1`、`top_k25` 更像是 construction shortlist
-* 但一旦拉回完整 `csml run` 口径，它们都没有把 `raw-scale dedup + groupcap3` 本身做强
+* 但一旦拉回完整 `cstree run` 口径，它们都没有把 `raw-scale dedup + groupcap3` 本身做强
 * 所以现在不能把 `bx = 2`、`be = 1`、`top_k = 25` 升成新的 construction 默认
 
 更准确地说：
@@ -205,7 +205,7 @@
 对应最小命令：
 
 ```bash
-uv run csml grid \
+uv run cstree grid \
   --config configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml \
   --top-k 15,20,25 \
   --cost-bps 25

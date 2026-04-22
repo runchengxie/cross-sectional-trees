@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档的核心目标：提供 `cstree` / `csml` 命令入口与高频参数的速查参考。\
+本文档的核心目标：提供 `cstree` 命令入口与高频参数的速查参考。\
 本文档的范围限制：仅涉及命令语法与参数说明，具体的研究流程与配置语义请参考相关文档。\
 目标读者：需要查阅命令和参数的开发者或研究员。\
 阅读收益：能够按不同使用场景快速定位对应的命令与参数路径。\
@@ -10,37 +10,35 @@
 
 | 使用场景 | 对应命令 |
 |------|------|
-| 运行主流程 | `csml run --config <>` |
-| 汇总运行结果 | `csml summarize --runs-dir artifacts/runs` |
-| 敏感性分析 | `csml grid --config <> --top-k 10,20` |
-| 模型调参 | `csml tune --tune-config <>` |
-| 线性模型搜索 | `csml sweep-linear --sweep-config <>` |
-| 候选策略升主线检查 | `csml promotion-gate --config <>` |
-| 固定分数组合层比较 | `csml construction-grid --config <>` |
-| 特征证据生成或汇总 | `csml feature-evidence <mode> --config <>` |
-| Benchmark 阶梯报告 | `csml benchmark-ladder --config <>` |
-| 查看持仓记录 | `csml holdings --config <> --as-of t-1` |
-| 生成实盘快照 | `csml snapshot --config <live.yml>` |
-| 手数分配计算 | `csml alloc --config <> --source live --top-n 20` |
-| 港股增强手数分配 | `csml alloc-hk --config <> --source live --top-n 20 --method custom` |
-| 导出配置模板 | `csml init-config --market default` |
-| 构建港股全市场股票池 | `csml universe hk-daily-assets --config <> -- <args>` |
-| 刷新数据目录（catalog） | `csml data catalog` |
-| 物化标准数据层 | `csml data materialize --name <> ...` |
-| 通过 DuckDB 查询标准层 | `csml data query --sql <>` |
+| 运行主流程 | `cstree run --config <>` |
+| 汇总运行结果 | `cstree summarize --runs-dir artifacts/runs` |
+| 敏感性分析 | `cstree grid --config <> --top-k 10,20` |
+| 模型调参 | `cstree tune --tune-config <>` |
+| 线性模型搜索 | `cstree sweep-linear --sweep-config <>` |
+| 候选策略升主线检查 | `cstree promotion-gate --config <>` |
+| 固定分数组合层比较 | `cstree construction-grid --config <>` |
+| 特征证据生成或汇总 | `cstree feature-evidence <mode> --config <>` |
+| Benchmark 阶梯报告 | `cstree benchmark-ladder --config <>` |
+| 查看持仓记录 | `cstree holdings --config <> --as-of t-1` |
+| 生成实盘快照 | `cstree snapshot --config <live.yml>` |
+| 手数分配计算 | `cstree alloc --config <> --source live --top-n 20` |
+| 港股增强手数分配 | `cstree alloc-hk --config <> --source live --top-n 20 --method custom` |
+| 导出配置模板 | `cstree init-config --market default` |
+| 构建港股全市场股票池 | `cstree universe hk-daily-assets --config <> -- <args>` |
+| 刷新数据目录（catalog） | `cstree data catalog` |
+| 物化标准数据层 | `cstree data materialize --name <> ...` |
+| 通过 DuckDB 查询标准层 | `cstree data query --sql <>` |
 
 ## 查看帮助信息
 
 ```bash
 cstree --help
 cstree <subcommand> --help
-csml --help
-csml <subcommand> --help
 ```
 
 ## 命令入口兼容
 
-`cstree` 是当前推荐的 CLI 名称，`csml` 是兼容入口。两者当前都指向 `csml.cli:main`，命令语义一致。本文档保留大量 `csml ...` 示例，避免一次性重写破坏既有脚本和历史记录；需要新写命令时，可以直接把示例中的 `csml` 替换为 `cstree`。
+`cstree` 是当前推荐的 CLI 名称。旧入口 `csml` 仍作为兼容 alias 保留，两者当前都指向内部实现 `csml.cli:main`，命令语义一致；新文档和脚本示例统一使用 `cstree`。
 
 ## 共享参数约定
 
@@ -51,22 +49,22 @@ csml <subcommand> --help
 - 内置别名：`default` 或 `hk`
 - 本地 YAML 文件路径：例如 `configs/presets/hk.yml`
 
-> 在命令 `csml run --config default` 中，`default` 为内置别名，当前指向 HK starter 模板，且默认配置为 `data.provider=rqdata`。首次运行 `default` 或 `hk` 之前，请先执行 `uv sync --extra dev --extra rqdata` 安装相关依赖。
+> 在命令 `cstree run --config default` 中，`default` 为内置别名，当前指向 HK starter 模板，且默认配置为 `data.provider=rqdata`。首次运行 `default` 或 `hk` 之前，请先执行 `uv sync --extra dev --extra rqdata` 安装相关依赖。
 >
-> 所有的内置别名以及 `csml init-config` 命令均会读取仓库根目录下的 `configs/` 文件夹。其默认的适用场景为源码检出（checkout）环境，或包含了 `configs/` 文件夹的导出源码目录。
+> 所有的内置别名以及 `cstree init-config` 命令均会读取仓库根目录下的 `configs/` 文件夹。其默认的适用场景为源码检出（checkout）环境，或包含了 `configs/` 文件夹的导出源码目录。
 
 ### 产物根目录
 
 以下命令支持传入 `--artifacts-root` 参数，用于将默认的产物根目录从仓库内的 `artifacts/` 重新定向至仓库外的指定路径：
 
-- `csml run`
-- `csml holdings`
-- `csml snapshot`
-- `csml alloc`
-- `csml alloc-hk`
-- `csml data catalog`
-- `csml data materialize`
-- `csml data query`
+- `cstree run`
+- `cstree holdings`
+- `cstree snapshot`
+- `cstree alloc`
+- `cstree alloc-hk`
+- `cstree data catalog`
+- `cstree data materialize`
+- `cstree data query`
 
 优先级顺序：`--artifacts-root` 最高，其次为环境变量 `CSML_ARTIFACTS_ROOT`，再其次为配置文件中的 `paths.artifacts_root`，最后退回默认值 `artifacts/`。
 
@@ -98,25 +96,25 @@ csml <subcommand> --help
 
 ### 透传参数机制
 
-`csml universe ...` 会优先解析封装层自身的参数（例如 `--config`），随后将剩余参数透传给底层执行脚本。
+`cstree universe ...` 会优先解析封装层自身的参数（例如 `--config`），随后将剩余参数透传给底层执行脚本。
 
 在传递底层脚本专属参数时，建议显式添加 `--` 作为分隔符。例如：
 
 ```bash
-csml universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
+cstree universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
 ```
 
 ## 主流程命令
 
-### csml run
+### cstree run
 
 运行策略主流程。
 
 ```bash
-csml run --config default
-csml run --config hk
-csml run --config configs/presets/hk_quarterly_pit_hybrid.yml --fail-on-quality warning
-csml run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
+cstree run --config default
+cstree run --config hk
+cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml --fail-on-quality warning
+cstree run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
 ```
 
 说明：
@@ -124,21 +122,21 @@ csml run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
 - `--fail-on-quality none|info|warning|error` 会覆盖配置文件中的 `quality.fail_on_severity` 设定。
 - 当前主流程的 preflight 检查仅接入了“HK + RQData + 本地 PIT fundamentals file”场景。命中该场景时，程序会首先执行 PIT 健康度门控检查（health gate），通过后方可继续训练。
 
-### csml grid
+### cstree grid
 
 执行基于“Top-K × 成本 × buffer × weighting”的敏感性分析。
 
 ```bash
-csml grid --config configs/presets/hk.yml --top-k 5,10 --cost-bps 15,25
+cstree grid --config configs/presets/hk.yml --top-k 5,10 --cost-bps 15,25
 ```
 
-### csml tune
+### cstree tune
 
 根据 YAML 文件定义的搜索空间批量生成 trial 配置并执行 pipeline。运行完成后，读取 `summary.json` 进行打分，并将最优的 trial 固化回 sweep 目录。
 
 ```bash
-csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml
-csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml --dry-run
+cstree tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml
+cstree tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tune_smoke.yml --dry-run
 ```
 
 说明：
@@ -149,27 +147,27 @@ csml tune --tune-config configs/experiments/sweeps/hk_selected__xgb_regressor_tu
 - `--sampler grid|random` 决定搜索策略为全量遍历还是随机抽样。在 `random` 模式下可配置 `--n-trials` 和 `--seed`。
 - `objective` 配置段目前支持 `min_cv_ic_valid_folds`。在月频或小样本研究中，若需将 `cv_ic` 可判分性作为筛选条件，可要求 trial 至少满足若干个有效 CV folds。未满足该条件的 trial 仍会保留结果记录，但将被排除在最佳 trial 评选之外。
 - `objective` 还会将各维度的加权分量（包括 `eval_ic_ir`、`walk_forward_test_ic_mean`、`backtest_sharpe`、`drawdown`、`cost_drag` 和 `turnover`）写入 `trial_results.csv` 与 `best_trial.json`，便于核查最佳 trial 的获胜依据。
-- 当前 v1 版本更适合搜索 `model.params`、`model.sample_weight_*` 和 `model.train_window.*` 等训练结构相关的参数。对于 Top-K、成本或 buffer 等构建层敏感性分析，请优先使用 `csml grid`。
+- 当前 v1 版本更适合搜索 `model.params`、`model.sample_weight_*` 和 `model.train_window.*` 等训练结构相关的参数。对于 Top-K、成本或 buffer 等构建层敏感性分析，请优先使用 `cstree grid`。
 - 执行后，默认会在 `artifacts/sweeps/<tag>/` 目录下生成 `jobs.csv`、`trial_results.csv`、`best_trial.json`、`best_config.yml` 和 `runs_summary.csv`。使用 `--skip-summarize` 或 `--dry-run` 会跳过自动汇总步骤。
 
-### csml sweep-linear
+### cstree sweep-linear
 
 批量生成基于 ridge 或 elasticnet 的模型配置并执行汇总。
 
 ```bash
-csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_a.yml
+cstree sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_a.yml
 ```
 
 ## 结果查看命令
 
-### csml summarize
+### cstree summarize
 
 聚合历史运行记录（runs）。
 
 ```bash
-csml summarize --runs-dir artifacts/runs --sort-by score
-csml summarize --runs-dir artifacts/runs --run-name-prefix hk_grid --latest-n 1
-csml summarize --runs-dir artifacts/runs --comparability-class direct --sort-by dsr
+cstree summarize --runs-dir artifacts/runs --sort-by score
+cstree summarize --runs-dir artifacts/runs --run-name-prefix hk_grid --latest-n 1
+cstree summarize --runs-dir artifacts/runs --comparability-class direct --sort-by dsr
 ```
 
 补充说明：
@@ -180,12 +178,12 @@ csml summarize --runs-dir artifacts/runs --comparability-class direct --sort-by 
 - 汇总输出将包含 cost-aware objective 的详细分量字段：`objective_component_eval_ic_ir`、`objective_component_walk_forward_test_ic_mean`、`objective_component_backtest_sharpe`、`objective_component_drawdown_penalty`、`objective_component_cost_drag_penalty`、`objective_component_turnover_penalty` 以及总分 `objective_score`。
 - 借由 `--high-cost-drag-threshold` 结合 `--exclude-flag-high-cost-drag` 参数，可以直接将高成本拖累的运行结果从汇总表里剔除。
 
-### csml promotion-gate
+### cstree promotion-gate
 
 基于设定的 evidence、comparability、hard rejection 以及 soft threshold 规则，自动判断候选策略（candidate）是否满足替换基线策略（baseline）的条件。
 
 ```bash
-csml promotion-gate \
+cstree promotion-gate \
   --config configs/experiments/sweeps/hk_selected__research_protocol_promotion_gate.yml \
   --baseline-run artifacts/runs/<baseline_run_dir> \
   --candidate-run artifacts/runs/<candidate_run_dir>
@@ -200,12 +198,12 @@ csml promotion-gate \
 - `soft_failures`
 - 同时对比 baseline 和 candidate 双方的主评估指标、步进验证（walk-forward）、最终样本外（final OOS）表现、成本换手率以及 benchmark 证据。
 
-### csml construction-grid
+### cstree construction-grid
 
 读取已有的 `eval_scored.parquet` 与 `summary.json` 获取固定模型分数，并在离线状态下执行组合构建层的比较分析。本命令不会触发模型重新训练。
 
 ```bash
-csml construction-grid \
+cstree construction-grid \
   --config configs/experiments/sweeps/hk_selected__research_protocol_construction_grid.yml
 ```
 
@@ -219,18 +217,18 @@ csml construction-grid \
 - 做多（long-only）或多空组合（long-short）
 - 评分后处理逻辑（如 `neutralize`）
 
-### csml feature-evidence
+### cstree feature-evidence
 
 特征证据分析工具，目前支持三种模式：
 
 ```bash
-csml feature-evidence generate-ablation \
+cstree feature-evidence generate-ablation \
   --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
 
-csml feature-evidence summarize-ablation \
+cstree feature-evidence summarize-ablation \
   --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
 
-csml feature-evidence permutation-importance \
+cstree feature-evidence permutation-importance \
   --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
 ```
 
@@ -240,12 +238,12 @@ csml feature-evidence permutation-importance \
 - `summarize-ablation`：读取所有已完成消融实验的 `summary.json` 文件，输出相对于 baseline 的各项指标变化以及特征稳定性的分析摘要。
 - `permutation-importance`：利用已有的 scored artifact 数据集，直接计算单一特征或 feature family 的 profit proxy 及排列重要性（permutation importance）。
 
-### csml benchmark-ladder
+### cstree benchmark-ladder
 
 将同一条策略的收益与多个 benchmark 收益进行并排比较。
 
 ```bash
-csml benchmark-ladder \
+cstree benchmark-ladder \
   --config configs/experiments/sweeps/hk_selected__research_protocol_benchmark_ladder.yml
 ```
 
@@ -253,31 +251,31 @@ csml benchmark-ladder \
 
 系统将逐一标记每个 benchmark 的角色、数据来源、可比状态，并计算主动总回报（active total return）、信息比率（IR）、跟踪误差（tracking error）、beta、alpha 以及相关性。同时也会检查对应的归因文件是否存在。
 
-### csml holdings
+### cstree holdings
 
 读取目标运行结果或当前策略的持仓。
 
 ```bash
-csml holdings --config configs/presets/hk.yml --as-of t-1
-csml holdings --run-dir artifacts/runs/<run_dir> --format csv
-csml holdings --config configs/presets/hk.yml --as-of t-1 --artifacts-root /data/csml-artifacts
+cstree holdings --config configs/presets/hk.yml --as-of t-1
+cstree holdings --run-dir artifacts/runs/<run_dir> --format csv
+cstree holdings --config configs/presets/hk.yml --as-of t-1 --artifacts-root /data/csml-artifacts
 ```
 
-### csml snapshot
+### cstree snapshot
 
 执行实盘快照生成。
 
 前置规则：
 
-- 若命令将触发 pipeline 运行（即执行 `csml snapshot --config ...` 且未提供 `--skip-run` 或 `--run-dir` 参数），配置中必须显式设置 `live.enabled=true`。
+- 若命令将触发 pipeline 运行（即执行 `cstree snapshot --config ...` 且未提供 `--skip-run` 或 `--run-dir` 参数），配置中必须显式设置 `live.enabled=true`。
 - 若需从已有的 run 导出结果，请优先使用 `--run-dir` 或 `--skip-run`。这两种场景无需重新运行 pipeline。
 
 ```bash
-csml snapshot --config path/to/live.yml
-csml snapshot --config path/to/live.yml --skip-run
-csml snapshot --run-dir artifacts/runs/<run_dir>
-csml snapshot --run-dir artifacts/runs/<run_dir> --fail-on-quality warning
-csml snapshot --config path/to/live.yml --artifacts-root /data/csml-artifacts
+cstree snapshot --config path/to/live.yml
+cstree snapshot --config path/to/live.yml --skip-run
+cstree snapshot --run-dir artifacts/runs/<run_dir>
+cstree snapshot --run-dir artifacts/runs/<run_dir> --fail-on-quality warning
+cstree snapshot --config path/to/live.yml --artifacts-root /data/csml-artifacts
 ```
 
 补充说明：
@@ -285,26 +283,26 @@ csml snapshot --config path/to/live.yml --artifacts-root /data/csml-artifacts
 - 若指定的 run 内存在 `summary.json` 且已记录 `quality.preflight` 信息，`snapshot` 将直接复用该记录。
 - 当显式传入 `--fail-on-quality ...` 参数时，系统将依指定的阈值重新判断是否阻断流程；如果未提供此参数，将沿用 run summary 或 config 文件中的原始阈值。
 
-### csml alloc
+### cstree alloc
 
 手数分配工具。
 
 ```bash
-csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
-csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000 --artifacts-root /data/csml-artifacts
+cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
+cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000 --artifacts-root /data/csml-artifacts
 ```
 
-### csml alloc-hk
+### cstree alloc-hk
 
-港股专用的增强型手数分配工具，适合将 `positions_current_live.csv` 或 `csml holdings --format json` 输出的结果导入执行前分析层。
+港股专用的增强型手数分配工具，适合将 `positions_current_live.csv` 或 `cstree holdings --format json` 输出的结果导入执行前分析层。
 
 ```bash
-csml alloc-hk --config path/to/live.yml --source live --top-n 20 --cash 1000000 --method custom
-csml alloc-hk --positions-file artifacts/runs/<run_dir>/positions_current_live.csv --as-of 2026-03-20 --roll-window 252 --no-secondary-fill
-csml alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --format xlsx --out artifacts/exports/alloc_hk.xlsx
-csml alloc-hk --config path/to/live.yml --source live --scenario-capital 1000000,500000 --scenario-top-n 20,10 --method custom --format xlsx --out artifacts/exports/alloc_hk_grid.xlsx
-csml alloc-hk --run-dir artifacts/runs/<run_dir> --fail-on-quality warning --format json
-csml alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --artifacts-root /data/csml-artifacts
+cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --cash 1000000 --method custom
+cstree alloc-hk --positions-file artifacts/runs/<run_dir>/positions_current_live.csv --as-of 2026-03-20 --roll-window 252 --no-secondary-fill
+cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --format xlsx --out artifacts/exports/alloc_hk.xlsx
+cstree alloc-hk --config path/to/live.yml --source live --scenario-capital 1000000,500000 --scenario-top-n 20,10 --method custom --format xlsx --out artifacts/exports/alloc_hk_grid.xlsx
+cstree alloc-hk --run-dir artifacts/runs/<run_dir> --fail-on-quality warning --format json
+cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --artifacts-root /data/csml-artifacts
 ```
 
 说明：
@@ -315,13 +313,13 @@ csml alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom
 
 ## 数据管理命令
 
-### csml backup-data
+### cstree backup-data
 
 归档本地数据环境。
 
 ```bash
-csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
-csml backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
+cstree backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
+cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
 ```
 
 说明：
@@ -331,14 +329,14 @@ csml backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cach
 - `hk_current` preset 复制的内容为 contract 解析后的 resolved snapshot 或 file，它绕过了单纯的 `latest` 别名，确保获取真实的依赖快照作为最终审计依据。
 - 该工具提供的是本地私有数据冻结方案，执行时不会向 provider 重新请求数据。如需跨机器共享，推荐使用 `python -m csml.release_tools.package_assets` 或 `release_assets` 等发行脚本。
 
-### csml data catalog
+### cstree data catalog
 
 扫描产物根目录下的 manifest 资产，并将信息登记至 SQLite 格式的 metadata catalog 中。
 
 ```bash
-csml data catalog
-csml data catalog --db-path artifacts/metadata/catalog.sqlite
-csml data catalog --artifacts-root /data/csml-artifacts
+cstree data catalog
+cstree data catalog --db-path artifacts/metadata/catalog.sqlite
+cstree data catalog --artifacts-root /data/csml-artifacts
 ```
 
 默认输出路径：
@@ -348,14 +346,14 @@ csml data catalog --artifacts-root /data/csml-artifacts
 
 如果传入了 `--artifacts-root`，默认输出路径将随之变更；如果显式传入了 `--db-path` 或 `--summary-out` 参数，则以显式参数指定的路径为准。
 
-### csml data materialize
+### cstree data materialize
 
 将原始镜像（raw mirror）或派生的平面文件物化为可供分析查询的标准数据层（analysis-ready standardized layer）。
 
 ```bash
-csml data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
-csml data materialize --name hk_pit_panel --preset pit-fundamentals --file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
-csml data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir /data/csml-artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --artifacts-root /data/csml-artifacts
+cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
+cstree data materialize --name hk_pit_panel --preset pit-fundamentals --file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir /data/csml-artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --artifacts-root /data/csml-artifacts
 ```
 
 说明：
@@ -369,7 +367,7 @@ csml data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir /d
 
 当提供 `--artifacts-root` 参数时，默认输出根目录将同步变更；显式传入 `--out-root` 时以显式参数为准。
 
-### csml data query
+### cstree data query
 
 借助 DuckDB 引擎查询已物化的标准数据层。首次使用前请先安装 DuckDB 依赖：
 
@@ -380,49 +378,49 @@ uv sync --extra dev --extra duckdb
 示例操作：
 
 ```bash
-csml data query --sql "select symbol, trade_date, close from standardized.hk_daily_panel limit 5"
-csml data query --sql-file queries/top_names.sql --format csv --out artifacts/metadata/top_names.csv
-csml data query --sql "select count(*) from standardized.hk_daily_panel" --artifacts-root /data/csml-artifacts
+cstree data query --sql "select symbol, trade_date, close from standardized.hk_daily_panel limit 5"
+cstree data query --sql-file queries/top_names.sql --format csv --out artifacts/metadata/top_names.csv
+cstree data query --sql "select count(*) from standardized.hk_daily_panel" --artifacts-root /data/csml-artifacts
 ```
 
 ## 配置模板命令
 
-### csml init-config
+### cstree init-config
 
 导出仓库内置的 preset 模板文件。
 
 ```bash
-csml init-config --market default --out configs/
-csml init-config --market hk --out ./custom_hk.yml --force
+cstree init-config --market default --out configs/
+cstree init-config --market hk --out ./custom_hk.yml --force
 ```
 
 `init-config` 工具从仓库根目录下的 `configs/presets/` 读取模板内容，因此推荐在源码检出环境或具备完整 `configs/` 结构的项目目录中使用。
 
 ## RQData 命令
 
-### csml rqdata info
+### cstree rqdata info
 
 打印并验证当前 RQData 的登录认证信息。
 
-### csml rqdata quota
+### cstree rqdata quota
 
 查询当前账号的 RQData 额度使用状况。
 
-### csml rqdata list-hk-financial-fields
+### cstree rqdata list-hk-financial-fields
 
 列出港股相关的财务报表可用字段。
 
 ```bash
-csml rqdata list-hk-financial-fields --contains profit
+cstree rqdata list-hk-financial-fields --contains profit
 ```
 
-### csml rqdata export-hk-instruments
+### cstree rqdata export-hk-instruments
 
 导出港股市场的 instrument 元数据信息。
 
 ```bash
-csml rqdata export-hk-instruments --out artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
-csml rqdata export-hk-instruments --instrument-type ETF --out artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet
+cstree rqdata export-hk-instruments --out artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
+cstree rqdata export-hk-instruments --instrument-type ETF --out artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet
 ```
 
 补充说明：
@@ -430,12 +428,12 @@ csml rqdata export-hk-instruments --instrument-type ETF --out artifacts/assets/r
 - `--instrument-type` 的默认值为 `CS`（Common Stock），代表当前口径仅包含普通股票。
 - 如需单独导出 ETF 股票池，请显式传入参数 `--instrument-type ETF`。
 
-### csml rqdata mirror-hk-daily
+### cstree rqdata mirror-hk-daily
 
 拉取港股日线行情数据镜像。
 
 ```bash
-csml rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20000101 --end-date 20260311 --batch-size 50 --name hk_connect_full_2000_20260311_daily_latest
+cstree rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20000101 --end-date 20260311 --batch-size 50 --name hk_connect_full_2000_20260311_daily_latest
 ```
 
 补充说明：
@@ -443,102 +441,102 @@ csml rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connect_
 - `--batch-size` 参数默认值为 `20`，用于控制每次 `rqdatac.get_price` 请求中合并的 `order_book_id` 数量。
 - 遇网络波动导致批量请求失败时，命令会自动降级为单 symbol 请求重试，确保大部分正常产物顺利落盘。
 
-### csml rqdata mirror-hk-pit-financials
+### cstree rqdata mirror-hk-pit-financials
 
 拉取基于 PIT（Point-in-Time）模式的财报数据。
 
 ```bash
-csml rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest --fields-file configs/field_profiles/hk_financial_fields_starter.txt --start-quarter 2011q1 --end-quarter 2025q4 --date 20260310
+cstree rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest --fields-file configs/field_profiles/hk_financial_fields_starter.txt --start-quarter 2011q1 --end-quarter 2025q4 --date 20260310
 ```
 
-### csml rqdata mirror-hk-financial-details
+### cstree rqdata mirror-hk-financial-details
 
 拉取港股财务报表的细项数据明细。
 
 ```bash
-csml rqdata mirror-hk-financial-details --symbol 00005.HK --field revenue --start-quarter 2024q1 --end-quarter 2025q4
+cstree rqdata mirror-hk-financial-details --symbol 00005.HK --field revenue --start-quarter 2024q1 --end-quarter 2025q4
 ```
 
-### csml rqdata mirror-hk-exchange-rate
+### cstree rqdata mirror-hk-exchange-rate
 
 获取港币对其他货币的历史汇率数据。
 
 ```bash
-csml rqdata mirror-hk-exchange-rate --start-date 20250210 --end-date 20250211 --name hk_exchange_rate_probe_20250210_20250211_minimal
+cstree rqdata mirror-hk-exchange-rate --start-date 20250210 --end-date 20250211 --name hk_exchange_rate_probe_20250210_20250211_minimal
 ```
 
-### csml rqdata mirror-hk-ex-factors
+### cstree rqdata mirror-hk-ex-factors
 
 拉取港股的历史复权因子。
 
 ```bash
-csml rqdata mirror-hk-ex-factors --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_ex_factors_latest
+cstree rqdata mirror-hk-ex-factors --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_ex_factors_latest
 ```
 
-### csml rqdata mirror-hk-dividends
+### cstree rqdata mirror-hk-dividends
 
 拉取港股历史分红记录。
 
 ```bash
-csml rqdata mirror-hk-dividends --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_dividends_latest
+cstree rqdata mirror-hk-dividends --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_dividends_latest
 ```
 
-### csml rqdata mirror-hk-shares
+### cstree rqdata mirror-hk-shares
 
 拉取港股公司的历史股本变动数据。
 
 ```bash
-csml rqdata mirror-hk-shares --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_shares_latest
+cstree rqdata mirror-hk-shares --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260317 --name hk_connect_shares_latest
 ```
 
-### csml rqdata mirror-hk-valuation
+### cstree rqdata mirror-hk-valuation
 
 拉取港股日频估值因子的原始镜像数据。默认拉取的因子包括：`hk_total_market_val`、`pe_ratio_ttm` 以及 `pb_ratio_ttm`。
 
 ```bash
-csml rqdata mirror-hk-valuation --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20000101 --end-date 20260324 --name hk_all_2000_20260324_valuation_full_market_latest --resume
+cstree rqdata mirror-hk-valuation --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20000101 --end-date 20260324 --name hk_all_2000_20260324_valuation_full_market_latest --resume
 ```
 
-### csml rqdata mirror-hk-announcement
+### cstree rqdata mirror-hk-announcement
 
 拉取港股上市公司的公告原始记录。
 
 ```bash
-csml rqdata mirror-hk-announcement --symbols-file artifacts/assets/universe/hk_selected_pit_research_symbols.txt --start-date 20000101 --end-date 20260324 --name hk_selected_2000_20260324_announcement_latest
+cstree rqdata mirror-hk-announcement --symbols-file artifacts/assets/universe/hk_selected_pit_research_symbols.txt --start-date 20000101 --end-date 20260324 --name hk_selected_2000_20260324_announcement_latest
 ```
 
-### csml rqdata mirror-hk-southbound
+### cstree rqdata mirror-hk-southbound
 
 获取港股通成分股的历史变更记录。
 
 ```bash
-csml rqdata mirror-hk-southbound --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20141117 --end-date 20260318 --trading-type both --rebalance-frequency D --name hk_connect_southbound_latest
+cstree rqdata mirror-hk-southbound --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20141117 --end-date 20260318 --trading-type both --rebalance-frequency D --name hk_connect_southbound_latest
 ```
 
-### csml rqdata mirror-hk-instrument-industry
+### cstree rqdata mirror-hk-instrument-industry
 
 拉取港股在不同快照日期下的行业分类数据。
 
 ```bash
-csml rqdata mirror-hk-instrument-industry --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260318 --level 0 --rebalance-frequency M --name hk_connect_instrument_industry_latest
+cstree rqdata mirror-hk-instrument-industry --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260318 --level 0 --rebalance-frequency M --name hk_connect_instrument_industry_latest
 ```
 
-### csml rqdata mirror-hk-industry-changes
+### cstree rqdata mirror-hk-industry-changes
 
 拉取港股行业类别的成分纳入与剔除区间，并按 symbol 进行存储。
 
 ```bash
-csml rqdata mirror-hk-industry-changes --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260318 --level 1 --mapping-date 20260318 --name hk_connect_industry_changes_latest
+cstree rqdata mirror-hk-industry-changes --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20100101 --end-date 20260318 --level 1 --mapping-date 20260318 --name hk_connect_industry_changes_latest
 ```
 
-### csml rqdata build-hk-pit-fundamentals
+### cstree rqdata build-hk-pit-fundamentals
 
 整合基本面数据，构建能够被 pipeline 顺利读取的分析文件。
 
 ```bash
-csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
-csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv --max-latest-report-age-days 365
-csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv --max-latest-report-age-days 365 --feature-age-config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_dense.yml --max-selected-feature-age-days 365
+cstree rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+cstree rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv --max-latest-report-age-days 365
+cstree rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv --max-latest-report-age-days 365 --feature-age-config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_dense.yml --max-selected-feature-age-days 365
 ```
 
 说明：
@@ -547,13 +545,13 @@ csml rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit
 - `--max-latest-report-age-days` 参数仅约束派生的股票池：系统将遍历每一个交易日（`trade_date`），并检查每只股票的最新 PIT 披露时间。若间隔天数超出设定阈值，则将对应的 `symbol-date` 从池中剔除。这主要用于处理“股票存在平面 PIT 数据，但披露记录陈旧，不再适合放入研究池”的问题。
 - 借助 `--feature-age-config` 及 `--max-selected-feature-age-days` 参数，命令可进一步读取配置中要求的 PIT 特定特征，执行“数据新鲜度”二次筛查。如果目标特征完全缺失，或最新的非空记录天数超出设定上限，该记录同样会被清理。这有效应对了“最新财报行已存在，但关键字段长期处于空值”的场景。
 
-### csml rqdata build-hk-industry-labels
+### cstree rqdata build-hk-industry-labels
 
 利用本地的 `industry_changes` 资产，派生日频、月频或季频的行业标签数据集。
 
 ```bash
-csml rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
-csml rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency D
+cstree rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
+cstree rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency D
 ```
 
 说明：
@@ -563,13 +561,13 @@ csml rqdata build-hk-industry-labels --asset-dir artifacts/assets/rqdata/hk/indu
 - `--frequency D|M|Q` 控制对源网格的采样频率。`D` 保留全量日期，而 `M/Q` 将截取每只股票在当月或当季末最后一个交易日的数据。
 - 最终产物默认输出至 `<asset-dir>/industry_labels_<freq>.parquet`，并配套生成同名 manifest 文件。
 
-### csml rqdata inspect-hk-pit-coverage
+### cstree rqdata inspect-hk-pit-coverage
 
 审查 PIT 数据的覆盖质量。
 
 ```bash
-csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml --mode both
-csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml --mode both --include-health --target-date 20260331
+cstree rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml --mode both
+cstree rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml --mode both --include-health --target-date 20260331
 ```
 
 相关细节可参阅 `docs/concepts/pit-coverage.md`。
@@ -583,16 +581,16 @@ csml rqdata inspect-hk-pit-coverage --config configs/experiments/baseline/hk_sel
 - 引入的 `--symbols-file` 和 `--by-date-file` 过滤器仅作用于 `Health` 环节，不干涉历史覆盖率或可训练数据的统计口径。
 - 使用 `--fail-on-severity none|info|warning|error` 参数可将体检报告提升为严格的质量拦截器，遇到相应级别的质量问题即刻触发非零退出。只要显式附带该参数，无论是否补充了 `--include-health`，命令内部都会自动激活 `Health` 诊断环节。
 
-### csml rqdata inspect-hk-asset-health
+### cstree rqdata inspect-hk-asset-health
 
 全面体检本地港股资产快照，重点考察最新日期的覆盖度。主要排查指标包括：目标交易日字段是否缺失，以及是否过度依赖前序值的顺延填充。
 
 ```bash
-csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest
-csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --field pe_ratio_ttm --field pb_ratio_ttm --target-date 20260331 --format json --out artifacts/reports/hk_valuation_health_20260331.json
-csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --by-date-file artifacts/assets/universe/hk_selected_pit_research_by_date.csv --target-date 20260331
-csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --target-date 20260401 --include-history --history-sample-limit 10 --format json --out artifacts/reports/hk_daily_health_20260401_full_history.json
-csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260401_valuation_full_market_refetched_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260401_daily_clean_latest --target-date 20260401 --include-history --format json --out artifacts/reports/hk_valuation_health_20260401_with_daily_ref.json
+cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest
+cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --field pe_ratio_ttm --field pb_ratio_ttm --target-date 20260331 --format json --out artifacts/reports/hk_valuation_health_20260331.json
+cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --by-date-file artifacts/assets/universe/hk_selected_pit_research_by_date.csv --target-date 20260331
+cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --target-date 20260401 --include-history --history-sample-limit 10 --format json --out artifacts/reports/hk_daily_health_20260401_full_history.json
+cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260401_valuation_full_market_refetched_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260401_daily_clean_latest --target-date 20260401 --include-history --format json --out artifacts/reports/hk_valuation_health_20260401_with_daily_ref.json
 ```
 
 说明：
@@ -608,13 +606,13 @@ csml rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valua
 - 当分析 `valuation` 类资产并绑定了 `--daily-asset-dir` 时，系统将引用本地日线收盘价展开辅助验证：若发现收盘价未发生活动，系统即会智能静默连续的估值停滞警告，由此过滤掉因长期停牌或无交易引发的平价固化噪音。
 - `json` 格式报告的尾部总揽中带有高度集成的 `quality_verdict` 评分体系；结合 `--fail-on-severity none|info|warning|error` 参数控制运行退出状态。
 
-### csml rqdata inspect-hk-current-health
+### cstree rqdata inspect-hk-current-health
 
 执行一项轻量化的健康校验，旨在核对 `hk_current` contract 与当前的别名引用是否在宏观尺度上达成对齐，跳过庞大的 parquet 文件扫描。
 
 ```bash
-csml rqdata inspect-hk-current-health
-csml rqdata inspect-hk-current-health --asset daily_clean --asset valuation --asset universe_meta --target-date 20260409 --format json --out artifacts/reports/hk_current_health_20260409.json
+cstree rqdata inspect-hk-current-health
+cstree rqdata inspect-hk-current-health --asset daily_clean --asset valuation --asset universe_meta --target-date 20260409 --format json --out artifacts/reports/hk_current_health_20260409.json
 ```
 
 说明：
@@ -624,14 +622,14 @@ csml rqdata inspect-hk-current-health --asset daily_clean --asset valuation --as
 - 相较于深度检查，它极为适合作为海量数据校验前的第一道哨卡，特别是能够化解本地受限设备或代理运行环节下因处理庞大资产而引发的卡顿。
 - 一旦质量瑕疵突破了 `--fail-on-severity` 设立的底线，程序同样会以非零状态报错终止。
 
-### csml rqdata inspect-hk-data-assets
+### cstree rqdata inspect-hk-data-assets
 
 全方位汇集梳理 HK current 资产库。检查范围覆盖 ETF 的全日线连续度、intraday 数据新鲜度、各个已有的 health report 日志、自动维护候选项以及稳健的旧资源清理计划。默认执行只读检查，不做刷新、修复和清理。
 
 ```bash
-csml rqdata inspect-hk-data-assets --target-date 20260410 --format json --out artifacts/reports/hk_data_asset_audit_20260410.json
-csml rqdata inspect-hk-data-assets --target-date 20260410 --intraday-mode metadata --fail-on-severity warning
-csml rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refresh-mode patch --refresh-dry-run --format json --out artifacts/reports/hk_data_asset_audit_20260410_refresh_dry_run.json
+cstree rqdata inspect-hk-data-assets --target-date 20260410 --format json --out artifacts/reports/hk_data_asset_audit_20260410.json
+cstree rqdata inspect-hk-data-assets --target-date 20260410 --intraday-mode metadata --fail-on-severity warning
+cstree rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refresh-mode patch --refresh-dry-run --format json --out artifacts/reports/hk_data_asset_audit_20260410_refresh_dry_run.json
 ```
 
 说明：
@@ -644,15 +642,15 @@ csml rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refres
 - `repair.candidates[]` 提供的是系统建议。仅在参数中成对提供 `--execute-repair` 及其对应的 `--approved-repair-action` 指令后，系统才会落实建议自动修复错误。
 - 规划阶段产生的 `prune.candidates[]` 均为虚拟试运行指令。必须附带 `--delete-prune-candidates` 参数且明确出具 `--approved-prune-path` 认可意见后，废弃数据的真实删除操作才会落地。
 
-### csml rqdata sync-hk-intraday
+### cstree rqdata sync-hk-intraday
 
 贯穿执行港股 `5m` 分钟线的一站式维护通道：首先将 intraday 数据下载并暂存到缓存层，紧接调用深度数据检查；放行后自动将缓存提升为正式 intraday 快照资产，并刷新 `hk_intraday_latest` 别名；如有更进一步的归档需求，须显式引入 `--package` 或 `--release` 开关完成 tarball 压缩和 GitHub 发行。
 
 ```bash
-csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --resume
-csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --inspect-fail-on-severity error
-csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --verify-full-asset --full-inspect-fail-on-severity none
-csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --package
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --resume
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --inspect-fail-on-severity error
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --verify-full-asset --full-inspect-fail-on-severity none
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --package
 ```
 
 说明：
@@ -663,14 +661,14 @@ csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_
 - 工具通常只着眼于对本次切片内容发起检验，更新别名后忽略沉重的存量数据扫描。如有全面摸底需要，务必手动启用 `--verify-full-asset` 参数。因该计算资源消耗巨大，建议分拆作为后台任务运营。
 - 当注入 `--package` 时，系统将依附这批新快照产生专属的 intraday release 节点与对应的 tar 包；若改用 `--release` 将同步下达指令由 `gh release` 分发上网。考虑到整体数据体系的一致性约束，上述指令要求对应的 `daily` 行情基座和 `instruments` 数据同处合规可用期。
 
-### csml rqdata inspect-hk-intraday-health
+### cstree rqdata inspect-hk-intraday-health
 
 核查本地留存的港股 `5m` 分钟线 parquet 文件，挖掘隐藏的时序重复、漏 bar 断片、各交易日 session 计数畸变、负价与负量异类特征，并引入日线对比账本确认聚合无误。
 
 ```bash
-csml rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet
-csml rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --format json --out artifacts/reports/hk_intraday_health_20260401.json
-csml rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intraday/hk_intraday_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
+cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet
+cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --format json --out artifacts/reports/hk_intraday_health_20260401.json
+cstree rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intraday/hk_intraday_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
 ```
 
 说明：
@@ -681,13 +679,13 @@ csml rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intrad
 - 对账过程中，`close`、`volume` 和 `amount` 字段依然采用严格数值比较。对于 `open`、`high` 和 `low` 字段，工具会自动过滤由于轻微 tick 或集合竞价口径差异导致的噪音（前提是前述三个字段已对齐）。这样保留下来的警告信息均具有较高的人工排查价值。
 - 最终生成的 JSON 评估文档末段同样含有 `quality_verdict` 分级定音；通过配置 `--fail-on-severity` 可达成强制拦截效果。
 
-### csml rqdata build-hk-intraday-asset
+### cstree rqdata build-hk-intraday-asset
 
 执行资产转换组装，将松散在港股 `5m` 缓存区的单独 parquet 及 `.parts` 子层聚合成能够长期留用的正是 `intraday` 产物层，全过程依赖磁盘迁移操作且免除非必要的外部重试拉取。
 
 ```bash
-csml rqdata build-hk-intraday-asset --input artifacts/cache/intraday/hk_all_5m_20250327_20260326.parquet --name hk_all_5m_20250327_20260326_latest
-csml rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk_intraday_latest --alias artifacts/assets/rqdata/hk/intraday/hk_intraday_latest
+cstree rqdata build-hk-intraday-asset --input artifacts/cache/intraday/hk_all_5m_20250327_20260326.parquet --name hk_all_5m_20250327_20260326_latest
+cstree rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk_intraday_latest --alias artifacts/assets/rqdata/hk/intraday/hk_intraday_latest
 ```
 
 说明：
@@ -697,14 +695,14 @@ csml rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk_i
 - 附带的 `manifest.yml` 索引将涵盖数据的横跨日期谱系、结构字段定义、源节点指纹追踪及落位分片的行列尺度与额度特征。
 - 随后 `inspect-hk-intraday-health` 与底层计算如 `python -m csml.research.hk_intraday_slippage_report` 都可以无缝地用其充当合法 `--input` 数据源。
 
-### csml rqdata build-hk-daily-clean-layer
+### cstree rqdata build-hk-daily-clean-layer
 
 通过保守的策略手段提炼港股 `daily` 的核心整洁资产层，期间严格保障源数据档案的完好。清理动作聚焦在几点公约化法则上：界限失常修正、负值量的剥离屏蔽以及极少部分滞留式挂空期零价的截断归零。
 
 ```bash
-csml rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402 --alias artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
-csml rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402 --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --zero-price-min-run 10 --overwrite
-csml rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_clean_20260402 --instruments-file artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet --etf-short-zero-max-run 2 --overwrite
+cstree rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402 --alias artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
+cstree rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402 --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --zero-price-min-run 10 --overwrite
+cstree rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_clean_20260402 --instruments-file artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet --etf-short-zero-max-run 2 --overwrite
 ```
 
 说明：
@@ -718,20 +716,20 @@ csml rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/da
 
 ## 股票池生成命令
 
-### csml universe hk-connect
+### cstree universe hk-connect
 
 生成港股通相关的 PIT 数据池。
 
 ```bash
-csml universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
+cstree universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
 ```
 
-### csml universe hk-daily-assets
+### cstree universe hk-daily-assets
 
 通过本地历史行情数据，生成适用于全港股市场的可分析股票资产池。
 
 ```bash
-csml universe hk-daily-assets --config configs/presets/universe/hk_all_assets.yml -- --end-date 20251231
+cstree universe hk-daily-assets --config configs/presets/universe/hk_all_assets.yml -- --end-date 20251231
 ```
 
 ## 参阅文档索引

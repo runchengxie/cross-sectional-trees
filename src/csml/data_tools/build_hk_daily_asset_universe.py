@@ -276,7 +276,7 @@ def write_outputs(
     if meta_out_path is not None:
         meta_out_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "tool": "csml universe hk-daily-assets",
+            "tool": "cstree universe hk-daily-assets",
             "settings": settings,
             "build": build_stats,
             "outputs": {

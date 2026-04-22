@@ -106,13 +106,14 @@ def _repo_relative(path: Path) -> str:
         return str(path)
 
 
-def _csml_executable() -> list[str]:
-    local = Path(sys.executable).with_name("csml")
+def _cstree_executable() -> list[str]:
+    local = Path(sys.executable).with_name("cstree")
     if local.exists():
         return [str(local)]
-    resolved = shutil.which("csml")
-    if resolved:
-        return [resolved]
+    for name in ("cstree", "csml"):
+        resolved = shutil.which(name)
+        if resolved:
+            return [resolved]
     return [
         sys.executable,
         "-c",
@@ -1421,7 +1422,7 @@ def _forward_rqdata_credentials(args: argparse.Namespace) -> list[str]:
 
 
 def _rqdata_command(args: argparse.Namespace, *rest: str) -> list[str]:
-    return [*_csml_executable(), "rqdata", *rest, *_forward_rqdata_credentials(args)]
+    return [*_cstree_executable(), "rqdata", *rest, *_forward_rqdata_credentials(args)]
 
 
 def _build_refresh_steps(
@@ -1513,7 +1514,7 @@ def _build_refresh_steps(
                 phase="refresh",
                 label="Build HK daily clean layer",
                 command=[
-                    *_csml_executable(),
+                    *_cstree_executable(),
                     "rqdata",
                     "build-hk-daily-clean-layer",
                     "--asset-dir",
@@ -1660,7 +1661,7 @@ def _build_inspect_steps(
             stage=inspection_stage,
         )
         command = [
-            *_csml_executable(),
+            *_cstree_executable(),
             "rqdata",
             "inspect-hk-asset-health",
             "--asset-dir",

@@ -258,7 +258,7 @@ def add_backup_data_args(parser: argparse.ArgumentParser) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="csml backup-data",
+        prog="cstree backup-data",
         description="Create a private local snapshot of caches, universe files, and configs.",
     )
     add_backup_data_args(parser)

@@ -29,8 +29,8 @@
 从 `2026-04-03` 开始，仓库也支持把本地 intraday cache 提升成正式资产层：
 
 ```bash
-csml rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk_intraday_latest --alias artifacts/assets/rqdata/hk/intraday/hk_intraday_latest
-csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --resume
+cstree rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk_intraday_latest --alias artifacts/assets/rqdata/hk/intraday/hk_intraday_latest
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --resume
 ```
 
 这层和 `daily` 的区别是：
@@ -38,7 +38,7 @@ csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_
 * 正式入口在 `artifacts/assets/rqdata/hk/intraday/<snapshot>/`
 * 命令会把 parquet、同名 `.meta.json` 和 `.parts/` 一起复制到 `data/`
 * 之后即使你清掉 `artifacts/cache/intraday/`，正式资产仍然可直接被健康检查和滑点报告脚本复用
-* 如果你想把 `download -> inspect -> alias` 也收口成一条命令，现在优先用 `csml rqdata sync-hk-intraday`；它默认只检查新增 patch，不会顺手整包回扫 `hk_intraday_latest`
+* 如果你想把 `download -> inspect -> alias` 也收口成一条命令，现在优先用 `cstree rqdata sync-hk-intraday`；它默认只检查新增 patch，不会顺手整包回扫 `hk_intraday_latest`
 * `--verify-full-asset` 是显式重动作，适合放后台或离线环境跑；`--package` / `--release` 也只在明确要出 tarball / GitHub Release 时再开
 
 如果你只是想临时保留一下本地状态，`artifacts/snapshots/` 仍然适合做冻结备份；如果你要给下游长期复用，优先用这里的正式资产层。
@@ -109,7 +109,7 @@ csml rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_
 这两点很重要：
 
 * 如果实例中途挂掉，现在可以从 part 目录继续，不需要整段重下。
-* `src/csml/research/hk_intraday_slippage_report.py` 和 `csml rqdata inspect-hk-intraday-health` 现在都会优先使用同名 `.parts/` 目录，而不是整块读取巨大的最终 parquet，所以不会再因为全市场大文件而轻易内存爆掉。
+* `src/csml/research/hk_intraday_slippage_report.py` 和 `cstree rqdata inspect-hk-intraday-health` 现在都会优先使用同名 `.parts/` 目录，而不是整块读取巨大的最终 parquet，所以不会再因为全市场大文件而轻易内存爆掉。
 
 ## 当前已经产出的滑点校准结果
 

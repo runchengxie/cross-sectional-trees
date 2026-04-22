@@ -35,12 +35,12 @@
 * 归因解释（SHAP）：当前不会自动针对树模型实施 SHAP 局部解释拆解。
 * 极差胜率（spread win rate）：该指标并未单独抽列为 `summary.json` 里的现成字段。用户可自行从 `quantile_returns.csv` 报表中推算每期 `Q_high - Q_low` 收益差为正的具体比例。
 
-当前已具备配套的离线研究工具，但并未作为单次 `csml run` 附带默认产物的分析项包括：
+当前已具备配套的离线研究工具，但并未作为单次 `cstree run` 附带默认产物的分析项包括：
 
-* `csml feature-evidence generate-ablation` / `summarize-ablation`：该工具组合用于自动生成系统化的特征族消融（feature family ablation）配置文件，并负责汇总其相对于 baseline 在 `eval_ic_ir`、`walk_forward_test_ic_mean`、`final_oos_ic_mean`、`backtest_sharpe`、换手率（turnover）、成本拖累（cost drag）以及 active IR delta 等多维度的边际影响。
-* `csml feature-evidence permutation-importance`：基于已有的 scored artifact 预估分数资产，计算输出单一特征以及特征族（feature family）的 top-k profit proxy、permutation metric 与具体的 `permutation_importance`。
-* `csml construction-grid`：利用固定的模型预测分数作为底层输入，离线推演组合构建层不同变体下的 IC 表现、long-short 收益差、换手率、gross/net 回报、Sharpe、最大回撤、成本损耗及 active return 指标。
-* `csml benchmark-ladder`：将特定的策略收益曲线与多组基准收益阵列执行平行比对，产出包含 active total return、IR、tracking error、beta、alpha 甚至相关系数在内的 benchmark ladder 阶梯报告。
+* `cstree feature-evidence generate-ablation` / `summarize-ablation`：该工具组合用于自动生成系统化的特征族消融（feature family ablation）配置文件，并负责汇总其相对于 baseline 在 `eval_ic_ir`、`walk_forward_test_ic_mean`、`final_oos_ic_mean`、`backtest_sharpe`、换手率（turnover）、成本拖累（cost drag）以及 active IR delta 等多维度的边际影响。
+* `cstree feature-evidence permutation-importance`：基于已有的 scored artifact 预估分数资产，计算输出单一特征以及特征族（feature family）的 top-k profit proxy、permutation metric 与具体的 `permutation_importance`。
+* `cstree construction-grid`：利用固定的模型预测分数作为底层输入，离线推演组合构建层不同变体下的 IC 表现、long-short 收益差、换手率、gross/net 回报、Sharpe、最大回撤、成本损耗及 active return 指标。
+* `cstree benchmark-ladder`：将特定的策略收益曲线与多组基准收益阵列执行平行比对，产出包含 active total return、IR、tracking error、beta、alpha 甚至相关系数在内的 benchmark ladder 阶梯报告。
 
 此外，需要特别厘清以下三组易混淆的概念界限：
 
@@ -69,7 +69,7 @@
 * `backtest_net.csv` / `backtest_gross.csv`
 * `backtest_turnover.csv`
 * `walk_forward_summary.csv`
-* 离线协议生成的专题报告：如通过 `csml promotion-gate`、`csml construction-grid`、`csml feature-evidence` 或 `csml benchmark-ladder` 等工具写出的位于 `artifacts/reports/*.csv` 或 `*.json` 目录下的研究文件。
+* 离线协议生成的专题报告：如通过 `cstree promotion-gate`、`cstree construction-grid`、`cstree feature-evidence` 或 `cstree benchmark-ladder` 等工具写出的位于 `artifacts/reports/*.csv` 或 `*.json` 目录下的研究文件。
 
 全量产物清单请参阅 `docs/outputs.md`。
 

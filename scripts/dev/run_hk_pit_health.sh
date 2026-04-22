@@ -105,7 +105,7 @@ fi
 {
   echo "# $(date -Is) :: pit_health_${NAME}"
   printf '+ '
-  printf '%q ' uv run csml rqdata inspect-hk-pit-coverage \
+  printf '%q ' uv run cstree rqdata inspect-hk-pit-coverage \
     --config "${CONFIG}" \
     --mode "${MODE}" \
     --include-health \
@@ -114,7 +114,7 @@ fi
     --format json \
     --out "${REPORT_PATH}"
   printf '\n'
-  uv run csml rqdata inspect-hk-pit-coverage \
+  uv run cstree rqdata inspect-hk-pit-coverage \
     --config "${CONFIG}" \
     --mode "${MODE}" \
     --include-health \

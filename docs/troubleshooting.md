@@ -34,8 +34,8 @@
 快速验证：
 
 ```bash
-csml rqdata info
-csml rqdata quota --pretty
+cstree rqdata info
+cstree rqdata quota --pretty
 ```
 
 ## 2. `last_trading_day` 看起来像自然日
@@ -49,7 +49,7 @@ csml rqdata quota --pretty
 建议：
 
 * 需要强复现时，直接写绝对日期，如 `20260131`
-* 需要严格交易日时，优先确认 `csml rqdata info` 正常
+* 需要严格交易日时，优先确认 `cstree rqdata info` 正常
 
 ## 3. 回测结果为空或样本很少
 
@@ -103,7 +103,7 @@ csml rqdata quota --pretty
 * 如果是季度 PIT 配置，先跑：
 
 ```bash
-csml rqdata inspect-hk-pit-coverage --config <your-config> --mode both
+cstree rqdata inspect-hk-pit-coverage --config <your-config> --mode both
 ```
 
 * 优先删掉最拖后腿的特征，而不是先改 `test_size`

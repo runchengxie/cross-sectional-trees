@@ -73,7 +73,7 @@ trade_date,symbol,stock_ticker
 ### 港股通
 
 ```bash
-csml universe hk-connect \
+cstree universe hk-connect \
   --config configs/presets/universe/hk_connect.yml \
   -- --mode daily
 ```
@@ -81,7 +81,7 @@ csml universe hk-connect \
 ### HK 全市场日线资产
 
 ```bash
-csml universe hk-daily-assets \
+cstree universe hk-daily-assets \
   --config configs/presets/universe/hk_all_assets.yml \
   -- --end-date 20251231
 ```

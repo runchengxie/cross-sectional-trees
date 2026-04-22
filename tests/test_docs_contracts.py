@@ -16,20 +16,20 @@ INLINE_REPO_REF_DIR_PREFIXES = (
     ".github/workflows/",
 )
 EXPECTED_CAPABILITY_TOKENS = [
-    "`csml run`",
-    "`csml summarize`",
-    "`csml grid`",
-    "`csml tune`",
-    "`csml sweep-linear`",
-    "`csml holdings`",
-    "`csml snapshot`",
-    "`csml alloc`",
-    "`csml alloc-hk`",
-    "`csml init-config`",
-    "`csml backup-data`",
-    "`csml data ...`",
-    "`csml rqdata ...`",
-    "`csml universe ...`",
+    "`cstree run`",
+    "`cstree summarize`",
+    "`cstree grid`",
+    "`cstree tune`",
+    "`cstree sweep-linear`",
+    "`cstree holdings`",
+    "`cstree snapshot`",
+    "`cstree alloc`",
+    "`cstree alloc-hk`",
+    "`cstree init-config`",
+    "`cstree backup-data`",
+    "`cstree data ...`",
+    "`cstree rqdata ...`",
+    "`cstree universe ...`",
 ]
 EXPECTED_TEST_WORKFLOW_JOBS = {
     "fast",
@@ -70,20 +70,20 @@ EXPECTED_README_ENTRYPOINT_NAV_TOKENS = [
     "docs/cli.md",
 ]
 EXPECTED_README_PUBLIC_CLI_TOKENS = [
-    "`csml run`",
-    "`csml summarize`",
-    "`csml grid`",
-    "`csml tune`",
-    "`csml sweep-linear`",
-    "`csml holdings`",
-    "`csml snapshot`",
-    "`csml alloc`",
-    "`csml alloc-hk`",
-    "`csml init-config`",
-    "`csml backup-data`",
-    "csml data",
-    "csml rqdata",
-    "csml universe",
+    "`cstree run`",
+    "`cstree summarize`",
+    "`cstree grid`",
+    "`cstree tune`",
+    "`cstree sweep-linear`",
+    "`cstree holdings`",
+    "`cstree snapshot`",
+    "`cstree alloc`",
+    "`cstree alloc-hk`",
+    "`cstree init-config`",
+    "`cstree backup-data`",
+    "cstree data",
+    "cstree rqdata",
+    "cstree universe",
 ]
 EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "## 入口分层与稳定性",
@@ -93,7 +93,7 @@ EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "`python -m csml.research.hk_financial_details`",
     "`python -m csml.research.hk_intraday_download`",
     "`scripts/dev/run_tests.sh`",
-    "不是 `csml` CLI 子命令",
+    "不是 `cstree` CLI 子命令",
 ]
 EXPECTED_ARTIFACT_ROOT_TOKENS = [
     "  metadata/",
@@ -121,7 +121,7 @@ EXPECTED_LOCAL_ASSET_LAZY_INIT_TOKENS = [
     "lazy init `rqdatac`",
 ]
 EXPECTED_WORKFLOW_SMOKE_SNIPPETS = [
-    'csml data query --sql "select 1 as value"',
+    'cstree data query --sql "select 1 as value"',
     "alloc_hk_smoke.xlsx",
 ]
 
@@ -355,7 +355,7 @@ def test_research_notes_have_minimal_metadata():
 def test_docs_cli_covers_public_cli_leaf_commands():
     docs_cli = (_repo_root() / "docs" / "cli.md").read_text(encoding="utf-8")
     expected_headings = {
-        f"### csml {' '.join(command_path)}"
+        f"### cstree {' '.join(command_path)}"
         for command_path in _leaf_commands(_command_tree(cli.build_parser()))
     }
     missing = sorted(heading for heading in expected_headings if heading not in docs_cli)

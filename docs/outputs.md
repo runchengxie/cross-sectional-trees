@@ -49,7 +49,7 @@ artifacts/
 
 `artifacts/reports/`
 
-常见来源包括 `csml rqdata inspect-hk-*`、intraday slippage / health 分析，以及维护脚本串联后的健康检查输出。
+常见来源包括 `cstree rqdata inspect-hk-*`、intraday slippage / health 分析，以及维护脚本串联后的健康检查输出。
 
 当前 `dataset` 包括：
 
@@ -67,9 +67,9 @@ artifacts/
 * `instrument_industry`
 * `industry_changes`
 
-这类目录由 `csml rqdata mirror-hk-daily`、`csml rqdata build-hk-intraday-asset`、`csml rqdata mirror-hk-pit-financials`、`csml rqdata mirror-hk-financial-details`、`csml rqdata mirror-hk-ex-factors`、`csml rqdata mirror-hk-dividends`、`csml rqdata mirror-hk-shares`、`csml rqdata mirror-hk-valuation`、`csml rqdata mirror-hk-exchange-rate`、`csml rqdata mirror-hk-announcement`、`csml rqdata mirror-hk-southbound`、`csml rqdata mirror-hk-instrument-industry` 和 `csml rqdata mirror-hk-industry-changes` 生成。
-如果你继续执行 `csml rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
-如果你继续执行 `csml rqdata build-hk-industry-labels`，默认还会在对应的 `industry_changes` 目录下生成一份本地行业标签文件。
+这类目录由 `cstree rqdata mirror-hk-daily`、`cstree rqdata build-hk-intraday-asset`、`cstree rqdata mirror-hk-pit-financials`、`cstree rqdata mirror-hk-financial-details`、`cstree rqdata mirror-hk-ex-factors`、`cstree rqdata mirror-hk-dividends`、`cstree rqdata mirror-hk-shares`、`cstree rqdata mirror-hk-valuation`、`cstree rqdata mirror-hk-exchange-rate`、`cstree rqdata mirror-hk-announcement`、`cstree rqdata mirror-hk-southbound`、`cstree rqdata mirror-hk-instrument-industry` 和 `cstree rqdata mirror-hk-industry-changes` 生成。
+如果你继续执行 `cstree rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
+如果你继续执行 `cstree rqdata build-hk-industry-labels`，默认还会在对应的 `industry_changes` 目录下生成一份本地行业标签文件。
 
 ## RQData 资产镜像目录
 
@@ -163,7 +163,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 * `artifacts/metadata/catalog_summary.csv`
 * `artifacts/metadata/current_assets/hk_current.json`
 
-其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `csml data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新。
+其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `cstree data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新。
 
 如果改了 `paths.artifacts_root`、`CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
 
@@ -192,7 +192,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 `artifacts/standardized/<market>/<dataset>/<name>/`
 
-这类目录由 `csml data materialize` 生成，目标是把 raw / derived 输入转成更适合横截面查询和聚合的分析层。
+这类目录由 `cstree data materialize` 生成，目标是把 raw / derived 输入转成更适合横截面查询和聚合的分析层。
 
 如果改了 `paths.artifacts_root`、`CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认输出根目录会随新的产物根目录一起派生；只有显式传了 `--out-root` 时才会覆盖。
 
@@ -229,7 +229,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 * 原始 replay、审计和复现继续看 `artifacts/assets/`。
 * 横截面覆盖分析、聚合、筛选和 SQL 查询优先读 `artifacts/standardized/`。
-* `csml data materialize` 的常用 preset 已默认把 `symbol` 当输入标准列；历史 `ts_code` / `stock_ticker` / `order_book_id` 文件仍会自动归一到 `symbol`。
+* `cstree data materialize` 的常用 preset 已默认把 `symbol` 当输入标准列；历史 `ts_code` / `stock_ticker` / `order_book_id` 文件仍会自动归一到 `symbol`。
 
 ## PIT fundamentals 平面文件
 
@@ -237,7 +237,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/pipeline_fundamentals.parquet`
 
-这类文件由 `csml rqdata build-hk-pit-fundamentals` 生成，也可以通过 `--out` 写到其他位置。
+这类文件由 `cstree rqdata build-hk-pit-fundamentals` 生成，也可以通过 `--out` 写到其他位置。
 
 配套文件：
 
@@ -264,7 +264,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 `artifacts/assets/rqdata/hk/industry_changes/<snapshot>/industry_labels_<freq>.parquet`
 
-这类文件由 `csml rqdata build-hk-industry-labels` 生成，也可以通过 `--out` 写到其他位置。
+这类文件由 `cstree rqdata build-hk-industry-labels` 生成，也可以通过 `--out` 写到其他位置。
 
 配套文件：
 
@@ -573,7 +573,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/quality/fundamentals/industry/walk_forward`）。
 1. 研究主链路内部 canonical 标的列是 `symbol`；新生成的 run artifacts / CLI 输出默认只写 `symbol`。
-1. `csml build-hk-connect-universe` 和 `csml build-hk-daily-asset-universe` 新生成的 universe CSV 也默认只写 `symbol`，不再主动补 `ts_code` / `stock_ticker`。
+1. `cstree universe hk-connect` 和 `cstree universe hk-daily-assets` 新生成的 universe CSV 也默认只写 `symbol`，不再主动补 `ts_code` / `stock_ticker`。
 1. 旧输入文件里的 `ts_code`、`stock_ticker`、`order_book_id` 仍会在读取时自动映射到 `symbol`。
 1. 持仓主键列语义：`trade_date`、`entry_date`、`symbol`、`weight`、`signal`、`rank`、`side`。
 1. `weight` 的解释取决于 `backtest.weighting`：`equal` 时等权，`signal` 时为信号 softmax 后的目标权重。
@@ -662,7 +662,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 1. 项目研究主链路内部已经改为以 `symbol` 作为主字段。
 1. 旧持仓文件如果仍是 `ts_code` / `stock_ticker` / `order_book_id`，CLI 读取时会自动兼容并规范到 `symbol`。
-1. `csml holdings` / `csml alloc` 的导出 payload 也只保留 canonical `symbol`，不会把这些 legacy alias 列原样透传回输出。
+1. `cstree holdings` / `cstree alloc` 的导出 payload 也只保留 canonical `symbol`，不会把这些 legacy alias 列原样透传回输出。
 
 ### `positions_by_rebalance_oos.csv` / `positions_current_oos.csv`
 
@@ -704,7 +704,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 下面这些文件不在单个 run 目录内，但属于研究流程中的核心对比产物。
 
-### `csml summarize`：`runs_summary.csv`
+### `cstree summarize`：`runs_summary.csv`
 
 默认位置：
 
@@ -750,7 +750,7 @@ score = objective_component_eval_ic_ir
 1. 若 `walk_forward_test_ic_mean` 缺失，默认权重为 0 时不影响 `score`；如果显式给了正权重，缺失值按 0 参与对应 component。
 1. `backtest_tracking_error`、`backtest_information_ratio`、`backtest_beta`、`backtest_alpha`、`backtest_corr` 来自 `summary.json -> backtest.active`。
 1. 若命中 `flag_constant_prediction=true` 或 `flag_zero_feature_importance=true`，会把 `score` 和 `dsr` 留空，避免退化模型排到前面。
-1. `objective_score` 与 `score` 使用同一套 component 口径，便于和 `csml tune` 的 `objective_score` 对齐。
+1. `objective_score` 与 `score` 使用同一套 component 口径，便于和 `cstree tune` 的 `objective_score` 对齐。
 1. `dsr` 为 Deflated Sharpe Ratio（0-1），在 summarize 阶段按可比策略分组计算；当前分组会额外纳入 `comparability_class` 与 `provenance_cohort_key`，避免把不同 lineage 的 run 混在一起估计组内尝试次数；`dsr_sr0` 为组内多重比较修正后的 Sharpe 阈值（原频率）。
 1. `dsr_n_trials` 使用分组内尝试次数（attempts count）；`dsr_var_trials` 为分组内原频率 Sharpe 的样本方差（`ddof=1`）。
 
@@ -769,7 +769,7 @@ score = objective_component_eval_ic_ir
 1. `comparability_reasons` 是 `|` 分隔的 reason codes，便于脚本过滤。
 1. `provenance_cohort_key` 是基于 resolved dates 和 comparison-relevant input lineage 生成的稳定 cohort 指纹；它表示“同一 tracked lineage cohort”，不表示运行环境逐字节完全相同。
 
-### `csml grid`：`grid_summary.csv`
+### `cstree grid`：`grid_summary.csv`
 
 默认位置：
 
@@ -787,7 +787,7 @@ score = objective_component_eval_ic_ir
 run_name,top_k,cost_bps,buffer_exit,buffer_entry,weighting,summary_path,output_dir,label_horizon_days,eval_ic_mean,eval_ic_ir,eval_long_short,eval_turnover_mean,backtest_periods,backtest_total_return,backtest_ann_return,backtest_ann_vol,backtest_sharpe,backtest_max_drawdown,backtest_avg_turnover,backtest_avg_cost_drag,status,error
 ```
 
-### `csml tune`：`artifacts/sweeps/<tag>/`
+### `cstree tune`：`artifacts/sweeps/<tag>/`
 
 目录结构：
 
@@ -815,7 +815,7 @@ artifacts/sweeps/<tag>/
 1. `best_config.yml` 是 `best_trial.json` 对应的 trial config 副本，方便后续直接复跑或继续做 construction grid。
 1. `--dry-run` 只会生成 `configs/`、`jobs.csv` 和一个空表头的 `trial_results.csv`，不会调用 `pipeline.run` 或 `summarize`。
 
-### `csml promotion-gate`：晋升门报告
+### `cstree promotion-gate`：晋升门报告
 
 默认不写文件；如果传 `--output-json` 或 `--output-csv`，会写到指定路径。
 
@@ -851,7 +851,7 @@ baseline_run,candidate_run,promotion_status,is_comparable,comparability_mismatch
 * `rejected`：可比，但命中硬拒绝或缺少被配置为必需的晋升证据。
 * `non-comparable`：baseline 与 candidate 的研究单元不一致，不产出可晋升结论。
 
-### `csml construction-grid`：固定分数组合层对比
+### `cstree construction-grid`：固定分数组合层对比
 
 默认不写文件；如果传 `--output` 或 `output_csv`，会写 CSV。如果传 `--output-json`，会写 JSON。
 
@@ -875,7 +875,7 @@ variant,scored_file,summary_path,target_col,price_col,eval_signal_col,backtest_s
 1. `active_*`、`information_ratio`、`tracking_error`、`beta`、`alpha`、`corr` 只在配置了可用 benchmark returns 时有值。
 1. `exposure_available` 仅表示该 variant 有可用于后续暴露/归因检查的输入线索；当前不隐式执行行业或风格中性化。
 
-### `csml feature-evidence`：特征证据报告
+### `cstree feature-evidence`：特征证据报告
 
 `feature-evidence` 有三个模式。
 
@@ -915,7 +915,7 @@ name,kind,features,feature_count,top_k,n_dates,baseline_score_metric,baseline_sc
 1. `permutation_importance = feature_metric - permuted_metric`。
 1. 如果 run 目录存在 `walk_forward_feature_stability.csv`，`summarize-ablation` 会带出 `feature_stability_*` 字段；不存在时 `feature_stability_available=false`。
 
-### `csml benchmark-ladder`：benchmark 阶梯报告
+### `cstree benchmark-ladder`：benchmark 阶梯报告
 
 默认不写文件；如果传 `--output` 或 `output_csv`，会写 CSV。如果传 `--output-json`，会写 JSON。
 
@@ -941,7 +941,7 @@ benchmark_name,role,source_type,strategy_returns_file,benchmark_returns_file,att
 1. `status=incompatible` 表示文件存在但没有可重叠的收益日期。
 1. `attribution_file` 只是引用归因产物，不会改变主 benchmark 或训练标签。
 
-### `csml sweep-linear`：`artifacts/sweeps/<tag>/`
+### `cstree sweep-linear`：`artifacts/sweeps/<tag>/`
 
 目录结构：
 
@@ -959,9 +959,9 @@ artifacts/sweeps/<tag>/
 
 1. `jobs.csv` 列契约：`order,model,alpha,l1_ratio,run_name,config_path`
 1. `run_results.csv` 列契约：`order,run_name,config_path,status,error`
-1. `runs_summary.csv` 列契约与 `csml summarize` 章节一致。
+1. `runs_summary.csv` 列契约与 `cstree summarize` 章节一致。
 
-### `csml alloc-hk`
+### `cstree alloc-hk`
 
 默认不写 run 目录内文件，除非显式传 `--out`。它消费的输入契约仍然是持仓文件 / holdings JSON 的稳定字段：
 
@@ -1035,7 +1035,7 @@ artifacts/sweeps/<tag>/
 * `last_sell_signal_date`
 * `pct_1y`、`z_1y`、`valuation`
 
-### `csml backup-data`：`artifacts/snapshots/<name>/`
+### `cstree backup-data`：`artifacts/snapshots/<name>/`
 
 目录结构：
 

@@ -225,7 +225,7 @@ def _prepare_feature_dataset(
             "Feature availability collapse before complete-case filter: "
             "complete_dates=%s/%s, complete_rows=%s/%s. "
             "Worst features after missing fill: %s. "
-            "If this is a quarterly PIT config, run `csml rqdata inspect-hk-pit-coverage --config ...` "
+            "If this is a quarterly PIT config, run `cstree rqdata inspect-hk-pit-coverage --config ...` "
             "or trim the low-coverage feature block.",
             feature_availability_diagnostics["complete_dates"],
             feature_availability_diagnostics["total_dates"],

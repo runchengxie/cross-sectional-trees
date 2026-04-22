@@ -35,7 +35,7 @@ Options:
   --with-package                  Also run the package phase after inspect.
   --backup-name NAME              After a successful non-dry run, freeze the
                                   resolved hk_current contract with
-                                  csml backup-data --preset hk_current.
+                                  cstree backup-data --preset hk_current.
   --no-resume                     Do not pass --resume to patch mirror steps.
   --dry-run                       Forward --dry-run to the workflow; skips
                                   backup execution.
@@ -165,7 +165,7 @@ print_command "${WORKFLOW_CMD[@]}"
 "${WORKFLOW_CMD[@]}"
 
 if [[ -n "${BACKUP_NAME}" ]]; then
-  BACKUP_CMD=(uv run csml backup-data --preset hk_current --name "${BACKUP_NAME}" --no-cache)
+  BACKUP_CMD=(uv run cstree backup-data --preset hk_current --name "${BACKUP_NAME}" --no-cache)
   if [[ "${DRY_RUN}" == "1" ]]; then
     echo "[dry-run] skip backup:"
     print_command "${BACKUP_CMD[@]}"

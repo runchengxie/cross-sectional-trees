@@ -18,7 +18,7 @@
 
 * round 1 已经证明：对这条 monthly candidate，先调训练结构是对的。`exp_decay(h=6) + rolling 48 dates` 比共享默认训练结构更值得保留。
 * round 2 已经证明：在固定 `h6 + w48` 之后，XGB 小邻域调参还能再拿到一段真实增量，尤其是测试段 backtest 和换手改善明显。
-* round 3 和 round 4 已经进一步证明：问题不在 monthly 线本身，而在于某些强势参数区域会让早期 CV fold 预测塌成常数；把 `min_cv_ic_valid_folds` 正式纳入 `csml tune` 之后，可以把 winner 从“强但不可判分”推进到“实现仍强、而且至少部分可判分”的 gated challenger。
+* round 3 和 round 4 已经进一步证明：问题不在 monthly 线本身，而在于某些强势参数区域会让早期 CV fold 预测塌成常数；把 `min_cv_ic_valid_folds` 正式纳入 `cstree tune` 之后，可以把 winner 从“强但不可判分”推进到“实现仍强、而且至少部分可判分”的 gated challenger。
 
 一句话收口：
 

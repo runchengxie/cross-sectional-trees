@@ -1,6 +1,6 @@
 """Internal maintainer helper for exporting repository source into one text file.
 
-This script is not part of the public `csml` workflow. Keep it as a local
+This script is not part of the public `cstree` workflow. Keep it as a local
 maintenance utility.
 """
 

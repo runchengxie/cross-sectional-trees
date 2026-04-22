@@ -80,7 +80,7 @@ def _format_readme(manifest: dict, selected_parts: list[str]) -> str:
     parts = _manifest_parts(manifest)
 
     lines = [
-        "# CSML HK Asset Release Parts",
+        "# CSTree HK Asset Release Parts",
         "",
         "This release splits reusable HK assets into independent upload parts.",
         "",

@@ -130,7 +130,7 @@ bash scripts/dev/run_hk_pit_health.sh \
 
 * 脚本会优先从 `artifacts/metadata/current_assets/hk_current.json` 解析 `daily_clean`、`valuation`、`intraday` 的 resolved path。
 * 如果 current contract 缺失，会回退到默认 alias 路径。
-* 脚本本身不是公开 `csml` CLI 子命令；它是本地运维辅助入口。
+* 脚本本身不是公开 `cstree` CLI 子命令；它是本地运维辅助入口。
 
 ## 逐条手动跑
 
@@ -185,7 +185,7 @@ INTRADAY_DIR="$(read_current_path intraday)"
 ### 2. 跑 current health
 
 ```bash
-uv run csml rqdata inspect-hk-current-health \
+uv run cstree rqdata inspect-hk-current-health \
   --target-date "$TARGET_DATE" \
   --fail-on-severity "$FAIL_ON_SEVERITY" \
   --format json \
@@ -196,7 +196,7 @@ uv run csml rqdata inspect-hk-current-health \
 ### 3. 跑 daily_clean health
 
 ```bash
-uv run csml rqdata inspect-hk-asset-health \
+uv run cstree rqdata inspect-hk-asset-health \
   --asset-dir "$DAILY_CLEAN_DIR" \
   --target-date "$TARGET_DATE" \
   --include-history \
@@ -210,7 +210,7 @@ uv run csml rqdata inspect-hk-asset-health \
 ### 4. 跑 valuation health
 
 ```bash
-uv run csml rqdata inspect-hk-asset-health \
+uv run cstree rqdata inspect-hk-asset-health \
   --asset-dir "$VALUATION_DIR" \
   --daily-asset-dir "$DAILY_CLEAN_DIR" \
   --target-date "$TARGET_DATE" \
@@ -225,7 +225,7 @@ uv run csml rqdata inspect-hk-asset-health \
 ### 5. 跑 PIT health
 
 ```bash
-uv run csml rqdata inspect-hk-pit-coverage \
+uv run cstree rqdata inspect-hk-pit-coverage \
   --config "$PIT_CONFIG" \
   --mode both \
   --include-health \
@@ -239,7 +239,7 @@ uv run csml rqdata inspect-hk-pit-coverage \
 ### 6. 需要时再跑 intraday health
 
 ```bash
-uv run csml rqdata inspect-hk-intraday-health \
+uv run cstree rqdata inspect-hk-intraday-health \
   --input "$INTRADAY_DIR" \
   --daily-asset-dir "$DAILY_CLEAN_DIR" \
   --fail-on-severity "$FAIL_ON_SEVERITY" \
@@ -275,7 +275,7 @@ python scripts/internal/run_hk_asset_workflow.py \
 
 ## 聚合命令和单项命令怎么分工
 
-`csml rqdata inspect-hk-data-assets` 已经是公开 CLI 入口，适合先回答“当前资产是否新鲜、缺口在哪里、哪些路径可考虑清理”。它默认只读和 dry-run。
+`cstree rqdata inspect-hk-data-assets` 已经是公开 CLI 入口，适合先回答“当前资产是否新鲜、缺口在哪里、哪些路径可考虑清理”。它默认只读和 dry-run。
 
 保留单项命令的原因：
 

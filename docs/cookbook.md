@@ -24,7 +24,7 @@
 若准备着手 HK 月频 Starter 路线，可执行以下命令再次运行：
 
 ```bash
-csml run --config hk
+cstree run --config hk
 ```
 
 在此处的 `hk` 别名指代了以下特性组合：
@@ -38,7 +38,7 @@ csml run --config hk
 若计划执行季频 `PIT fundamentals` 路线，请先查阅 `docs/playbooks/hk-data-assets.md` 以准备本地 `pipeline_fundamentals.parquet`，随后再运行：
 
 ```bash
-csml run --config configs/presets/hk_quarterly_pit_hybrid.yml
+cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml
 ```
 
 ## 阶段二：定义研究单元
@@ -62,12 +62,12 @@ csml run --config configs/presets/hk_quarterly_pit_hybrid.yml
 首先应当把各级 benchmark 顺序跑通，确立比较基准之后再进行模型对照或参数调优：
 
 ```bash
-csml run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
-csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
-csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
 
-csml summarize --runs-dir artifacts/runs --sort-by score
-csml summarize --runs-dir artifacts/runs --comparability-class direct --sort-by dsr
+cstree summarize --runs-dir artifacts/runs --sort-by score
+cstree summarize --runs-dir artifacts/runs --comparability-class direct --sort-by dsr
 ```
 
 这三条配置固定了同一个季度的研究单元。它们用于解答“alpha 收益究竟来自 price-only、core PIT 还是 hybrid 增量”这一核心问题。完整的基准分层结构请见 `docs/concepts/benchmark-protocol.md`。
@@ -93,7 +93,7 @@ csml summarize --runs-dir artifacts/runs --comparability-class direct --sort-by 
 倘若本地的 HK assets 已经就绪，当前首推的月频研究入口为：
 
 ```bash
-csml run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
+cstree run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
 ```
 
 该路线一次性打通了 `tr_close`、balanced execution 以及本地资产读取链路。  
@@ -104,7 +104,7 @@ csml run --config configs/experiments/variants/hk_selected__tr_close_execution_b
 利用以下命令执行批量线性搜索：
 
 ```bash
-csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_a.yml
+cstree sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_a.yml
 ```
 
 ## 阶段四：产出与归档
@@ -114,37 +114,37 @@ csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_
 能够真正触发 pipeline 运行的 `snapshot --config ...` 命令，仅接受开启了 `live.enabled=true` 的 live 配置。若目的仅仅是从已经完成的 run 中导出结果，请优先使用 `--run-dir` 或 `--skip-run` 参数。
 
 ```bash
-csml snapshot --config path/to/live.yml
-csml snapshot --config path/to/live.yml --skip-run
-csml snapshot --run-dir artifacts/runs/<run_dir>
+cstree snapshot --config path/to/live.yml
+cstree snapshot --config path/to/live.yml --skip-run
+cstree snapshot --run-dir artifacts/runs/<run_dir>
 ```
 
 ### 4.2 执行手数分配
 
 ```bash
-csml alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
+cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
 ```
 
 ### 4.3 归档研究数据
 
 ```bash
-csml backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
-csml backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
+cstree backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
+cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
 ```
 
 ## 常见任务速查表
 
 | 执行任务 | 对应命令 |
 |------|------|
-| 运行主流程 | `csml run --config <template>` |
-| 汇总运行结果 | `csml summarize --runs-dir artifacts/runs --sort-by score` |
-| 敏感性分析 | `csml grid --config <template> --top-k 10,20 --cost-bps 15,25` |
-| 线性模型批量搜索 | `csml sweep-linear --sweep-config <sweep.yml>` |
-| 查看策略持仓 | `csml holdings --config <template> --as-of t-1` |
-| 生成实盘快照 | `csml snapshot --config <live.yml>` 或 `csml snapshot --run-dir <run_dir>` |
-| 计算手数分配 | `csml alloc --config <live.yml> --source live --top-n 20 --cash 1000000` |
-| 归档备份数据 | `csml backup-data --name <name> --config <config>` |
-| 冻结当前 HK 资产快照 | `csml backup-data --preset hk_current --name <name>` |
+| 运行主流程 | `cstree run --config <template>` |
+| 汇总运行结果 | `cstree summarize --runs-dir artifacts/runs --sort-by score` |
+| 敏感性分析 | `cstree grid --config <template> --top-k 10,20 --cost-bps 15,25` |
+| 线性模型批量搜索 | `cstree sweep-linear --sweep-config <sweep.yml>` |
+| 查看策略持仓 | `cstree holdings --config <template> --as-of t-1` |
+| 生成实盘快照 | `cstree snapshot --config <live.yml>` 或 `cstree snapshot --run-dir <run_dir>` |
+| 计算手数分配 | `cstree alloc --config <live.yml> --source live --top-n 20 --cash 1000000` |
+| 归档备份数据 | `cstree backup-data --name <name> --config <config>` |
+| 冻结当前 HK 资产快照 | `cstree backup-data --preset hk_current --name <name>` |
 
 ## 相关参考文档
 

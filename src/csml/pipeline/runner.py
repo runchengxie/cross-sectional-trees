@@ -1,8 +1,8 @@
 """Pipeline runner for the HK + RQData workflow.
 Usage:
-    $ csml run
-    $ csml run --config configs/presets/default.yml
-    $ csml run --config hk
+    $ cstree run
+    $ cstree run --config configs/presets/default.yml
+    $ cstree run --config hk
     # rqdatac auth may be required (RQDATA_USERNAME/RQDATA_PASSWORD)
 """
 

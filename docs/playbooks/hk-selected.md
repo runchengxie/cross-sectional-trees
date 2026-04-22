@@ -154,16 +154,16 @@ HK selected 主线研究，按下面 8 步推进最稳妥：
 如果你要把某个 monthly challenger 升成新主线，建议额外跑：
 
 ```bash
-csml construction-grid \
+cstree construction-grid \
   --config configs/experiments/sweeps/hk_selected__research_protocol_construction_grid.yml
 
-csml feature-evidence summarize-ablation \
+cstree feature-evidence summarize-ablation \
   --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
 
-csml benchmark-ladder \
+cstree benchmark-ladder \
   --config configs/experiments/sweeps/hk_selected__research_protocol_benchmark_ladder.yml
 
-csml promotion-gate \
+cstree promotion-gate \
   --config configs/experiments/sweeps/hk_selected__research_protocol_promotion_gate.yml \
   --baseline-run artifacts/runs/<baseline_run_dir> \
   --candidate-run artifacts/runs/<candidate_run_dir>
@@ -179,13 +179,13 @@ csml promotion-gate \
 
 ```bash
 # 当前推荐的 HK selected 月频本地研究入口
-csml run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
+cstree run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
 
 # walk-forward 稳定性诊断 sidecar
-csml run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_wf_diag_local.yml
+cstree run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_wf_diag_local.yml
 
 # 历史 benchmark 锚点 / 低依赖对照
-csml run --config configs/experiments/baseline/hk_selected.yml
+cstree run --config configs/experiments/baseline/hk_selected.yml
 ```
 
 ## 5. 季度 `Q` 路线
@@ -208,7 +208,7 @@ csml run --config configs/experiments/baseline/hk_selected.yml
 如果你的目标是正式做财报驱动研究，推荐按下面顺序走：
 
 1. 准备 `pipeline_fundamentals.parquet`
-2. 运行 `csml rqdata inspect-hk-pit-coverage`
+2. 运行 `cstree rqdata inspect-hk-pit-coverage`
 3. 先看 `Fill Dependence`、`Worst Features`、`Complete Case`
 4. 覆盖率达标后，按顺序跑三条基线：
    `quarterly_price_only -> quarterly_pit_core -> quarterly_pit_core_hybrid`
@@ -243,7 +243,7 @@ csml run --config configs/experiments/baseline/hk_selected.yml
 体检命令：
 
 ```bash
-csml rqdata inspect-hk-pit-coverage \
+cstree rqdata inspect-hk-pit-coverage \
   --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
   --mode both
 ```
@@ -313,16 +313,16 @@ csml rqdata inspect-hk-pit-coverage \
 
 ```bash
 # 特征 benchmark
-csml run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
-csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
-csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
 
 # 同一 hybrid 单元上的模型 challenger
-csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml
-csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml
-csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml
+cstree run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml
+cstree run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml
+cstree run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml
 
-csml summarize \
+cstree summarize \
   --runs-dir artifacts/runs \
   --run-name-prefix hk_sel_q_benchmark_ \
   --sort-by score
@@ -338,7 +338,7 @@ csml summarize \
 * `backtest`
 
 如果这些块一起变了，你比较的就不再是模型，而是整条研究路线。  
-如果你还要继续细化线性模型，再单独用 `csml sweep-linear` 做后续搜索。
+如果你还要继续细化线性模型，再单独用 `cstree sweep-linear` 做后续搜索。
 
 ## 8. 什么时候必须准备 PIT 财务文件
 
@@ -351,7 +351,7 @@ csml summarize \
 最短准备流程：
 
 ```bash
-csml rqdata mirror-hk-pit-financials \
+cstree rqdata mirror-hk-pit-financials \
   --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
   --name hk_selected_pit_2011_2025_latest \
   --fields-file configs/field_profiles/hk_financial_fields_starter.txt \
@@ -359,14 +359,14 @@ csml rqdata mirror-hk-pit-financials \
   --end-quarter 2025q4 \
   --date 20260312
 
-csml rqdata build-hk-pit-fundamentals \
+cstree rqdata build-hk-pit-fundamentals \
   --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet \
   --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv \
   --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv \
   --max-latest-report-age-days 365
 
-csml rqdata inspect-hk-pit-coverage \
+cstree rqdata inspect-hk-pit-coverage \
   --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
   --mode both
 ```

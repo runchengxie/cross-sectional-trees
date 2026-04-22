@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Internal maintainer helper for packaging the repository.
-# This script is not part of the public `csml` workflow.
+# This script is not part of the public `cstree` workflow.
 
 die() {
   echo "$*" >&2

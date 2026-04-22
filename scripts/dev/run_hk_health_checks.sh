@@ -214,7 +214,7 @@ VALUATION_DIR="$(read_current_path valuation)"
 run_step \
   current_health \
   "${ARTIFACTS_ROOT}/reports/hk_current_health_${TARGET_DATE}.json" \
-  uv run csml rqdata inspect-hk-current-health \
+  uv run cstree rqdata inspect-hk-current-health \
   --artifacts-root "${ARTIFACTS_ROOT}" \
   --target-date "${TARGET_DATE}" \
   --fail-on-severity "${FAIL_ON_SEVERITY}" \
@@ -224,7 +224,7 @@ run_step \
 run_step \
   daily_clean_health \
   "${ARTIFACTS_ROOT}/reports/hk_daily_clean_health_${TARGET_DATE}.json" \
-  uv run csml rqdata inspect-hk-asset-health \
+  uv run cstree rqdata inspect-hk-asset-health \
   --asset-dir "${DAILY_CLEAN_DIR}" \
   --target-date "${TARGET_DATE}" \
   --include-history \
@@ -236,7 +236,7 @@ run_step \
 run_step \
   valuation_health \
   "${ARTIFACTS_ROOT}/reports/hk_valuation_health_${TARGET_DATE}.json" \
-  uv run csml rqdata inspect-hk-asset-health \
+  uv run cstree rqdata inspect-hk-asset-health \
   --asset-dir "${VALUATION_DIR}" \
   --daily-asset-dir "${DAILY_CLEAN_DIR}" \
   --target-date "${TARGET_DATE}" \
@@ -249,7 +249,7 @@ run_step \
 run_step \
   pit_health \
   "${ARTIFACTS_ROOT}/reports/hk_pit_health_${TARGET_DATE}.json" \
-  uv run csml rqdata inspect-hk-pit-coverage \
+  uv run cstree rqdata inspect-hk-pit-coverage \
   --config "${PIT_CONFIG}" \
   --mode both \
   --include-health \
@@ -268,7 +268,7 @@ if [[ "${WITH_INTRADAY}" == "1" ]]; then
   run_step \
     intraday_health \
     "${ARTIFACTS_ROOT}/reports/hk_intraday_health_${TARGET_DATE}.json" \
-    uv run csml rqdata inspect-hk-intraday-health \
+    uv run cstree rqdata inspect-hk-intraday-health \
     --input "${INTRADAY_DIR}" \
     --daily-asset-dir "${DAILY_CLEAN_DIR}" \
     --fail-on-severity "${FAIL_ON_SEVERITY}" \

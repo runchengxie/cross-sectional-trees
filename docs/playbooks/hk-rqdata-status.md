@@ -13,7 +13,7 @@
 
 重要说明：
 
-* quota 是即时信息，不写死在这页；现场执行 `csml rqdata quota --pretty`。
+* quota 是即时信息，不写死在这页；现场执行 `cstree rqdata quota --pretty`。
 * 本页只写“当前这个工作区里真实存在的状态”。旧笔记里提过的 bundle、probe、历史 snapshot，如果本地现在没有，就不算当前有效资产。
 * 主线资产指已经适合被研究配置、临时脚本或后续打包复用的入口；probe只说明做过验证，不等于已经升成默认入口。
 * 名字里带 `latest` 不自动等于可靠入口；要以 `manifest.yml` 的 `status` 和当前 preset / alias 指向为准。`exchange_rate` 就是反例。
@@ -270,7 +270,7 @@
 
 | API | 仓库接入 | 当前本地状态 | 建议 |
 | --- | --- | --- | --- |
-| `all_instruments` | 已接，`csml rqdata export-hk-instruments` | 稳定 | 继续维护，属于主数据入口。 |
+| `all_instruments` | 已接，`cstree rqdata export-hk-instruments` | 稳定 | 继续维护，属于主数据入口。 |
 | `instruments` | 无单独 mirror 命令 | 间接覆盖 | 只在缺细节时按需调，不必单独做离线体系。 |
 | `get_ex_factor` | 已接，`mirror-hk-ex-factors` | 稳定，full / connect 都在 | 继续保留，属于复权原料层。 |
 | `get_dividend` | 已接，`mirror-hk-dividends` | 稳定，full / connect 都在 | 继续保留，属于股息原料层。 |
@@ -416,7 +416,7 @@
 ## 最小检查命令
 
 ```bash
-csml rqdata quota --pretty
+cstree rqdata quota --pretty
 ls -l artifacts/assets/rqdata/hk/daily
 readlink -f artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
 sed -n '1,80p' artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/manifest.yml

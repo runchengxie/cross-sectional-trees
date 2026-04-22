@@ -19,7 +19,7 @@
 | 拓展的季度实验路线 | `configs/experiments/variants/hk_selected__pit_quarterly_*` | 适合在此基础上进一步派生专题研究路线 |
 | 本地独立实验 | `configs/local/*.yml`（个人自建目录，默认不纳入版本控制）或任意自建实验目录 | 仅作个人本地派生使用，不作为官方基线入口 |
 
-> 注意：在命令 `csml run --config default` 中，`default` 为内置别名。所有的内置别名以及 `csml init-config` 命令均会读取仓库根目录下的 `configs/` 文件夹。其默认的适用场景为源码检出（checkout）环境，或包含了 `configs/` 文件夹的导出源码目录，不适用于脱离仓库上下文的独立运行环境。
+> 注意：在命令 `cstree run --config default` 中，`default` 为内置别名。所有的内置别名以及 `cstree init-config` 命令均会读取仓库根目录下的 `configs/` 文件夹。其默认的适用场景为源码检出（checkout）环境，或包含了 `configs/` 文件夹的导出源码目录，不适用于脱离仓库上下文的独立运行环境。
 
 ### `PIT` 在本仓库中的多重语义
 
@@ -81,8 +81,8 @@ paths:
 补充说明：
 
 * `paths.artifacts_root` 仅修改默认派生基础路径。若在配置文件中已明确指定了具体路径（如 `eval.output_dir`、`data.cache_dir`、`fundamentals.file`、`data.rqdata.daily_asset_dir` 等），这些显式路径将保持不变。
-* 当 `metadata_db_path` 留空时，`csml data catalog` 命令默认将数据写入 `<artifacts_root>/metadata/catalog.sqlite`。
-* 当 `warehouse_db_path` 留空时，`csml data query` 命令默认将数据写入 `<artifacts_root>/metadata/warehouse.duckdb`。
+* 当 `metadata_db_path` 留空时，`cstree data catalog` 命令默认将数据写入 `<artifacts_root>/metadata/catalog.sqlite`。
+* 当 `warehouse_db_path` 留空时，`cstree data query` 命令默认将数据写入 `<artifacts_root>/metadata/warehouse.duckdb`。
 * 命令行参数 `--artifacts-root` 的优先级高于此处的 YAML 配置。
 * 环境变量 `CSML_ARTIFACTS_ROOT`、`CSML_METADATA_DB_PATH`、`CSML_WAREHOUSE_DB_PATH` 也可用作全局的默认覆盖手段。
 
@@ -199,7 +199,7 @@ backtest:
 
 ### 港股增强分配配置 (`live.alloc_hk`)
 
-`csml alloc-hk` 工具将优先读取当前持仓快照，随后在港股执行前分析层（liveops）开展资金与手数分配运算。命令行传入的参数优先级始终高于此处的 YAML 配置。
+`cstree alloc-hk` 工具将优先读取当前持仓快照，随后在港股执行前分析层（liveops）开展资金与手数分配运算。命令行传入的参数优先级始终高于此处的 YAML 配置。
 
 ```yaml
 live:
@@ -236,7 +236,7 @@ live:
 
 ### 质量闸门配置 (`quality`)
 
-系统目前在主流程及 liveops 环节支持接入可选的质量闸门。当前版本重点针对“HK + RQData + `fundamentals.source=file`”构成的本地 PIT 场景进行约束。运行 `csml run` 前会触发 `inspect-hk-pit-coverage` 健康度检测，其结论将同步沉淀至 `summary.json -> quality.preflight`。
+系统目前在主流程及 liveops 环节支持接入可选的质量闸门。当前版本重点针对“HK + RQData + `fundamentals.source=file`”构成的本地 PIT 场景进行约束。运行 `cstree run` 前会触发 `inspect-hk-pit-coverage` 健康度检测，其结论将同步沉淀至 `summary.json -> quality.preflight`。
 
 ```yaml
 quality:
@@ -249,7 +249,7 @@ quality:
 
 补充说明：
 
-* `fail_on_severity` 作为核心开关：设定为 `none` 时仅作日志留存，不阻断流程；设定为其他阈值时，一旦命中相应严重等级的错误，`csml run`、`csml snapshot` 或 `csml alloc-hk` 将触发 fail-fast 机制立即报错退出。
+* `fail_on_severity` 作为核心开关：设定为 `none` 时仅作日志留存，不阻断流程；设定为其他阈值时，一旦命中相应严重等级的错误，`cstree run`、`cstree snapshot` 或 `cstree alloc-hk` 将触发 fail-fast 机制立即报错退出。
 * 当配置了 `save_report=true`，系统会将详细的质检报告保存在 `<run_dir>/quality/`。对于实盘或后置节点（liveops）来说，工具会优先复用 `summary.json` 中已有的检测结论，规避繁重的重复计算。
 * 若在命令行尾缀 `--fail-on-quality ...` 参数，同样会覆盖此处的默认行为。
 

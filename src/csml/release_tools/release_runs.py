@@ -147,7 +147,7 @@ def _format_readme(manifest: dict[str, Any], selected_runs: list[str]) -> str:
     git = manifest.get("git") if isinstance(manifest.get("git"), dict) else {}
 
     lines = [
-        "# CSML Run History Release Parts",
+        "# CSTree Run History Release Parts",
         "",
         "This release uploads historical run results as independent per-run tarballs.",
         "",

@@ -54,7 +54,7 @@ HK 研究默认用：
 如果要在不同 benchmark 文件之间做正式报告层比较，可以用独立 ladder：
 
 ```bash
-csml benchmark-ladder \
+cstree benchmark-ladder \
   --config configs/experiments/sweeps/hk_selected__research_protocol_benchmark_ladder.yml
 ```
 
@@ -94,7 +94,7 @@ csml benchmark-ladder \
 执行入口：
 
 ```bash
-csml promotion-gate \
+cstree promotion-gate \
   --config configs/experiments/sweeps/hk_selected__research_protocol_promotion_gate.yml \
   --baseline-run artifacts/runs/<baseline_run_dir> \
   --candidate-run artifacts/runs/<candidate_run_dir>
@@ -208,10 +208,10 @@ HK selected 当前常见 family 可以按下面理解：
 现有工具入口：
 
 ```bash
-csml feature-evidence generate-ablation \
+cstree feature-evidence generate-ablation \
   --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
 
-csml feature-evidence summarize-ablation \
+cstree feature-evidence summarize-ablation \
   --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
 ```
 
@@ -306,7 +306,7 @@ csml feature-evidence summarize-ablation \
 执行入口：
 
 ```bash
-csml construction-grid \
+cstree construction-grid \
   --config configs/experiments/sweeps/hk_selected__research_protocol_construction_grid.yml
 ```
 
@@ -322,16 +322,16 @@ csml construction-grid \
 
 ```bash
 # 特征 benchmark
-csml run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
-csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
-csml run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_pit_core.yml
+cstree run --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
 
 # 模型 benchmark / challenger
-csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml
-csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml
-csml run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml
+cstree run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_ridge.yml
+cstree run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_xgb_ranker.yml
+cstree run --config configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_elasticnet.yml
 
-csml summarize \
+cstree summarize \
   --runs-dir artifacts/runs \
   --run-name-prefix hk_sel_q_benchmark_ \
   --sort-by score

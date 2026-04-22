@@ -1,6 +1,6 @@
 # Linear sweep spec for HK quarterly PIT fundamentals baseline.
 # Use with:
-#   csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__pit_quarterly_linear.yml
+#   cstree sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__pit_quarterly_linear.yml
 
 base_config: configs/experiments/baseline/hk_selected.yml
 run_name_prefix: hk_pitq_

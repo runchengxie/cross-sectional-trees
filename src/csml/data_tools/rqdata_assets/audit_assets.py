@@ -867,7 +867,7 @@ def _repair_command(*, asset_key: str, action: str, target_date: str) -> list[st
         ]
     if action == "targeted-rebuild" and asset_key == "intraday":
         return [
-            "csml",
+            "cstree",
             "rqdata",
             "sync-hk-intraday",
             "--start-date",

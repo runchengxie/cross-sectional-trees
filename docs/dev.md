@@ -21,7 +21,7 @@ uv sync --extra dev
 uv sync --extra dev --extra rqdata
 ```
 
-如需支持 `csml alloc-hk --format xlsx` 输出：
+如需支持 `cstree alloc-hk --format xlsx` 输出：
 
 ```bash
 uv sync --extra dev --extra rqdata --extra liveops-hk
@@ -42,7 +42,7 @@ uv sync --extra dev --extra stats
 ## 本地运行策略
 
 ```bash
-csml run --config default
+cstree run --config default
 ```
 
 在本地调试时，建议先配置较短的日期区间，确认整个 pipeline 能够顺利跑通后，再逐步放大测试样本的观察窗口。
@@ -184,7 +184,7 @@ bash scripts/dev/run_hk_health_checks.sh --target-date 20260409 --with-workflow-
 
 执行逻辑说明：
 
-* 这些指令并非开放给最终用户的 `csml` CLI 功能，而是专供本地运维与调试使用的辅助脚本。
+* 这些指令并非开放给最终用户的 `cstree` CLI 功能，而是专供本地运维与调试使用的辅助脚本。
 * 脚本会优先从 `artifacts/metadata/current_assets/hk_current.json` 契约文件中解析出当下正使用的 `daily_clean`、`valuation` 和 `intraday` 具体路径。
 * 默认将同时产出 `current`、`daily_clean`、`valuation`、`pit` 四份独立的 JSON 健康报告，并将产生的 stdout 与 stderr 日志流分别留存于 `artifacts/reports/health_logs/` 中。
 * 关于逐条执行的手动命令详情，以及阅读这些 report 的标准顺序，请参阅 `docs/rqdata/hk-health-checks.md` 指南。
@@ -197,7 +197,7 @@ bash scripts/dev/run_hk_data_asset_audit.sh --target-date 20260410
 
 执行逻辑说明：
 
-* 该工具实质为 `csml rqdata inspect-hk-data-assets` 命令的本地化封装。其默认处于只读和 dry-run 状态，绝不主动引发任何 refresh、repair 或 delete 实体操作。
+* 该工具实质为 `cstree rqdata inspect-hk-data-assets` 命令的本地化封装。其默认处于只读和 dry-run 状态，绝不主动引发任何 refresh、repair 或 delete 实体操作。
 * 默认产出结果位于 `artifacts/reports/hk_data_asset_audit_<date>.json`，极为适合在启动大规模重数据清洗之前，先交由系统维护者或代理程序进行前置复核。
 * 倘若确实需要联动开启 patch refresh 流程，请先附加上 `--run-refresh` 参数以保持在 dry-run 状态；在人工或系统确认无误后，再显式追回 `--refresh-execute` 参数以推动实质性变更。
 
@@ -239,7 +239,7 @@ python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 2
 
 执行逻辑说明：
 
-* 该入口属于专职的数据维护者脚本，切勿与公开的 `csml` 业务主 CLI 相混淆。
+* 该入口属于专职的数据维护者脚本，切勿与公开的 `cstree` 业务主 CLI 相混淆。
 * 其自身主要承担轻量级的编排中枢功能；关于底层实质的数据抓取、健康检查、打包及 release 推送逻辑，依然分别落脚于现有的各自独立命令集中。
 * 在 `refresh` 顺利完成之后，它默认会自动将通用别名 `latest` 重定向回指新资产；如果你仅仅是想派生一份 dated snapshot 留存，并不打算影响当前主线使用的 alias，请加上 `--no-repoint-latest` 选项。
 * 设定 `--refresh-mode full` 将延续原汁原味的整包完全重拉语义；若转为 `--refresh-mode patch`，则针对 `daily`、`valuation`、`ex_factors`、`dividends` 及 `shares` 这几类高频资产，系统会先请求拉取近期数据的 patch 包，继而唤起本地的 patch merge 算法融合出崭新的 canonical snapshot。
@@ -296,7 +296,7 @@ scripts/dev/run_tests.sh integration
 1. `fast`：运行 `scripts/dev/run_tests.sh fast`。
 2. `slow`：运行 `scripts/dev/run_tests.sh slow`。
 3. `integration`：运行 `scripts/dev/run_tests.sh integration`。
-4. `rqdata-extra-smoke`：安装 `--extra rqdata` 附加组件，验证该 optional extra 体系能否被正确导入，并测试 `csml rqdata --help`。
+4. `rqdata-extra-smoke`：安装 `--extra rqdata` 附加组件，验证该 optional extra 体系能否被正确导入，并测试 `cstree rqdata --help`。
 5. `duckdb-extra-smoke`：安装 `--extra duckdb` 附加组件，验证可选包状态及最小 DuckDB query 执行。
 6. `liveops-hk-extra-smoke`：安装 `--extra liveops-hk` 附加组件，验证对 `openpyxl` 的支持，确认 xlsx 文件的基本写入能力。
 7. `stats-extra-smoke`：安装 `--extra stats` 附加组件，检验 `scipy` 包导入及 `summarize_ic` 计算引擎的基础调用。
@@ -309,12 +309,12 @@ scripts/dev/run_tests.sh integration
 # 对应的 rqdata-extra-smoke 执行策略
 uv sync --locked --extra dev --extra rqdata
 uv run python -c "import rqdatac; print(rqdatac.__name__)"
-uv run csml rqdata --help > /dev/null
+uv run cstree rqdata --help > /dev/null
 
 # 对应的 duckdb-extra-smoke 执行策略
 uv sync --locked --extra dev --extra duckdb
 uv run python -c "import duckdb; print(duckdb.__version__)"
-uv run csml data query --sql "select 1 as value" > /dev/null
+uv run cstree data query --sql "select 1 as value" > /dev/null
 
 # 对应的 liveops-hk-extra-smoke 执行策略
 uv sync --locked --extra dev --extra liveops-hk
@@ -370,7 +370,7 @@ scripts/dev/run_tests.sh all \
 | 文档更新、README.md、docs/ 目录及 workflow 说明修改 | `tests/test_docs_contracts.py`、`tests/test_repo_path_references.py`、`tests/test_run_tests_script.py` | `scripts/dev/run_tests.sh fast` |
 | `scripts/dev/run_tests.sh` 脚本及 CI 测试入口逻辑 | `tests/test_run_tests_script.py`、`tests/test_docs_contracts.py` | 完整运行 `fast` / `slow` / `integration`，或针对性的 smoke 测试 |
 | release_tools 打包工具或 Release 预演逻辑 | `tests/test_asset_release_scripts.py`、`tests/test_run_release_scripts.py` | 针对相关脚本的最小打包 smoke 测试 |
-| csml data query、metadata catalog 或 standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py` | 本地手动运行一次 `csml data query --sql "select 1 as value"` |
+| cstree data query、metadata catalog 或 standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py` | 本地手动运行一次 `cstree data query --sql "select 1 as value"` |
 | alloc-hk、liveops-hk 调度逻辑及 xlsx 输出功能 | `tests/test_alloc_hk.py`、`tests/test_cli_liveops.py` | 安装 `uv sync --extra dev --extra liveops-hk` 并补充 xlsx 输出的最小 smoke 测试 |
 | HK + RQData provider、PIT fundamentals 或 universe 规则构建 | `tests/test_pipeline_validation.py`、`tests/test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/rqdata_assets/`、`tests/test_universe_tools.py` 与 `tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
 | intraday 数据、patch merge 逻辑、provider overlay audit 或 financial details 分析 | `tests/test_hk_intraday_download.py`、`tests/test_hk_intraday_tools.py`、`tests/test_hk_asset_patch_merge.py`、`tests/test_audit_provider_valuation.py`、`tests/test_hk_financial_details_analysis.py` | 在本地按照对应 playbook 中的指令进行 smoke 测试验证 |
@@ -378,7 +378,7 @@ scripts/dev/run_tests.sh all \
 ## 提交前检查建议
 
 1. 至少运行一次 `scripts/dev/run_tests.sh all`。
-2. 使用修改后的配置运行一次 `csml run --config ...`。
+2. 使用修改后的配置运行一次 `cstree run --config ...`。
 3. 检查 `README.md` 与 `docs/` 目录下的文档是否同步更新。
 
 ## 贡献入口

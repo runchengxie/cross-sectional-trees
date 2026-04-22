@@ -157,7 +157,7 @@ def test_refresh_hk_current_script_runs_optional_backup_after_success(tmp_path):
     assert "--refresh-mode" in workflow_args
     assert uv_args_log.read_text(encoding="utf-8").splitlines() == [
         "run",
-        "csml",
+        "cstree",
         "backup-data",
         "--preset",
         "hk_current",

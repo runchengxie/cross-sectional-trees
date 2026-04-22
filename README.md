@@ -25,15 +25,15 @@ cp .env.example .env
 
 | 任务 | 典型命令 | 所需附加依赖 | 额外凭证 |
 | --- | --- | --- | --- |
-| 运行默认港股入门模板 | `csml run --config default` | `rqdata` | RQData 账号 |
-| 运行港股季频特定时间点基本面路线 | `csml run --config configs/presets/hk_quarterly_pit_hybrid.yml` | `rqdata` | RQData 账号 |
-| 使用 DuckDB 查询标准层数据 | `csml data query --sql "..."` | `duckdb` | 无 |
-| 导出港股 Excel 分配表 | `csml alloc-hk --format xlsx --out ...` | `liveops-hk` | 若走实时或服务商路径，需对应数据源凭证 |
-| 计算包含 P 值的统计检验 | Python 或 `csml` 下游分析调用 `summarize_ic` | `stats` | 无 |
+| 运行默认港股入门模板 | `cstree run --config default` | `rqdata` | RQData 账号 |
+| 运行港股季频特定时间点基本面路线 | `cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml` | `rqdata` | RQData 账号 |
+| 使用 DuckDB 查询标准层数据 | `cstree data query --sql "..."` | `duckdb` | 无 |
+| 导出港股 Excel 分配表 | `cstree alloc-hk --format xlsx --out ...` | `liveops-hk` | 若走实时或服务商路径，需对应数据源凭证 |
+| 计算包含 P 值的统计检验 | Python 下游分析调用 `summarize_ic` | `stats` | 无 |
 
 CLI 入口优先使用 `cstree`。为兼容既有脚本、文档示例和用户 shell 历史，`csml` 会继续作为同等入口保留，两者当前指向同一套实现。
 
-`default` 和 `hk` 等内置别名，以及 `cstree init-config` / `csml init-config` 命令，均会默认读取仓库根目录下的 `configs/` 文件夹。日常使用时，请确保在包含 `configs/` 目录的源码工作区或导出的源码目录内执行相关命令。
+`default` 和 `hk` 等内置别名，以及 `cstree init-config` 命令，均会默认读取仓库根目录下的 `configs/` 文件夹。日常使用时，请确保在包含 `configs/` 目录的源码工作区或导出的源码目录内执行相关命令。
 
 ## 快速开始
 
@@ -49,11 +49,11 @@ cstree run --config default
 
 除主流程外，系统还提供以下功能入口：
 
-* 研究汇总与参数调优：`csml summarize`、`csml grid`、`csml tune`、`csml sweep-linear`
-* 实盘结果与持仓分配：`csml holdings`、`csml snapshot`、`csml alloc`、`csml alloc-hk`（包含港股执行前场景矩阵分析）
-* 配置模板与本地备份：`csml init-config`、`csml backup-data`
-* 数据与资产运维工具：`csml rqdata ...`、`csml universe ...`
-* 数据分层与查询：`csml data catalog`、`csml data materialize`、`csml data query`
+* 研究汇总与参数调优：`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`
+* 实盘结果与持仓分配：`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`（包含港股执行前场景矩阵分析）
+* 配置模板与本地备份：`cstree init-config`、`cstree backup-data`
+* 数据与资产运维工具：`cstree rqdata ...`、`cstree universe ...`
+* 数据分层与查询：`cstree data catalog`、`cstree data materialize`、`cstree data query`
 
 完整的能力地图请参考 `docs/capabilities.md` 文件。
 
@@ -63,8 +63,8 @@ cstree run --config default
 
 | 层级 | 典型入口 | 当前定位 |
 | --- | --- | --- |
-| 公开主线命令行 | `cstree run` / `csml run` 等常用命令 | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
-| 公开附属模块工具 | 打包与分发相关模块 | 已经在文档中公开的打包与分发工具。它们属于独立可复用模块，不作为 `csml` 的直接子命令调用。 |
+| 公开主线命令行 | `cstree run` 等常用命令 | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
+| 公开附属模块工具 | 打包与分发相关模块 | 已经在文档中公开的打包与分发工具。它们属于独立可复用模块，不作为 `cstree` 的直接子命令调用。 |
 | 研究与专题模块工具 | 针对特定专题的模块 | 针对特定操作手册或专题场景使用的工具。具备复用价值，排除在新手默认主线之外。 |
 | 维护与开发辅助 | 测试与内部脚本 | 前者服务于日常开发与持续集成；后者属于仓库维护者的私有工具，不计入公开的研究工作流。 |
 

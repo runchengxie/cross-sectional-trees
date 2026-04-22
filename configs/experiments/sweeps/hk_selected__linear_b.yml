@@ -5,7 +5,7 @@
 # - weaken ElasticNet regularization to avoid intercept-only collapse
 #
 # Use with:
-#   csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_b.yml
+#   cstree sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_b.yml
 
 base_config: configs/experiments/variants/hk_selected__xgb_regressor.yml
 run_name_prefix: hk_sel_

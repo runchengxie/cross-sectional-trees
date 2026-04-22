@@ -1,6 +1,6 @@
 # Linear sweep spec for the HK quarterly PIT financial baseline.
 # Use with:
-#   csml sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__pit_quarterly_financial_linear.yml
+#   cstree sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__pit_quarterly_financial_linear.yml
 
 base_config: configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml
 run_name_prefix: hk_finmlq_

@@ -172,7 +172,7 @@
 
 ### 5.3B 组合层 buffer grid
 
-如果下一步想继续回答“能不能在不改信号的情况下，再压一点换手和成本”，更合理的不是再写一串模型 variant，而是直接固定当前 structural challenger 的评分结果，用 `csml grid` 做组合层 sweep：
+如果下一步想继续回答“能不能在不改信号的情况下，再压一点换手和成本”，更合理的不是再写一串模型 variant，而是直接固定当前 structural challenger 的评分结果，用 `cstree grid` 做组合层 sweep：
 
 * [`configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_construction_grid.yml`](../../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_construction_grid.yml)
 * [`configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml`](../../../configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml)
@@ -180,7 +180,7 @@
 建议先从最小网格开始：
 
 ```bash
-uv run csml grid \
+uv run cstree grid \
   --config configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_construction_grid.yml \
   --top-k 20 \
   --cost-bps 25 \
@@ -209,10 +209,10 @@ uv run csml grid \
 * [`configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk25.yml`](../../../configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker_antidrift_h12_w16_exec_balanced_local_rawscale_dedup_groupcap3_bx2_be1_topk25.yml)
   宽版 `top_k = 25`
 
-如果想继续用 `csml grid` 做同一评分下的 construction sweep，则优先用：
+如果想继续用 `cstree grid` 做同一评分下的 construction sweep，则优先用：
 
 ```bash
-uv run csml grid \
+uv run cstree grid \
   --config configs/experiments/sweeps/hk_selected__quarterly_pit_core_hybrid_provider_overlay_rawscale_dedup_groupcap3_topk_grid.yml \
   --top-k 15,20,25 \
   --cost-bps 25

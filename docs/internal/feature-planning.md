@@ -1,6 +1,6 @@
 # 功能矩阵、范围与工时评估（内部资料）
 
-给一份配置，`csml` 会跑完整研究流水线：拉数、构池、打标签、做特征、训练、评估、回测、落盘产物、输出持仓快照。
+给一份配置，`cstree` 会跑完整研究流水线：拉数、构池、打标签、做特征、训练、评估、回测、落盘产物、输出持仓快照。
 
 这是一份内部规划和范围说明文档。首次使用仓库时，请先看根目录 `README.md` 和 `docs/README.md`。
 
@@ -17,7 +17,7 @@
 
 * 本文按研究主链路 + 数据资产工具 + 运维辅助 + 边界/工时分组。
 * 参数字典与默认值仍以 `docs/config.md` 为准。
-* CLI 全量参数仍以 `docs/cli.md` 和 `csml <cmd> --help` 为准。
+* CLI 全量参数仍以 `docs/cli.md` 和 `cstree <cmd> --help` 为准。
 * 输出字段 Schema 仍以 `docs/outputs.md` 为准。
 * 本文口径是当前仓库已落地能力 + 明确不覆盖的边界 + 粗粒度工时判断。
 
@@ -27,22 +27,22 @@
 
 | 能力层 | 命令 | 能力 | 关键输出/副作用 | 备注 |
 | --- | --- | --- | --- | --- |
-| 研究主入口 | `csml run` | 训练/评估/回测/持仓主流程 | `artifacts/runs/...` 全套产物 | 研究主入口 |
-| 研究编排 | `csml grid`、`csml sweep-linear`、`csml summarize` | 敏感性分析、线性模型 sweep、历史 run 汇总 | `grid_summary.csv`、`artifacts/sweeps/...`、`runs_summary.csv` | 研究对比与批处理入口 |
-| 结果消费 | `csml holdings`、`csml snapshot`、`csml alloc` | 读取持仓、导出快照、做等权手数分配 | text/csv/json 持仓或分配表 | `alloc` 依赖 RQData 价格和 round lot |
-| 配置模板 | `csml init-config` | 导出内置 YAML 模板 | 本地 YAML | 支持 `--force` 覆盖 |
-| RQData 账号/字段探针 | `csml rqdata info`、`csml rqdata quota`、`csml rqdata list-hk-financial-fields` | 检查账号初始化、配额与 HK 财报字段元数据 | 账号/配额/字段清单 | 运维排障和下载前探测 |
-| RQData HK 原始资产镜像 | `csml rqdata export-hk-instruments`、`mirror-hk-daily`、`mirror-hk-pit-financials`、`mirror-hk-financial-details`、`mirror-hk-ex-factors`、`mirror-hk-dividends`、`mirror-hk-shares`、`mirror-hk-exchange-rate`、`mirror-hk-announcement`、`mirror-hk-southbound`、`mirror-hk-instrument-industry`、`mirror-hk-industry-changes` | 把 HK instrument、行情、PIT 财报、参考数据、announcement、southbound、行业资产冻结为可复用目录 | `artifacts/assets/rqdata/hk/<dataset>/<snapshot>/` | 属于正式 CLI，不是边角脚本 |
-| RQData HK 派生构建 | `csml rqdata build-hk-pit-fundamentals`、`build-hk-industry-labels`、`inspect-hk-pit-coverage` | 构建 pipeline 可读 fundamentals、行业标签文件，并检查 PIT 覆盖率 | `pipeline_fundamentals.parquet`、`industry_labels_<freq>.parquet`、coverage 报告 | 连接 raw mirror 与研究主链路 |
-| Universe 工具 | `csml universe hk-connect`、`hk-daily-assets` | 构建港股通 PIT universe、HK 全市场 by-date universe | `artifacts/assets/universe/...` | `hk-daily-assets` 依赖本地日线镜像 |
-| 运维辅助 | `csml backup-data` | 归档本地缓存/股票池/配置 | `artifacts/snapshots/<name>/` | 研究运维与排障入口 |
+| 研究主入口 | `cstree run` | 训练/评估/回测/持仓主流程 | `artifacts/runs/...` 全套产物 | 研究主入口 |
+| 研究编排 | `cstree grid`、`cstree sweep-linear`、`cstree summarize` | 敏感性分析、线性模型 sweep、历史 run 汇总 | `grid_summary.csv`、`artifacts/sweeps/...`、`runs_summary.csv` | 研究对比与批处理入口 |
+| 结果消费 | `cstree holdings`、`cstree snapshot`、`cstree alloc` | 读取持仓、导出快照、做等权手数分配 | text/csv/json 持仓或分配表 | `alloc` 依赖 RQData 价格和 round lot |
+| 配置模板 | `cstree init-config` | 导出内置 YAML 模板 | 本地 YAML | 支持 `--force` 覆盖 |
+| RQData 账号/字段探针 | `cstree rqdata info`、`cstree rqdata quota`、`cstree rqdata list-hk-financial-fields` | 检查账号初始化、配额与 HK 财报字段元数据 | 账号/配额/字段清单 | 运维排障和下载前探测 |
+| RQData HK 原始资产镜像 | `cstree rqdata export-hk-instruments`、`mirror-hk-daily`、`mirror-hk-pit-financials`、`mirror-hk-financial-details`、`mirror-hk-ex-factors`、`mirror-hk-dividends`、`mirror-hk-shares`、`mirror-hk-exchange-rate`、`mirror-hk-announcement`、`mirror-hk-southbound`、`mirror-hk-instrument-industry`、`mirror-hk-industry-changes` | 把 HK instrument、行情、PIT 财报、参考数据、announcement、southbound、行业资产冻结为可复用目录 | `artifacts/assets/rqdata/hk/<dataset>/<snapshot>/` | 属于正式 CLI，不是边角脚本 |
+| RQData HK 派生构建 | `cstree rqdata build-hk-pit-fundamentals`、`build-hk-industry-labels`、`inspect-hk-pit-coverage` | 构建 pipeline 可读 fundamentals、行业标签文件，并检查 PIT 覆盖率 | `pipeline_fundamentals.parquet`、`industry_labels_<freq>.parquet`、coverage 报告 | 连接 raw mirror 与研究主链路 |
+| Universe 工具 | `cstree universe hk-connect`、`hk-daily-assets` | 构建港股通 PIT universe、HK 全市场 by-date universe | `artifacts/assets/universe/...` | `hk-daily-assets` 依赖本地日线镜像 |
+| 运维辅助 | `cstree backup-data` | 归档本地缓存/股票池/配置 | `artifacts/snapshots/<name>/` | 研究运维与排障入口 |
 
 补充：
 
 * 本页按能力层汇总，不重复 `docs/cli.md` 的逐命令参数展开。
 * HK / RQData 资产准备顺序与关系，优先看 `docs/playbooks/hk-data-assets.md`。
 
-### 2) 研究主链路模块矩阵（`csml run` 内部能力）
+### 2) 研究主链路模块矩阵（`cstree run` 内部能力）
 
 | 模块 | 已实现能力 | 关键参数入口 | 典型风险点 |
 | --- | --- | --- | --- |
@@ -62,12 +62,12 @@
 
 | 类别 | 典型文件/目录 | 触发方式 | 用途 |
 | --- | --- | --- | --- |
-| run 核心产物 | `summary.json`、`config.used.yml`、`backtest_*.csv`、持仓文件（`eval_scored.parquet` 为可选） | `csml run` / `snapshot` | 研究结果复现、汇总和下游消费 |
-| provider 原始镜像 | `artifacts/assets/rqdata/hk/<dataset>/<snapshot>/` | `csml rqdata mirror-hk-*` | 冻结可复用原始资产，供下游项目或本仓库继续派生 |
-| 平面 fundamentals | `<pit_snapshot>/pipeline_fundamentals.parquet` | `csml rqdata build-hk-pit-fundamentals` | 给 pipeline 直接读取的 file fundamentals |
-| 本地行业标签 | `<industry_changes_snapshot>/industry_labels_<freq>.parquet` | `csml rqdata build-hk-industry-labels` | 给研究主链路或分析脚本直接 join 行业列 |
-| universe 文件 | `artifacts/assets/universe/*.csv`、`*.txt` | `csml universe ...` | 研究样本边界、离线审计和资产下载入口 |
-| 本地数据快照 | `artifacts/snapshots/<name>/` | `csml backup-data` | 归档缓存、股票池、配置和额外资产路径 |
+| run 核心产物 | `summary.json`、`config.used.yml`、`backtest_*.csv`、持仓文件（`eval_scored.parquet` 为可选） | `cstree run` / `snapshot` | 研究结果复现、汇总和下游消费 |
+| provider 原始镜像 | `artifacts/assets/rqdata/hk/<dataset>/<snapshot>/` | `cstree rqdata mirror-hk-*` | 冻结可复用原始资产，供下游项目或本仓库继续派生 |
+| 平面 fundamentals | `<pit_snapshot>/pipeline_fundamentals.parquet` | `cstree rqdata build-hk-pit-fundamentals` | 给 pipeline 直接读取的 file fundamentals |
+| 本地行业标签 | `<industry_changes_snapshot>/industry_labels_<freq>.parquet` | `cstree rqdata build-hk-industry-labels` | 给研究主链路或分析脚本直接 join 行业列 |
+| universe 文件 | `artifacts/assets/universe/*.csv`、`*.txt` | `cstree universe ...` | 研究样本边界、离线审计和资产下载入口 |
+| 本地数据快照 | `artifacts/snapshots/<name>/` | `cstree backup-data` | 归档缓存、股票池、配置和额外资产路径 |
 | 兼容迁移副作用 | `cache/`、`out/`、`data_assets/` 迁到 `artifacts/` | 手动迁移旧目录 | 旧仓库升级；不是日常研究产物 |
 
 ### 4) 明确边界（当前不覆盖）

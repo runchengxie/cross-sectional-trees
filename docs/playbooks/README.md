@@ -27,7 +27,7 @@
 
 补充：
 
-* 季度 PIT 路线现在建议先做覆盖率体检，把 `Fill Dependence` 调到可接受状态，再做基线和四模型比较。入口在 [hk-selected.md](./hk-selected.md) 和 `csml rqdata inspect-hk-pit-coverage`。
+* 季度 PIT 路线现在建议先做覆盖率体检，把 `Fill Dependence` 调到可接受状态，再做基线和四模型比较。入口在 [hk-selected.md](./hk-selected.md) 和 `cstree rqdata inspect-hk-pit-coverage`。
 
 ## 每一页解决什么问题
 

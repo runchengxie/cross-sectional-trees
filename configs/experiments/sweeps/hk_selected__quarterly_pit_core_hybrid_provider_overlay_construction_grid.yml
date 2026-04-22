@@ -1,5 +1,5 @@
 ## Small construction sweep base around the canonical G4-fixed unit.
-## Keep the signal fixed and compare only top_k / buffer choices with csml grid.
+## Keep the signal fixed and compare only top_k / buffer choices with cstree grid.
 extends:
   - configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_provider_overlay_xgb_ranker.yml
 

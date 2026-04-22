@@ -46,13 +46,13 @@
 
 | 层级 | 主要命令 | 默认输出位置 | pipeline 是否直接读取 | 主要作用 |
 | --- | --- | --- | --- | --- |
-| 港股通 PIT 股票池 | `csml universe hk-connect` | `artifacts/assets/universe/` | 否，读取的是生成出的 `by_date_file` | 决定某只股票在哪些日期属于研究股票池 |
-| HK 全市场 by-date 股票池 | `csml universe hk-daily-assets` | `artifacts/assets/universe/` | 否，读取的是生成出的 `by_date_file` | 从本地日线镜像派生更宽的研究股票池 |
-| instrument 快照 | `csml rqdata export-hk-instruments` | `artifacts/assets/rqdata/hk/instruments/` | 是，配 `data.rqdata.instruments_file` 后直读 | 保留 `listed_date`、`de_listed_date`、`round_lot` 等元数据 |
-| daily snapshot | `csml rqdata mirror-hk-daily` | `artifacts/assets/rqdata/hk/daily/<snapshot>/` | 是，配 `data.rqdata.daily_asset_dir` 后直读 | 离线归档和跨机器复用的日线底座 |
+| 港股通 PIT 股票池 | `cstree universe hk-connect` | `artifacts/assets/universe/` | 否，读取的是生成出的 `by_date_file` | 决定某只股票在哪些日期属于研究股票池 |
+| HK 全市场 by-date 股票池 | `cstree universe hk-daily-assets` | `artifacts/assets/universe/` | 否，读取的是生成出的 `by_date_file` | 从本地日线镜像派生更宽的研究股票池 |
+| instrument 快照 | `cstree rqdata export-hk-instruments` | `artifacts/assets/rqdata/hk/instruments/` | 是，配 `data.rqdata.instruments_file` 后直读 | 保留 `listed_date`、`de_listed_date`、`round_lot` 等元数据 |
+| daily snapshot | `cstree rqdata mirror-hk-daily` | `artifacts/assets/rqdata/hk/daily/<snapshot>/` | 是，配 `data.rqdata.daily_asset_dir` 后直读 | 离线归档和跨机器复用的日线底座 |
 | daily query cache | pipeline 首次拉取时自动写入 | `artifacts/cache/hk_rqdata_daily_<symbol>.parquet` | 是，runtime query cache | 日常研究加速和尾部刷新 |
-| PIT 财务镜像 | `csml rqdata mirror-hk-pit-financials` | `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/` | 否，需继续构建 flat file | 保留按 symbol 分开的原始 PIT 财务资产 |
-| 平面 fundamentals 文件 | `csml rqdata build-hk-pit-fundamentals` | `<pit_snapshot>/pipeline_fundamentals.parquet` | 是，`fundamentals.source=file` 时直读 | 给 pipeline 直接读取的 PIT 平面文件 |
+| PIT 财务镜像 | `cstree rqdata mirror-hk-pit-financials` | `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/` | 否，需继续构建 flat file | 保留按 symbol 分开的原始 PIT 财务资产 |
+| 平面 fundamentals 文件 | `cstree rqdata build-hk-pit-fundamentals` | `<pit_snapshot>/pipeline_fundamentals.parquet` | 是，`fundamentals.source=file` 时直读 | 给 pipeline 直接读取的 PIT 平面文件 |
 | 参考数据镜像 | `mirror-hk-ex-factors` / `mirror-hk-dividends` / `mirror-hk-shares` | `artifacts/assets/rqdata/hk/ex_factors/` 等 | 否 | 保留复权、分红、股本原料 |
 | 日频估值镜像 | `mirror-hk-valuation` | `artifacts/assets/rqdata/hk/valuation/<snapshot>/` | 否 | 冻结 `get_factor` 的 `market_cap / pe_ttm / pb` 等日频估值口径 |
 | 汇率镜像 | `mirror-hk-exchange-rate` | `artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/` | 否 | 给 `financial_details` 或跨币种派生提供汇率原料 |
@@ -61,13 +61,13 @@
 | 行业真相层 | `mirror-hk-industry-changes` | `artifacts/assets/rqdata/hk/industry_changes/<snapshot>/` | 否，需继续派生 labels | 保留行业切换区间，适合回放切换日 |
 | 行业快照层 | `mirror-hk-instrument-industry` | `artifacts/assets/rqdata/hk/instrument_industry/<snapshot>/` | 否 | 按指定日期拿 provider 快照，便于核对 |
 | 本地行业标签文件 | `build-hk-industry-labels` | `<industry_changes_snapshot>/industry_labels_<freq>.parquet` | 是，配 `industry.file` 后直读 | 给研究直接 join 的日/月/季行业标签 |
-| 本地快照备份 | `csml backup-data` | `artifacts/snapshots/<name>/` | 否 | 把缓存、股票池、配置和额外资产一起归档 |
+| 本地快照备份 | `cstree backup-data` | `artifacts/snapshots/<name>/` | 否 | 把缓存、股票池、配置和额外资产一起归档 |
 
 ## 推荐准备顺序
 
 建议按下面的顺序做，而不是见到哪个接口就先拉哪个：
 
-1. 先检查本地已有 snapshot、alias 和 `manifest.yml`，再看 `csml rqdata quota --pretty`。大资产优先复用现有目录，不要先重下。
+1. 先检查本地已有 snapshot、alias 和 `manifest.yml`，再看 `cstree rqdata quota --pretty`。大资产优先复用现有目录，不要先重下。
 2. 先确定研究股票池入口。
 3. 导出一份 instrument 快照。
 4. 决定日线层走哪条路：独立 `daily snapshot` 还是仅靠 pipeline symbol cache。
@@ -77,13 +77,13 @@
 8. 如果你要做行业中性、行业暴露或切换日回放，再补 `industry_changes`，然后派生 `industry_labels_<freq>`；`instrument_industry` 只在你明确需要 provider 快照时再补。
 9. 如果你要保留港股通资格历史，再补 `southbound`。
 10. 如果你要做跨币种 `financial_details` 处理，再补 `exchange_rate`。
-11. 数据准备完毕后，用 `csml backup-data` 做本地快照；如果还要跨机器共享，再走 `package_assets` / `release_assets`。
+11. 数据准备完毕后，用 `cstree backup-data` 做本地快照；如果还要跨机器共享，再走 `package_assets` / `release_assets`。
 
 补充：
 
 * `hk_connect_full_research_by_date.csv` 和 `hk_selected_pit_research_by_date.csv` 这两类 research universe，推荐从本地 `pipeline_fundamentals.parquet` 过滤派生，不要手工维护。
 * 当前仓库里的默认研究入口已经收口到这两组 research universe；`hk_connect_full_by_date.csv` 和 `hk_all_full_by_date.csv` 更偏原始或宽覆盖层。
-* 如果你只是想先确认 `hk_current` 是否整体对齐，优先跑 `csml rqdata inspect-hk-current-health`；它只看 current contract、alias 和 manifest，不会像全量 asset health 那样去扫大量 parquet。
+* 如果你只是想先确认 `hk_current` 是否整体对齐，优先跑 `cstree rqdata inspect-hk-current-health`；它只看 current contract、alias 和 manifest，不会像全量 asset health 那样去扫大量 parquet。
 
 ## 先厘清一个最容易混淆的关系
 
@@ -112,7 +112,7 @@
 
 | 方式 | 写到哪里 | 适合什么 | 不适合什么 |
 | --- | --- | --- | --- |
-| `csml rqdata mirror-hk-daily` | `artifacts/assets/rqdata/hk/daily/<snapshot>/` | 可备份、可复用、可跨机器共享、支持 `--resume` 的离线归档 | 只想在本机平时跑研究、顺手补尾部 |
+| `cstree rqdata mirror-hk-daily` | `artifacts/assets/rqdata/hk/daily/<snapshot>/` | 可备份、可复用、可跨机器共享、支持 `--resume` 的离线归档 | 只想在本机平时跑研究、顺手补尾部 |
 | pipeline symbol cache | `artifacts/cache/hk_rqdata_daily_<symbol>.parquet` | 日常研究提速、尾部刷新、按需补最近几天 | 想拿到一份结构完整的离线资产目录 |
 
 如果你的目标是“建立一份可以长期复用的 HK 日线底座”，优先用 `mirror-hk-daily`。
@@ -120,7 +120,7 @@
 示例：
 
 ```bash
-csml rqdata mirror-hk-daily \
+cstree rqdata mirror-hk-daily \
   --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
   --start-date 20000101 \
   --end-date 20260318 \
@@ -165,7 +165,7 @@ csml rqdata mirror-hk-daily \
 如果你的目标是“先有一套宽覆盖的 full-market daily，再从它派生研究股票池”，入口是：
 
 ```bash
-csml universe hk-daily-assets \
+cstree universe hk-daily-assets \
   --config configs/presets/universe/hk_all_assets.yml \
   -- --end-date 20260318
 ```
@@ -180,7 +180,7 @@ csml universe hk-daily-assets \
 常见顺序是：
 
 1. 先镜像一份 full-market daily。
-2. 再跑 `csml universe hk-daily-assets` 派生 `hk_all_full_by_date.csv`。
+2. 再跑 `cstree universe hk-daily-assets` 派生 `hk_all_full_by_date.csv`。
 3. 需要完全离线时，把配置里的 `research_universe.by_date_file` 指到 `artifacts/assets/universe/hk_all_full_by_date.csv`。
 4. 同时补好 `data.rqdata.daily_asset_dir` 和 `data.rqdata.instruments_file`。
 
@@ -212,7 +212,7 @@ csml universe hk-daily-assets \
 instrument 是 HK 离线体系里最轻、但几乎处处会用到的元数据层。建议尽早准备：
 
 ```bash
-csml rqdata export-hk-instruments \
+cstree rqdata export-hk-instruments \
   --out artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
 ```
 
@@ -228,7 +228,7 @@ csml rqdata export-hk-instruments \
 PIT 财务镜像的典型命令：
 
 ```bash
-csml rqdata mirror-hk-pit-financials \
+cstree rqdata mirror-hk-pit-financials \
   --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
   --field-profile full \
   --start-quarter 2000q1 \
@@ -251,7 +251,7 @@ csml rqdata mirror-hk-pit-financials \
 只拉 raw mirror 不够。研究主链路真正直接消费的是平面 fundamentals 文件。
 
 ```bash
-csml rqdata build-hk-pit-fundamentals \
+cstree rqdata build-hk-pit-fundamentals \
   --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_connect_full_2000_2025_full_latest/pipeline_fundamentals.parquet \
   --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv \
@@ -263,7 +263,7 @@ csml rqdata build-hk-pit-fundamentals \
 如果某个研究 config 已经收紧到一组更稳的 PIT selected features，可以再加 config-aware feature age 过滤：
 
 ```bash
-csml rqdata build-hk-pit-fundamentals \
+cstree rqdata build-hk-pit-fundamentals \
   --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
   --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet \
   --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv \
@@ -301,21 +301,21 @@ csml rqdata build-hk-pit-fundamentals \
 如果你的目标是保留总回报、复权、市值和股本相关的长期底层原料，PIT 之后最值得补的是这三类：
 
 ```bash
-csml rqdata mirror-hk-ex-factors \
+cstree rqdata mirror-hk-ex-factors \
   --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
   --start-date 20100101 \
   --end-date 20260318 \
   --name hk_connect_full_2010_20260318_ex_factors_latest \
   --resume
 
-csml rqdata mirror-hk-dividends \
+cstree rqdata mirror-hk-dividends \
   --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
   --start-date 20100101 \
   --end-date 20260318 \
   --name hk_connect_full_2010_20260318_dividends_latest \
   --resume
 
-csml rqdata mirror-hk-shares \
+cstree rqdata mirror-hk-shares \
   --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
   --start-date 20100101 \
   --end-date 20260318 \
@@ -332,7 +332,7 @@ csml rqdata mirror-hk-shares \
 如果你的目标不是“以后自己从价格和股本近似重建”，而是要把 provider 的日频估值口径原样冻住，再单独补一份：
 
 ```bash
-csml rqdata mirror-hk-valuation \
+cstree rqdata mirror-hk-valuation \
   --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt \
   --start-date 20000101 \
   --end-date 20260326 \
@@ -366,7 +366,7 @@ csml rqdata mirror-hk-valuation \
 如果你准备把 `financial_details` 的原币值统一到单一货币，再补汇率层：
 
 ```bash
-csml rqdata mirror-hk-exchange-rate \
+cstree rqdata mirror-hk-exchange-rate \
   --start-date 20250210 \
   --end-date 20250211 \
   --name hk_exchange_rate_probe_20250210_20250211_minimal
@@ -392,7 +392,7 @@ csml rqdata mirror-hk-exchange-rate \
 示例：
 
 ```bash
-csml rqdata mirror-hk-financial-details \
+cstree rqdata mirror-hk-financial-details \
   --start-quarter 2024q1 \
   --end-quarter 2025q4 \
   --date 20260319 \
@@ -439,11 +439,11 @@ uv run python -m csml.research.hk_financial_details \
 
 ### 1. `southbound` 是审计层，不是默认研究入口
 
-如果你只关心研究股票池，`csml universe hk-connect` 通常已经够用。  
+如果你只关心研究股票池，`cstree universe hk-connect` 通常已经够用。
 如果你还要追溯“某只股票何时具备南向资格”，再补 `southbound` raw mirror：
 
 ```bash
-csml rqdata mirror-hk-southbound \
+cstree rqdata mirror-hk-southbound \
   --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
   --start-date 20141117 \
   --end-date 20260318 \
@@ -475,7 +475,7 @@ HK 行业资产更清楚的分法是：
 #### `industry_changes`
 
 ```bash
-csml rqdata mirror-hk-industry-changes \
+cstree rqdata mirror-hk-industry-changes \
   --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
   --start-date 20100101 \
   --end-date 20260318 \
@@ -494,7 +494,7 @@ csml rqdata mirror-hk-industry-changes \
 #### `instrument_industry`
 
 ```bash
-csml rqdata mirror-hk-instrument-industry \
+cstree rqdata mirror-hk-instrument-industry \
   --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv \
   --start-date 20100101 \
   --end-date 20260318 \
@@ -515,12 +515,12 @@ csml rqdata mirror-hk-instrument-industry \
 如果你已经有 `industry_changes`，后续的日频、月频、季频行业标签都可以本地派生：
 
 ```bash
-csml rqdata build-hk-industry-labels \
+cstree rqdata build-hk-industry-labels \
   --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest \
   --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest \
   --frequency M
 
-csml rqdata build-hk-industry-labels \
+cstree rqdata build-hk-industry-labels \
   --asset-dir artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest \
   --source-universe-by-date artifacts/assets/universe/hk_all_full_by_date.csv \
   --frequency M
@@ -574,7 +574,7 @@ eval:
 
 ### 1. 大范围下载前先做这几件事
 
-1. 先看 `csml rqdata quota --pretty`
+1. 先看 `cstree rqdata quota --pretty`
 2. 固定绝对日期，不要在大镜像里混用 `today/t-1`
 3. 固定 `--name`，大任务始终配 `--resume`
 4. 先做小范围 probe，再决定是否扩大到全量
@@ -634,7 +634,7 @@ eval:
 1. quota 确认足够
 2. 新建一版 full-market daily snapshot
 3. 从该 snapshot 派生 `hk_all_full_by_date.csv`
-4. 立刻用 `csml backup-data` 固化为本地快照
+4. 立刻用 `cstree backup-data` 固化为本地快照
 
 如果你只是想补最近几天的 freshness gap，而不是重新生成一整版日线目录，这一档通常不是最优选择。
 
@@ -665,16 +665,16 @@ bash scripts/dev/refresh_hk_current.sh \
 
 ## 备份、打包与跨机器共享
 
-### 1. 本地私有备份优先用 `csml backup-data`
+### 1. 本地私有备份优先用 `cstree backup-data`
 
 示例：
 
 ```bash
-csml backup-data \
+cstree backup-data \
   --name hk_frozen_20260323 \
   --config configs/experiments/variants/hk_selected__xgb_regressor.yml
 
-csml backup-data \
+cstree backup-data \
   --preset hk_current \
   --name hk_current_frozen_20260410 \
   --no-cache
@@ -848,7 +848,7 @@ fundamentals:
 1. 冻住 current asset：
 
 ```bash
-csml backup-data \
+cstree backup-data \
   --preset hk_current \
   --name hk_current_frozen_YYYYMMDD \
   --no-cache
@@ -884,7 +884,7 @@ csml backup-data \
 
 权限失效后，不要再默认依赖下面这些能力：
 
-* `csml rqdata quota --pretty`
+* `cstree rqdata quota --pretty`
 * 新的 `mirror-hk-*` 下载
 * `fundamentals.source=provider`
 * `fundamentals.provider_overlay`
@@ -898,7 +898,7 @@ csml backup-data \
 
 这件事可以视为完成，当且仅当：
 
-* 至少有一份 `csml backup-data --preset hk_current` 生成的 snapshot
+* 至少有一份 `cstree backup-data --preset hk_current` 生成的 snapshot
 * 未来还要用的 PIT / universe / benchmark 文件已经单独确认存在
 * 本地资产 smoke test 能通过
 * 关键 run 已经保留 `summary.json + config.used.yml + inputs.lock.json`

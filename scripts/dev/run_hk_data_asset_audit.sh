@@ -106,7 +106,7 @@ if [[ -z "$OUT" ]]; then
 fi
 
 CMD=(
-  uv run csml rqdata inspect-hk-data-assets
+  uv run cstree rqdata inspect-hk-data-assets
   --artifacts-root "$ARTIFACTS_ROOT"
   --target-date "$TARGET_DATE"
   --intraday-mode "$INTRADAY_MODE"

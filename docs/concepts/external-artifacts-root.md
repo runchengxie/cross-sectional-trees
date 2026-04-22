@@ -36,7 +36,7 @@ export CSML_ARTIFACTS_ROOT=/data/csml-artifacts
 3. CLI：
 
 ```bash
-csml run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
+cstree run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
 ```
 
 优先级固定为：
@@ -47,14 +47,14 @@ csml run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
 
 下面这些命令会按新的产物根目录派生默认路径：
 
-* `csml run`
-* `csml holdings`
-* `csml snapshot`
-* `csml alloc`
-* `csml alloc-hk`
-* `csml data catalog`
-* `csml data materialize`
-* `csml data query`
+* `cstree run`
+* `cstree holdings`
+* `cstree snapshot`
+* `cstree alloc`
+* `cstree alloc-hk`
+* `cstree data catalog`
+* `cstree data materialize`
+* `cstree data query`
 
 例如：
 

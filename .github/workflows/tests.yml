@@ -80,7 +80,7 @@ jobs:
       - name: Smoke rqdata extra
         run: |
           uv run python -c "import rqdatac; print(rqdatac.__name__)"
-          uv run csml rqdata --help > /dev/null
+          uv run cstree rqdata --help > /dev/null
 
   duckdb-extra-smoke:
     runs-on: ubuntu-latest
@@ -99,7 +99,7 @@ jobs:
       - name: Smoke duckdb extra
         run: |
           uv run python -c "import duckdb; print(duckdb.__version__)"
-          uv run csml data query --sql "select 1 as value" > /dev/null
+          uv run cstree data query --sql "select 1 as value" > /dev/null
 
   liveops-hk-extra-smoke:
     runs-on: ubuntu-latest
