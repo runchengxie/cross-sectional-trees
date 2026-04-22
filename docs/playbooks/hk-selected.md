@@ -1,17 +1,17 @@
 # HK selected 研究路线
 
-本页解决什么：在 HK selected 路线上选择频率、数据路线和比较顺序。  
-本页不解决什么：不展开参数定义、资产整备细节或专题研究流水账。  
-适合谁：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。  
-读完你会得到什么：一条按当前仓库模板和最新研究结论整理过的可执行路线图。  
+本页解决什么：在 HK selected 路线上选择频率、数据路线和比较顺序。\
+本页不解决什么：不展开参数定义、资产整备细节或专题研究流水账。\
+适合谁：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。\
+读完你会得到什么：一条按当前仓库模板和最新研究结论整理过的可执行路线图。 \
 相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-industry-treatment-20260404.md`、`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/cli.md`、`docs/config.md`
 
-页面性质：`current-state`  
-最后核对时间：`2026-03-31`  
-权威来源：当前 `configs/` 模板、相关研究笔记和 benchmark protocol  
+页面性质：`current-state` \
+最后核对时间：`2026-03-31` \
+权威来源：当前 `configs/` 模板、相关研究笔记和 benchmark protocol \
 冲突优先级：如果与具体 run 的 `config.used.yml` 冲突，以 run 产物为准；如果与当前 benchmark protocol 冲突，以协议页为准
 
-本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-31` 的仓库内研究结论整理。  
+本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-31` 的仓库内研究结论整理。\
 历史 run 里仍然保留了旧口径；复现旧结果时，请先看 `config.used.yml`。
 
 任务摘要：先选频率，再选数据路线；`fundamentals.source=file` 的 PIT 路线先做覆盖率体检；季度正式 benchmark 按 `price-only -> pit-core -> pit-core-hybrid` 递进；模型比较只在同一个研究单元里进行。

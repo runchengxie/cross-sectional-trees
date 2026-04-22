@@ -1,14 +1,14 @@
 # HK RQData 状态矩阵
 
-本页解决什么：记录当前仓库里 HK / RQData 资产的真实本地状态，区分哪些已经是主线入口、哪些只是 probe、哪些其实已经失败或过时。  
-本页不解决什么：不代替 CLI 参数文档，也不展开完整研究路线。  
+本页解决什么：记录当前仓库里 HK / RQData 资产的真实本地状态，区分哪些已经是主线入口、哪些只是 probe、哪些其实已经失败或过时。\
+本页不解决什么：不代替 CLI 参数文档，也不展开完整研究路线。\
 适合谁：准备继续补 HK 资产、清理旧目录，或先判断“哪些能直接用、哪些别误用”的人。  
-读完你会得到什么：当前有效入口、各接口接入状态、目录清理规则，以及下一步应该补哪里的判断。  
+读完你会得到什么：当前有效入口、各接口接入状态、目录清理规则，以及下一步应该补哪里的判断。\
 相关页面：`docs/playbooks/hk-data-assets.md`、`docs/playbooks/hk-selected.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/outputs.md`、`docs/providers.md`
 
-页面性质：`current-state`  
-最后核对时间：`2026-03-26`（Asia/Shanghai）  
-权威来源：当前工作区里的真实目录、alias / symlink、`manifest.yml`、`configs/presets/hk.yml`、`configs/presets/hk_quarterly_pit_hybrid.yml`  
+页面性质：`current-state` \
+最后核对时间：`2026-03-26`（Asia/Shanghai）\
+权威来源：当前工作区里的真实目录、alias / symlink、`manifest.yml`、`configs/presets/hk.yml`、`configs/presets/hk_quarterly_pit_hybrid.yml`\
 冲突优先级：如果本页和 `config.used.yml`、当前 preset、或当前资产目录实际状态冲突，以后者为准
 
 重要说明：

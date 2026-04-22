@@ -1,16 +1,16 @@
 # 研究配方首页
 
-本页解决什么：给正式研究流程类页面提供统一入口和阅读顺序。
-本页不解决什么：不展开参数细节与概念定义。
-适合谁：已经明确要做研究路线选择的人。
-读完你会得到什么：HK selected 路线相关的阅读顺序与分工。
+本页解决什么：给正式研究流程类页面提供统一入口和阅读顺序。\
+本页不解决什么：不展开参数细节与概念定义。\
+适合谁：已经明确要做研究路线选择的人。\
+读完你会得到什么：HK selected 路线相关的阅读顺序与分工。\
 相关页面：`docs/pipeline-overview.md`、`docs/cookbook.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/config.md`、`docs/concepts/`
 
 `docs/playbooks/` 这一组文档只处理研究流程。
 
-如果你现在的问题是“下一步该跑哪条路线”，先从这里开始。
-如果你现在的问题是“HK / RQData 离线资产和 API 快照资料该从哪里看”，更适合从 `docs/rqdata/README.md` 进入。
-如果你现在的问题是“RQData 快到期了，最后应该冻结什么”，直接看 [hk-data-assets.md](./hk-data-assets.md#rqdata-权限失效前冻结清单)。
+如果你现在的问题是“下一步该跑哪条路线”，先从这里开始。\
+如果你现在的问题是“HK / RQData 离线资产和 API 快照资料该从哪里看”，更适合从 `docs/rqdata/README.md` 进入。\
+如果你现在的问题是“RQData 快到期了，最后应该冻结什么”，直接看 [hk-data-assets.md](./hk-data-assets.md#rqdata-权限失效前冻结清单)。\
 只想按通用任务顺序推进时，回到 `docs/cookbook.md` 更合适。
 
 ## 新手阅读顺序

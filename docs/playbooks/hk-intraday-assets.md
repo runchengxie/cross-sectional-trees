@@ -1,13 +1,13 @@
 # HK Intraday 资产与滑点校准
 
-本页解决什么：记录当前工作区里已经落盘的 HK `5m` 资产、provider 边界、quota 成本和滑点校准产物。  
-本页不解决什么：不代替 `docs/cli.md` 的命令参数说明，也不直接给出生产级 broker TCA 参数。  
-适合谁：准备继续补 HK 分钟线、复用现有 `5m` parquet、或想知道“这批数据现在能拿来做什么”的读者。  
-读完你会得到什么：当前可用的 intraday 入口、已知边界、经验滑点报告位置，以及今天还能不能继续下数据的判断。  
+本页解决什么：记录当前工作区里已经落盘的 HK `5m` 资产、provider 边界、quota 成本和滑点校准产物。\
+本页不解决什么：不代替 `docs/cli.md` 的命令参数说明，也不直接给出生产级 broker TCA 参数。\
+适合谁：准备继续补 HK 分钟线、复用现有 `5m` parquet、或想知道“这批数据现在能拿来做什么”的读者。\
+读完你会得到什么：当前可用的 intraday 入口、已知边界、经验滑点报告位置，以及今天还能不能继续下数据的判断。\
 相关页面：`docs/playbooks/hk-rqdata-status.md`、`docs/concepts/execution-costs.md`、`docs/rqdata/README.md`、`src/csml/research/hk_intraday_download.py`、`src/csml/research/hk_intraday_slippage_report.py`
 
-页面性质：`current-state`  
-最后核对时间：`2026-04-03`（Asia/Shanghai）  
+页面性质：`current-state`\
+最后核对时间：`2026-04-03`（Asia/Shanghai）\
 权威来源：`artifacts/cache/intraday/*.meta.json`、`artifacts/assets/rqdata/hk/intraday/*/manifest.yml`、`artifacts/reports/*slippage*`、当前工作区脚本和真实 quota
 
 ## 先说结论
