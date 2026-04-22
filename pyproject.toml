@@ -42,7 +42,7 @@ stats = [
 
 [project.scripts]
 csml = "csml.cli:main"
-cstree = "csml.cli:main"
+cstree = "cstree.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

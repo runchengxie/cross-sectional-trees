@@ -74,8 +74,9 @@ def register_core_commands(subparsers) -> None:
     run.add_argument(
         "--artifacts-root",
         help=(
-            "Optional artifacts root override. When omitted, the pipeline uses paths.artifacts_root, "
-            "CSML_ARTIFACTS_ROOT, or the default artifacts/."
+            "Optional artifacts root override. When omitted, the pipeline uses "
+            "CSTREE_ARTIFACTS_ROOT, legacy CSML_ARTIFACTS_ROOT, paths.artifacts_root, "
+            "or the default artifacts/."
         ),
     )
     run.set_defaults(func=handle_run)

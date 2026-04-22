@@ -41,10 +41,26 @@
 
 仓库另外还提供两组模块级的分发工具：
 
-* `python -m csml.release_tools.package_assets` 与 `python -m csml.release_tools.release_assets`：将港股数据资产按模块打包并上传至 GitHub Releases；默认覆盖主线的九个模块，也支持显式附加公告（`announcement`）等补充层。
-* `python -m csml.release_tools.package_runs` 与 `python -m csml.release_tools.release_runs`：将历史运行结果按次拆包并上传至 GitHub Releases，支持轻量、里程碑、完整（`light` / `milestone` / `full`）这三档配置。
+* `python -m cstree.release_tools.package_assets` 与 `python -m cstree.release_tools.release_assets`：将港股数据资产按模块打包并上传至 GitHub Releases；默认覆盖主线的九个模块，也支持显式附加公告（`announcement`）等补充层。
+* `python -m cstree.release_tools.package_runs` 与 `python -m cstree.release_tools.release_runs`：将历史运行结果按次拆包并上传至 GitHub Releases，支持轻量、里程碑、完整（`light` / `milestone` / `full`）这三档配置。
 
-它们主要用于公开分享、跨机器搬运以及正式版本分发，而非个人的私有备份。
+它们主要用于公开分享、跨机器搬运以及正式版本分发，而非个人的私有备份。旧的 `python -m csml.release_tools...` 模块路径在当前 `0.x` 兼容窗口内仍可用。
+
+## 命名空间迁移策略
+
+当前阶段采用加法迁移：
+
+* 新示例优先使用 `cstree` CLI、`python -m cstree...` 模块路径和 `CSTREE_*` 环境变量。
+* `csml` CLI、`python -m csml...` 模块路径、`import csml` 和 `CSML_*` 环境变量在当前 `0.x` 兼容窗口内继续工作。
+* 本阶段不默认发出 deprecation warning，避免破坏自动化脚本的 stderr / warning 策略；未来如需移除 `csml` 兼容面，必须先提交单独 breaking-change proposal，写清移除版本、迁移路径、测试和 release note 要求。
+
+模块级入口 inventory：
+
+| 分类 | 首选入口 | 兼容入口 |
+| --- | --- | --- |
+| 公开 release 工具 | `python -m cstree.release_tools.package_assets`、`python -m cstree.release_tools.release_assets`、`python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 对应的 `python -m csml.release_tools...` 路径 |
+| Playbook / 专题研究工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_intraday_slippage_report`、`python -m cstree.research.hk_asset_patch_merge`、`python -m cstree.research.hk_connect_cap_weight_benchmark`、`python -m cstree.research.hk_benchmark_attribution`、`python -m cstree.research.hk_monthly_run_compare` | 对应的 `python -m csml.research...` 路径 |
+| 内部 / 测试面 | `src/csml/` 内部导入、`scripts/internal/` driver、测试里的直接 `csml` import | 本轮不做 cosmetic rename；只在公开桥接面加 `cstree` wrapper |
 
 ## 入口分层与稳定性
 
@@ -53,8 +69,8 @@
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
 | 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree rqdata ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
-| 公开但非 CLI 模块工具 | `python -m csml.release_tools.package_assets`、`python -m csml.release_tools.release_assets`、`python -m csml.release_tools.package_runs`、`python -m csml.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
-| 研究 / 专题模块工具 | `python -m csml.research.hk_financial_details`、`python -m csml.research.hk_selected_provider_valuation_audit`、`python -m csml.research.hk_intraday_download`、`python -m csml.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
+| 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_assets`、`python -m cstree.release_tools.release_assets`、`python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
+| 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
 
 ## 主流程能力

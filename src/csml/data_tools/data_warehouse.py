@@ -1002,7 +1002,10 @@ def add_catalog_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--artifacts-root",
         default=None,
-        help="Artifacts root to scan. Default: paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/.",
+        help=(
+            "Artifacts root to scan. Default: CSTREE_ARTIFACTS_ROOT, legacy "
+            "CSML_ARTIFACTS_ROOT, or artifacts/."
+        ),
     )
     parser.add_argument(
         "--db-path",
@@ -1020,7 +1023,10 @@ def add_materialize_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--artifacts-root",
         default=None,
-        help="Artifacts root used for default outputs. Default: paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/.",
+        help=(
+            "Artifacts root used for default outputs. Default: CSTREE_ARTIFACTS_ROOT, "
+            "legacy CSML_ARTIFACTS_ROOT, or artifacts/."
+        ),
     )
     parser.add_argument(
         "--name",
@@ -1080,7 +1086,10 @@ def add_query_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--artifacts-root",
         default=None,
-        help="Artifacts root used for default metadata and standardized paths. Default: paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/.",
+        help=(
+            "Artifacts root used for default metadata and standardized paths. Default: "
+            "CSTREE_ARTIFACTS_ROOT, legacy CSML_ARTIFACTS_ROOT, or artifacts/."
+        ),
     )
     parser.add_argument(
         "--sql",

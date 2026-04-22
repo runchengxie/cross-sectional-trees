@@ -87,11 +87,19 @@ EXPECTED_README_PUBLIC_CLI_TOKENS = [
 ]
 EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "## 入口分层与稳定性",
+    "## 命名空间迁移策略",
     "公开主线 CLI",
     "公开但非 CLI 模块工具",
-    "`python -m csml.release_tools.package_assets`",
-    "`python -m csml.research.hk_financial_details`",
-    "`python -m csml.research.hk_intraday_download`",
+    "`python -m cstree.release_tools.package_assets`",
+    "`python -m cstree.research.hk_financial_details`",
+    "`python -m cstree.research.hk_intraday_download`",
+    "`python -m csml.release_tools...`",
+    "`python -m csml.research...`",
+    "`CSTREE_*`",
+    "`CSML_*`",
+    "当前 `0.x` 兼容窗口",
+    "不默认发出 deprecation warning",
+    "breaking-change proposal",
     "`scripts/dev/run_tests.sh`",
     "不是 `cstree` CLI 子命令",
 ]

@@ -15,7 +15,7 @@
 
 当前 `scripts/internal/` 里和 HK 资产维护相关的常用入口：
 
-* `scripts/internal/run_hk_asset_workflow.py`：串联 `refresh / inspect / package / release` 的维护者 driver。它主要负责编排，底层仍复用现有 `cstree rqdata ...` 与 `csml.release_tools.*`。
+* `scripts/internal/run_hk_asset_workflow.py`：串联 `refresh / inspect / package / release` 的维护者 driver。它主要负责编排，底层仍复用现有 `cstree rqdata ...` 与 release tools；公开模块路径优先使用 `cstree.release_tools.*`，旧 `csml.release_tools.*` 仍保留兼容。
 
 术语说明：
 

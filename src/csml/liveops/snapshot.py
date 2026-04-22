@@ -24,7 +24,8 @@ def main(argv: list[str] | None = None) -> None:
         "--artifacts-root",
         help=(
             "Optional artifacts root override used when resolving the default runs directory. "
-            "When omitted, snapshot uses paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/."
+            "When omitted, snapshot uses CSTREE_ARTIFACTS_ROOT, legacy CSML_ARTIFACTS_ROOT, "
+            "paths.artifacts_root, or artifacts/."
         ),
     )
     parser.add_argument(

@@ -19,7 +19,7 @@
 如果你把产物根目录外置到 repo 之外，上面这些路径会整体跟着新根目录移动。当前支持三种入口：
 
 * 配置：`paths.artifacts_root`
-* 环境变量：`CSML_ARTIFACTS_ROOT`
+* 环境变量：`CSTREE_ARTIFACTS_ROOT`（`CSML_ARTIFACTS_ROOT` 仍作为兼容 fallback）
 * CLI：`--artifacts-root`
 
 本页示例仍统一写成 `artifacts/...`，只是为了说明目录结构，不代表根目录必须留在仓库内。
@@ -165,7 +165,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `cstree data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新。
 
-如果改了 `paths.artifacts_root`、`CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
+如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` / `CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
 
 用途：
 
@@ -194,7 +194,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 这类目录由 `cstree data materialize` 生成，目标是把 raw / derived 输入转成更适合横截面查询和聚合的分析层。
 
-如果改了 `paths.artifacts_root`、`CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认输出根目录会随新的产物根目录一起派生；只有显式传了 `--out-root` 时才会覆盖。
+如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` / `CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认输出根目录会随新的产物根目录一起派生；只有显式传了 `--out-root` 时才会覆盖。
 
 目录结构：
 
@@ -1055,7 +1055,7 @@ artifacts/snapshots/<name>/
 1. 这是本地私有快照工具，不会重新向 provider 拉数。
 1. 若需要公开分享，请另做一份不含 `artifacts/cache/` 的安全包。推荐只保留 `manifest.yml`、配置文件、`config.used.yml`、`inputs.lock.json`、汇总 CSV 和简短说明。
 
-### 历史 run Release staging：`python -m csml.release_tools.package_runs`
+### 历史 run Release staging：`python -m cstree.release_tools.package_runs`
 
 如果要把历史研究结果拆成可上传 GitHub Release 的独立包，建议用模块级打包流程，避免直接复制整个 `artifacts/runs/`。
 
@@ -1090,11 +1090,11 @@ artifacts/snapshots/<name>/
 1. root manifest 和每个 run 的 `manifest.yml` 都会写 `reproducibility.asset_references`：优先记录资产 `manifest.yml` 或 `*.manifest.yml` 的路径与 sha256；如果引用的是没有 manifest 的资产文件，则退化记录该文件本身的路径与 sha256。
 1. `runs_summary.csv` 是对 staging root 再做一次 `summarize` 得到的索引表，方便先看再决定下载哪几个 run。
 
-对应的上传入口是 `python -m csml.release_tools.release_runs`：
+对应的上传入口是 `python -m cstree.release_tools.release_runs`：
 
 1. 它会把每个 `<run_dir>/` 分别打成一个 tar.gz。
 1. 然后在同一个 GitHub Release tag 下上传多份 run asset。
-1. 这条链路和 `python -m csml.release_tools.release_assets` 分开；前者是研究结果备份，后者是数据资产备份。
+1. 这条链路和 `python -m cstree.release_tools.release_assets` 分开；前者是研究结果备份，后者是数据资产备份。
 
 ### 旧目录升级说明
 

@@ -413,7 +413,7 @@ cstree rqdata mirror-hk-financial-details \
 如果你已经拉了一版 probe，后续研究入口是：
 
 ```bash
-uv run python -m csml.research.hk_financial_details \
+uv run python -m cstree.research.hk_financial_details \
   --probe-dir artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_connect60_superset_2024_2025_20260319 \
   --compare-probe-dir artifacts/assets/rqdata/hk/financial_details/hk_financial_details_probe_connect30_core_2024_2025_20260319 \
   --dedup latest_adjusted_then_info_date \
@@ -701,7 +701,7 @@ cstree backup-data \
 如果你的目标是把 HK 资产拆成可搬运的 part，入口是：
 
 ```bash
-uv run python -m csml.release_tools.package_assets \
+uv run python -m cstree.release_tools.package_assets \
   --preset hk_current \
   --dest ~/csml_asset_parts/hk_current_20260403 \
   --mode copy \
@@ -725,7 +725,7 @@ uv run python -m csml.release_tools.package_assets \
 单独打 `announcement` 的例子：
 
 ```bash
-uv run python -m csml.release_tools.package_assets \
+uv run python -m cstree.release_tools.package_assets \
   --name hk_connect_refresh \
   --as-of 20260326 \
   --part announcement \
@@ -738,7 +738,7 @@ uv run python -m csml.release_tools.package_assets \
 ETF `daily` 资产的正式打包例子：
 
 ```bash
-uv run python -m csml.release_tools.package_assets \
+uv run python -m cstree.release_tools.package_assets \
   --preset hk_etf \
   --dest ~/csml_asset_parts/hk_etf_20260401 \
   --mode copy \
@@ -748,7 +748,7 @@ uv run python -m csml.release_tools.package_assets \
 如果你只想把当前正式 `intraday + ETF + valuation` 这三层打成备份包，可以直接选 part：
 
 ```bash
-uv run python -m csml.release_tools.package_assets \
+uv run python -m cstree.release_tools.package_assets \
   --preset hk_current \
   --part intraday \
   --part etf \
@@ -761,7 +761,7 @@ uv run python -m csml.release_tools.package_assets \
 如果要直接打成 GitHub Release 的 tarball：
 
 ```bash
-uv run python -m csml.release_tools.release_assets \
+uv run python -m cstree.release_tools.release_assets \
   --preset hk_etf \
   --tag hk_etf_assets_20260401 \
   --mode copy \
@@ -772,7 +772,7 @@ uv run python -m csml.release_tools.release_assets \
 如果你要直接打成 GitHub Release 资产，再用：
 
 ```bash
-uv run python -m csml.release_tools.release_assets \
+uv run python -m cstree.release_tools.release_assets \
   --tag hk_assets_20260327 \
   --preset hk_full \
   --daily-snapshot hk_all_2000_20260326_daily_final_latest \
@@ -793,13 +793,13 @@ uv run python -m csml.release_tools.release_assets \
 
 不要把“资产打包”与“历史 run 归档”混成一条线。
 
-* 数据资产：`python -m csml.release_tools.package_assets` / `python -m csml.release_tools.release_assets`
-* 历史 run：`python -m csml.release_tools.package_runs` / `python -m csml.release_tools.release_runs`
+* 数据资产：`python -m cstree.release_tools.package_assets` / `python -m cstree.release_tools.release_assets`
+* 历史 run：`python -m cstree.release_tools.package_runs` / `python -m cstree.release_tools.release_runs`
 
 归档历史 run 的常见入口：
 
 ```bash
-uv run python -m csml.release_tools.release_runs \
+uv run python -m cstree.release_tools.release_runs \
   --name hk_selected_history \
   --runs-dir artifacts/runs \
   --run-name-prefix hk_selected \

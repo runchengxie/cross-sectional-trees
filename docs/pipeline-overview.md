@@ -77,7 +77,7 @@
 | 持仓与分配 | `cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk` | 查看当前持仓、导出快照、做资金和手数分配 |
 | 数据标准层 | `cstree data catalog/materialize/query` | 管理 metadata、物化 standardized layer、用 DuckDB 查询 |
 | RQData 资产 | `cstree rqdata ...`、`cstree universe ...` | 镜像 HK 资产、检查健康度、构建研究股票池 |
-| 发布打包 | `python -m csml.release_tools.*` | 跨机器共享数据资产或运行结果 |
+| 发布打包 | `python -m cstree.release_tools.*` | 跨机器共享数据资产或运行结果 |
 
 命令参数以 `docs/cli.md` 为准。能力边界和稳定性分层见 `docs/capabilities.md`。
 

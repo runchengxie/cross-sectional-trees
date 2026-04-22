@@ -401,7 +401,7 @@ cstree rqdata inspect-hk-pit-coverage \
 如果你要审计 overlay 合并链路，可以在 run 完成后执行：
 
 ```bash
-uv run python -m csml.research.hk_selected_provider_valuation_audit \
+uv run python -m cstree.research.hk_selected_provider_valuation_audit \
   --run-dir artifacts/runs/<run_dir>
 ```
 

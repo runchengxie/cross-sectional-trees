@@ -30,7 +30,7 @@ paths:
 2. 环境变量：
 
 ```bash
-export CSML_ARTIFACTS_ROOT=/data/csml-artifacts
+export CSTREE_ARTIFACTS_ROOT=/data/cstree-artifacts
 ```
 
 3. CLI：
@@ -41,7 +41,9 @@ cstree run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
 
 优先级固定为：
 
-`--artifacts-root` > `CSML_ARTIFACTS_ROOT` > `paths.artifacts_root` > 默认 `artifacts/`
+`--artifacts-root` > `CSTREE_ARTIFACTS_ROOT` > `CSML_ARTIFACTS_ROOT` > `paths.artifacts_root` > 默认 `artifacts/`
+
+`CSML_ARTIFACTS_ROOT` 在当前 `0.x` 兼容窗口内仍可用；如果新旧变量同时设置，以 `CSTREE_ARTIFACTS_ROOT` 为准。
 
 ## 哪些命令会跟着走
 

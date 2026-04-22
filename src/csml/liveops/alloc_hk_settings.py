@@ -242,7 +242,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--artifacts-root",
         help=(
             "Optional artifacts root override used when resolving the default runs directory. "
-            "When omitted, alloc-hk uses paths.artifacts_root, CSML_ARTIFACTS_ROOT, or artifacts/."
+            "When omitted, alloc-hk uses CSTREE_ARTIFACTS_ROOT, legacy CSML_ARTIFACTS_ROOT, "
+            "paths.artifacts_root, or artifacts/."
         ),
     )
     parser.add_argument("--positions-file", help="Explicit positions CSV path (overrides --config/--run-dir).")

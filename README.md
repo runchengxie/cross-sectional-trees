@@ -31,7 +31,7 @@ cp .env.example .env
 | 导出港股 Excel 分配表 | `cstree alloc-hk --format xlsx --out ...` | `liveops-hk` | 若走实时或服务商路径，需对应数据源凭证 |
 | 计算包含 P 值的统计检验 | Python 下游分析调用 `summarize_ic` | `stats` | 无 |
 
-CLI 入口优先使用 `cstree`。为兼容既有脚本、文档示例和用户 shell 历史，`csml` 会继续作为同等入口保留，两者当前指向同一套实现。
+CLI 入口优先使用 `cstree`。为兼容既有脚本和用户 shell 历史，`csml` 会继续作为同等入口保留，两者当前调用同一套实现。
 
 `default` 和 `hk` 等内置别名，以及 `cstree init-config` 命令，均会默认读取仓库根目录下的 `configs/` 文件夹。日常使用时，请确保在包含 `configs/` 目录的源码工作区或导出的源码目录内执行相关命令。
 

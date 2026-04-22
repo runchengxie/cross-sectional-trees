@@ -38,7 +38,7 @@ cstree <subcommand> --help
 
 ## 命令入口兼容
 
-`cstree` 是当前推荐的 CLI 名称。旧入口 `csml` 仍作为兼容 alias 保留，两者当前都指向内部实现 `csml.cli:main`，命令语义一致；新文档和脚本示例统一使用 `cstree`。
+`cstree` 是当前推荐的 CLI 名称。旧入口 `csml` 仍作为兼容 alias 保留；`cstree` 通过桥接层委托到现有实现，命令语义与 `csml` 一致。新文档和脚本示例统一使用 `cstree`。
 
 ## 共享参数约定
 
@@ -66,7 +66,7 @@ cstree <subcommand> --help
 - `cstree data materialize`
 - `cstree data query`
 
-优先级顺序：`--artifacts-root` 最高，其次为环境变量 `CSML_ARTIFACTS_ROOT`，再其次为配置文件中的 `paths.artifacts_root`，最后退回默认值 `artifacts/`。
+优先级顺序：`--artifacts-root` 最高，其次为环境变量 `CSTREE_ARTIFACTS_ROOT`，再其次为兼容环境变量 `CSML_ARTIFACTS_ROOT`，再其次为配置文件中的 `paths.artifacts_root`，最后退回默认值 `artifacts/`。
 
 说明：
 
@@ -327,7 +327,7 @@ cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-ca
 - 默认行为是复制 `artifacts/cache/` 与 `artifacts/assets/universe/`，并依据传入的 `--config` 或 `--include-path` 叠加特定内容。
 - 使用 `--preset hk_current` 时，工具将额外读取 `artifacts/metadata/current_assets/hk_current.json` 文件。系统会将 contract 自身及其引用的 HK 资产合并冻结到 `artifacts/snapshots/<name>/` 目录下。
 - `hk_current` preset 复制的内容为 contract 解析后的 resolved snapshot 或 file，它绕过了单纯的 `latest` 别名，确保获取真实的依赖快照作为最终审计依据。
-- 该工具提供的是本地私有数据冻结方案，执行时不会向 provider 重新请求数据。如需跨机器共享，推荐使用 `python -m csml.release_tools.package_assets` 或 `release_assets` 等发行脚本。
+- 该工具提供的是本地私有数据冻结方案，执行时不会向 provider 重新请求数据。如需跨机器共享，推荐使用 `python -m cstree.release_tools.package_assets` 或 `release_assets` 等发行脚本。
 
 ### cstree data catalog
 
@@ -693,7 +693,7 @@ cstree rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk
 - 打包目录将规范化地落点至 `artifacts/assets/rqdata/hk/intraday/<snapshot>/`。其中内嵌的 `data/` 子干将无损保留其源 parquet 内容及对应的附属元信息与分片块。
 - 该动作彻底剥离源文件羁绊。即便将旧缓存空间施以深度清空，构建落位的正是资产夹依然具备充分的自持力供各类下游工具消费。
 - 附带的 `manifest.yml` 索引将涵盖数据的横跨日期谱系、结构字段定义、源节点指纹追踪及落位分片的行列尺度与额度特征。
-- 随后 `inspect-hk-intraday-health` 与底层计算如 `python -m csml.research.hk_intraday_slippage_report` 都可以无缝地用其充当合法 `--input` 数据源。
+- 随后 `inspect-hk-intraday-health` 与底层计算如 `python -m cstree.research.hk_intraday_slippage_report` 都可以无缝地用其充当合法 `--input` 数据源。
 
 ### cstree rqdata build-hk-daily-clean-layer
 

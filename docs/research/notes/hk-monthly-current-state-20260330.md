@@ -57,7 +57,7 @@
 ## 5. 下一步只做这 3 件事
 
 1. 固定 `M-PIT + no_ret + bx20 / be10` 为当前 PIT default candidate，用后续新样本判断它能否继续守住正 `IC` 和可接受的实现质量。
-2. 固定 `trial_008 + k15_bx25_be12 + groupcap4` 为 ranker 主候选；`trial_008 + k15_bx20_be10 + groupcap4` 保留为激进对照，不再继续扩 construction 小网格。进入前瞻跟踪时，优先按 `hk-monthly-ranker-ab-and-next-sweep-20260413.md` 里的“主线 vs comparator 稳健性检查清单”执行；需要重复跑固定窗口对比时，直接用同页记录的 `python -m csml.research.hk_monthly_run_compare` 入口，避免再开新 sweep。
+2. 固定 `trial_008 + k15_bx25_be12 + groupcap4` 为 ranker 主候选；`trial_008 + k15_bx20_be10 + groupcap4` 保留为激进对照，不再继续扩 construction 小网格。进入前瞻跟踪时，优先按 `hk-monthly-ranker-ab-and-next-sweep-20260413.md` 里的“主线 vs comparator 稳健性检查清单”执行；需要重复跑固定窗口对比时，直接用同页记录的 `python -m cstree.research.hk_monthly_run_compare` 入口，避免再开新 sweep。
 3. 把 baseline 的工作严格收窄为“解释 latest 转弱”，继续沿着 `R0-R4` 看逐月 `IC`、行业分布和 size bucket 变化，避免重新打开大网格。
 
 ## 6. 当前不再优先做什么

@@ -274,7 +274,7 @@ python scripts/internal/run_hk_asset_workflow.py --target-date 20260402
 
 * `refresh`：刷新 `instruments / daily / daily_clean / valuation / ex_factors / dividends / shares / industry_changes / southbound` 等资产。
 * `inspect`：运行健康诊断，并把报告写入 `artifacts/reports/`。
-* `package`：把本次 resolved snapshot 交给 `csml.release_tools.package_assets` 打包。
+* `package`：把本次 resolved snapshot 交给 `cstree.release_tools.package_assets` 打包；旧 `csml.release_tools.package_assets` 路径仍保留兼容。
 
 常见变体：
 

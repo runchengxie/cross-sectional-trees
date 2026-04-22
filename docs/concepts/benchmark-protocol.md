@@ -24,12 +24,12 @@ HK 研究默认用：
 * `backtest.benchmark_returns_file: artifacts/benchmarks/hk_connect_capw.csv`
 
 接入同一条回测，避免强行用单一 ETF 近似。
-当前仓库可用 `python -m csml.research.hk_connect_cap_weight_benchmark ...` 从
+当前仓库可用 `python -m cstree.research.hk_connect_cap_weight_benchmark ...` 从
 `by_date universe + backtest_periods + local daily/valuation assets` 生成这类收益文件。
 如果你想把“universe 选得好”与“cap-weight 吃到大票”拆开看，同一个 builder 也支持
 `--weighting equal`，可额外生成同 universe 的 equal-weight benchmark 做报告层对照。
 如果你还想继续拆 benchmark 为什么强，可以再用
-`python -m csml.research.hk_benchmark_attribution ...`
+`python -m cstree.research.hk_benchmark_attribution ...`
 按同一套 periods / universe / daily / valuation / industry labels 生成成分贡献、行业贡献和集中度报表。
 
 配置后，run 会额外输出：

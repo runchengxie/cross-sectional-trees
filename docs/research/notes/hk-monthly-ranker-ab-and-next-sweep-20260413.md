@@ -831,7 +831,7 @@ guardrail probe 分两轮：
 为了避免每次都手工翻 `summary.json` 和 OOS CSV，当前这两条线的固定对比入口建议直接用：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m csml.research.hk_monthly_run_compare \
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m cstree.research.hk_monthly_run_compare \
   --run main=artifacts/runs/hk_tune_hk_selected_monthly_pit_no_ret_ranker_trial008_gc4_positive_cfo_construction_r1_trial_001_20260413_182023_86054f72 \
   --run comp=artifacts/runs/hk_tune_hk_selected_monthly_pit_no_ret_ranker_trial008_gc4_positive_cfo_construction_r1_trial_004_20260413_182239_fdedb9db \
   --out-dir artifacts/reports/hk_monthly_positive_cfo_compare_20260413
