@@ -67,7 +67,8 @@ def test_run_tests_script_help_lists_supported_modes():
     assert "coverage" in result.stdout
     assert "main pytest suite without coverage" in result.stdout
     assert "Does not include optional-extra smoke jobs" in result.stdout
-    assert "Real provider integration still requires CSML_RUN_PROVIDER_INTEGRATION=1" in result.stdout
+    assert "Real provider integration prefers CSTREE_RUN_PROVIDER_INTEGRATION=1" in result.stdout
+    assert "legacy CSML_RUN_PROVIDER_INTEGRATION=1 still works" in result.stdout
     assert "it is not the full CI matrix" in result.stdout
 
 

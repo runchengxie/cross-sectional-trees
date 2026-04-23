@@ -1,2 +1,1 @@
-"""cstree wrappers for documented release helper modules."""
-
+"""cstree wrappers for release helper modules."""

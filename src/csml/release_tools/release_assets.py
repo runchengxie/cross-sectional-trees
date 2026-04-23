@@ -14,7 +14,7 @@ import yaml
 from csml.repo_paths import find_repo_root
 
 REPO_ROOT = find_repo_root(__file__)
-PACKAGE_MODULE = "csml.release_tools.package_assets"
+PACKAGE_MODULE = "cstree.release_tools.package_assets"
 
 
 def _resolve_path(path_text: str | Path) -> Path:

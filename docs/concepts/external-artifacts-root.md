@@ -24,7 +24,7 @@
 
 ```yaml
 paths:
-  artifacts_root: "/data/csml-artifacts"
+  artifacts_root: "/data/cstree-artifacts"
 ```
 
 2. 环境变量：
@@ -36,7 +36,7 @@ export CSTREE_ARTIFACTS_ROOT=/data/cstree-artifacts
 3. CLI：
 
 ```bash
-cstree run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
+cstree run --config configs/presets/hk.yml --artifacts-root /data/cstree-artifacts
 ```
 
 优先级固定为：

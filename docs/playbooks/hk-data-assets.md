@@ -703,7 +703,7 @@ cstree backup-data \
 ```bash
 uv run python -m cstree.release_tools.package_assets \
   --preset hk_current \
-  --dest ~/csml_asset_parts/hk_current_20260403 \
+  --dest ~/cstree_asset_parts/hk_current_20260403 \
   --mode copy \
   --overwrite
 ```
@@ -740,7 +740,7 @@ ETF `daily` 资产的正式打包例子：
 ```bash
 uv run python -m cstree.release_tools.package_assets \
   --preset hk_etf \
-  --dest ~/csml_asset_parts/hk_etf_20260401 \
+  --dest ~/cstree_asset_parts/hk_etf_20260401 \
   --mode copy \
   --overwrite
 ```
@@ -753,7 +753,7 @@ uv run python -m cstree.release_tools.package_assets \
   --part intraday \
   --part etf \
   --part valuation \
-  --dest ~/csml_asset_parts/hk_current_focus_20260403 \
+  --dest ~/cstree_asset_parts/hk_current_focus_20260403 \
   --mode copy \
   --overwrite
 ```

@@ -1032,7 +1032,7 @@ def main(argv: list[str] | None = None) -> int:
     as_of = args.as_of or detect_as_of(daily_dir.name)
     distribution_name = args.name or args.preset
     dest = resolve_repo_path(
-        args.dest or (REPO_ROOT.parent / "csml_asset_parts" / f"{distribution_name}_{as_of}")
+        args.dest or (REPO_ROOT.parent / "cstree_asset_parts" / f"{distribution_name}_{as_of}")
     )
     ensure_dest_root(dest, args.overwrite, dry_run=args.dry_run)
 

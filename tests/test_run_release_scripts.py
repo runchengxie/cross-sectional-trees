@@ -556,7 +556,7 @@ def test_release_runs_forwards_filters_to_package_step(tmp_path, monkeypatch):
 
     assert exit_code == 0
     package_cmd = calls[0]
-    assert package_cmd[1:3] == ["-m", "csml.release_tools.package_runs"]
+    assert package_cmd[1:3] == ["-m", "cstree.release_tools.package_runs"]
     assert "--profile" in package_cmd
     assert package_cmd[package_cmd.index("--profile") + 1] == "milestone"
     assert "--run-name-prefix" in package_cmd

@@ -56,7 +56,7 @@ def test_hk_asset_workflow_dry_run_builds_refresh_package_and_release_commands(t
     assert any("build-hk-daily-clean-layer" in cmd for cmd in calls)
     assert any("mirror-hk-valuation" in cmd for cmd in calls)
 
-    package_cmd = next(cmd for cmd in calls if cmd[1:3] == ["-m", "csml.release_tools.package_assets"])
+    package_cmd = next(cmd for cmd in calls if cmd[1:3] == ["-m", "cstree.release_tools.package_assets"])
     assert "--valuation-snapshot" in package_cmd
     assert package_cmd[package_cmd.index("--valuation-snapshot") + 1].endswith(
         "artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260402_valuation_full_market_refetched_latest"
@@ -64,7 +64,7 @@ def test_hk_asset_workflow_dry_run_builds_refresh_package_and_release_commands(t
     assert package_cmd[package_cmd.index("--part") + 1] == "daily"
     assert package_cmd[package_cmd.index("--part", package_cmd.index("--part") + 1) + 1] == "valuation"
 
-    release_cmd = next(cmd for cmd in calls if cmd[1:3] == ["-m", "csml.release_tools.release_assets"])
+    release_cmd = next(cmd for cmd in calls if cmd[1:3] == ["-m", "cstree.release_tools.release_assets"])
     assert "--staged-root" in release_cmd
     assert "--tar-dir" in release_cmd
 
@@ -179,7 +179,7 @@ def test_hk_asset_workflow_inspect_gate_blocks_alias_repoint_and_package(tmp_pat
 
     assert exit_code == 2
     assert any("mirror-hk-daily" in cmd for cmd in calls)
-    assert not any(cmd[1:3] == ["-m", "csml.release_tools.package_assets"] for cmd in calls)
+    assert not any(cmd[1:3] == ["-m", "cstree.release_tools.package_assets"] for cmd in calls)
 
     daily_alias = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_latest"
     assert not daily_alias.exists()
@@ -280,7 +280,7 @@ def test_hk_asset_workflow_inspect_gate_allows_repoint_and_package_when_clean(tm
 
     assert exit_code == 0
     assert any("mirror-hk-daily" in cmd for cmd in calls)
-    assert any(cmd[1:3] == ["-m", "csml.release_tools.package_assets"] for cmd in calls)
+    assert any(cmd[1:3] == ["-m", "cstree.release_tools.package_assets"] for cmd in calls)
 
     daily_alias = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_latest"
     assert daily_alias.is_symlink()
@@ -378,7 +378,7 @@ def test_hk_asset_workflow_gate_ignores_raw_daily_price_bounds_when_daily_clean_
     )
 
     assert exit_code == 0
-    assert any(cmd[1:3] == ["-m", "csml.release_tools.package_assets"] for cmd in calls)
+    assert any(cmd[1:3] == ["-m", "cstree.release_tools.package_assets"] for cmd in calls)
 
     report = json.loads(
         (repo_root / "artifacts" / "reports" / "hk_asset_refresh_20260402.json").read_text(encoding="utf-8")
@@ -502,7 +502,7 @@ def test_hk_asset_workflow_patch_mode_builds_patch_and_merge_commands(tmp_path, 
     )
 
     merge_cmds = [
-        cmd for cmd in calls if len(cmd) >= 3 and cmd[1:3] == ["-m", "csml.research.hk_asset_patch_merge"]
+        cmd for cmd in calls if len(cmd) >= 3 and cmd[1:3] == ["-m", "cstree.research.hk_asset_patch_merge"]
     ]
     assert len(merge_cmds) == 2
 
@@ -560,7 +560,7 @@ def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatc
                 ),
                 encoding="utf-8",
             )
-        elif len(cmd) >= 3 and cmd[1:3] == ["-m", "csml.research.hk_asset_patch_merge"]:
+        elif len(cmd) >= 3 and cmd[1:3] == ["-m", "cstree.research.hk_asset_patch_merge"]:
             out_dir = repo_root / cmd[cmd.index("--out-dir") + 1]
             (out_dir / "data").mkdir(parents=True, exist_ok=True)
             (out_dir / "manifest.yml").write_text(
@@ -815,7 +815,7 @@ def test_hk_asset_workflow_repair_phase_uses_report_candidates_to_build_subset_p
                 ),
                 encoding="utf-8",
             )
-        elif len(cmd) >= 3 and cmd[1:3] == ["-m", "csml.research.hk_asset_patch_merge"]:
+        elif len(cmd) >= 3 and cmd[1:3] == ["-m", "cstree.research.hk_asset_patch_merge"]:
             out_dir = repo_root / cmd[cmd.index("--out-dir") + 1]
             (out_dir / "data").mkdir(parents=True, exist_ok=True)
             (out_dir / "manifest.yml").write_text(
@@ -1035,7 +1035,7 @@ def test_hk_asset_workflow_repair_only_unresolved_uses_remaining_candidates(tmp_
                 ),
                 encoding="utf-8",
             )
-        elif len(cmd) >= 3 and cmd[1:3] == ["-m", "csml.research.hk_asset_patch_merge"]:
+        elif len(cmd) >= 3 and cmd[1:3] == ["-m", "cstree.research.hk_asset_patch_merge"]:
             out_dir = repo_root / cmd[cmd.index("--out-dir") + 1]
             (out_dir / "data").mkdir(parents=True, exist_ok=True)
             (out_dir / "manifest.yml").write_text(

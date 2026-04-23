@@ -44,7 +44,7 @@ import json
 import sys
 from pathlib import Path
 
-from csml.current_assets import default_hk_current_contract_path, hk_current_candidate_paths
+from cstree.current_assets import default_hk_current_contract_path, hk_current_candidate_paths
 
 artifacts_root = Path(sys.argv[1]).expanduser().resolve()
 asset_key = sys.argv[2]
@@ -72,7 +72,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from csml.current_assets import default_hk_current_contract_path
+from cstree.current_assets import default_hk_current_contract_path
 
 artifacts_root = Path(sys.argv[1]).expanduser().resolve()
 contract_path = default_hk_current_contract_path(artifacts_root)

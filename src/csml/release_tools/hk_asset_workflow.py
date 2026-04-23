@@ -117,7 +117,7 @@ def _cstree_executable() -> list[str]:
     return [
         sys.executable,
         "-c",
-        "from csml.cli import main; import sys; raise SystemExit(main(sys.argv[1:]))",
+        "from cstree.cli import main; import sys; raise SystemExit(main(sys.argv[1:]))",
     ]
 
 
@@ -1000,7 +1000,7 @@ def _build_patch_refresh_steps(
     merge_command = [
         sys.executable,
         "-m",
-        "csml.research.hk_asset_patch_merge",
+        "cstree.research.hk_asset_patch_merge",
         "--base-dir",
         _repo_relative(current_path),
         "--patch-dir",
@@ -1330,7 +1330,7 @@ def _build_repair_steps(
         merge_command = [
             sys.executable,
             "-m",
-            "csml.research.hk_asset_patch_merge",
+            "cstree.research.hk_asset_patch_merge",
             "--base-dir",
             _repo_relative(current_path),
             "--patch-dir",
@@ -1707,7 +1707,7 @@ def _build_package_step(
     command = [
         sys.executable,
         "-m",
-        "csml.release_tools.package_assets",
+        "cstree.release_tools.package_assets",
         "--preset",
         args.preset,
         "--dest",
@@ -1755,7 +1755,7 @@ def _build_release_step(args: argparse.Namespace) -> Step:
     command = [
         sys.executable,
         "-m",
-        "csml.release_tools.release_assets",
+        "cstree.release_tools.release_assets",
         "--staged-root",
         _repo_relative(args.package_dest),
         "--tar-dir",

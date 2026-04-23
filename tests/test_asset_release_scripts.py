@@ -711,6 +711,6 @@ def test_release_assets_forwards_selected_parts_to_package_step(tmp_path, monkey
 
     assert exit_code == 0
     package_cmd = calls[0]
-    assert package_cmd[1:3] == ["-m", "csml.release_tools.package_assets"]
+    assert package_cmd[1:3] == ["-m", "cstree.release_tools.package_assets"]
     assert "--part" in package_cmd
     assert package_cmd[package_cmd.index("--part") + 1] == "daily"

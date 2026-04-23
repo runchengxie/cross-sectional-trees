@@ -786,7 +786,7 @@ def main(argv: list[str] | None = None) -> int:
     git = _git_metadata(REPO_ROOT)
 
     dest = resolve_repo_path(
-        args.dest or (REPO_ROOT.parent / "csml_run_parts" / f"{args.name}_{created_label}")
+        args.dest or (REPO_ROOT.parent / "cstree_run_parts" / f"{args.name}_{created_label}")
     )
     ensure_dest_root(dest, args.overwrite, dry_run=args.dry_run)
 

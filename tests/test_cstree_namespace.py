@@ -8,6 +8,7 @@ import pytest
 
 
 DOCUMENTED_RELEASE_WRAPPERS = (
+    "release_tools.hk_asset_workflow",
     "release_tools.package_assets",
     "release_tools.release_assets",
     "release_tools.package_runs",
@@ -24,6 +25,23 @@ DOCUMENTED_RESEARCH_WRAPPERS = (
     "research.hk_selected_provider_valuation_audit",
 )
 DOCUMENTED_WRAPPERS = DOCUMENTED_RELEASE_WRAPPERS + DOCUMENTED_RESEARCH_WRAPPERS
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    (
+        "artifacts",
+        "metrics",
+        "pipeline",
+        "liveops.alloc_hk",
+        "data_tools.rqdata_assets",
+    ),
+)
+def test_cstree_namespace_aliases_existing_csml_modules(module_path):
+    cstree_module = importlib.import_module(f"cstree.{module_path}")
+    csml_module = importlib.import_module(f"csml.{module_path}")
+
+    assert cstree_module is csml_module
 
 
 @pytest.mark.parametrize("module_path", DOCUMENTED_WRAPPERS)

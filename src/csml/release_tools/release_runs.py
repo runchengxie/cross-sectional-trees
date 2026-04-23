@@ -17,7 +17,7 @@ import yaml
 from csml.repo_paths import find_repo_root
 
 REPO_ROOT = find_repo_root(__file__)
-PACKAGE_MODULE = "csml.release_tools.package_runs"
+PACKAGE_MODULE = "cstree.release_tools.package_runs"
 DATETIME_PARSE_FORMATS = (
     "%Y%m%d_%H%M%S",
     "%Y%m%d",
@@ -342,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         "--profile",
         choices=["light", "milestone", "full"],
         default="light",
-        help="Packaging profile forwarded to csml.release_tools.package_runs.",
+        help="Packaging profile forwarded to cstree.release_tools.package_runs.",
     )
     parser.add_argument(
         "--include-scored",

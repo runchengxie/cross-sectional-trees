@@ -21,13 +21,13 @@ def test_cli_parses_run_command():
             "--fail-on-quality",
             "warning",
             "--artifacts-root",
-            "/tmp/csml-artifacts",
+            "/tmp/cstree-artifacts",
         ]
     )
     assert args.command == "run"
     assert args.config == "default"
     assert args.fail_on_quality == "warning"
-    assert args.artifacts_root == "/tmp/csml-artifacts"
+    assert args.artifacts_root == "/tmp/cstree-artifacts"
     assert callable(args.func)
 
 
@@ -198,8 +198,8 @@ def test_cli_main_run_forwards_artifacts_root(monkeypatch):
 
     monkeypatch.setattr(pipeline_module, "run", fake_run)
 
-    assert cli.main(["run", "--config", "hk", "--artifacts-root", "/tmp/csml-artifacts"]) == 0
-    assert calls == [("hk", None, "/tmp/csml-artifacts")]
+    assert cli.main(["run", "--config", "hk", "--artifacts-root", "/tmp/cstree-artifacts"]) == 0
+    assert calls == [("hk", None, "/tmp/cstree-artifacts")]
 
 
 def test_cli_main_universe_wrappers_pass_through_args(monkeypatch):

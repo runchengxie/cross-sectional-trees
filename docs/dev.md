@@ -103,7 +103,7 @@ scripts/dev/run_tests.sh format
 scripts/dev/run_tests.sh format-all
 
 # 真实 provider 在线联调，需要显式开启并配置 token 或账号
-CSML_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
+CSTREE_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
 ```
 
 ## 本地 Git Hooks
@@ -146,7 +146,7 @@ scripts/dev/run_tests.sh slow
 scripts/dev/run_tests.sh integration
 ```
 
-`scripts/dev/run_tests.sh integration` 运行带有 `@pytest.mark.integration` 的跨模块测试。`tests/test_provider_integration.py` 虽然也带有 `integration` 标记，但只有设置 `CSML_RUN_PROVIDER_INTEGRATION=1` 时才会真正访问 provider。
+`scripts/dev/run_tests.sh integration` 运行带有 `@pytest.mark.integration` 的跨模块测试。`tests/test_provider_integration.py` 虽然也带有 `integration` 标记，但只有设置 `CSTREE_RUN_PROVIDER_INTEGRATION=1` 时才会真正访问 provider；旧的 `CSML_RUN_PROVIDER_INTEGRATION=1` 仍作为兼容开关保留。
 
 ### 测试矩阵维度剖析
 
@@ -182,12 +182,12 @@ uv run cstree data query --sql "select 1 as value" > /dev/null
 # liveops-hk-extra-smoke
 uv sync --locked --extra dev --extra liveops-hk
 uv run python -c "import openpyxl; print(openpyxl.__version__)"
-uv run python -c "from pathlib import Path; import pandas as pd; from csml.liveops.alloc_hk import write_xlsx_report; out = Path('/tmp/alloc_hk_smoke.xlsx'); write_xlsx_report(out, pd.DataFrame([{'symbol': '0001.HK'}]), pd.DataFrame([{'as_of': '2026-03-20'}]), pd.DataFrame([{'symbol': '0001.HK'}])); assert out.exists() and out.stat().st_size > 0"
+uv run python -c "from pathlib import Path; import pandas as pd; from cstree.liveops.alloc_hk import write_xlsx_report; out = Path('/tmp/alloc_hk_smoke.xlsx'); write_xlsx_report(out, pd.DataFrame([{'symbol': '0001.HK'}]), pd.DataFrame([{'as_of': '2026-03-20'}]), pd.DataFrame([{'symbol': '0001.HK'}])); assert out.exists() and out.stat().st_size > 0"
 
 # stats-extra-smoke
 uv sync --locked --extra dev --extra stats
 uv run python -c "import scipy; print(scipy.__version__)"
-uv run python -c "import pandas as pd; from csml.metrics import summarize_ic; series = pd.Series([0.1, -0.1, 0.2]); stats = summarize_ic(series); assert 'p_value' in stats and stats['p_value'] == stats['p_value']"
+uv run python -c "import pandas as pd; from cstree.metrics import summarize_ic; series = pd.Series([0.1, -0.1, 0.2]); stats = summarize_ic(series); assert 'p_value' in stats and stats['p_value'] == stats['p_value']"
 ```
 
 ## HK 资产健康检查脚本

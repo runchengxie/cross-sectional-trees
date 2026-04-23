@@ -48,6 +48,7 @@ EXPECTED_DEV_TEST_TOKENS = [
     "scripts/dev/run_tests.sh slow",
     "scripts/dev/run_tests.sh integration",
     "scripts/dev/run_tests.sh coverage",
+    "CSTREE_RUN_PROVIDER_INTEGRATION=1",
     "CSML_RUN_PROVIDER_INTEGRATION=1",
     "不完全等同于在 CI 环境下的完整复现",
 ]

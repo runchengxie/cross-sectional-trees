@@ -114,7 +114,7 @@ cstree universe hk-connect --config configs/presets/universe/hk_connect.yml -- -
 cstree run --config default
 cstree run --config hk
 cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml --fail-on-quality warning
-cstree run --config configs/presets/hk.yml --artifacts-root /data/csml-artifacts
+cstree run --config configs/presets/hk.yml --artifacts-root /data/cstree-artifacts
 ```
 
 说明：
@@ -258,7 +258,7 @@ cstree benchmark-ladder \
 ```bash
 cstree holdings --config configs/presets/hk.yml --as-of t-1
 cstree holdings --run-dir artifacts/runs/<run_dir> --format csv
-cstree holdings --config configs/presets/hk.yml --as-of t-1 --artifacts-root /data/csml-artifacts
+cstree holdings --config configs/presets/hk.yml --as-of t-1 --artifacts-root /data/cstree-artifacts
 ```
 
 ### cstree snapshot
@@ -275,7 +275,7 @@ cstree snapshot --config path/to/live.yml
 cstree snapshot --config path/to/live.yml --skip-run
 cstree snapshot --run-dir artifacts/runs/<run_dir>
 cstree snapshot --run-dir artifacts/runs/<run_dir> --fail-on-quality warning
-cstree snapshot --config path/to/live.yml --artifacts-root /data/csml-artifacts
+cstree snapshot --config path/to/live.yml --artifacts-root /data/cstree-artifacts
 ```
 
 补充说明：
@@ -289,7 +289,7 @@ cstree snapshot --config path/to/live.yml --artifacts-root /data/csml-artifacts
 
 ```bash
 cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
-cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000 --artifacts-root /data/csml-artifacts
+cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000 --artifacts-root /data/cstree-artifacts
 ```
 
 ### cstree alloc-hk
@@ -302,7 +302,7 @@ cstree alloc-hk --positions-file artifacts/runs/<run_dir>/positions_current_live
 cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --format xlsx --out artifacts/exports/alloc_hk.xlsx
 cstree alloc-hk --config path/to/live.yml --source live --scenario-capital 1000000,500000 --scenario-top-n 20,10 --method custom --format xlsx --out artifacts/exports/alloc_hk_grid.xlsx
 cstree alloc-hk --run-dir artifacts/runs/<run_dir> --fail-on-quality warning --format json
-cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --artifacts-root /data/csml-artifacts
+cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --artifacts-root /data/cstree-artifacts
 ```
 
 说明：
@@ -336,7 +336,7 @@ cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-ca
 ```bash
 cstree data catalog
 cstree data catalog --db-path artifacts/metadata/catalog.sqlite
-cstree data catalog --artifacts-root /data/csml-artifacts
+cstree data catalog --artifacts-root /data/cstree-artifacts
 ```
 
 默认输出路径：
@@ -353,7 +353,7 @@ cstree data catalog --artifacts-root /data/csml-artifacts
 ```bash
 cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
 cstree data materialize --name hk_pit_panel --preset pit-fundamentals --file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
-cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir /data/csml-artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --artifacts-root /data/csml-artifacts
+cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir /data/cstree-artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --artifacts-root /data/cstree-artifacts
 ```
 
 说明：
@@ -380,7 +380,7 @@ uv sync --extra dev --extra duckdb
 ```bash
 cstree data query --sql "select symbol, trade_date, close from standardized.hk_daily_panel limit 5"
 cstree data query --sql-file queries/top_names.sql --format csv --out artifacts/metadata/top_names.csv
-cstree data query --sql "select count(*) from standardized.hk_daily_panel" --artifacts-root /data/csml-artifacts
+cstree data query --sql "select count(*) from standardized.hk_daily_panel" --artifacts-root /data/cstree-artifacts
 ```
 
 ## 配置模板命令

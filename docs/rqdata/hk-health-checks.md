@@ -86,7 +86,7 @@ bash scripts/dev/run_hk_health_checks.sh --target-date 20260409 --with-workflow-
 ```bash
 # 改 artifacts 根目录
 bash scripts/dev/run_hk_health_checks.sh \
-  --artifacts-root /data/csml-artifacts \
+  --artifacts-root /data/cstree-artifacts \
   --target-date 20260409
 
 # 改质量闸门
@@ -156,7 +156,7 @@ import json
 import sys
 from pathlib import Path
 
-from csml.current_assets import default_hk_current_contract_path, hk_current_candidate_paths
+from cstree.current_assets import default_hk_current_contract_path, hk_current_candidate_paths
 
 artifacts_root = Path(sys.argv[1]).expanduser().resolve()
 asset_key = sys.argv[2]

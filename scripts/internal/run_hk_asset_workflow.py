@@ -14,7 +14,7 @@ def _bootstrap_repo_src() -> None:
 
 def main() -> int:
     _bootstrap_repo_src()
-    from csml.release_tools.hk_asset_workflow import main as workflow_main
+    from cstree.release_tools.hk_asset_workflow import main as workflow_main
 
     return int(workflow_main() or 0)
 
