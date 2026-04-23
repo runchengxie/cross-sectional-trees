@@ -14,7 +14,7 @@ Modes:
                Real provider integration uses CSTREE_RUN_PROVIDER_INTEGRATION=1.
   coverage     Run the main pytest suite with coverage.
                Scope matches 'all'; it is not the full CI matrix.
-  lint         Run Ruff lint and basic complexity checks, plus import-order on changed files.
+  lint         Run Ruff lint and basic complexity checks, plus changed-file ratchets.
   imports      Run Ruff import-order checks across src, tests, and scripts.
   format       Check Ruff formatting on changed Python files.
   format-all   Check Ruff formatting across src, tests, and scripts.
@@ -38,6 +38,60 @@ changed_python_files() {
     git diff --name-only --diff-filter=ACMRT HEAD -- '*.py'
     git ls-files --others --exclude-standard -- '*.py'
   } | sort -u
+}
+
+check_added_python_long_lines() {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local added_lines
+  local untracked_lines
+  added_lines="$(
+    git diff --unified=0 -- '*.py' | awk '
+      /^\+\+\+ b\// {
+        file = substr($0, 7)
+        next
+      }
+      /^@@ / {
+        if (match($0, /\+([0-9]+)/, parts)) {
+          line_no = parts[1] - 1
+        } else {
+          line_no = 0
+        }
+        next
+      }
+      /^\+/ && $0 !~ /^\+\+\+/ {
+        line_no += 1
+        text = substr($0, 2)
+        if (length(text) > 100) {
+          printf "%s:%d:%d:%s\n", file, line_no, length(text), text
+        }
+        next
+      }
+      /^-/ {
+        next
+      }
+      {
+        if (line_no > 0) {
+          line_no += 1
+        }
+      }
+    '
+  )"
+  untracked_lines="$(
+    while IFS= read -r file; do
+      [[ -f "$file" ]] || continue
+      awk 'length($0) > 100 {printf "%s:%d:%d:%s\n", FILENAME, FNR, length($0), $0}' "$file"
+    done < <(git ls-files --others --exclude-standard -- '*.py')
+  )"
+
+  if [[ -n "$added_lines" || -n "$untracked_lines" ]]; then
+    echo "Python lines added in this worktree must be <= 100 characters:" >&2
+    [[ -z "$added_lines" ]] || printf '%s\n' "$added_lines" >&2
+    [[ -z "$untracked_lines" ]] || printf '%s\n' "$untracked_lines" >&2
+    return 1
+  fi
 }
 
 mode="${1:-all}"
@@ -67,6 +121,7 @@ case "$mode" in
     if [[ ${#changed_python[@]} -gt 0 ]]; then
       run_ruff check --select I "${changed_python[@]}" "$@"
     fi
+    check_added_python_long_lines
     ;;
   imports)
     run_ruff check --select I src tests scripts "$@"

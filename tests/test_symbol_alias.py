@@ -1,6 +1,11 @@
 import pandas as pd
+import pytest
 
-from cstree.data_tools.symbols import canonicalize_symbol_columns, drop_legacy_symbol_columns, ensure_symbol_columns
+from cstree.data_tools.symbols import (
+    canonicalize_symbol_columns,
+    drop_legacy_symbol_columns,
+    ensure_symbol_columns,
+)
 from cstree.pipeline import load_universe_by_date
 from cstree.pipeline.support import _annotate_positions_window, _build_rebalance_diff
 
@@ -19,6 +24,36 @@ def test_ensure_symbol_columns_accepts_symbol_only():
     assert out["symbol"].tolist() == ["AAA", "BBB", ""]
     assert "ts_code" not in out.columns
     assert "stock_ticker" not in out.columns
+
+
+def test_ensure_symbol_columns_accepts_order_book_id_only():
+    frame = pd.DataFrame({"order_book_id": ["00005.XHKG", " 00700.XHKG "], "weight": [0.4, 0.6]})
+
+    out = ensure_symbol_columns(frame, context="positions.csv")
+
+    assert out["symbol"].tolist() == ["00005.XHKG", "00700.XHKG"]
+    assert out["order_book_id"].tolist() == ["00005.XHKG", " 00700.XHKG "]
+
+
+def test_ensure_symbol_columns_prefers_canonical_symbol_over_aliases():
+    frame = pd.DataFrame(
+        {
+            "symbol": ["00005.HK", ""],
+            "ts_code": ["SHOULD_NOT_WIN", "00011.HK"],
+            "stock_ticker": ["5", "11"],
+        }
+    )
+
+    out = ensure_symbol_columns(frame, context="positions.csv")
+
+    assert out["symbol"].tolist() == ["00005.HK", "00011.HK"]
+
+
+def test_ensure_symbol_columns_fails_without_any_symbol_alias():
+    frame = pd.DataFrame({"weight": [1.0]})
+
+    with pytest.raises(SystemExit, match="missing symbol/stock_ticker/ts_code/order_book_id"):
+        ensure_symbol_columns(frame, context="positions.csv")
 
 
 def test_canonicalize_symbol_columns_drops_legacy_aliases_but_keeps_order_book_id():

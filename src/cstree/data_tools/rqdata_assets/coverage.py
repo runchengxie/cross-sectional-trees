@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-import sys
 
 import numpy as np
 import pandas as pd
@@ -21,6 +21,7 @@ from .build import (
     _pipeline_fundamentals_manifest_path,
     _resolve_build_fields,
 )
+from .coverage_rendering import render_hk_pit_coverage_text as _render_hk_pit_coverage_text
 from .health_shared import (
     format_date as _format_date,
     load_symbols_from_text as _load_symbols_from_text,
@@ -28,7 +29,6 @@ from .health_shared import (
     parse_compact_date as _parse_compact_date,
 )
 from .quality_gate import (
-    append_quality_verdict_lines,
     normalize_fail_on_severity,
     quality_gate_exit_code,
     summarize_quality_checks,
@@ -1108,279 +1108,6 @@ def _assess_trainable_fill_dependence(
         "message": message,
         "next_step": next_step,
     }
-
-
-def _render_hk_pit_coverage_text(payload: Mapping[str, object], *, top: int, quarter_limit: int) -> str:
-    lines: list[str] = []
-    source = payload.get("source") if isinstance(payload.get("source"), Mapping) else {}
-    selection = payload.get("selection") if isinstance(payload.get("selection"), Mapping) else {}
-    summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
-    complete_case = payload.get("complete_case") if isinstance(payload.get("complete_case"), Mapping) else {}
-    trainable_estimate = (
-        payload.get("trainable_estimate") if isinstance(payload.get("trainable_estimate"), Mapping) else {}
-    )
-    fill_dependence = (
-        payload.get("fill_dependence_assessment")
-        if isinstance(payload.get("fill_dependence_assessment"), Mapping)
-        else {}
-    )
-    health = payload.get("health") if isinstance(payload.get("health"), Mapping) else {}
-    manifest_totals = (
-        payload.get("pipeline_manifest_totals")
-        if isinstance(payload.get("pipeline_manifest_totals"), Mapping)
-        else {}
-    )
-
-    lines.append("HK PIT Coverage")
-    if source:
-        config_ref = source.get("config")
-        if config_ref:
-            lines.append(f"config: {config_ref}")
-        fundamentals_file = source.get("fundamentals_file")
-        if fundamentals_file:
-            lines.append(f"fundamentals_file: {fundamentals_file}")
-        asset_dir = source.get("asset_dir")
-        if asset_dir:
-            lines.append(f"asset_dir: {asset_dir}")
-
-    lines.append("")
-    lines.append("Selection")
-    lines.append(f"mode: {selection.get('mode')}")
-    lines.append(f"feature_source: {selection.get('source')}")
-    lines.append(f"selected_features: {selection.get('count')}")
-    ignored_features = selection.get("ignored_features")
-    if ignored_features:
-        lines.append("ignored_features: " + ", ".join(str(item) for item in ignored_features))
-
-    lines.append("")
-    lines.append("Summary")
-    for key in [
-        "rows",
-        "symbols",
-        "dates",
-        "quarters",
-        "min_trade_date",
-        "max_trade_date",
-        "median_symbols_per_date",
-        "max_symbols_per_date",
-    ]:
-        if key in summary:
-            lines.append(f"{key}: {summary.get(key)}")
-
-    if manifest_totals:
-        lines.append("")
-        lines.append("Pipeline Manifest")
-        for key in [
-            "input_rows",
-            "output_rows",
-            "symbols",
-            "dropped_all_missing_fields",
-            "duplicate_rows_seen",
-            "duplicate_rows_dropped",
-        ]:
-            if key in manifest_totals:
-                lines.append(f"{key}: {manifest_totals.get(key)}")
-
-    lines.append("")
-    lines.append("Complete Case")
-    for key in [
-        "complete_rows",
-        "complete_row_pct",
-        "complete_symbols",
-        "complete_quarters",
-        "quarter_complete_symbols_median",
-        "quarter_complete_symbols_max",
-        "quarter_count_meeting_min_symbols",
-    ]:
-        if key in complete_case:
-            lines.append(f"{key}: {complete_case.get(key)}")
-
-    field_rows = payload.get("field_coverage") if isinstance(payload.get("field_coverage"), list) else []
-    if field_rows:
-        lines.append("")
-        lines.append(f"Worst Features (top {min(top, len(field_rows))})")
-        field_df = pd.DataFrame(field_rows).head(top)
-        field_df = field_df[
-            [
-                "feature",
-                "row_coverage_pct",
-                "symbol_coverage_pct",
-                "quarter_coverage_pct",
-                "complete_case_row_lift_if_dropped",
-            ]
-        ]
-        lines.append(field_df.to_string(index=False))
-
-    quarter_rows = payload.get("quarter_coverage") if isinstance(payload.get("quarter_coverage"), list) else []
-    if quarter_rows:
-        lines.append("")
-        lines.append(f"Recent Quarters (last {min(quarter_limit, len(quarter_rows))})")
-        quarter_df = pd.DataFrame(quarter_rows).tail(quarter_limit)
-        quarter_df = quarter_df[
-            [
-                "quarter",
-                "symbols_in_file",
-                "symbols_with_any_selected_feature",
-                "symbols_with_all_selected_features",
-            ]
-        ]
-        lines.append(quarter_df.to_string(index=False))
-
-    if trainable_estimate:
-        lines.append("")
-        lines.append("Trainable Estimate")
-        for key in [
-            "feature_source",
-            "pit_features_considered",
-            "rebalance_frequency",
-            "sample_on_rebalance_dates",
-            "grid_source",
-            "fundamentals_ffill",
-            "fundamentals_ffill_limit",
-            "missing_method",
-            "missing_features_considered",
-            "indicator_features_added",
-            "active_rows",
-            "active_symbols",
-            "periods",
-            "rows_with_all_selected_features_after_ffill",
-            "rows_with_all_selected_features_after_missing_fill",
-            "period_symbols_median_after_ffill",
-            "period_symbols_max_after_ffill",
-            "period_count_meeting_min_symbols_after_ffill",
-            "period_symbols_median_after_missing_fill",
-            "period_symbols_max_after_missing_fill",
-            "period_count_meeting_min_symbols_after_missing_fill",
-        ]:
-            if key in trainable_estimate:
-                lines.append(f"{key}: {trainable_estimate.get(key)}")
-        non_pit_features = trainable_estimate.get("non_pit_features_ignored")
-        if non_pit_features:
-            lines.append("non_pit_features_ignored: " + ", ".join(str(item) for item in non_pit_features))
-
-    if fill_dependence:
-        lines.append("")
-        lines.append("Fill Dependence")
-        for key in [
-            "route_type",
-            "status",
-            "periods_after_ffill",
-            "periods_after_missing_fill",
-            "recovered_periods_from_missing_fill",
-            "retention_ratio_after_ffill",
-            "fill_dependency_ratio_from_missing_fill",
-            "green_threshold",
-            "yellow_threshold",
-            "message",
-            "next_step",
-        ]:
-            if key in fill_dependence:
-                lines.append(f"{key}: {fill_dependence.get(key)}")
-
-    trainable_rows = (
-        payload.get("trainable_period_coverage")
-        if isinstance(payload.get("trainable_period_coverage"), list)
-        else []
-    )
-    if trainable_rows:
-        lines.append("")
-        lines.append(f"Estimated Trainable Periods (last {min(quarter_limit, len(trainable_rows))})")
-        trainable_df = pd.DataFrame(trainable_rows).tail(quarter_limit)
-        trainable_df = trainable_df[
-            [
-                "period",
-                "active_symbols",
-                "symbols_with_any_selected_features_after_ffill",
-                "symbols_with_all_selected_features_after_ffill",
-                "symbols_with_all_selected_features_after_missing_fill",
-            ]
-        ]
-        lines.append(trainable_df.to_string(index=False))
-
-    if health:
-        health_source = health.get("source") if isinstance(health.get("source"), Mapping) else {}
-        health_summary = health.get("summary") if isinstance(health.get("summary"), Mapping) else {}
-        feature_health = health.get("feature_health") if isinstance(health.get("feature_health"), list) else []
-        health_verdict = (
-            health.get("quality_verdict") if isinstance(health.get("quality_verdict"), Mapping) else None
-        )
-        health_checks = health.get("quality_checks") if isinstance(health.get("quality_checks"), list) else []
-        recent_disclosures = health.get("recent_disclosures") if isinstance(health.get("recent_disclosures"), list) else []
-
-        lines.append("")
-        lines.append("Health")
-        for key in [
-            "target_date",
-            "target_date_source",
-            "symbol_filter_source",
-        ]:
-            if key in health_source:
-                lines.append(f"{key}: {health_source.get(key)}")
-        for key in [
-            "symbols_scanned",
-            "symbols_available_in_fundamentals",
-            "symbols_missing_in_fundamentals",
-            "symbols_with_any_row_before_target_date",
-            "symbols_without_any_row_before_target_date",
-            "symbols_with_any_selected_features_asof_target_date",
-            "symbols_with_all_selected_features_asof_target_date",
-            "all_selected_features_coverage_pct",
-            "latest_report_age_days_max",
-            "latest_report_age_gt_90d_symbols",
-            "latest_report_age_gt_180d_symbols",
-            "complete_symbol_oldest_feature_age_days_max",
-            "complete_symbol_oldest_feature_age_gt_90d_symbols",
-            "complete_symbol_oldest_feature_age_gt_180d_symbols",
-            "rows_last_30d",
-            "symbols_updated_last_30d",
-            "rows_last_90d",
-            "symbols_updated_last_90d",
-            "rows_last_180d",
-            "symbols_updated_last_180d",
-        ]:
-            if key in health_summary:
-                lines.append(f"{key}: {health_summary.get(key)}")
-
-        missing_rows = health.get("sample_symbols_without_rows")
-        if missing_rows:
-            lines.append("sample_symbols_without_rows: " + ", ".join(str(item) for item in missing_rows))
-        missing_assets = health.get("sample_missing_asset_symbols")
-        if missing_assets:
-            lines.append("sample_missing_asset_symbols: " + ", ".join(str(item) for item in missing_assets))
-
-        append_quality_verdict_lines(lines, health_verdict, heading="Health Verdict")
-
-        if feature_health:
-            lines.append("")
-            lines.append(f"Health Features (top {min(top, len(feature_health))})")
-            feature_df = pd.DataFrame(feature_health).head(top)
-            feature_df = feature_df[
-                [
-                    "feature",
-                    "coverage_pct",
-                    "missing_symbols_asof_target_date",
-                    "age_days_p90",
-                    "age_days_max",
-                    "age_gt_180d_symbols",
-                ]
-            ]
-            lines.append(feature_df.to_string(index=False))
-
-        if recent_disclosures:
-            lines.append("")
-            lines.append(f"Recent Disclosures (last {len(recent_disclosures)})")
-            recent_df = pd.DataFrame(recent_disclosures)
-            lines.append(recent_df.to_string(index=False))
-
-        if health_checks:
-            lines.append("")
-            lines.append("Health Checks")
-            checks_df = pd.DataFrame(health_checks)[
-                ["check", "field", "severity", "affected_symbols", "affected_pct"]
-            ]
-            lines.append(checks_df.to_string(index=False))
-
-    return "\n".join(lines).strip() + "\n"
 
 
 def inspect_hk_pit_coverage(args) -> int:

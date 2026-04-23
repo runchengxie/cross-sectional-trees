@@ -17,9 +17,10 @@ import pandas as pd
 from ..backtest import backtest_topk
 from ..metrics import bucket_ic_summary
 from .config import load_run_config
-from .data import _load_research_panel, _prepare_feature_dataset
+from .feature_dataset import _prepare_feature_dataset
 from .final_oos_stage import run_final_oos_stage
 from .output_orchestration import persist_pipeline_outputs
+from .panel_loader import _load_research_panel
 from .preflight import prepare_pipeline_setup, resolve_effective_data_inputs
 from .quality import run_quality_preflight
 from .runtime import _prepare_split_context

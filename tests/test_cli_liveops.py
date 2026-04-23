@@ -1,8 +1,10 @@
 from cstree import cli
-from cstree.liveops import alloc as alloc_tool
-from cstree.liveops import alloc_hk as alloc_hk_tool
-from cstree.liveops import holdings as holdings_tool
-from cstree.liveops import snapshot as snapshot_tool
+from cstree.liveops import (
+    alloc as alloc_tool,
+    alloc_hk as alloc_hk_tool,
+    holdings as holdings_tool,
+    snapshot as snapshot_tool,
+)
 
 
 def test_cli_parses_liveops_commands():
@@ -55,6 +57,20 @@ def test_cli_parses_liveops_commands():
     assert alloc_hk_grid.command == "alloc-hk"
     assert alloc_hk_grid.scenario_capital == ["100000,200000"]
     assert alloc_hk_grid.scenario_top_n == ["5", "10"]
+
+    alloc_hk_false_switches = parser.parse_args(
+        [
+            "alloc-hk",
+            "--config",
+            "default",
+            "--allow-non-stock-connect",
+            "--no-secondary-fill",
+            "--allow-high-valuation",
+        ]
+    )
+    assert alloc_hk_false_switches.require_stock_connect is False
+    assert alloc_hk_false_switches.secondary_fill_enabled is False
+    assert alloc_hk_false_switches.avoid_high_valuation is False
 
     snapshot = parser.parse_args(
         ["snapshot", "--config", "default", "--skip-run", "--fail-on-quality", "error"]
@@ -320,6 +336,44 @@ def test_cli_main_alloc_hk_passes_through_args(monkeypatch):
             "json",
             "--out",
             "artifacts/exports/alloc_hk.json",
+        ]
+    ]
+
+
+def test_cli_main_alloc_hk_passes_false_switches(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(alloc_hk_tool, "main", lambda argv: calls.append(argv))
+
+    assert (
+        cli.main(
+            [
+                "alloc-hk",
+                "--config",
+                "hk",
+                "--allow-non-stock-connect",
+                "--no-secondary-fill",
+                "--allow-high-valuation",
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        [
+            "--config",
+            "hk",
+            "--as-of",
+            "t-1",
+            "--source",
+            "auto",
+            "--side",
+            "long",
+            "--top-n",
+            "20",
+            "--allow-non-stock-connect",
+            "--no-secondary-fill",
+            "--allow-high-valuation",
+            "--format",
+            "text",
         ]
     ]
 

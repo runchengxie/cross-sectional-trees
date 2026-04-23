@@ -4,7 +4,11 @@ import pytest
 import yaml
 
 import cstree.config_utils as config_utils
-from cstree.config_utils import resolve_pipeline_config, resolve_pipeline_filename
+from cstree.config_utils import (
+    get_research_universe_config,
+    resolve_pipeline_config,
+    resolve_pipeline_filename,
+)
 from cstree.data_tools import build_hk_connect_universe, build_hk_daily_asset_universe
 
 
@@ -145,6 +149,28 @@ def test_resolve_pipeline_config_normalizes_legacy_universe_to_research_universe
         resolved["research_universe"]["by_date_file"]
         == "artifacts/assets/universe/demo_by_date.csv"
     )
+
+
+def test_get_research_universe_config_prefers_canonical_key():
+    cfg = {"research_universe": {"mode": "pit"}, "model": {"type": "ridge"}}
+
+    assert get_research_universe_config(cfg) == {"mode": "pit"}
+
+
+def test_get_research_universe_config_accepts_legacy_key():
+    cfg = {"universe": {"mode": "static", "symbols": ["00005.HK"]}}
+
+    assert get_research_universe_config(cfg) == {
+        "mode": "static",
+        "symbols": ["00005.HK"],
+    }
+
+
+def test_get_research_universe_config_rejects_conflicting_keys():
+    cfg = {"research_universe": {"mode": "pit"}, "universe": {"mode": "static"}}
+
+    with pytest.raises(SystemExit, match="both research_universe and legacy universe"):
+        get_research_universe_config(cfg)
 
 
 def test_resolve_pipeline_config_allows_research_universe_to_override_legacy_base(tmp_path):

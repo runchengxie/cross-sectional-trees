@@ -90,7 +90,7 @@ scripts/dev/run_tests.sh integration
 # 覆盖率报告
 scripts/dev/run_tests.sh coverage
 
-# Ruff lint、基础复杂度检查、改动 Python 文件的 import 排序检查
+# Ruff lint、基础复杂度检查、改动 Python 文件的 import / 长行 ratchet
 scripts/dev/run_tests.sh lint
 
 # 全仓库 import 排序检查；历史文件可能仍有遗留问题
@@ -104,6 +104,50 @@ scripts/dev/run_tests.sh format-all
 
 # 真实 provider 在线联调，需要显式开启并配置 token 或账号
 CSTREE_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
+```
+
+维护债指标需要看趋势时，用下面的本地片段生成快照；它只读源码，不访问
+`artifacts/`：
+
+```bash
+python - <<'PY'
+import ast
+import pathlib
+import tomllib
+
+roots = [pathlib.Path("src"), pathlib.Path("scripts"), pathlib.Path("tests")]
+files = [
+    path
+    for root in roots
+    for path in root.rglob("*.py")
+    if "__pycache__" not in path.parts
+]
+line_total = 0
+long_lines = 0
+large_functions = 0
+very_large_functions = 0
+for path in files:
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    line_total += len(lines)
+    long_lines += sum(len(line) > 100 for line in lines)
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.end_lineno:
+            length = node.end_lineno - node.lineno + 1
+            large_functions += int(length > 100)
+            very_large_functions += int(length > 250)
+
+config = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+per_file = config["tool"]["ruff"]["lint"].get("per-file-ignores", {})
+c901_ignores = sum("C901" in values for values in per_file.values())
+print(f"python_files={len(files)}")
+print(f"python_lines={line_total}")
+print(f"lines_over_100={long_lines}")
+print(f"functions_over_100={large_functions}")
+print(f"functions_over_250={very_large_functions}")
+print(f"c901_file_ignores={c901_ignores}")
+PY
 ```
 
 ## 本地 Git Hooks
@@ -125,9 +169,10 @@ CSTREE_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.
 
 * 本地 hook 用来提前发现问题，不能替代远端 CI。
 * 特殊情况下可以用 `git commit --no-verify` 或 `git push --no-verify` 跳过。
-* Ruff 已启用 formatter、import 排序和基础复杂度检查。`lint` 会拦截高风险语法错误、新增高复杂函数，并检查本次改动的 Python import 排序。
+* Ruff 已启用 formatter、import 排序和基础复杂度检查。`lint` 会拦截高风险语法错误、新增高复杂函数，并检查本次改动的 Python import 排序和新增 Python 长行。
 * 历史 import 和 format 遗留问题可用 `imports`、`format-all` 单独盘点。
 * 已知复杂度历史债务记录在 `pyproject.toml` 的 `per-file-ignores`。完成拆分优化后，应逐个撤销豁免。
+* 触碰 Python 文件时，不要新增超过 100 字符的代码行或新的 `C901` 文件级豁免；如果豁免仍不能撤销，要在内部维护债清单里记录原因。
 * `tests/test_docs_contracts.py` 只接受指向仓库内受版本控制文件的 Markdown 相对链接。引用本地 `artifacts/...` 运行产物时，用代码文本记录，不要写成可点击相对链接。
 
 ## 测试分层

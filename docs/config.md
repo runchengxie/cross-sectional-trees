@@ -131,6 +131,7 @@ research_universe:
 补充说明：
 
 * 历史配置键 `universe` 仍获向下兼容，但在新的内置模板与生成的 `config.used.yml` 中，将统一规范输出为 `research_universe`。
+* 兼容入口只用于读取历史配置；新增模板和文档示例应继续使用 `research_universe`。
 
 ### 模型配置 (`model`)
 

@@ -7,6 +7,8 @@ import yaml
 
 from cstree import data_providers
 from cstree.data_tools import rqdata_assets
+from cstree.data_tools.rqdata_assets.manifest_ops import _validate_resume_inputs
+from cstree.data_tools.rqdata_assets.request_groups import _resolve_hk_dated_request_groups
 
 
 def test_resolve_hk_dated_request_groups_uses_local_unique_ids(tmp_path):
@@ -38,7 +40,7 @@ def test_resolve_hk_dated_request_groups_uses_local_unique_ids(tmp_path):
         ]
     ).to_parquet(instruments_dir / "hk_all_instruments_20260317.parquet", index=False)
 
-    groups, metadata, info = rqdata_assets._resolve_hk_dated_request_groups(
+    groups, metadata, info = _resolve_hk_dated_request_groups(
         ["00013.HK", "00005.HK"],
         start_date="20140101",
         end_date="20251231",
@@ -112,7 +114,7 @@ def test_validate_resume_inputs_preserves_whitespace_fields(tmp_path, monkeypatc
     )
 
     assert fields == ["revenue", "goodwill_and_intangible_assets "]
-    rqdata_assets._validate_resume_inputs(
+    _validate_resume_inputs(
         output_dir=output_dir,
         dataset_name="pit_financials",
         fields=fields,

@@ -166,77 +166,44 @@ def handle_alloc_hk(args) -> int:
     return 0
 
 
-def register_liveops_commands(subparsers) -> None:
-    holdings = subparsers.add_parser("holdings", help="Show latest holdings from saved runs")
-    holdings.add_argument(
+def _add_config_arg(parser, *, help_text: str) -> None:
+    parser.add_argument(
         "--config",
-        help="Pipeline config path or built-in name (default: default).",
+        help=help_text,
     )
-    holdings.add_argument(
-        "--run-dir",
-        help="Explicit run directory to read (overrides --config).",
-    )
-    holdings.add_argument(
-        "--artifacts-root",
-        help="Optional artifacts root override used when resolving the default runs directory.",
-    )
-    holdings.add_argument(
-        "--top-k",
-        type=int,
-        help="Optional Top-K filter when selecting the latest run.",
-    )
-    holdings.add_argument(
-        "--as-of",
-        default="t-1",
-        help=(
-            "As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1, last_trading_day, "
-            "last_completed_trading_day). Default: t-1."
-        ),
-    )
-    holdings.add_argument(
-        "--source",
-        default="auto",
-        choices=["auto", "backtest", "live"],
-        help="Positions source (auto/backtest/live). Default: auto.",
-    )
-    holdings.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "csv", "json"],
-        help="Output format (text/csv/json). Default: text.",
-    )
-    holdings.add_argument(
-        "--out",
-        help="Optional output path (default: stdout).",
-    )
-    holdings.set_defaults(func=handle_holdings)
 
-    alloc = subparsers.add_parser(
-        "alloc",
-        help="Compute equal-weight lot sizing from latest holdings using rqdata prices.",
-    )
-    alloc.add_argument(
-        "--config",
-        help="Pipeline config path or built-in name (default: default).",
-    )
-    alloc.add_argument(
+
+def _add_run_dir_arg(parser, *, help_text: str) -> None:
+    parser.add_argument(
         "--run-dir",
-        help="Explicit run directory to read (overrides --config).",
+        help=help_text,
     )
-    alloc.add_argument(
+
+
+def _add_artifacts_root_arg(parser) -> None:
+    parser.add_argument(
         "--artifacts-root",
         help="Optional artifacts root override used when resolving the default runs directory.",
     )
-    alloc.add_argument(
+
+
+def _add_positions_file_arg(parser) -> None:
+    parser.add_argument(
         "--positions-file",
         help="Explicit positions CSV path (overrides --config/--run-dir).",
     )
-    alloc.add_argument(
+
+
+def _add_top_k_arg(parser) -> None:
+    parser.add_argument(
         "--top-k",
         type=int,
         help="Optional Top-K filter when selecting the latest run.",
     )
-    alloc.add_argument(
+
+
+def _add_as_of_arg(parser) -> None:
+    parser.add_argument(
         "--as-of",
         default="t-1",
         help=(
@@ -244,18 +211,97 @@ def register_liveops_commands(subparsers) -> None:
             "last_completed_trading_day). Default: t-1."
         ),
     )
-    alloc.add_argument(
+
+
+def _add_source_arg(parser) -> None:
+    parser.add_argument(
         "--source",
         default="auto",
         choices=["auto", "backtest", "live"],
         help="Positions source (auto/backtest/live). Default: auto.",
     )
-    alloc.add_argument(
+
+
+def _add_side_arg(parser) -> None:
+    parser.add_argument(
         "--side",
         default="long",
         choices=["long", "short", "all"],
         help="Select side for allocation (long/short/all). Default: long.",
     )
+
+
+def _add_rqdata_auth_args(parser) -> None:
+    parser.add_argument("--username", help="Override RQData username.")
+    parser.add_argument("--password", help="Override RQData password.")
+
+
+def _add_output_args(parser, *, formats: list[str], default: str = "text", out_help: str) -> None:
+    parser.add_argument(
+        "--format",
+        default=default,
+        choices=formats,
+        help=f"Output format ({'/'.join(formats)}). Default: {default}.",
+    )
+    parser.add_argument(
+        "--out",
+        help=out_help,
+    )
+
+
+def _add_quality_gate_arg(parser, *, command: str) -> None:
+    parser.add_argument(
+        "--fail-on-quality",
+        choices=["none", "info", "warning", "error"],
+        default=None,
+        help=(
+            f"Optional quality gate threshold. When omitted, {command} reuses the "
+            "threshold stored in the resolved run summary or from the config."
+        ),
+    )
+
+
+def _register_holdings_command(subparsers) -> None:
+    holdings = subparsers.add_parser("holdings", help="Show latest holdings from saved runs")
+    _add_config_arg(
+        holdings,
+        help_text="Pipeline config path or built-in name (default: default).",
+    )
+    _add_run_dir_arg(
+        holdings,
+        help_text="Explicit run directory to read (overrides --config).",
+    )
+    _add_artifacts_root_arg(holdings)
+    _add_top_k_arg(holdings)
+    _add_as_of_arg(holdings)
+    _add_source_arg(holdings)
+    _add_output_args(
+        holdings,
+        formats=["text", "csv", "json"],
+        out_help="Optional output path (default: stdout).",
+    )
+    holdings.set_defaults(func=handle_holdings)
+
+
+def _register_alloc_command(subparsers) -> None:
+    alloc = subparsers.add_parser(
+        "alloc",
+        help="Compute equal-weight lot sizing from latest holdings using rqdata prices.",
+    )
+    _add_config_arg(
+        alloc,
+        help_text="Pipeline config path or built-in name (default: default).",
+    )
+    _add_run_dir_arg(
+        alloc,
+        help_text="Explicit run directory to read (overrides --config).",
+    )
+    _add_artifacts_root_arg(alloc)
+    _add_positions_file_arg(alloc)
+    _add_top_k_arg(alloc)
+    _add_as_of_arg(alloc)
+    _add_source_arg(alloc)
+    _add_side_arg(alloc)
     alloc.add_argument(
         "--top-n",
         type=int,
@@ -285,65 +331,34 @@ def register_liveops_commands(subparsers) -> None:
         default=20,
         help="Price lookback window in calendar days before price date. Default: 20.",
     )
-    alloc.add_argument("--username", help="Override RQData username.")
-    alloc.add_argument("--password", help="Override RQData password.")
-    alloc.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "csv", "json"],
-        help="Output format (text/csv/json). Default: text.",
-    )
-    alloc.add_argument(
-        "--out",
-        help="Optional output path (default: stdout).",
+    _add_rqdata_auth_args(alloc)
+    _add_output_args(
+        alloc,
+        formats=["text", "csv", "json"],
+        out_help="Optional output path (default: stdout).",
     )
     alloc.set_defaults(func=handle_alloc)
 
+
+def _register_alloc_hk_command(subparsers) -> None:
     alloc_hk = subparsers.add_parser(
         "alloc-hk",
         help="HK pre-trade allocation with custom weights, valuation buckets, and secondary fill.",
     )
-    alloc_hk.add_argument(
-        "--config",
-        help="Pipeline config path or built-in name (default: default).",
+    _add_config_arg(
+        alloc_hk,
+        help_text="Pipeline config path or built-in name (default: default).",
     )
-    alloc_hk.add_argument(
-        "--run-dir",
-        help="Explicit run directory to read (overrides --config).",
+    _add_run_dir_arg(
+        alloc_hk,
+        help_text="Explicit run directory to read (overrides --config).",
     )
-    alloc_hk.add_argument(
-        "--artifacts-root",
-        help="Optional artifacts root override used when resolving the default runs directory.",
-    )
-    alloc_hk.add_argument(
-        "--positions-file",
-        help="Explicit positions CSV path (overrides --config/--run-dir).",
-    )
-    alloc_hk.add_argument(
-        "--top-k",
-        type=int,
-        help="Optional Top-K filter when selecting the latest run.",
-    )
-    alloc_hk.add_argument(
-        "--as-of",
-        default="t-1",
-        help=(
-            "As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1, last_trading_day, "
-            "last_completed_trading_day). Default: t-1."
-        ),
-    )
-    alloc_hk.add_argument(
-        "--source",
-        default="auto",
-        choices=["auto", "backtest", "live"],
-        help="Positions source (auto/backtest/live). Default: auto.",
-    )
-    alloc_hk.add_argument(
-        "--side",
-        default="long",
-        choices=["long", "short", "all"],
-        help="Select side for allocation (long/short/all). Default: long.",
-    )
+    _add_artifacts_root_arg(alloc_hk)
+    _add_positions_file_arg(alloc_hk)
+    _add_top_k_arg(alloc_hk)
+    _add_as_of_arg(alloc_hk)
+    _add_source_arg(alloc_hk)
+    _add_side_arg(alloc_hk)
     alloc_hk.add_argument(
         "--top-n",
         type=int,
@@ -383,9 +398,21 @@ def register_liveops_commands(subparsers) -> None:
         action="store_false",
         help="Allow non-stock-connect names to remain tradable.",
     )
-    alloc_hk.add_argument("--history-years", type=int, help="Lookback years for valuation history.")
-    alloc_hk.add_argument("--roll-window", type=int, help="Rolling window used for valuation thresholds.")
-    alloc_hk.add_argument("--sell-quantile", type=float, help="Quantile used for HIGH valuation threshold.")
+    alloc_hk.add_argument(
+        "--history-years",
+        type=int,
+        help="Lookback years for valuation history.",
+    )
+    alloc_hk.add_argument(
+        "--roll-window",
+        type=int,
+        help="Rolling window used for valuation thresholds.",
+    )
+    alloc_hk.add_argument(
+        "--sell-quantile",
+        type=float,
+        help="Quantile used for HIGH valuation threshold.",
+    )
     alloc_hk.add_argument(
         "--extreme-quantile",
         type=float,
@@ -432,94 +459,75 @@ def register_liveops_commands(subparsers) -> None:
         help="Allow bounded over-allocation during secondary fill.",
     )
     alloc_hk.add_argument("--max-steps", type=int, help="Maximum secondary fill steps.")
-    alloc_hk.add_argument("--max-over-alloc-ratio", type=float, help="Over-allocation cap as a ratio of cash.")
-    alloc_hk.add_argument("--max-over-alloc-amount", type=float, help="Over-allocation cap as an absolute amount.")
+    alloc_hk.add_argument(
+        "--max-over-alloc-ratio",
+        type=float,
+        help="Over-allocation cap as a ratio of cash.",
+    )
+    alloc_hk.add_argument(
+        "--max-over-alloc-amount",
+        type=float,
+        help="Over-allocation cap as an absolute amount.",
+    )
     alloc_hk.add_argument(
         "--max-over-alloc-lots-per-ticker",
         type=int,
         help="Per-ticker cap for over-allocation lots.",
     )
-    alloc_hk.add_argument("--cash-buffer-ratio", type=float, help="Cash buffer ratio reserved before fill.")
-    alloc_hk.add_argument("--cash-buffer-amount", type=float, help="Cash buffer amount reserved before fill.")
+    alloc_hk.add_argument(
+        "--cash-buffer-ratio",
+        type=float,
+        help="Cash buffer ratio reserved before fill.",
+    )
+    alloc_hk.add_argument(
+        "--cash-buffer-amount",
+        type=float,
+        help="Cash buffer amount reserved before fill.",
+    )
     alloc_hk.add_argument(
         "--estimated-fee-per-order",
         type=float,
         help="Estimated fee added to each secondary fill step.",
     )
-    alloc_hk.add_argument("--username", help="Override RQData username.")
-    alloc_hk.add_argument("--password", help="Override RQData password.")
-    alloc_hk.add_argument(
-        "--fail-on-quality",
-        choices=["none", "info", "warning", "error"],
-        default=None,
-        help=(
-            "Optional quality gate threshold. When omitted, alloc-hk reuses the threshold stored "
-            "in the resolved run summary or from the config."
-        ),
-    )
-    alloc_hk.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "csv", "json", "xlsx"],
-        help="Output format (text/csv/json/xlsx). Default: text.",
-    )
-    alloc_hk.add_argument(
-        "--out",
-        help="Optional output path (default: stdout; required for xlsx).",
+    _add_rqdata_auth_args(alloc_hk)
+    _add_quality_gate_arg(alloc_hk, command="alloc-hk")
+    _add_output_args(
+        alloc_hk,
+        formats=["text", "csv", "json", "xlsx"],
+        out_help="Optional output path (default: stdout; required for xlsx).",
     )
     alloc_hk.set_defaults(func=handle_alloc_hk)
 
+
+def _register_snapshot_command(subparsers) -> None:
     snapshot = subparsers.add_parser(
         "snapshot",
         help="Run a live snapshot and emit latest holdings",
     )
-    snapshot.add_argument(
-        "--config",
-        help="Pipeline config path or built-in name.",
+    _add_config_arg(snapshot, help_text="Pipeline config path or built-in name.")
+    _add_run_dir_arg(
+        snapshot,
+        help_text="Use an existing run directory (skips pipeline run).",
     )
-    snapshot.add_argument(
-        "--run-dir",
-        help="Use an existing run directory (skips pipeline run).",
-    )
-    snapshot.add_argument(
-        "--artifacts-root",
-        help="Optional artifacts root override used when resolving the default runs directory.",
-    )
-    snapshot.add_argument(
-        "--as-of",
-        default="t-1",
-        help=(
-            "As-of date (YYYYMMDD, YYYY-MM-DD, today, t-1, last_trading_day, "
-            "last_completed_trading_day). Default: t-1."
-        ),
-    )
+    _add_artifacts_root_arg(snapshot)
+    _add_as_of_arg(snapshot)
     snapshot.add_argument(
         "--skip-run",
         action="store_true",
         help="Skip running the pipeline and only emit holdings from the latest run.",
     )
-    snapshot.add_argument(
-        "--top-k",
-        type=int,
-        help="Optional Top-K filter when selecting the latest run.",
+    _add_top_k_arg(snapshot)
+    _add_output_args(
+        snapshot,
+        formats=["text", "csv", "json"],
+        out_help="Optional output path (default: stdout).",
     )
-    snapshot.add_argument(
-        "--format",
-        default="text",
-        choices=["text", "csv", "json"],
-        help="Output format (text/csv/json). Default: text.",
-    )
-    snapshot.add_argument(
-        "--out",
-        help="Optional output path (default: stdout).",
-    )
-    snapshot.add_argument(
-        "--fail-on-quality",
-        choices=["none", "info", "warning", "error"],
-        default=None,
-        help=(
-            "Optional quality gate threshold. When omitted, snapshot reuses the threshold stored "
-            "in the resolved run summary or from the config."
-        ),
-    )
+    _add_quality_gate_arg(snapshot, command="snapshot")
     snapshot.set_defaults(func=handle_snapshot)
+
+
+def register_liveops_commands(subparsers) -> None:
+    _register_holdings_command(subparsers)
+    _register_alloc_command(subparsers)
+    _register_alloc_hk_command(subparsers)
+    _register_snapshot_command(subparsers)

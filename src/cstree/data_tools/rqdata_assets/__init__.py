@@ -6,11 +6,10 @@ Keep only package-level defaults and thin compatibility hooks here. The heavier
 public export surface lives in ``public_api.py``.
 """
 
+from ...artifacts import RQDATA_ASSETS_DIR as DEFAULT_RQDATA_ASSETS_DIR
 from . import args as _args
 from .fetch_runtime import _ensure_rqdatac_hk_plugin
 from .shared import _load_hk_financial_fields, _resolve_fields_with_overrides
-from ...artifacts import RQDATA_ASSETS_DIR as DEFAULT_RQDATA_ASSETS_DIR
-
 
 DEFAULT_OUT_ROOT = DEFAULT_RQDATA_ASSETS_DIR.as_posix()
 DEFAULT_BATCH_SIZE = 20
@@ -28,11 +27,8 @@ def _resolve_fields(args) -> tuple[list[str], dict]:
 
 from . import public_api as _public_api
 
-
-for _name, _value in vars(_public_api).items():
-    if _name.startswith("__"):
-        continue
-    globals().setdefault(_name, _value)
+for _name in getattr(_public_api, "__all__", ()):
+    globals().setdefault(_name, getattr(_public_api, _name))
 
 __all__ = getattr(
     _public_api,

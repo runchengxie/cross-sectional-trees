@@ -24,68 +24,86 @@ from .support import _prepare_panel_join_frame
 logger = logging.getLogger("cstree")
 
 
-def _derive_requested_fundamental_fields(
-    fund_df: pd.DataFrame,
+def _numeric_fundamental_series(fund_df: pd.DataFrame, name: str) -> pd.Series:
+    if name not in fund_df.columns:
+        return pd.Series(np.nan, index=fund_df.index, dtype=float)
+    return pd.to_numeric(fund_df[name], errors="coerce")
+
+
+def _safe_fundamental_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    valid_denominator = denominator.where(denominator.notna() & (denominator != 0))
+    return (numerator / valid_denominator).replace([np.inf, -np.inf], np.nan)
+
+
+def _needs_fundamental_feature(
     requested_feature_names: set[str],
-) -> pd.DataFrame:
-    fund_df = fund_df.copy()
+    *feature_names: str,
+) -> bool:
+    return any(name in requested_feature_names for name in feature_names)
 
-    def _numeric(name: str) -> pd.Series:
-        if name not in fund_df.columns:
-            return pd.Series(np.nan, index=fund_df.index, dtype=float)
-        return pd.to_numeric(fund_df[name], errors="coerce")
 
-    def _safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
-        valid_denominator = denominator.where(denominator.notna() & (denominator != 0))
-        return (numerator / valid_denominator).replace([np.inf, -np.inf], np.nan)
-
-    def _need_any(*feature_names: str) -> bool:
-        return any(name in requested_feature_names for name in feature_names)
-
-    if (
-        _need_any(
-            "sales",
-            "delta_sales",
-            "growth_sales",
-            "profit_margin",
-            "operating_margin",
-            "cfo_margin",
-            "sales_cagr_3y",
-        )
+def _add_sales_field(fund_df: pd.DataFrame, requested_feature_names: set[str]) -> None:
+    if not _needs_fundamental_feature(
+        requested_feature_names,
+        "sales",
+        "delta_sales",
+        "growth_sales",
+        "profit_margin",
+        "operating_margin",
+        "cfo_margin",
+        "sales_cagr_3y",
     ):
-        revenue = _numeric("revenue")
-        operating_revenue = _numeric("operating_revenue")
-        fund_df["sales"] = revenue.combine_first(operating_revenue)
-    if (
-        _need_any(
-            "debt",
-            "delta_debt",
-            "growth_debt",
-            "debt_to_assets",
-            "debt_to_equity",
-            "net_debt_to_assets",
-        )
+        return
+    revenue = _numeric_fundamental_series(fund_df, "revenue")
+    operating_revenue = _numeric_fundamental_series(fund_df, "operating_revenue")
+    fund_df["sales"] = revenue.combine_first(operating_revenue)
+
+
+def _add_debt_field(fund_df: pd.DataFrame, requested_feature_names: set[str]) -> None:
+    if not _needs_fundamental_feature(
+        requested_feature_names,
+        "debt",
+        "delta_debt",
+        "growth_debt",
+        "debt_to_assets",
+        "debt_to_equity",
+        "net_debt_to_assets",
     ):
-        short_term_debt = _numeric("short_term_debt")
-        long_term_loans = _numeric("long_term_loans")
-        debt = short_term_debt.fillna(0.0) + long_term_loans.fillna(0.0)
-        fund_df["debt"] = debt.where(~(short_term_debt.isna() & long_term_loans.isna()))
-    if _need_any("profit_margin", "profit_margin_std_3y"):
-        fund_df["profit_margin"] = _safe_ratio(_numeric("net_profit"), _numeric("sales"))
-    if _need_any("operating_margin"):
-        fund_df["operating_margin"] = _safe_ratio(_numeric("operating_profit"), _numeric("sales"))
-    if _need_any("cfo_margin", "cfo_margin_avg_3y"):
-        fund_df["cfo_margin"] = _safe_ratio(
-            _numeric("cash_flow_from_operating_activities"),
-            _numeric("sales"),
+        return
+    short_term_debt = _numeric_fundamental_series(fund_df, "short_term_debt")
+    long_term_loans = _numeric_fundamental_series(fund_df, "long_term_loans")
+    debt = short_term_debt.fillna(0.0) + long_term_loans.fillna(0.0)
+    fund_df["debt"] = debt.where(~(short_term_debt.isna() & long_term_loans.isna()))
+
+
+def _add_margin_fields(fund_df: pd.DataFrame, requested_feature_names: set[str]) -> None:
+    if _needs_fundamental_feature(requested_feature_names, "profit_margin", "profit_margin_std_3y"):
+        fund_df["profit_margin"] = _safe_fundamental_ratio(
+            _numeric_fundamental_series(fund_df, "net_profit"),
+            _numeric_fundamental_series(fund_df, "sales"),
         )
-    if _need_any("cfo_to_profit", "cfo_to_profit_median_3y"):
-        fund_df["cfo_to_profit"] = _safe_ratio(
-            _numeric("cash_flow_from_operating_activities"),
-            _numeric("net_profit"),
+    if "operating_margin" in requested_feature_names:
+        fund_df["operating_margin"] = _safe_fundamental_ratio(
+            _numeric_fundamental_series(fund_df, "operating_profit"),
+            _numeric_fundamental_series(fund_df, "sales"),
         )
-    if "days_since_report" in requested_feature_names:
-        fund_df["report_trade_date"] = fund_df["trade_date"]
+    if _needs_fundamental_feature(requested_feature_names, "cfo_margin", "cfo_margin_avg_3y"):
+        fund_df["cfo_margin"] = _safe_fundamental_ratio(
+            _numeric_fundamental_series(fund_df, "cash_flow_from_operating_activities"),
+            _numeric_fundamental_series(fund_df, "sales"),
+        )
+    if _needs_fundamental_feature(
+        requested_feature_names,
+        "cfo_to_profit",
+        "cfo_to_profit_median_3y",
+    ):
+        fund_df["cfo_to_profit"] = _safe_fundamental_ratio(
+            _numeric_fundamental_series(fund_df, "cash_flow_from_operating_activities"),
+            _numeric_fundamental_series(fund_df, "net_profit"),
+        )
+
+
+def _add_delta_fields(fund_df: pd.DataFrame, requested_feature_names: set[str]) -> None:
     delta_base_features = sorted(
         {
             feat.removeprefix("delta_")
@@ -98,6 +116,9 @@ def _derive_requested_fundamental_fields(
             continue
         base_series = pd.to_numeric(fund_df[base_feature], errors="coerce")
         fund_df[f"delta_{base_feature}"] = base_series.groupby(fund_df["symbol"]).diff()
+
+
+def _add_growth_fields(fund_df: pd.DataFrame, requested_feature_names: set[str]) -> None:
     growth_base_features = sorted(
         {
             feat.removeprefix("growth_")
@@ -115,62 +136,65 @@ def _derive_requested_fundamental_fields(
         )
         growth = (current - previous) / scale
         fund_df[f"growth_{base_feature}"] = growth.replace([np.inf, -np.inf], np.nan)
+
+
+def _add_calendar_cagr_fields(fund_df: pd.DataFrame, requested_feature_names: set[str]) -> None:
     if "sales_cagr_3y" in requested_feature_names:
         fund_df["sales_cagr_3y"] = compute_calendar_cagr(fund_df, fund_df["sales"], years=3)
     if "eps_cagr_3y" in requested_feature_names:
         fund_df["eps_cagr_3y"] = compute_calendar_cagr(
             fund_df,
-            _numeric("basic_earnings_per_share"),
+            _numeric_fundamental_series(fund_df, "basic_earnings_per_share"),
             years=3,
         )
-    if "cfo_margin_avg_3y" in requested_feature_names:
-        fund_df["cfo_margin_avg_3y"] = compute_trailing_calendar_window_stat(
-            fund_df,
-            fund_df["cfo_margin"],
-            years=3,
-            stat="mean",
-            min_periods=3,
+
+
+def _add_trailing_window_fields(fund_df: pd.DataFrame, requested_feature_names: set[str]) -> None:
+    specs = (
+        ("cfo_margin_avg_3y", "cfo_margin", 3, "mean", 3),
+        ("profit_margin_std_3y", "profit_margin", 3, "std", 3),
+        ("cfo_to_profit_median_3y", "cfo_to_profit", 3, "median", 3),
+        ("positive_cfo_ratio_3y", "cash_flow_from_operating_activities", 3, "positive_ratio", 3),
+        ("positive_cfo_ratio_2y", "cash_flow_from_operating_activities", 2, "positive_ratio", 2),
+        (
+            "positive_cfo_ratio_3y_min2",
+            "cash_flow_from_operating_activities",
+            3,
+            "positive_ratio",
+            2,
+        ),
+    )
+    for feature_name, source_name, years, stat, min_periods in specs:
+        if feature_name not in requested_feature_names:
+            continue
+        source = (
+            fund_df[source_name]
+            if source_name in fund_df.columns
+            else _numeric_fundamental_series(fund_df, source_name)
         )
-    if "profit_margin_std_3y" in requested_feature_names:
-        fund_df["profit_margin_std_3y"] = compute_trailing_calendar_window_stat(
+        fund_df[feature_name] = compute_trailing_calendar_window_stat(
             fund_df,
-            fund_df["profit_margin"],
-            years=3,
-            stat="std",
-            min_periods=3,
+            source,
+            years=years,
+            stat=stat,
+            min_periods=min_periods,
         )
-    if "cfo_to_profit_median_3y" in requested_feature_names:
-        fund_df["cfo_to_profit_median_3y"] = compute_trailing_calendar_window_stat(
-            fund_df,
-            fund_df["cfo_to_profit"],
-            years=3,
-            stat="median",
-            min_periods=3,
-        )
-    if "positive_cfo_ratio_3y" in requested_feature_names:
-        fund_df["positive_cfo_ratio_3y"] = compute_trailing_calendar_window_stat(
-            fund_df,
-            _numeric("cash_flow_from_operating_activities"),
-            years=3,
-            stat="positive_ratio",
-            min_periods=3,
-        )
-    if "positive_cfo_ratio_2y" in requested_feature_names:
-        fund_df["positive_cfo_ratio_2y"] = compute_trailing_calendar_window_stat(
-            fund_df,
-            _numeric("cash_flow_from_operating_activities"),
-            years=2,
-            stat="positive_ratio",
-            min_periods=2,
-        )
-    if "positive_cfo_ratio_3y_min2" in requested_feature_names:
-        fund_df["positive_cfo_ratio_3y_min2"] = compute_trailing_calendar_window_stat(
-            fund_df,
-            _numeric("cash_flow_from_operating_activities"),
-            years=3,
-            stat="positive_ratio",
-            min_periods=2,
-        )
+
+
+def _derive_requested_fundamental_fields(
+    fund_df: pd.DataFrame,
+    requested_feature_names: set[str],
+) -> pd.DataFrame:
+    fund_df = fund_df.copy()
+    _add_sales_field(fund_df, requested_feature_names)
+    _add_debt_field(fund_df, requested_feature_names)
+    _add_margin_fields(fund_df, requested_feature_names)
+    if "days_since_report" in requested_feature_names:
+        fund_df["report_trade_date"] = fund_df["trade_date"]
+    _add_delta_fields(fund_df, requested_feature_names)
+    _add_growth_fields(fund_df, requested_feature_names)
+    _add_calendar_cagr_fields(fund_df, requested_feature_names)
+    _add_trailing_window_fields(fund_df, requested_feature_names)
     return fund_df
 
 

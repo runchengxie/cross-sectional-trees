@@ -1,6 +1,10 @@
-from cstree.cli import rqdata as cli_rqdata
 from cstree import cli
+from cstree.cli import rqdata as cli_rqdata
 from cstree.data_tools import rqdata_assets as rqdata_assets_tool
+from cstree.data_tools.rqdata_assets.command_registry import (
+    RQDataAssetArgsBuilder,
+    rqdata_asset_command_specs,
+)
 
 
 def test_cli_parses_rqdata_quota_pretty():
@@ -31,6 +35,24 @@ def test_cli_parses_rqdata_info():
     assert rq_info.username == "user"
     assert rq_info.password == "pass"
     assert callable(rq_info.func)
+
+
+def test_rqdata_asset_specs_expose_runner_and_argument_defaults():
+    specs = {spec.name: spec for spec in rqdata_asset_command_specs()}
+
+    daily = specs["mirror-hk-daily"]
+
+    assert daily.runner.__name__ == "mirror_hk_daily"
+    assert daily.requires_client is True
+    assert isinstance(daily.add_args, RQDataAssetArgsBuilder)
+    assert daily.add_args.kwargs["default_batch_size"] == 20
+    assert daily.add_args.kwargs["default_out_root"].endswith("artifacts/assets/rqdata")
+
+
+def test_rqdata_asset_package_facade_omits_argument_builders():
+    assert hasattr(rqdata_assets_tool, "mirror_hk_daily")
+    assert hasattr(rqdata_assets_tool, "inspect_hk_current_health")
+    assert not hasattr(rqdata_assets_tool, "add_hk_daily_mirror_args")
 
 
 def test_cli_parses_rqdata_asset_commands():

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-import sys
 
 import pandas as pd
 
@@ -13,6 +13,12 @@ from ...pit_feature_stats import (
     compute_trailing_calendar_window_stat,
 )
 from ..symbols import drop_legacy_symbol_columns, ensure_symbol_columns
+from .build_paths import (
+    default_pipeline_fundamentals_path as _default_pipeline_fundamentals_path,
+    pipeline_fundamentals_manifest_path as _pipeline_fundamentals_manifest_path,
+    resolve_pipeline_fundamentals_out_path as _resolve_pipeline_fundamentals_out_path,
+    write_symbol_list as _write_symbol_list,
+)
 from .shared import (
     DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX,
     DEFAULT_PIPELINE_FUNDAMENTALS_NAME,
@@ -363,17 +369,6 @@ def _resolve_build_fields(
     return fields, metadata
 
 
-def _default_pipeline_fundamentals_path(asset_dir: Path) -> Path:
-    return asset_dir / DEFAULT_PIPELINE_FUNDAMENTALS_NAME
-
-
-def _resolve_pipeline_fundamentals_out_path(args, asset_dir: Path) -> Path:
-    out = getattr(args, "out", None)
-    if out:
-        return _resolve_path(out)
-    return _default_pipeline_fundamentals_path(asset_dir)
-
-
 def _load_universe_by_date_frame(path_text: str | Path) -> pd.DataFrame:
     path = _resolve_path(path_text)
     if not path.exists():
@@ -436,18 +431,6 @@ def _parse_trade_date_series(values: pd.Series) -> pd.Series:
             errors="coerce",
         )
     return parsed.dt.normalize()
-
-
-def _pipeline_fundamentals_manifest_path(out_path: Path) -> Path:
-    return out_path.with_name(f"{out_path.stem}.manifest.yml")
-
-
-def _write_symbol_list(path: Path, symbols: Sequence[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    content = "\n".join(str(symbol).strip() for symbol in symbols if str(symbol).strip())
-    if content:
-        content += "\n"
-    path.write_text(content, encoding="utf-8")
 
 
 def _is_supported_pit_feature(feature: str, available_columns: set[str]) -> bool:

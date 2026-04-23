@@ -10,7 +10,33 @@ from pathlib import Path
 import pandas as pd
 
 from cstree.data_providers import _to_rqdata_symbol
-from cstree.data_tools import rqdata_assets as _base
+from cstree.data_tools.rqdata_assets.asset_io import (
+    _daily_audit_record,
+    _dated_audit_record,
+    _field_coverage_template,
+    _load_existing_daily_entry,
+    _load_existing_dated_entry,
+    _prepare_daily_asset_frame,
+    _prepare_dated_asset_frame,
+    _update_field_coverage,
+    _write_daily_audit_csv,
+    _write_daily_symbol_frame,
+    _write_dated_audit_csv,
+    _write_dated_symbol_frame,
+)
+from cstree.data_tools.rqdata_assets.manifest_ops import (
+    _build_daily_manifest,
+    _build_dated_manifest,
+)
+from cstree.data_tools.rqdata_assets.shared import (
+    _load_manifest,
+    _normalize_frame_columns,
+    _normalize_hk_symbol,
+    _path_mtime_iso,
+    _timestamp_now,
+    _write_manifest,
+    _write_text_list,
+)
 
 
 AUX_AUDIT_SYMBOL_COLUMNS = ("symbol", "ts_code", "order_book_id")
@@ -141,7 +167,7 @@ def _load_audit_rows(asset_dir: Path) -> dict[str, dict[str, object]]:
         audit = pd.read_csv(audit_path)
     except pd.errors.EmptyDataError:
         return {}
-    audit = _base._normalize_frame_columns(audit)
+    audit = _normalize_frame_columns(audit)
     if audit.empty:
         return {}
 
@@ -151,7 +177,7 @@ def _load_audit_rows(asset_dir: Path) -> dict[str, dict[str, object]]:
 
     rows_by_symbol: dict[str, dict[str, object]] = {}
     for _, row in audit.iterrows():
-        symbol = _base._normalize_hk_symbol(row.get(symbol_col))
+        symbol = _normalize_hk_symbol(row.get(symbol_col))
         if not symbol:
             continue
         normalized_row = {
@@ -237,7 +263,7 @@ def _merge_symbol_frames(
     order_book_id = order_book_candidates[0] if order_book_candidates else _to_rqdata_symbol("hk", symbol)
 
     if kind == "daily":
-        prepared = _base._prepare_daily_asset_frame(
+        prepared = _prepare_daily_asset_frame(
             merged,
             symbol=symbol,
             order_book_id=order_book_id,
@@ -247,7 +273,7 @@ def _merge_symbol_frames(
             candidate: symbol
             for candidate in _dedupe_preserve_order(order_book_candidates + [order_book_id])
         }
-        prepared = _base._prepare_dated_asset_frame(
+        prepared = _prepare_dated_asset_frame(
             merged,
             symbol_map=symbol_map,
             date_column=date_column,
@@ -316,9 +342,9 @@ def _build_manifest_and_audit(
     ]
 
     if kind == "daily":
-        _base._write_daily_audit_csv(audit_path, ordered_audit)
+        _write_daily_audit_csv(audit_path, ordered_audit)
         query = dict(base_manifest.get("query") or {})
-        manifest = _base._build_daily_manifest(
+        manifest = _build_daily_manifest(
             dataset_name=dataset_name,
             api_name=api_name,
             output_dir=out_dir,
@@ -345,10 +371,10 @@ def _build_manifest_and_audit(
             config_ref=None,
         )
     else:
-        _base._write_dated_audit_csv(audit_path, ordered_audit)
+        _write_dated_audit_csv(audit_path, ordered_audit)
         query = dict(base_manifest.get("query") or {})
         patch_query = dict(patch_manifest.get("query") or {})
-        manifest = _base._build_dated_manifest(
+        manifest = _build_dated_manifest(
             dataset_name=dataset_name,
             api_name=api_name,
             output_dir=out_dir,
@@ -399,8 +425,8 @@ def merge_asset_patch(
         working_base_dir = base_backup_dir
 
     try:
-        base_manifest = _base._load_manifest(working_base_dir / "manifest.yml") or {}
-        patch_manifest = _base._load_manifest(patch_dir / "manifest.yml") or {}
+        base_manifest = _load_manifest(working_base_dir / "manifest.yml") or {}
+        patch_manifest = _load_manifest(patch_dir / "manifest.yml") or {}
         dataset_name = str(base_manifest.get("dataset") or patch_manifest.get("dataset") or "").strip()
         if dataset_name not in DATASET_CONFIG:
             raise SystemExit(f"Unsupported dataset for local merge: {dataset_name!r}")
@@ -437,10 +463,10 @@ def merge_asset_patch(
             patch_manifest=patch_manifest,
             symbols_requested=symbols_requested,
         )
-        field_coverage = _base._field_coverage_template(fields)
+        field_coverage = _field_coverage_template(fields)
         entries_by_symbol: dict[str, object] = {}
         audit_by_symbol: dict[str, object] = {}
-        started_at = _base._timestamp_now()
+        started_at = _timestamp_now()
         source_rows = {
             "base": int(((base_manifest.get("totals") or {}).get("rows")) or 0),
             "patch": int(((patch_manifest.get("totals") or {}).get("rows")) or 0),
@@ -450,32 +476,32 @@ def merge_asset_patch(
 
         def _record_written(symbol: str, path: Path, status: str) -> None:
             if kind == "daily":
-                entry, symbol_frame = _base._load_existing_daily_entry(path, fields=fields)
+                entry, symbol_frame = _load_existing_daily_entry(path, fields=fields)
                 entries_by_symbol[symbol] = entry
-                _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
-                audit_by_symbol[symbol] = _base._daily_audit_record(
+                _update_field_coverage(field_coverage, symbol_frame, fields=fields)
+                audit_by_symbol[symbol] = _daily_audit_record(
                     symbol=symbol,
                     order_book_id=entry.order_book_id,
                     status=status,
                     attempts=0,
                     started_at=None,
-                    finished_at=_base._path_mtime_iso(path),
-                    file_mtime=_base._path_mtime_iso(path),
+                    finished_at=_path_mtime_iso(path),
+                    file_mtime=_path_mtime_iso(path),
                     error=None,
                     entry=entry,
                 )
             else:
-                entry, symbol_frame = _base._load_existing_dated_entry(path, date_column=date_column, fields=fields)
+                entry, symbol_frame = _load_existing_dated_entry(path, date_column=date_column, fields=fields)
                 entries_by_symbol[symbol] = entry
-                _base._update_field_coverage(field_coverage, symbol_frame, fields=fields)
-                audit_by_symbol[symbol] = _base._dated_audit_record(
+                _update_field_coverage(field_coverage, symbol_frame, fields=fields)
+                audit_by_symbol[symbol] = _dated_audit_record(
                     symbol=symbol,
                     order_book_id=entry.order_book_id,
                     status=status,
                     attempts=0,
                     started_at=None,
-                    finished_at=_base._path_mtime_iso(path),
-                    file_mtime=_base._path_mtime_iso(path),
+                    finished_at=_path_mtime_iso(path),
+                    file_mtime=_path_mtime_iso(path),
                     error=None,
                     entry=entry,
                 )
@@ -498,9 +524,9 @@ def merge_asset_patch(
                 if merged.empty:
                     continue
                 if kind == "daily":
-                    _base._write_daily_symbol_frame(data_dir, merged)
+                    _write_daily_symbol_frame(data_dir, merged)
                 else:
-                    _base._write_dated_symbol_frame(data_dir, merged, date_column=date_column)
+                    _write_dated_symbol_frame(data_dir, merged, date_column=date_column)
                 _record_written(symbol, out_path, status="merged_patch" if base_path else "patch_only")
                 continue
 
@@ -510,11 +536,11 @@ def merge_asset_patch(
                 continue
 
             order_book_id = _to_rqdata_symbol("hk", symbol)
-            finished_at = _base._timestamp_now()
+            finished_at = _timestamp_now()
             source_audit = patch_audit_rows.get(symbol) or base_audit_rows.get(symbol) or {}
             missing_remote_error = str(source_audit.get("error") or "").strip() or None
             if kind == "daily":
-                audit_by_symbol[symbol] = _base._daily_audit_record(
+                audit_by_symbol[symbol] = _daily_audit_record(
                     symbol=symbol,
                     order_book_id=order_book_id,
                     status="missing_remote",
@@ -526,7 +552,7 @@ def merge_asset_patch(
                     entry=None,
                 )
             else:
-                audit_by_symbol[symbol] = _base._dated_audit_record(
+                audit_by_symbol[symbol] = _dated_audit_record(
                     symbol=symbol,
                     order_book_id=order_book_id,
                     status="missing_remote",
@@ -538,9 +564,9 @@ def merge_asset_patch(
                     entry=None,
                 )
 
-        _base._write_text_list(out_dir / "fields.txt", fields)
-        _base._write_text_list(out_dir / "symbols.txt", symbols_requested)
-        finished_at = _base._timestamp_now()
+        _write_text_list(out_dir / "fields.txt", fields)
+        _write_text_list(out_dir / "symbols.txt", symbols_requested)
+        finished_at = _timestamp_now()
         manifest = _build_manifest_and_audit(
             dataset_name=dataset_name,
             base_manifest=base_manifest,
@@ -558,7 +584,7 @@ def merge_asset_patch(
             started_at=started_at,
             finished_at=finished_at,
         )
-        _base._write_manifest(out_dir / "manifest.yml", manifest)
+        _write_manifest(out_dir / "manifest.yml", manifest)
 
         if alias_path is not None:
             _create_relative_symlink(out_dir, alias_path)

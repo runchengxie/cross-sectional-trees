@@ -7,6 +7,7 @@ import yaml
 
 from cstree import data_providers
 from cstree.data_tools import rqdata_assets
+from cstree.data_tools.rqdata_assets.coverage import _assess_trainable_fill_dependence
 
 
 def test_inspect_hk_asset_health_include_history_flags_prior_daily_anomalies(tmp_path, monkeypatch):
@@ -974,7 +975,7 @@ def test_inspect_hk_asset_health_include_history_downgrades_valuation_stale_runs
 
 
 def test_assess_trainable_fill_dependence_marks_healthier_pit_only_route_green():
-    assessment = rqdata_assets._assess_trainable_fill_dependence(
+    assessment = _assess_trainable_fill_dependence(
         trainable_estimate={
             "period_count_meeting_min_symbols_after_ffill": 6,
             "period_count_meeting_min_symbols_after_missing_fill": 8,

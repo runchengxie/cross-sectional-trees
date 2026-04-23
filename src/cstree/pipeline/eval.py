@@ -22,16 +22,19 @@ from ..metrics import (
     topk_positive_ratio,
 )
 from ..modeling import build_model, feature_importance_frame, fit_model
+from ..portfolio import build_positions_by_rebalance
+from ..rebalance import estimate_rebalance_gap, get_rebalance_dates
+from ..split import build_sample_weight, time_series_cv_ic
 from ..transform import apply_score_postprocess
 from .dates import (
     _apply_model_train_window,
     _build_trade_date_slices,
     _slice_trade_dates,
 )
-from ..portfolio import build_positions_by_rebalance
-from ..rebalance import estimate_rebalance_gap, get_rebalance_dates
-from ..split import build_sample_weight, time_series_cv_ic
-
+from .eval_benchmark import (
+    build_benchmark_series,
+    warn_if_delay_exit_lag as _warn_if_delay_exit_lag,
+)
 
 logger = logging.getLogger("cstree")
 
@@ -55,111 +58,6 @@ def _postprocess_pred_column(
         strength=strength,
         min_obs=min_obs,
     )
-
-
-def _warn_if_delay_exit_lag(
-    *,
-    label_prefix: str,
-    exit_price_policy: str,
-    stats: Mapping[str, Any] | None,
-) -> None:
-    if str(exit_price_policy).strip().lower() != "delay":
-        return
-    if not isinstance(stats, Mapping):
-        return
-    delayed_raw = stats.get("periods_with_delayed_exit")
-    periods_raw = stats.get("periods")
-    try:
-        delayed_periods = int(delayed_raw) if delayed_raw is not None else 0
-    except (TypeError, ValueError):
-        delayed_periods = 0
-    try:
-        total_periods = int(periods_raw) if periods_raw is not None else 0
-    except (TypeError, ValueError):
-        total_periods = 0
-    if delayed_periods <= 0:
-        return
-    avg_lag = stats.get("avg_exit_lag_days")
-    max_lag = stats.get("max_exit_lag_days")
-    try:
-        avg_value = float(avg_lag)
-    except (TypeError, ValueError):
-        avg_value = np.nan
-    try:
-        max_value = float(max_lag)
-    except (TypeError, ValueError):
-        max_value = np.nan
-    avg_text = f"{avg_value:.2f}" if np.isfinite(avg_value) else "nan"
-    max_text = f"{max_value:.0f}" if np.isfinite(max_value) else "nan"
-    logger.warning(
-        "%sDelay exit policy produced lagged exits in %s/%s periods (avg_lag=%s, max_lag=%s trade days).",
-        label_prefix,
-        delayed_periods,
-        total_periods,
-        avg_text,
-        max_text,
-    )
-
-
-def build_benchmark_series(
-    benchmark_df: Optional[pd.DataFrame],
-    entry_price_col: str,
-    exit_price_col: str,
-    period_info: list[dict],
-    benchmark_return_series: Optional[pd.Series] = None,
-) -> tuple[pd.Series, list[dict]]:
-    if benchmark_return_series is not None and not benchmark_return_series.empty:
-        bench_returns = []
-        bench_index = []
-        bench_periods: list[dict] = []
-        aligned_returns = benchmark_return_series.copy()
-        aligned_returns.index = pd.to_datetime(aligned_returns.index, errors="coerce")
-        aligned_returns = aligned_returns[aligned_returns.index.notna()]
-        aligned_returns = aligned_returns.sort_index()
-        for info in period_info:
-            exit_date = pd.to_datetime(info["exit_date"], errors="coerce")
-            if pd.isna(exit_date) or exit_date not in aligned_returns.index:
-                continue
-            value = aligned_returns.loc[exit_date]
-            if isinstance(value, pd.Series):
-                value = value.iloc[-1]
-            try:
-                bench_value = float(value)
-            except (TypeError, ValueError):
-                continue
-            if not np.isfinite(bench_value):
-                continue
-            bench_returns.append(bench_value)
-            bench_index.append(exit_date)
-            bench_periods.append(info)
-        if bench_returns:
-            return pd.Series(
-                bench_returns,
-                index=bench_index,
-                name="benchmark_return",
-            ), bench_periods
-    if benchmark_df is None or benchmark_df.empty:
-        return pd.Series(dtype=float, name="benchmark_return"), []
-    if entry_price_col not in benchmark_df.columns or exit_price_col not in benchmark_df.columns:
-        return pd.Series(dtype=float, name="benchmark_return"), []
-    bench_entry_prices = benchmark_df.set_index("trade_date")[entry_price_col]
-    bench_exit_prices = benchmark_df.set_index("trade_date")[exit_price_col]
-    bench_returns = []
-    bench_index = []
-    bench_periods: list[dict] = []
-    for info in period_info:
-        entry_date = info["entry_date"]
-        exit_date = info["exit_date"]
-        if entry_date not in bench_entry_prices.index or exit_date not in bench_exit_prices.index:
-            continue
-        bench_returns.append(
-            bench_exit_prices.loc[exit_date] / bench_entry_prices.loc[entry_date] - 1.0
-        )
-        bench_index.append(exit_date)
-        bench_periods.append(info)
-    if not bench_returns:
-        return pd.Series(dtype=float, name="benchmark_return"), []
-    return pd.Series(bench_returns, index=bench_index, name="benchmark_return"), bench_periods
 
 
 def _permute_target_within_date(

@@ -575,6 +575,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. 研究主链路内部 canonical 标的列是 `symbol`；新生成的 run artifacts / CLI 输出默认只写 `symbol`。
 1. `cstree universe hk-connect` 和 `cstree universe hk-daily-assets` 新生成的 universe CSV 也默认只写 `symbol`，不再主动补 `ts_code` / `stock_ticker`。
 1. 旧输入文件里的 `ts_code`、`stock_ticker`、`order_book_id` 仍会在读取时自动映射到 `symbol`。
+1. 新增输出路径不应把 legacy alias 重新写回主研究链路；需要保留 provider 原生标识时，优先放在边界层元数据列。
 1. 持仓主键列语义：`trade_date`、`entry_date`、`symbol`、`weight`、`signal`、`rank`、`side`。
 1. `weight` 的解释取决于 `backtest.weighting`：`equal` 时等权，`signal` 时为信号 softmax 后的目标权重。
 1. 若配置了 `backtest.group_col + max_names_per_group`，持仓文件会体现该分组上限约束；这属于组合层约束，不会改变 `eval` 里的 IC / quantile 指标。
