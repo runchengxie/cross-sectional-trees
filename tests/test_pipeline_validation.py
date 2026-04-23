@@ -6,13 +6,13 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml import pipeline
-from csml.pipeline import runner as pipeline_runner
-from csml.config_utils import resolve_pipeline_config
-from csml.data_interface import DataInterface
-from csml.pipeline.config import normalize_eval_settings
-from csml.pipeline.runner import _load_benchmark_return_series
-from csml.pipeline.stats import _ensure_execution_daily_fields
+from cstree import pipeline
+from cstree.pipeline import runner as pipeline_runner
+from cstree.config_utils import resolve_pipeline_config
+from cstree.data_interface import DataInterface
+from cstree.pipeline.config import normalize_eval_settings
+from cstree.pipeline.runner import _load_benchmark_return_series
+from cstree.pipeline.stats import _ensure_execution_daily_fields
 
 
 def _base_config(tmp_path):

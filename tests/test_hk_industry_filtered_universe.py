@@ -4,7 +4,7 @@ import json
 
 import pandas as pd
 
-from csml.research.hk_industry_filtered_universe import main
+from cstree.research.hk_industry_filtered_universe import main
 
 
 def test_builds_nonfinancial_universe_from_latest_non_null_labels(tmp_path) -> None:

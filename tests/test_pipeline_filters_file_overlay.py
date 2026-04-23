@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from csml.data_interface import DataInterface
+from cstree.data_interface import DataInterface
 from tests._pipeline_test_utils import _build_frames, _run_pipeline
 
 

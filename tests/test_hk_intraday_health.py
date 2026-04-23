@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from csml.data_tools import rqdata_assets
+from cstree.data_tools import rqdata_assets
 
 
 def _hk_5m_timestamps(date_text: str) -> list[pd.Timestamp]:

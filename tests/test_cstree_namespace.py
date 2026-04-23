@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 
 
-DOCUMENTED_RELEASE_WRAPPERS = (
+DOCUMENTED_RELEASE_MODULES = (
     "release_tools.package_assets",
     "release_tools.release_assets",
     "release_tools.package_runs",
     "release_tools.release_runs",
 )
-DOCUMENTED_RESEARCH_WRAPPERS = (
+DOCUMENTED_RESEARCH_MODULES = (
     "research.hk_asset_patch_merge",
     "research.hk_benchmark_attribution",
     "research.hk_connect_cap_weight_benchmark",
@@ -23,9 +23,9 @@ DOCUMENTED_RESEARCH_WRAPPERS = (
     "research.hk_monthly_run_compare",
     "research.hk_selected_provider_valuation_audit",
 )
-DOCUMENTED_WRAPPERS = DOCUMENTED_RELEASE_WRAPPERS + DOCUMENTED_RESEARCH_WRAPPERS
-MAINTENANCE_WRAPPERS = ("release_tools.hk_asset_workflow",)
-CSTREE_MODULE_EXECUTION_WRAPPERS = DOCUMENTED_WRAPPERS + MAINTENANCE_WRAPPERS
+DOCUMENTED_MODULES = DOCUMENTED_RELEASE_MODULES + DOCUMENTED_RESEARCH_MODULES
+MAINTENANCE_MODULES = ("release_tools.hk_asset_workflow",)
+CSTREE_MODULE_EXECUTION_PATHS = DOCUMENTED_MODULES + MAINTENANCE_MODULES
 PUBLIC_ALIAS_MODULES = (
     "artifacts",
     "config_utils",
@@ -58,25 +58,14 @@ PUBLIC_ALIAS_MODULES = (
 
 @pytest.mark.parametrize(
     "module_path",
-    PUBLIC_ALIAS_MODULES,
+    PUBLIC_ALIAS_MODULES + DOCUMENTED_MODULES,
 )
-def test_cstree_namespace_aliases_existing_csml_modules(module_path):
-    cstree_module = importlib.import_module(f"cstree.{module_path}")
-    csml_module = importlib.import_module(f"csml.{module_path}")
-
-    assert cstree_module is csml_module
+def test_public_cstree_modules_import(module_path):
+    assert importlib.import_module(f"cstree.{module_path}") is not None
 
 
-@pytest.mark.parametrize("module_path", CSTREE_MODULE_EXECUTION_WRAPPERS)
-def test_cstree_wrapper_delegates_to_csml_main(module_path):
-    cstree_module = importlib.import_module(f"cstree.{module_path}")
-    csml_module = importlib.import_module(f"csml.{module_path}")
-
-    assert cstree_module.main is csml_module.main
-
-
-@pytest.mark.parametrize("module_path", CSTREE_MODULE_EXECUTION_WRAPPERS)
-def test_cstree_wrapper_module_execution_help(module_path):
+@pytest.mark.parametrize("module_path", CSTREE_MODULE_EXECUTION_PATHS)
+def test_cstree_module_execution_help(module_path):
     env = os.environ.copy()
     src_path = str(Path.cwd() / "src")
     env["PYTHONPATH"] = (
@@ -95,8 +84,7 @@ def test_cstree_wrapper_module_execution_help(module_path):
     assert "usage:" in result.stdout.lower()
 
 
-@pytest.mark.parametrize("module_path", DOCUMENTED_WRAPPERS)
-def test_legacy_csml_documented_module_execution_help(module_path):
+def test_legacy_csml_import_surface_is_removed():
     env = os.environ.copy()
     src_path = str(Path.cwd() / "src")
     env["PYTHONPATH"] = (
@@ -104,7 +92,11 @@ def test_legacy_csml_documented_module_execution_help(module_path):
     )
 
     result = subprocess.run(
-        [sys.executable, "-m", f"csml.{module_path}", "--help"],
+        [
+            sys.executable,
+            "-c",
+            "import importlib.util; raise SystemExit(importlib.util.find_spec('csml') is not None)",
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -112,7 +104,25 @@ def test_legacy_csml_documented_module_execution_help(module_path):
     )
 
     assert result.returncode == 0
-    assert "usage:" in result.stdout.lower()
+
+
+def test_legacy_csml_module_execution_is_removed():
+    env = os.environ.copy()
+    src_path = str(Path.cwd() / "src")
+    env["PYTHONPATH"] = (
+        src_path if not env.get("PYTHONPATH") else f"{src_path}{os.pathsep}{env['PYTHONPATH']}"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-m", "csml.release_tools.package_assets", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "No module named" in result.stderr
 
 
 def test_cstree_package_module_execution_help():

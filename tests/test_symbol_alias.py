@@ -1,8 +1,8 @@
 import pandas as pd
 
-from csml.data_tools.symbols import canonicalize_symbol_columns, drop_legacy_symbol_columns, ensure_symbol_columns
-from csml.pipeline import load_universe_by_date
-from csml.pipeline.support import _annotate_positions_window, _build_rebalance_diff
+from cstree.data_tools.symbols import canonicalize_symbol_columns, drop_legacy_symbol_columns, ensure_symbol_columns
+from cstree.pipeline import load_universe_by_date
+from cstree.pipeline.support import _annotate_positions_window, _build_rebalance_diff
 
 
 def test_ensure_symbol_columns_accepts_stock_ticker_only():

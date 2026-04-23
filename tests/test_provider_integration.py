@@ -8,14 +8,9 @@ from cstree.data_interface import DataInterface
 
 @pytest.mark.integration
 def test_rqdata_provider_fetch_hk_fundamentals_real_account(tmp_path):
-    if (
-        os.getenv("CSTREE_RUN_PROVIDER_INTEGRATION")
-        or os.getenv("CSML_RUN_PROVIDER_INTEGRATION")
-    ) != "1":
+    if os.getenv("CSTREE_RUN_PROVIDER_INTEGRATION") != "1":
         pytest.skip(
-            "Set CSTREE_RUN_PROVIDER_INTEGRATION=1 "
-            "(or legacy CSML_RUN_PROVIDER_INTEGRATION=1) "
-            "to enable real provider integration tests."
+            "Set CSTREE_RUN_PROVIDER_INTEGRATION=1 to enable real provider integration tests."
         )
 
     username = os.getenv("RQDATA_USERNAME") or os.getenv("RQDATA_USER")
@@ -23,11 +18,7 @@ def test_rqdata_provider_fetch_hk_fundamentals_real_account(tmp_path):
     if not username or not password:
         pytest.skip("Set RQDATA_USERNAME/RQDATA_PASSWORD to run this integration test.")
 
-    symbol = (
-        os.getenv("CSTREE_INTEGRATION_RQDATA_HK_SYMBOL")
-        or os.getenv("CSML_INTEGRATION_RQDATA_HK_SYMBOL")
-        or "00005.HK"
-    )
+    symbol = os.getenv("CSTREE_INTEGRATION_RQDATA_HK_SYMBOL") or "00005.HK"
     end = (pd.Timestamp.now().normalize() - pd.Timedelta(days=2)).strftime("%Y%m%d")
     start = (pd.Timestamp.now().normalize() - pd.Timedelta(days=45)).strftime("%Y%m%d")
 

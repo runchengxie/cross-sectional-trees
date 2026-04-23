@@ -36,9 +36,9 @@ cstree --help
 cstree <subcommand> --help
 ```
 
-## 命令入口兼容
+## 命令入口
 
-`cstree` 是当前推荐的 CLI 名称。旧入口 `csml` 仍作为兼容 alias 保留；`cstree` 通过桥接层委托到现有实现，命令语义与 `csml` 一致。新文档和脚本示例统一使用 `cstree`。
+`cstree` 是当前 CLI 名称。文档和脚本示例统一使用 `cstree`。
 
 ## 共享参数约定
 
@@ -66,7 +66,7 @@ cstree <subcommand> --help
 - `cstree data materialize`
 - `cstree data query`
 
-优先级顺序：`--artifacts-root` 最高，其次为环境变量 `CSTREE_ARTIFACTS_ROOT`，再其次为兼容环境变量 `CSML_ARTIFACTS_ROOT`，再其次为配置文件中的 `paths.artifacts_root`，最后退回默认值 `artifacts/`。
+优先级顺序：`--artifacts-root` 最高，其次为环境变量 `CSTREE_ARTIFACTS_ROOT`，再其次为配置文件中的 `paths.artifacts_root`，最后退回默认值 `artifacts/`。
 
 说明：
 

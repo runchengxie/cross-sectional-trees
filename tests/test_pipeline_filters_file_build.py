@@ -6,9 +6,9 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml import pipeline
-from csml.data_interface import DataInterface
-from csml.data_tools import rqdata_assets
+from cstree import pipeline
+from cstree.data_interface import DataInterface
+from cstree.data_tools import rqdata_assets
 from tests._pipeline_test_utils import _build_frames, _run_pipeline
 
 

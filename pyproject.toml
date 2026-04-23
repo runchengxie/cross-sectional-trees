@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cross-sectional-hk-trees"
-version = "0.1.0"
+version = "1.0.0"
 description = "Hong Kong cross-sectional tree-model research with linear benchmarks"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -41,7 +41,6 @@ stats = [
 ]
 
 [project.scripts]
-csml = "csml.cli:main"
 cstree = "cstree.cli:main"
 
 [tool.setuptools]
@@ -79,40 +78,40 @@ combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
 # Existing large orchestration modules are being split incrementally.
-"src/csml/backtest.py" = ["C901"]
-"src/csml/commands/linear_sweep.py" = ["C901"]
-"src/csml/commands/run_grid.py" = ["C901"]
-"src/csml/commands/tune.py" = ["C901"]
-"src/csml/data_providers.py" = ["C901"]
-"src/csml/data_tools/build_hk_connect_universe.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/args.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/asset_health.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/build.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/clean_daily.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/coverage.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/intraday_asset.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/intraday_health.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/mirror_daily.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/mirror_industry_changes.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/mirror_industry_southbound.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/mirror_instrument_industry.py" = ["C901"]
-"src/csml/data_tools/rqdata_assets/mirror_workflow.py" = ["C901"]
-"src/csml/liveops/alloc_core.py" = ["C901"]
-"src/csml/liveops/alloc_hk_allocation.py" = ["C901"]
-"src/csml/liveops/holdings.py" = ["C901"]
-"src/csml/pipeline/config.py" = ["C901"]
-"src/csml/pipeline/config_eval.py" = ["C901"]
-"src/csml/pipeline/eval.py" = ["C901"]
-"src/csml/pipeline/feature_engineering.py" = ["C901"]
-"src/csml/pipeline/output_artifacts.py" = ["C901"]
-"src/csml/pipeline/panel_loader.py" = ["C901"]
-"src/csml/pipeline/preflight.py" = ["C901"]
-"src/csml/pipeline/train_eval_stage.py" = ["C901"]
-"src/csml/portfolio.py" = ["C901"]
-"src/csml/release_tools/hk_asset_workflow.py" = ["C901"]
-"src/csml/release_tools/package_assets.py" = ["C901"]
-"src/csml/release_tools/release_assets.py" = ["C901"]
-"src/csml/split.py" = ["C901"]
+"src/cstree/backtest.py" = ["C901"]
+"src/cstree/commands/linear_sweep.py" = ["C901"]
+"src/cstree/commands/run_grid.py" = ["C901"]
+"src/cstree/commands/tune.py" = ["C901"]
+"src/cstree/data_providers.py" = ["C901"]
+"src/cstree/data_tools/build_hk_connect_universe.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/args.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/asset_health.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/build.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/clean_daily.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/coverage.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/intraday_asset.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/intraday_health.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/mirror_daily.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/mirror_industry_changes.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/mirror_industry_southbound.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/mirror_instrument_industry.py" = ["C901"]
+"src/cstree/data_tools/rqdata_assets/mirror_workflow.py" = ["C901"]
+"src/cstree/liveops/alloc_core.py" = ["C901"]
+"src/cstree/liveops/alloc_hk_allocation.py" = ["C901"]
+"src/cstree/liveops/holdings.py" = ["C901"]
+"src/cstree/pipeline/config.py" = ["C901"]
+"src/cstree/pipeline/config_eval.py" = ["C901"]
+"src/cstree/pipeline/eval.py" = ["C901"]
+"src/cstree/pipeline/feature_engineering.py" = ["C901"]
+"src/cstree/pipeline/output_artifacts.py" = ["C901"]
+"src/cstree/pipeline/panel_loader.py" = ["C901"]
+"src/cstree/pipeline/preflight.py" = ["C901"]
+"src/cstree/pipeline/train_eval_stage.py" = ["C901"]
+"src/cstree/portfolio.py" = ["C901"]
+"src/cstree/release_tools/hk_asset_workflow.py" = ["C901"]
+"src/cstree/release_tools/package_assets.py" = ["C901"]
+"src/cstree/release_tools/release_assets.py" = ["C901"]
+"src/cstree/split.py" = ["C901"]
 
 [tool.uv]
 # `rqsdk` still imports `pkg_resources` from its sdist build step.

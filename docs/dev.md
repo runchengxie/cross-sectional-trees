@@ -146,7 +146,7 @@ scripts/dev/run_tests.sh slow
 scripts/dev/run_tests.sh integration
 ```
 
-`scripts/dev/run_tests.sh integration` 运行带有 `@pytest.mark.integration` 的跨模块测试。`tests/test_provider_integration.py` 虽然也带有 `integration` 标记，但只有设置 `CSTREE_RUN_PROVIDER_INTEGRATION=1` 时才会真正访问 provider；旧的 `CSML_RUN_PROVIDER_INTEGRATION=1` 仍作为兼容开关保留。
+`scripts/dev/run_tests.sh integration` 运行带有 `@pytest.mark.integration` 的跨模块测试。`tests/test_provider_integration.py` 虽然也带有 `integration` 标记，但只有设置 `CSTREE_RUN_PROVIDER_INTEGRATION=1` 时才会真正访问 provider。
 
 ### 测试矩阵维度剖析
 
@@ -274,7 +274,7 @@ python scripts/internal/run_hk_asset_workflow.py --target-date 20260402
 
 * `refresh`：刷新 `instruments / daily / daily_clean / valuation / ex_factors / dividends / shares / industry_changes / southbound` 等资产。
 * `inspect`：运行健康诊断，并把报告写入 `artifacts/reports/`。
-* `package`：把本次 resolved snapshot 交给 `cstree.release_tools.package_assets` 打包；旧 `csml.release_tools.package_assets` 路径仍保留兼容。
+* `package`：把本次 resolved snapshot 交给 `cstree.release_tools.package_assets` 打包。
 
 常见变体：
 

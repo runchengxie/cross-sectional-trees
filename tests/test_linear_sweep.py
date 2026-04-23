@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from csml import pipeline as pipeline_mod
-from csml.commands import linear_sweep
-from csml.research import summarize_runs as summarize_tool
+from cstree import pipeline as pipeline_mod
+from cstree.commands import linear_sweep
+from cstree.research import summarize_runs as summarize_tool
 
 
 def _read_csv(path: Path) -> list[dict]:

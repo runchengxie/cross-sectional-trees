@@ -271,7 +271,7 @@ def _configure_package_script(package_script: object, repo_root: Path, runs_root
 
 
 def _stage_demo_runs(tmp_path: Path) -> tuple[object, Path]:
-    package_script = _load_module("csml.release_tools.package_runs")
+    package_script = _load_module("cstree.release_tools.package_runs")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     runs_root = _prepare_demo_runs(repo_root)
@@ -331,7 +331,7 @@ def test_package_runs_stages_curated_files_and_summary(tmp_path):
 
 
 def test_package_runs_can_include_scored_and_dataset_files(tmp_path):
-    package_script = _load_module("csml.release_tools.package_runs")
+    package_script = _load_module("cstree.release_tools.package_runs")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     runs_root = _prepare_demo_runs(repo_root)
@@ -361,7 +361,7 @@ def test_package_runs_can_include_scored_and_dataset_files(tmp_path):
 
 
 def test_package_runs_profile_milestone_includes_scored_and_dataset_files(tmp_path):
-    package_script = _load_module("csml.release_tools.package_runs")
+    package_script = _load_module("cstree.release_tools.package_runs")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     runs_root = _prepare_demo_runs(repo_root)
@@ -398,7 +398,7 @@ def test_package_runs_profile_milestone_includes_scored_and_dataset_files(tmp_pa
 
 
 def test_package_runs_profile_full_includes_full_run_dir(tmp_path):
-    package_script = _load_module("csml.release_tools.package_runs")
+    package_script = _load_module("cstree.release_tools.package_runs")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     runs_root = _prepare_demo_runs(repo_root)
@@ -429,7 +429,7 @@ def test_package_runs_profile_full_includes_full_run_dir(tmp_path):
 
 
 def test_release_runs_builds_multiple_tarballs_for_selected_runs(tmp_path):
-    package_script = _load_module("csml.release_tools.package_runs")
+    package_script = _load_module("cstree.release_tools.package_runs")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     runs_root = _prepare_demo_runs(repo_root)
@@ -449,7 +449,7 @@ def test_release_runs_builds_multiple_tarballs_for_selected_runs(tmp_path):
     )
     assert exit_code == 0
 
-    release_script = _load_module("csml.release_tools.release_runs")
+    release_script = _load_module("cstree.release_tools.release_runs")
     tar_dir = tmp_path / "tarballs"
     exit_code = release_script.main(
         [
@@ -470,7 +470,7 @@ def test_release_runs_builds_multiple_tarballs_for_selected_runs(tmp_path):
 
 
 def test_release_runs_creates_single_release_with_multiple_assets(tmp_path, monkeypatch):
-    package_script = _load_module("csml.release_tools.package_runs")
+    package_script = _load_module("cstree.release_tools.package_runs")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     runs_root = _prepare_demo_runs(repo_root)
@@ -490,7 +490,7 @@ def test_release_runs_creates_single_release_with_multiple_assets(tmp_path, monk
     )
     assert exit_code == 0
 
-    release_script = _load_module("csml.release_tools.release_runs")
+    release_script = _load_module("cstree.release_tools.release_runs")
     calls: list[list[str]] = []
 
     def _fake_run(cmd: list[str], *, dry_run: bool, capture: bool = False):
@@ -520,7 +520,7 @@ def test_release_runs_creates_single_release_with_multiple_assets(tmp_path, monk
 
 def test_release_runs_forwards_filters_to_package_step(tmp_path, monkeypatch):
     _, stage_root = _stage_demo_runs(tmp_path)
-    release_script = _load_module("csml.release_tools.release_runs")
+    release_script = _load_module("cstree.release_tools.release_runs")
 
     calls: list[list[str]] = []
 

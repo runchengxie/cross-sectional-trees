@@ -6,13 +6,13 @@ from types import SimpleNamespace
 import pandas as pd
 import yaml
 
-from csml.current_assets import (
+from cstree.current_assets import (
     build_hk_current_contract,
     default_hk_current_contract_path,
     hk_current_candidate_paths,
     write_current_contract,
 )
-from csml.data_tools.rqdata_assets.audit_assets import build_hk_data_asset_audit_report
+from cstree.data_tools.rqdata_assets.audit_assets import build_hk_data_asset_audit_report
 
 
 def _symlink(target, link) -> None:
@@ -192,7 +192,7 @@ def test_hk_data_asset_audit_writes_json_output(tmp_path, monkeypatch):
     write_current_contract(default_hk_current_contract_path(artifacts_root), contract)
 
     out_path = repo_root / "audit.json"
-    from csml.data_tools.rqdata_assets.audit_assets import inspect_hk_data_assets
+    from cstree.data_tools.rqdata_assets.audit_assets import inspect_hk_data_assets
 
     assert inspect_hk_data_assets(_args(asset=["etf_daily"], scan_family=["daily"], out=str(out_path))) == 0
     payload = json.loads(out_path.read_text(encoding="utf-8"))

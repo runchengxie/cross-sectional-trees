@@ -64,7 +64,7 @@ def _base_args() -> SimpleNamespace:
 
 
 def test_sync_hk_intraday_downloads_inspects_and_repoints_alias(tmp_path, monkeypatch):
-    sync = _load_module("csml.data_tools.rqdata_assets.intraday_sync")
+    sync = _load_module("cstree.data_tools.rqdata_assets.intraday_sync")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(sync, repo_root)
@@ -153,7 +153,7 @@ def test_sync_hk_intraday_downloads_inspects_and_repoints_alias(tmp_path, monkey
 
 
 def test_sync_hk_intraday_preserves_existing_asset_entries_except_replaced_stem(tmp_path, monkeypatch):
-    sync = _load_module("csml.data_tools.rqdata_assets.intraday_sync")
+    sync = _load_module("cstree.data_tools.rqdata_assets.intraday_sync")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(sync, repo_root)
@@ -235,7 +235,7 @@ def test_sync_hk_intraday_preserves_existing_asset_entries_except_replaced_stem(
 
 
 def test_sync_hk_intraday_packages_and_releases_when_requested(tmp_path, monkeypatch):
-    sync = _load_module("csml.data_tools.rqdata_assets.intraday_sync")
+    sync = _load_module("cstree.data_tools.rqdata_assets.intraday_sync")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(sync, repo_root)
@@ -325,7 +325,7 @@ def test_sync_hk_intraday_packages_and_releases_when_requested(tmp_path, monkeyp
 
 
 def test_sync_hk_intraday_full_verify_is_explicit_and_scans_asset_alias(tmp_path, monkeypatch):
-    sync = _load_module("csml.data_tools.rqdata_assets.intraday_sync")
+    sync = _load_module("cstree.data_tools.rqdata_assets.intraday_sync")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(sync, repo_root)

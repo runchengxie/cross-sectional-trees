@@ -106,7 +106,7 @@ def _prepare_demo_assets(repo_root: Path) -> None:
 
 
 def _stage_demo_parts(tmp_path: Path) -> tuple[object, Path]:
-    package_script = _load_module("csml.release_tools.package_assets")
+    package_script = _load_module("cstree.release_tools.package_assets")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _prepare_demo_assets(repo_root)
@@ -152,7 +152,7 @@ def _stage_demo_parts(tmp_path: Path) -> tuple[object, Path]:
 
 
 def _stage_demo_valuation_part(tmp_path: Path) -> tuple[object, Path]:
-    package_script = _load_module("csml.release_tools.package_assets")
+    package_script = _load_module("cstree.release_tools.package_assets")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _prepare_demo_assets(repo_root)
@@ -197,7 +197,7 @@ def _stage_demo_valuation_part(tmp_path: Path) -> tuple[object, Path]:
 
 
 def _stage_demo_supplemental_parts(tmp_path: Path) -> tuple[object, Path]:
-    package_script = _load_module("csml.release_tools.package_assets")
+    package_script = _load_module("cstree.release_tools.package_assets")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _prepare_demo_assets(repo_root)
@@ -248,7 +248,7 @@ def _stage_demo_supplemental_parts(tmp_path: Path) -> tuple[object, Path]:
 
 
 def _stage_demo_etf_parts(tmp_path: Path) -> tuple[object, Path]:
-    package_script = _load_module("csml.release_tools.package_assets")
+    package_script = _load_module("cstree.release_tools.package_assets")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _prepare_demo_assets(repo_root)
@@ -275,7 +275,7 @@ def _stage_demo_etf_parts(tmp_path: Path) -> tuple[object, Path]:
 
 
 def _stage_demo_current_parts(tmp_path: Path) -> tuple[object, Path]:
-    package_script = _load_module("csml.release_tools.package_assets")
+    package_script = _load_module("cstree.release_tools.package_assets")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _prepare_demo_assets(repo_root)
@@ -330,7 +330,7 @@ def test_package_assets_stages_selected_parts_and_manifests(tmp_path):
 
 def test_release_assets_builds_multiple_tarballs_for_selected_parts(tmp_path):
     _, stage_root = _stage_demo_parts(tmp_path)
-    release_script = _load_module("csml.release_tools.release_assets")
+    release_script = _load_module("cstree.release_tools.release_assets")
 
     tar_dir = tmp_path / "tarballs"
     exit_code = release_script.main(
@@ -373,7 +373,7 @@ def test_package_assets_can_stage_valuation_part(tmp_path):
 
 def test_release_assets_builds_tarballs_for_valuation_part(tmp_path):
     _, stage_root = _stage_demo_valuation_part(tmp_path)
-    release_script = _load_module("csml.release_tools.release_assets")
+    release_script = _load_module("cstree.release_tools.release_assets")
 
     tar_dir = tmp_path / "tarballs_valuation"
     exit_code = release_script.main(
@@ -436,7 +436,7 @@ def test_package_assets_stages_supplemental_parts_and_manifests(tmp_path):
 
 def test_release_assets_builds_tarballs_for_supplemental_parts(tmp_path):
     _, stage_root = _stage_demo_supplemental_parts(tmp_path)
-    release_script = _load_module("csml.release_tools.release_assets")
+    release_script = _load_module("cstree.release_tools.release_assets")
 
     tar_dir = tmp_path / "tarballs_extra"
     exit_code = release_script.main(
@@ -545,7 +545,7 @@ def test_package_assets_current_preset_stages_intraday_etf_and_valuation_parts(t
 
 
 def test_package_assets_current_preset_prefers_current_contract_over_alias_targets(tmp_path):
-    package_script = _load_module("csml.release_tools.package_assets")
+    package_script = _load_module("cstree.release_tools.package_assets")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _prepare_demo_assets(repo_root)
@@ -620,7 +620,7 @@ def test_package_assets_current_preset_prefers_current_contract_over_alias_targe
 
 def test_release_assets_builds_tarballs_for_intraday_and_etf_parts(tmp_path):
     _, stage_root = _stage_demo_current_parts(tmp_path)
-    release_script = _load_module("csml.release_tools.release_assets")
+    release_script = _load_module("cstree.release_tools.release_assets")
 
     tar_dir = tmp_path / "tarballs_current"
     exit_code = release_script.main(
@@ -644,7 +644,7 @@ def test_release_assets_builds_tarballs_for_intraday_and_etf_parts(tmp_path):
 
 def test_release_assets_creates_single_release_with_multiple_assets(tmp_path, monkeypatch):
     _, stage_root = _stage_demo_parts(tmp_path)
-    release_script = _load_module("csml.release_tools.release_assets")
+    release_script = _load_module("cstree.release_tools.release_assets")
 
     calls: list[list[str]] = []
 
@@ -679,7 +679,7 @@ def test_release_assets_creates_single_release_with_multiple_assets(tmp_path, mo
 
 def test_release_assets_forwards_selected_parts_to_package_step(tmp_path, monkeypatch):
     _, stage_root = _stage_demo_parts(tmp_path)
-    release_script = _load_module("csml.release_tools.release_assets")
+    release_script = _load_module("cstree.release_tools.release_assets")
 
     calls: list[list[str]] = []
 

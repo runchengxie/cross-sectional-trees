@@ -6,13 +6,13 @@ from types import SimpleNamespace
 
 import yaml
 
-from csml.current_assets import (
+from cstree.current_assets import (
     build_hk_current_contract,
     default_hk_current_contract_path,
     hk_current_candidate_paths,
     write_current_contract,
 )
-from csml.data_tools.rqdata_assets.current_health import inspect_hk_current_health
+from cstree.data_tools.rqdata_assets.current_health import inspect_hk_current_health
 
 
 def _symlink(target: Path, link: Path) -> None:

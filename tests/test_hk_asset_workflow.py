@@ -18,7 +18,7 @@ def _configure_repo_roots(module, repo_root: Path) -> None:
 
 
 def test_hk_asset_workflow_dry_run_builds_refresh_package_and_release_commands(tmp_path, monkeypatch):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -70,7 +70,7 @@ def test_hk_asset_workflow_dry_run_builds_refresh_package_and_release_commands(t
 
 
 def test_hk_asset_workflow_refresh_repoints_latest_aliases(tmp_path, monkeypatch):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -126,7 +126,7 @@ def test_hk_asset_workflow_refresh_repoints_latest_aliases(tmp_path, monkeypatch
 
 
 def test_hk_asset_workflow_inspect_gate_blocks_alias_repoint_and_package(tmp_path, monkeypatch):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -225,7 +225,7 @@ def test_hk_asset_workflow_inspect_gate_blocks_alias_repoint_and_package(tmp_pat
 
 
 def test_hk_asset_workflow_inspect_gate_allows_repoint_and_package_when_clean(tmp_path, monkeypatch):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -306,7 +306,7 @@ def test_hk_asset_workflow_inspect_gate_allows_repoint_and_package_when_clean(tm
 def test_hk_asset_workflow_gate_ignores_raw_daily_price_bounds_when_daily_clean_passes(
     tmp_path, monkeypatch
 ):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -399,7 +399,7 @@ def test_hk_asset_workflow_gate_ignores_raw_daily_price_bounds_when_daily_clean_
 
 
 def test_hk_asset_workflow_prints_health_summary_from_json_reports(tmp_path, monkeypatch, capsys):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -442,7 +442,7 @@ def test_hk_asset_workflow_prints_health_summary_from_json_reports(tmp_path, mon
 
 
 def test_hk_asset_workflow_patch_mode_builds_patch_and_merge_commands(tmp_path, monkeypatch):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -516,7 +516,7 @@ def test_hk_asset_workflow_patch_mode_builds_patch_and_merge_commands(tmp_path, 
 
 
 def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatch):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -731,7 +731,7 @@ def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatc
 
 
 def test_hk_asset_workflow_repair_phase_uses_report_candidates_to_build_subset_patch(tmp_path, monkeypatch):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)
@@ -932,7 +932,7 @@ def test_hk_asset_workflow_repair_phase_uses_report_candidates_to_build_subset_p
 
 
 def test_hk_asset_workflow_repair_only_unresolved_uses_remaining_candidates(tmp_path, monkeypatch):
-    workflow = _load_module("csml.release_tools.hk_asset_workflow")
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _configure_repo_roots(workflow, repo_root)

@@ -39,17 +39,17 @@
 
 ## 6. Final Breaking Migration
 
-- [ ] 6.1 Move implementation ownership to `src/cstree/` or otherwise make `cstree` the authoritative implementation package.
-- [ ] 6.2 Update internal imports, monkeypatch targets, package discovery assumptions, and coverage settings to match the final package ownership decision.
-- [ ] 6.3 Remove the legacy `csml` console script from packaging metadata.
-- [ ] 6.4 Remove public `python -m csml...` compatibility paths or replace them with the explicitly approved final legacy behavior.
-- [ ] 6.5 Remove public `import csml` compatibility or replace it with the explicitly approved final legacy behavior.
-- [ ] 6.6 Remove `CSML_*` environment variable fallbacks and update configuration docs accordingly.
-- [ ] 6.7 Decide and implement the final logger namespace strategy, including any test updates for `caplog` or logging filters.
+- [x] 6.1 Move implementation ownership to `src/cstree/` or otherwise make `cstree` the authoritative implementation package.
+- [x] 6.2 Update internal imports, monkeypatch targets, package discovery assumptions, and coverage settings to match the final package ownership decision.
+- [x] 6.3 Remove the legacy `csml` console script from packaging metadata.
+- [x] 6.4 Remove public `python -m csml...` compatibility paths or replace them with the explicitly approved final legacy behavior.
+- [x] 6.5 Remove public `import csml` compatibility or replace it with the explicitly approved final legacy behavior.
+- [x] 6.6 Remove `CSML_*` environment variable fallbacks and update configuration docs accordingly.
+- [x] 6.7 Decide and implement the final logger namespace strategy, including any test updates for `caplog` or logging filters.
 
 ## 7. Validation
 
 - [x] 7.1 Run `scripts/dev/run_tests.sh fast` after each non-breaking implementation slice.
 - [x] 7.2 Run docs contract and namespace-focused tests after documentation, wrapper, or module execution changes.
 - [x] 7.3 Run packaging or console-script checks after modifying `pyproject.toml` entry points.
-- [ ] 7.4 Before the final breaking release, run the full selected regression suite and verify docs, release notes, and migration notes match the implemented behavior.
+- [x] 7.4 Before the final breaking release, run the full selected regression suite and verify docs, release notes, and migration notes match the implemented behavior.

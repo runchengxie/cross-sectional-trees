@@ -4,8 +4,8 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from csml import pipeline as pipeline_mod
-from csml.commands import run_grid
+from cstree import pipeline as pipeline_mod
+from cstree.commands import run_grid
 
 
 def _build_scored_data() -> pd.DataFrame:

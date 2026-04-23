@@ -1,4 +1,4 @@
-from csml.cli import rqdata as cli_rqdata
+from cstree.cli import rqdata as cli_rqdata
 from cstree import cli
 from cstree.data_tools import rqdata_assets as rqdata_assets_tool
 

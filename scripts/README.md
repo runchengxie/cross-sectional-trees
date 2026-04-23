@@ -1,6 +1,6 @@
 # 脚本入口
 
-`scripts/` 只保留少量仓库级辅助入口。可复用的 Python 实现应放在 `src/csml/`，公开用户能力优先通过 `cstree` CLI 暴露。
+`scripts/` 只保留少量仓库级辅助入口。可复用的 Python 实现应放在 `src/cstree/`，公开用户能力优先通过 `cstree` CLI 暴露。
 
 ## 常用入口
 
@@ -15,7 +15,7 @@
 
 当前 `scripts/internal/` 里和 HK 资产维护相关的常用入口：
 
-* `scripts/internal/run_hk_asset_workflow.py`：串联 `refresh / inspect / package / release` 的维护者 driver。它主要负责编排，底层仍复用现有 `cstree rqdata ...` 与 release tools；公开模块路径优先使用 `cstree.release_tools.*`，旧 `csml.release_tools.*` 仍保留兼容。
+* `scripts/internal/run_hk_asset_workflow.py`：串联 `refresh / inspect / package / release` 的维护者 driver。它主要负责编排，底层仍复用现有 `cstree rqdata ...` 与 `cstree.release_tools.*`。
 
 术语说明：
 

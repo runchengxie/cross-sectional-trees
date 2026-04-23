@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from csml.pipeline.output_summary_metadata import build_inputs_lock
+from cstree.pipeline.output_summary_metadata import build_inputs_lock
 
 
 def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(

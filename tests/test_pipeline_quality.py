@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from csml.pipeline import quality as pipeline_quality
+from cstree.pipeline import quality as pipeline_quality
 
 
 def test_run_quality_preflight_runs_hk_pit_gate_and_persists_report(tmp_path, monkeypatch):

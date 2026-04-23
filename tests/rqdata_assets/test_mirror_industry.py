@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml import data_providers
-from csml.data_tools import rqdata_assets
+from cstree import data_providers
+from cstree.data_tools import rqdata_assets
 
 from tests.rqdata_assets._fakes import (
     _FakeRQIndustryClient,

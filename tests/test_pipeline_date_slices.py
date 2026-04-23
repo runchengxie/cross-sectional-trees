@@ -1,6 +1,6 @@
 import pandas as pd
 
-from csml.pipeline.dates import (
+from cstree.pipeline.dates import (
     _build_trade_date_slices,
     _slice_trade_date_range,
     _slice_trade_dates,

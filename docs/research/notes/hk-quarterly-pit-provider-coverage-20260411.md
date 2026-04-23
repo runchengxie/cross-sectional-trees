@@ -11,7 +11,7 @@
 页面性质：`research-note`  
 状态：`implementation caveat`，这页只保留 quarterly PIT coverage / freshness warning 的背景和变体定位，不作为默认研究入口  
 最后核对时间：`2026-04-11`  
-权威来源：`configs/presets/hk_quarterly_pit_hybrid.yml`、`src/csml/data_tools/rqdata_assets/build.py`、`src/csml/data_tools/rqdata_assets/coverage.py`、本地 `artifacts/reports/hk_pit_health_20260409.json`、本地 raw PIT 资产抽样  
+权威来源：`configs/presets/hk_quarterly_pit_hybrid.yml`、`src/cstree/data_tools/rqdata_assets/build.py`、`src/cstree/data_tools/rqdata_assets/coverage.py`、本地 `artifacts/reports/hk_pit_health_20260409.json`、本地 raw PIT 资产抽样
 冲突优先级：如果与代码、health 报告或更晚的资产检查结果冲突，以更晚代码和检查结果为准；如果与具体 run 的 `summary.json` / `config.used.yml` 冲突，以 run 产物为准
 
 ## 1. 先说结论

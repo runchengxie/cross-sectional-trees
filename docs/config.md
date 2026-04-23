@@ -85,7 +85,6 @@ paths:
 * 当 `warehouse_db_path` 留空时，`cstree data query` 命令默认将数据写入 `<artifacts_root>/metadata/warehouse.duckdb`。
 * 命令行参数 `--artifacts-root` 的优先级高于环境变量和此处的 YAML 配置。
 * 环境变量 `CSTREE_ARTIFACTS_ROOT`、`CSTREE_METADATA_DB_PATH`、`CSTREE_WAREHOUSE_DB_PATH` 是当前推荐的全局默认覆盖手段。
-* 旧变量 `CSML_ARTIFACTS_ROOT`、`CSML_METADATA_DB_PATH`、`CSML_WAREHOUSE_DB_PATH` 在当前 `0.x` 兼容窗口内仍可作为 fallback；如果新旧变量同时设置，以 `CSTREE_*` 为准。
 
 ### 数据源配置 (`data`)
 

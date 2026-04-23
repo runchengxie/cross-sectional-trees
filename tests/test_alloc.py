@@ -333,4 +333,4 @@ def test_init_rqdatac_applies_readonly_adjust_price_patch(monkeypatch):
     result = alloc._init_rqdatac(None, None, None)
 
     assert result is fake_module
-    assert called == ["csml.liveops.alloc"]
+    assert called == ["cstree.liveops.alloc"]

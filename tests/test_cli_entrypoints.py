@@ -1,8 +1,7 @@
 import tomllib
 from pathlib import Path
 
-from csml import cli
-from cstree import cli as cstree_cli
+from cstree import cli
 
 
 def _top_level_commands(parser):
@@ -13,22 +12,17 @@ def _top_level_commands(parser):
     return set()
 
 
-def test_cli_entrypoints_keep_cstree_and_csml_compatible():
+def test_cli_entrypoints_expose_only_cstree():
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     scripts = pyproject["project"]["scripts"]
 
     assert scripts["cstree"] == "cstree.cli:main"
-    assert scripts["csml"] == "csml.cli:main"
-    assert cstree_cli.main is cli.main
-    assert cstree_cli.build_parser is cli.build_parser
+    assert "csml" not in scripts
 
 
-def test_cli_parser_can_use_either_public_program_name():
+def test_cli_parser_uses_cstree_public_program_name():
     assert cli.build_parser(prog="cstree").prog == "cstree"
-    assert cli.build_parser(prog="csml").prog == "csml"
 
 
-def test_cli_entrypoints_expose_same_top_level_commands():
-    assert _top_level_commands(cstree_cli.build_parser(prog="cstree")) == _top_level_commands(
-        cli.build_parser(prog="csml")
-    )
+def test_cli_entrypoint_exposes_top_level_commands():
+    assert _top_level_commands(cli.build_parser(prog="cstree"))

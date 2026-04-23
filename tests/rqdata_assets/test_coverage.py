@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pandas as pd
 import yaml
 
-from csml import data_providers
-from csml.data_tools import rqdata_assets
+from cstree import data_providers
+from cstree.data_tools import rqdata_assets
 
 
 def test_inspect_hk_pit_coverage_supports_config_selected_derived_features(tmp_path, monkeypatch):

@@ -1,19 +1,19 @@
 # cstree 命名空间迁移说明
 
-本页面向维护者，记录 `csml` 到 `cstree` 的兼容窗口、移除 gate 和发布说明草案。用户入口仍以 `README.md`、`docs/README.md` 和 `docs/capabilities.md` 为准。
+本页面向维护者，记录 `csml` 到 `cstree` 的 breaking migration、迁移映射、发布说明和 rollback 条件。用户入口仍以 `README.md`、`docs/README.md` 和 `docs/capabilities.md` 为准。
 
-## 当前策略
+## 当前状态
 
-当前 `0.x` 版本线采用加法迁移：
+`1.0.0` 起采用 `cstree`-only 合约：
 
-* 新文档、新脚本输出、新测试中的用户入口优先使用 `cstree`。
-* `csml` CLI、`python -m csml...`、`import csml` 和 `CSML_*` 环境变量继续作为兼容面保留。
-* `CSTREE_*` 环境变量优先级高于对应的 `CSML_*` fallback。
-* 默认不对 `csml` 使用发出 deprecation warning，避免让依赖 stderr 或 warning 策略的自动化脚本误失败。
+* 新文档、新脚本输出和测试中的用户入口使用 `cstree`。
+* `src/cstree/` 是实现所有权所在的包。
+* `csml` CLI、`python -m csml...`、`import csml` 和 `CSML_*` 环境变量 fallback 已移除。
+* logger namespace 使用 `cstree.*`。
 
-## 最早移除版本
+## 移除版本
 
-`csml` 兼容面最早只能在 `1.0.0` 或更高版本移除。移除前必须有单独的 breaking-change proposal 明确批准，并完成本页的 gate checklist。
+`csml` 兼容面在 `1.0.0` breaking release 中移除。
 
 ## 迁移映射
 
@@ -42,15 +42,15 @@
 
 ## Breaking Gate Checklist
 
-移除 `csml` 前必须完成：
+本次移除已完成：
 
 * 重新审计 `README.md`、`docs/`、`scripts/`、`tests/`、`src/`、`.github/` 和 `pyproject.toml` 中的 `csml` / `CSML_*` / `cstree` / `CSTREE_*` 引用。
 * 更新 `pyproject.toml`，移除 `csml` console script，确认 packaging smoke test 覆盖 `cstree`。
-* 决定 `import csml` 是完全删除，还是短期保留只抛出迁移提示的 shim。
-* 移除或改写 `python -m csml...` 兼容测试，并保留 `python -m cstree... --help` 覆盖。
+* 删除 `import csml` 公开兼容面，不保留 shim。
+* 移除 `python -m csml...` 兼容路径，并保留 `python -m cstree... --help` 覆盖。
 * 移除 `CSML_*` fallback，并同步 `docs/config.md`、`docs/capabilities.md` 和相关测试。
-* 决定 logger namespace 是否从 `csml.*` 切换到 `cstree.*`，并更新 `caplog`、logging filter 和排障说明。
-* 更新 coverage、ruff per-file ignores、monkeypatch target 和内部导入，匹配最终实现包所有权。
+* logger namespace 已切换到 `cstree.*`，并更新 `caplog` / logging filter 测试。
+* coverage、ruff per-file ignores、monkeypatch target 和内部导入已匹配 `src/cstree/` 实现包所有权。
 
 ## Release Notes 草案
 

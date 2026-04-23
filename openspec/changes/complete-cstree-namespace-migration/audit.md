@@ -1,62 +1,30 @@
-# Namespace Audit Baseline
+# Namespace Audit Baseline And Final Migration Result
 
 Generated for change `complete-cstree-namespace-migration` on 2026-04-23.
 
 Scope: `README.md`, `docs/`, `scripts/`, `src/`, `tests/`, and `pyproject.toml`. The audit intentionally excludes generated artifacts and local runtime outputs.
 
-## Summary
+## Final Summary
 
-- Preferred public namespace: `cstree`
-- Legacy compatibility namespace: `csml`
-- Preferred environment variables: `CSTREE_*`
-- Legacy fallback environment variables: `CSML_*`
-- Implementation owner during the current compatibility window: `src/csml/`
-- Public bridge during the current compatibility window: `src/cstree/`
+- Public namespace: `cstree`
+- Public environment variables: `CSTREE_*`
+- Implementation owner: `src/cstree/`
+- Removed legacy namespace: `csml`
+- Removed legacy environment variable fallback: `CSML_*`
+- Logger namespace: `cstree.*`
 
-The repository is already in the additive migration stage: public docs and generated commands prefer `cstree`, while `csml` remains intentionally available for existing automation.
+The repository has completed the final breaking migration stage. Public docs, generated commands, tests, packaging metadata, coverage settings, logger names, and internal imports now target `cstree`.
 
 ## Remaining `csml` Reference Categories
 
-### Compatibility Contract
+Only expected historical references remain:
 
-- `pyproject.toml` keeps both console scripts:
-  - `cstree = "cstree.cli:main"`
-  - `csml = "csml.cli:main"`
-- `docs/capabilities.md`, `docs/get-started.md`, `docs/config.md`, `docs/dev.md`, and `scripts/README.md` mention `csml` only to describe the compatibility window or legacy fallback behavior.
-- `tests/test_cli_entrypoints.py` protects the registered `csml` console script and parser compatibility.
-- `tests/test_cstree_namespace.py` now protects documented legacy `python -m csml.release_tools...` and `python -m csml.research...` module execution paths during the compatibility window.
-- `tests/test_artifacts.py`, `tests/test_provider_integration.py`, and `scripts/dev/run_tests.sh` keep `CSML_*` fallback coverage or messaging.
+- `docs/internal/cstree-namespace-migration.md` keeps the migration map and release-note text for users moving from old names.
+- `openspec/changes/complete-cstree-namespace-migration/` keeps the proposal, design, spec, and this audit history.
+- `tests/test_cstree_namespace.py` asserts the legacy import and module execution surfaces are removed.
+- `docs/capabilities.md` explicitly says the legacy surfaces are no longer public compatibility.
 
-### Internal Implementation Ownership
-
-- `src/csml/` remains the implementation package until the final breaking gate approves an implementation ownership move.
-- `pyproject.toml` ruff per-file ignores and `scripts/dev/run_tests.sh coverage` still target `csml` because coverage and complexity settings follow the implementation package.
-- Logger names such as `csml`, `csml.cli.rqdata`, and `csml.research...` remain implementation-level observability identifiers.
-
-### Cstree Bridge Implementation
-
-- `src/cstree/__init__.py` installs the alias finder that maps import-only `cstree.*` surfaces to existing `csml.*` modules.
-- Explicit `src/cstree/release_tools/*` and `src/cstree/research/*` wrappers delegate documented module execution paths to `csml` implementations instead of copying implementation files.
-- Wrapper files necessarily import `csml.*`; these are intentional bridge references.
-
-### Test Monkeypatch Or Logger Target
-
-- Tests that patch implementation internals, assert logger names, or load implementation modules directly may continue to reference `csml` while implementation ownership remains under `src/csml/`.
-- Release workflow tests still load `csml.release_tools.*` directly when they are exercising implementation internals, but generated commands are asserted as `python -m cstree...`.
-
-### Documentation Of Legacy Behavior
-
-- Documentation mentions `csml`, `CSML_*`, and `python -m csml...` only when describing compatibility, migration strategy, or legacy fallback precedence.
-- No public docs should introduce new primary examples using `csml`.
-
-### Accidental Public Usage
-
-Converted in this implementation slice:
-
-- Public CLI parser/dispatch tests now import through `cstree` where they model user-facing command behavior.
-- Public liveops/data/universe/research behavior tests now import through `cstree` where they are not specifically testing compatibility or implementation internals.
-
-Remaining direct `csml` test imports are treated as implementation, monkeypatch/logger, or explicit compatibility coverage and should be reviewed again before the final breaking gate.
+No source implementation, packaging metadata, public script, or public behavior test imports `csml`.
 
 ## Public Module Inventory
 
@@ -78,17 +46,22 @@ Documented public research module tools:
 - `python -m cstree.research.hk_monthly_run_compare`
 - `python -m cstree.research.hk_selected_provider_valuation_audit`
 
-Maintenance wrapper:
+Maintenance module:
 
 - `python -m cstree.release_tools.hk_asset_workflow` exists for maintainer orchestration, but the user-facing documented driver remains `scripts/internal/run_hk_asset_workflow.py`.
 
-## Follow-Up Before Final Removal
+## Final Removal Decisions
 
-Before removing any `csml` compatibility surface, rerun an audit over repository docs, scripts, tests, CI, packaging metadata, and release notes:
+- `csml` console script: removed from `pyproject.toml`.
+- `python -m csml...`: removed by deleting the `src/csml/` package.
+- `import csml`: removed by deleting the `src/csml/` package; no shim is retained.
+- `CSML_*`: removed as environment variable fallbacks.
+- Logger namespace: moved to `cstree.*`.
+- Coverage target and ruff per-file ignores: moved to `cstree`.
+
+Final audit commands:
 
 ```bash
 rg -n "csml|CSML_" README.md docs scripts src tests pyproject.toml .github
 rg -n "cstree|CSTREE_" README.md docs scripts src tests pyproject.toml .github
 ```
-
-The final breaking gate must resolve whether to delete `csml` entirely or leave a short-lived targeted error shim with migration guidance.

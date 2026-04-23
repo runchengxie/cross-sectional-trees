@@ -11,8 +11,7 @@ Modes:
   fast, unit   Run the default fast offline regression suite.
   slow         Run heavier offline regression tests.
   integration  Run the marked cross-module integration suite.
-               Real provider integration prefers CSTREE_RUN_PROVIDER_INTEGRATION=1;
-               legacy CSML_RUN_PROVIDER_INTEGRATION=1 still works.
+               Real provider integration uses CSTREE_RUN_PROVIDER_INTEGRATION=1.
   coverage     Run the main pytest suite with coverage.
                Scope matches 'all'; it is not the full CI matrix.
   lint         Run Ruff lint and basic complexity checks, plus import-order on changed files.
@@ -60,7 +59,7 @@ case "$mode" in
     exec uv run pytest --no-cov -m "integration" "$@"
     ;;
   coverage)
-    exec uv run pytest --cov=csml --cov-report=term-missing "$@"
+    exec uv run pytest --cov=cstree --cov-report=term-missing "$@"
     ;;
   lint)
     run_ruff check src tests scripts "$@"

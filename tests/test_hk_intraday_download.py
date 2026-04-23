@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from csml.research.hk_intraday_download import _read_symbol_file, build_parser
+from cstree.research.hk_intraday_download import _read_symbol_file, build_parser
 
 
 def test_hk_intraday_download_parser_defaults_to_pre_adjusted_bars():

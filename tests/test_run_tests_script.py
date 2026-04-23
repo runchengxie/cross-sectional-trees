@@ -67,8 +67,7 @@ def test_run_tests_script_help_lists_supported_modes():
     assert "coverage" in result.stdout
     assert "main pytest suite without coverage" in result.stdout
     assert "Does not include optional-extra smoke jobs" in result.stdout
-    assert "Real provider integration prefers CSTREE_RUN_PROVIDER_INTEGRATION=1" in result.stdout
-    assert "legacy CSML_RUN_PROVIDER_INTEGRATION=1 still works" in result.stdout
+    assert "Real provider integration uses CSTREE_RUN_PROVIDER_INTEGRATION=1" in result.stdout
     assert "it is not the full CI matrix" in result.stdout
 
 
@@ -80,7 +79,7 @@ def test_run_tests_script_help_lists_supported_modes():
         ("unit", ["run", "pytest", "--no-cov", "-m", "not integration and not slow"]),
         ("slow", ["run", "pytest", "--no-cov", "-m", "slow and not integration"]),
         ("integration", ["run", "pytest", "--no-cov", "-m", "integration"]),
-        ("coverage", ["run", "pytest", "--cov=csml", "--cov-report=term-missing"]),
+        ("coverage", ["run", "pytest", "--cov=cstree", "--cov-report=term-missing"]),
     ],
 )
 def test_run_tests_script_mode_maps_to_expected_pytest_argv(tmp_path, mode, expected_argv):

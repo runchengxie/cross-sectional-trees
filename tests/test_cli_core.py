@@ -5,7 +5,7 @@ import pytest
 
 from cstree import cli
 from cstree import pipeline as pipeline_module
-from csml.cli import common as cli_common
+from cstree.cli import common as cli_common
 from cstree.config_utils import resolve_pipeline_config, resolve_repo_preset_path
 from cstree.data_tools import build_hk_connect_universe as hk_connect_tool
 from cstree.data_tools import build_hk_daily_asset_universe as hk_daily_assets_tool
@@ -123,7 +123,7 @@ def test_init_rqdatac_applies_adjust_price_patch(monkeypatch):
 
     assert result is fake_rqdatac
     assert init_calls == [{}]
-    assert patch_calls == ["csml.cli.rqdata"]
+    assert patch_calls == ["cstree.cli.rqdata"]
 
 
 def test_cli_parses_init_config_and_universe():

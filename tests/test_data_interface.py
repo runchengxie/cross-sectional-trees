@@ -61,7 +61,7 @@ def test_fetch_fundamentals_can_suppress_retry_warning_logs(tmp_path, monkeypatc
     interface.provider = "rqdata"
     interface.data_cfg = {"provider": "rqdata"}
     interface.cache_dir = tmp_path / "cache"
-    interface.logger = logging.getLogger("csml")
+    interface.logger = logging.getLogger("cstree")
     interface.max_attempts = 1
     interface.backoff_seconds = 0.0
     interface.max_backoff_seconds = 0.0
@@ -70,7 +70,7 @@ def test_fetch_fundamentals_can_suppress_retry_warning_logs(tmp_path, monkeypatc
         raise ValueError("order_book_ids: at least one valid instrument expected, got none")
 
     monkeypatch.setattr("cstree.data_interface.fetch_fundamentals", _raise)
-    caplog.set_level("WARNING", logger="csml")
+    caplog.set_level("WARNING", logger="cstree")
 
     with pytest.raises(ValueError, match="order_book_ids"):
         interface.fetch_fundamentals(

@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from csml import pipeline
-from csml.data_interface import DataInterface
+from cstree import pipeline
+from cstree.data_interface import DataInterface
 
 
 def _build_frames(

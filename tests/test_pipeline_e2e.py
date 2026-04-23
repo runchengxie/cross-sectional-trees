@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml import pipeline
-from csml.data_interface import DataInterface
+from cstree import pipeline
+from cstree.data_interface import DataInterface
 
 
 def _build_daily_frames(symbols: list[str], dates: pd.DatetimeIndex) -> dict[str, pd.DataFrame]:
@@ -340,8 +340,8 @@ def test_pipeline_run_with_local_rqdata_assets_smoke(tmp_path, monkeypatch):
     def fail_remote_fundamentals(*_args, **_kwargs):
         raise AssertionError("remote fundamentals should not be called in local asset smoke test")
 
-    monkeypatch.setattr("csml.data_interface._init_rqdatac_runtime", fail_init)
-    monkeypatch.setattr("csml.data_providers._fetch_daily_rqdata", fail_remote_daily)
+    monkeypatch.setattr("cstree.data_interface._init_rqdatac_runtime", fail_init)
+    monkeypatch.setattr("cstree.data_providers._fetch_daily_rqdata", fail_remote_daily)
     monkeypatch.setattr(DataInterface, "fetch_fundamentals", fail_remote_fundamentals)
 
     output_dir = tmp_path / "runs"

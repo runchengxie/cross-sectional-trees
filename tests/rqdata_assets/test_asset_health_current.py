@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pandas as pd
 import yaml
 
-from csml import data_providers
-from csml.data_tools import rqdata_assets
+from cstree import data_providers
+from cstree.data_tools import rqdata_assets
 
 
 def test_inspect_hk_asset_health_reports_stale_symbols_and_ffill_candidates(tmp_path, monkeypatch):

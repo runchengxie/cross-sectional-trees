@@ -1,9 +1,9 @@
-from csml.pipeline.eval import _warn_if_delay_exit_lag
-from csml.pipeline.stats import _warn_if_purge_too_small
+from cstree.pipeline.eval import _warn_if_delay_exit_lag
+from cstree.pipeline.stats import _warn_if_purge_too_small
 
 
 def test_warn_if_purge_too_small_emits_warning(caplog):
-    caplog.set_level("WARNING", logger="csml")
+    caplog.set_level("WARNING", logger="cstree")
     _warn_if_purge_too_small(
         purge_days_cfg=0,
         purge_days=0,
@@ -18,7 +18,7 @@ def test_warn_if_purge_too_small_emits_warning(caplog):
 
 
 def test_warn_if_purge_too_small_skips_for_default_behavior(caplog):
-    caplog.set_level("WARNING", logger="csml")
+    caplog.set_level("WARNING", logger="cstree")
     _warn_if_purge_too_small(
         purge_days_cfg=None,
         purge_days=6,
@@ -29,7 +29,7 @@ def test_warn_if_purge_too_small_skips_for_default_behavior(caplog):
 
 
 def test_warn_if_delay_exit_lag_emits_warning(caplog):
-    caplog.set_level("WARNING", logger="csml")
+    caplog.set_level("WARNING", logger="cstree")
     _warn_if_delay_exit_lag(
         label_prefix="[test] ",
         exit_price_policy="delay",
@@ -47,7 +47,7 @@ def test_warn_if_delay_exit_lag_emits_warning(caplog):
 
 
 def test_warn_if_delay_exit_lag_skips_non_delay_policy(caplog):
-    caplog.set_level("WARNING", logger="csml")
+    caplog.set_level("WARNING", logger="cstree")
     _warn_if_delay_exit_lag(
         label_prefix="",
         exit_price_policy="strict",

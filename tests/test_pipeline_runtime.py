@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from csml.pipeline.dates import _build_trade_date_slices
-from csml.pipeline.runtime import _prepare_split_context
+from cstree.pipeline.dates import _build_trade_date_slices
+from cstree.pipeline.runtime import _prepare_split_context
 
 
 def test_prepare_split_context_uses_reference_trade_calendar_for_rebalance_gap():

@@ -4,8 +4,8 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml import pipeline
-from csml.data_interface import DataInterface
+from cstree import pipeline
+from cstree.data_interface import DataInterface
 
 
 def _base_config(tmp_path):
@@ -99,7 +99,7 @@ def test_pipeline_warns_relative_end_date_when_live_disabled(tmp_path, monkeypat
     config = _base_config(tmp_path)
     config_path = _write_config(tmp_path, config)
 
-    caplog.set_level("WARNING", logger="csml")
+    caplog.set_level("WARNING", logger="cstree")
     with pytest.raises(SystemExit):
         pipeline.run(str(config_path))
 
@@ -115,7 +115,7 @@ def test_pipeline_relative_end_date_warning_suppressed_when_live_enabled(tmp_pat
     config["live"] = {"enabled": True, "train_mode": "full"}
     config_path = _write_config(tmp_path, config)
 
-    caplog.set_level("WARNING", logger="csml")
+    caplog.set_level("WARNING", logger="cstree")
     with pytest.raises(SystemExit):
         pipeline.run(str(config_path))
 

@@ -5,7 +5,7 @@ import pytest
 
 
 MERGE_SCRIPT = importlib.reload(
-    importlib.import_module("csml.research.hk_selected_provider_valuation_merge")
+    importlib.import_module("cstree.research.hk_selected_provider_valuation_merge")
 )
 
 

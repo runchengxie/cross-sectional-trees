@@ -19,7 +19,7 @@
 如果你把产物根目录外置到 repo 之外，上面这些路径会整体跟着新根目录移动。当前支持三种入口：
 
 * 配置：`paths.artifacts_root`
-* 环境变量：`CSTREE_ARTIFACTS_ROOT`（`CSML_ARTIFACTS_ROOT` 仍作为兼容 fallback）
+* 环境变量：`CSTREE_ARTIFACTS_ROOT`
 * CLI：`--artifacts-root`
 
 本页示例仍统一写成 `artifacts/...`，只是为了说明目录结构，不代表根目录必须留在仓库内。
@@ -165,7 +165,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `cstree data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新。
 
-如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` / `CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
+如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
 
 用途：
 
@@ -194,7 +194,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 这类目录由 `cstree data materialize` 生成，目标是把 raw / derived 输入转成更适合横截面查询和聚合的分析层。
 
-如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` / `CSML_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认输出根目录会随新的产物根目录一起派生；只有显式传了 `--out-root` 时才会覆盖。
+如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认输出根目录会随新的产物根目录一起派生；只有显式传了 `--out-root` 时才会覆盖。
 
 目录结构：
 

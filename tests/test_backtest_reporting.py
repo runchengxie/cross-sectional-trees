@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from csml.pipeline.backtest_reporting import (
+from cstree.pipeline.backtest_reporting import (
     build_backtest_report,
     build_benchmark_compare_summary_frame,
 )

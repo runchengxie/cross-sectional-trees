@@ -49,7 +49,6 @@ EXPECTED_DEV_TEST_TOKENS = [
     "scripts/dev/run_tests.sh integration",
     "scripts/dev/run_tests.sh coverage",
     "CSTREE_RUN_PROVIDER_INTEGRATION=1",
-    "CSML_RUN_PROVIDER_INTEGRATION=1",
     "不完全等同于在 CI 环境下的完整复现",
 ]
 EXPECTED_DEV_TEST_MATRIX_TOKENS = [
@@ -88,19 +87,14 @@ EXPECTED_README_PUBLIC_CLI_TOKENS = [
 ]
 EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "## 入口分层与稳定性",
-    "## 命名空间迁移策略",
+    "## 命名空间策略",
     "公开主线 CLI",
     "公开但非 CLI 模块工具",
     "`python -m cstree.release_tools.package_assets`",
     "`python -m cstree.research.hk_financial_details`",
     "`python -m cstree.research.hk_intraday_download`",
-    "`python -m csml.release_tools...`",
-    "`python -m csml.research...`",
     "`CSTREE_*`",
-    "`CSML_*`",
-    "当前 `0.x` 兼容窗口",
-    "不默认发出 deprecation warning",
-    "breaking-change proposal",
+    "`src/cstree/`",
     "`scripts/dev/run_tests.sh`",
     "不是 `cstree` CLI 子命令",
 ]
