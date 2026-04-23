@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-import csml.config_utils as config_utils
-from csml.config_utils import resolve_pipeline_config, resolve_pipeline_filename
-from csml.data_tools import build_hk_connect_universe, build_hk_daily_asset_universe
+import cstree.config_utils as config_utils
+from cstree.config_utils import resolve_pipeline_config, resolve_pipeline_filename
+from cstree.data_tools import build_hk_connect_universe, build_hk_daily_asset_universe
 
 
 def test_resolve_pipeline_config_supports_repo_relative_extends_outside_repo_root(

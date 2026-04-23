@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from csml.data_interface import DataInterface
+from cstree.data_interface import DataInterface
 
 
 def test_data_interface_rejects_non_hk_market(tmp_path):
@@ -69,7 +69,7 @@ def test_fetch_fundamentals_can_suppress_retry_warning_logs(tmp_path, monkeypatc
     def _raise(*_args, **_kwargs):
         raise ValueError("order_book_ids: at least one valid instrument expected, got none")
 
-    monkeypatch.setattr("csml.data_interface.fetch_fundamentals", _raise)
+    monkeypatch.setattr("cstree.data_interface.fetch_fundamentals", _raise)
     caplog.set_level("WARNING", logger="csml")
 
     with pytest.raises(ValueError, match="order_book_ids"):

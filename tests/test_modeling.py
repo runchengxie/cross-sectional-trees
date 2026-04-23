@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from csml.modeling import (
+from cstree.modeling import (
     build_model,
     feature_importance_frame,
     fit_model,

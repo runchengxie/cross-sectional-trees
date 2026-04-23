@@ -37,7 +37,7 @@
 需要单独注意的一点：
 
 * 研究默认读取的 `daily` alias 现在是 `hk_all_daily_clean_latest`；`hk_all_daily_latest` 继续保留原始日线底座，给资产巡检、patch merge 和 clean-layer 重建用。
-* `src/csml/release_tools/package_assets.py` 里的 preset 是静态快照名，不是 alias 解析器。
+* `python -m cstree.release_tools.package_assets` 里的 preset 是静态快照名，不是 alias 解析器。
 * `hk_full` / `hk_connect` preset 里的 `daily_snapshot` 是静态名字，会落后于 alias；打包前要查状态矩阵。
 * `southbound` 和 `financial_details` 现在也能打成独立 part；`exchange_rate` 默认走短窗 probe snapshot，长窗是否完成要查状态矩阵。
 * 如果你要打包“当前 alias 指向的版本”，请显式传 `--daily-snapshot`、`--instruments-file`、`--pit-snapshot`、`--exchange-rate-snapshot`、`--southbound-snapshot`、`--financial-details-snapshot` 等参数，不要默认 preset 会自动前进。

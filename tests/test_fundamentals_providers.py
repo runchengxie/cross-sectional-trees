@@ -4,7 +4,7 @@ import types
 import pandas as pd
 import pytest
 
-from csml import data_providers
+from cstree import data_providers
 
 
 class _FakeRQDataClient:

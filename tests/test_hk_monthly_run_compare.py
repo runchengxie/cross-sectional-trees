@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from csml.research.hk_monthly_run_compare import main
+from cstree.research.hk_monthly_run_compare import main
 
 
 def _write_series(path: Path, *, dates: pd.DatetimeIndex, column: str, values: list[float]) -> None:

@@ -6,9 +6,9 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml.data_tools import rqdata_assets
-from csml.research.hk_intraday_download import flatten_intraday_payload, normalize_hk_symbols
-from csml.research.hk_intraday_slippage_report import (
+from cstree.data_tools import rqdata_assets
+from cstree.research.hk_intraday_download import flatten_intraday_payload, normalize_hk_symbols
+from cstree.research.hk_intraday_slippage_report import (
     build_daily_metrics_from_inputs,
     build_liquidity_bucket_summary,
     compute_daily_slippage_metrics,

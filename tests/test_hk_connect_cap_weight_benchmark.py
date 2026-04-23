@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from csml.research.hk_connect_cap_weight_benchmark import main
+from cstree.research.hk_connect_cap_weight_benchmark import main
 
 
 def _write_symbol_parquet(root: Path, symbol: str, frame: pd.DataFrame) -> None:

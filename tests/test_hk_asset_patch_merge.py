@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from csml.research.hk_asset_patch_merge import merge_asset_patch
+from cstree.research.hk_asset_patch_merge import merge_asset_patch
 
 
 def _write_daily_snapshot(root: Path, name: str, *, end_date: str) -> Path:

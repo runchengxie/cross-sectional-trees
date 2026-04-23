@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml.research import feature_evidence
+from cstree.research import feature_evidence
 
 
 def test_generate_ablation_jobs_writes_baseline_and_minus_configs(tmp_path):

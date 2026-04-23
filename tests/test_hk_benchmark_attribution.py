@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import pytest
 
-from csml.research.hk_benchmark_attribution import main
+from cstree.research.hk_benchmark_attribution import main
 
 
 def _write_symbol_parquet(root: Path, symbol: str, frame: pd.DataFrame) -> None:

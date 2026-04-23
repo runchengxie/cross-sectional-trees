@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import pytest
 
-from csml.data_interface import DataInterface
+from cstree.data_interface import DataInterface
 
 
 @pytest.mark.integration

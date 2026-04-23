@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml.research import summarize_runs
+from cstree.research import summarize_runs
 
 
 def _write_run(run_dir, summary, config) -> None:

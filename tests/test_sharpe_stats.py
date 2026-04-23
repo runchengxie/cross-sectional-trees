@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from csml.sharpe_stats import (
+from cstree.sharpe_stats import (
     annualized_sharpe_to_periodic,
     annualized_variance_to_periodic,
     deflated_sharpe_ratio,

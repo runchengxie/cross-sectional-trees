@@ -2,7 +2,7 @@ import json
 
 import yaml
 
-from csml.research import promotion_gate
+from cstree.research import promotion_gate
 
 
 def _summary(*, sharpe=1.0, wf=0.03, final_ic=0.02, constant=False):
@@ -117,4 +117,3 @@ def test_promotion_gate_distinguishes_reviewable_and_non_comparable(tmp_path):
     assert reviewable["soft_failures"] == ["min_backtest_sharpe_delta"]
     assert non_comparable["promotion_status"] == "non-comparable"
     assert non_comparable["comparability_mismatches"] == ["label.horizon_days"]
-

@@ -1,6 +1,6 @@
 import pytest
 
-from csml.execution import (
+from cstree.execution import (
     BpsCostModel,
     ExitPolicy,
     NoCostModel,

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from csml.research import construction_grid
+from cstree.research import construction_grid
 
 
 def _scored_data() -> pd.DataFrame:
@@ -137,4 +137,3 @@ def test_construction_grid_fails_on_missing_required_column(tmp_path):
 
     with pytest.raises(SystemExit, match="Missing required columns"):
         construction_grid.build_construction_grid(cfg, config_dir=tmp_path)
-

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from csml.artifacts import (
+from cstree.artifacts import (
     resolve_artifacts_root,
     resolve_configured_artifacts_root,
     resolve_metadata_db_path,

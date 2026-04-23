@@ -4,7 +4,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from csml import cli
+from cstree import cli
 
 
 MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")

@@ -2,18 +2,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import csml.metrics as metrics_mod
-from csml.metrics import (
+import cstree.metrics as metrics_mod
+from cstree.metrics import (
     daily_ic_series,
-    summarize_ic,
-    quantile_returns,
-    estimate_turnover,
-    summarize_active_returns,
-    regression_error_metrics,
-    hit_rate,
-    topk_positive_ratio,
     assign_daily_quantile_bucket,
     bucket_ic_summary,
+    estimate_turnover,
+    hit_rate,
+    quantile_returns,
+    regression_error_metrics,
+    summarize_active_returns,
+    summarize_ic,
+    topk_positive_ratio,
 )
 
 

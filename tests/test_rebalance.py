@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from csml.rebalance import estimate_rebalance_gap, get_rebalance_dates
+from cstree.rebalance import estimate_rebalance_gap, get_rebalance_dates
 
 
 def test_get_rebalance_dates_month_end():

@@ -1,7 +1,7 @@
 import pandas as pd
 import yaml
 
-from csml.research import benchmark_ladder
+from cstree.research import benchmark_ladder
 
 
 def _write_returns(path, column, dates, values):
@@ -94,4 +94,3 @@ def test_benchmark_ladder_cli_writes_csv(tmp_path):
     assert output.exists()
     rows = pd.read_csv(output)
     assert rows.iloc[0]["benchmark_name"] == "primary"
-

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from csml.transform import (
+from cstree.transform import (
     apply_cross_sectional_series_transform,
     apply_cross_sectional_transform,
     apply_score_postprocess,

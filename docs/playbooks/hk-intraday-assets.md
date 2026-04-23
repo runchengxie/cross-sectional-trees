@@ -4,7 +4,7 @@
 本页不解决什么：不代替 `docs/cli.md` 的命令参数说明，也不直接给出生产级 broker TCA 参数。\
 适合谁：准备继续补 HK 分钟线、复用现有 `5m` parquet、或想知道“这批数据现在能拿来做什么”的读者。\
 读完你会得到什么：已核对的 intraday 入口、provider 边界、经验滑点报告位置，以及继续下载前要先核对哪些东西。\
-相关页面：`docs/playbooks/hk-rqdata-status.md`、`docs/concepts/execution-costs.md`、`docs/rqdata/README.md`、`src/csml/research/hk_intraday_download.py`、`src/csml/research/hk_intraday_slippage_report.py`
+相关页面：`docs/playbooks/hk-rqdata-status.md`、`docs/concepts/execution-costs.md`、`docs/rqdata/README.md`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_intraday_slippage_report`
 
 页面性质：`operational-snapshot`\
 资产与报告核对时间：`2026-04-03`（Asia/Shanghai）\
@@ -100,7 +100,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 
 ## checkpoint / resume 规则
 
-`src/csml/research/hk_intraday_download.py` 现在已经支持真正的断点续传：
+公开入口 `python -m cstree.research.hk_intraday_download` 现在已经支持真正的断点续传：
 
 * 下载时每个 batch 先落到 `*.parts/batch_XXXX.parquet`
 * `--resume` 会跳过已经存在的 batch part
@@ -116,7 +116,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 这两点很重要：
 
 * 如果实例中途挂掉，现在可以从 part 目录继续，不需要整段重下。
-* `src/csml/research/hk_intraday_slippage_report.py` 和 `cstree rqdata inspect-hk-intraday-health` 现在都会优先使用同名 `.parts/` 目录，避免整块读取巨大的最终 parquet，降低全市场大文件导致内存爆掉的风险。
+* `python -m cstree.research.hk_intraday_slippage_report` 和 `cstree rqdata inspect-hk-intraday-health` 现在都会优先使用同名 `.parts/` 目录，避免整块读取巨大的最终 parquet，降低全市场大文件导致内存爆掉的风险。
 
 ## 已核对产出的滑点校准结果
 

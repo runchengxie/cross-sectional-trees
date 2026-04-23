@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from csml.backtest import backtest_topk
-from csml.execution import build_execution_model
+from cstree.backtest import backtest_topk
+from cstree.execution import build_execution_model
 
 
 def test_backtest_initial_cost_applied():

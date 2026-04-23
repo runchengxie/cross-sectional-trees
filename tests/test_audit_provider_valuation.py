@@ -4,12 +4,12 @@ import json
 import pandas as pd
 import yaml
 
-from csml.data_providers import _cache_tag, _fundamentals_cache_file
+from cstree.data_providers import _cache_tag, _fundamentals_cache_file
 
 
 def _load_audit_module():
     return importlib.reload(
-        importlib.import_module("csml.research.hk_selected_provider_valuation_audit")
+        importlib.import_module("cstree.research.hk_selected_provider_valuation_audit")
     )
 
 

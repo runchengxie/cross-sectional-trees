@@ -31,7 +31,12 @@ DOCUMENTED_WRAPPERS = DOCUMENTED_RELEASE_WRAPPERS + DOCUMENTED_RESEARCH_WRAPPERS
     "module_path",
     (
         "artifacts",
+        "current_assets",
+        "data_interface",
+        "data_providers",
         "metrics",
+        "execution",
+        "modeling",
         "pipeline",
         "liveops.alloc_hk",
         "data_tools.rqdata_assets",
