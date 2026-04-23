@@ -1,8 +1,8 @@
-from csml import cli
-from csml.liveops import alloc as alloc_tool
-from csml.liveops import alloc_hk as alloc_hk_tool
-from csml.liveops import holdings as holdings_tool
-from csml.liveops import snapshot as snapshot_tool
+from cstree import cli
+from cstree.liveops import alloc as alloc_tool
+from cstree.liveops import alloc_hk as alloc_hk_tool
+from cstree.liveops import holdings as holdings_tool
+from cstree.liveops import snapshot as snapshot_tool
 
 
 def test_cli_parses_liveops_commands():

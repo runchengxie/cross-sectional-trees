@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from csml.data_tools import backup_data
+from cstree.data_tools import backup_data
 
 
 def test_backup_data_copies_selected_paths_and_writes_manifest(tmp_path, monkeypatch):

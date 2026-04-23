@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pandas as pd
 import yaml
 
-from csml.data_tools import data_warehouse
+from cstree.data_tools import data_warehouse
 
 
 def _write_yaml(path: Path, payload: dict) -> None:

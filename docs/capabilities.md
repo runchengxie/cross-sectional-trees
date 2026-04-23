@@ -52,7 +52,7 @@
 
 * 新示例优先使用 `cstree` CLI、`python -m cstree...` 模块路径、`import cstree...` 和 `CSTREE_*` 环境变量。
 * `csml` CLI、`python -m csml...` 模块路径、`import csml` 和 `CSML_*` 环境变量在当前 `0.x` 兼容窗口内继续工作。
-* 本阶段不默认发出 deprecation warning，避免破坏自动化脚本的 stderr / warning 策略；未来如需移除 `csml` 兼容面，必须先提交单独 breaking-change proposal，写清移除版本、迁移路径、测试和 release note 要求。
+* 本阶段不默认发出 deprecation warning，避免破坏自动化脚本的 stderr / warning 策略；`csml` 兼容面最早只能在 `1.0.0` 或更高版本移除。未来如需移除，必须先提交单独 breaking-change proposal，写清移除版本、迁移路径、测试、rollback 和 release note 要求。
 
 模块级入口 inventory：
 

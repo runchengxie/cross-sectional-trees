@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from csml.liveops import snapshot
+from cstree.liveops import snapshot
 
 
 def test_snapshot_runs_pipeline_then_holdings(monkeypatch):

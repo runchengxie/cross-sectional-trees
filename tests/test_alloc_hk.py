@@ -7,7 +7,7 @@ import types
 import pandas as pd
 import pytest
 
-from csml.liveops import alloc_hk
+from cstree.liveops import alloc_hk
 
 
 class _FakeInstrument:

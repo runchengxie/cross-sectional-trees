@@ -1,8 +1,8 @@
 import pytest
 import pandas as pd
 
-from csml.data_tools import build_hk_connect_universe as hk_universe
-from csml.data_tools import build_hk_daily_asset_universe as hk_daily_assets
+from cstree.data_tools import build_hk_connect_universe as hk_universe
+from cstree.data_tools import build_hk_daily_asset_universe as hk_daily_assets
 
 
 @pytest.mark.parametrize(

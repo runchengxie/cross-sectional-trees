@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pandas as pd
 import yaml
 
-from csml.data_tools import rqdata_assets
+from cstree.data_tools import rqdata_assets
 
 
 def test_build_hk_daily_clean_layer_fixes_supported_anomalies_and_preserves_base_files(

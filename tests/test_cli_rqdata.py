@@ -1,6 +1,6 @@
-from csml import cli
 from csml.cli import rqdata as cli_rqdata
-from csml.data_tools import rqdata_assets as rqdata_assets_tool
+from cstree import cli
+from cstree.data_tools import rqdata_assets as rqdata_assets_tool
 
 
 def test_cli_parses_rqdata_quota_pretty():

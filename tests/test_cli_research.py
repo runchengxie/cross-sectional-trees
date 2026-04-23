@@ -1,13 +1,13 @@
-from csml import cli
-from csml.commands import linear_sweep as sweep_tool
-from csml.commands import run_grid as grid_tool
-from csml.commands import tune as tune_tool
-from csml.data_tools import backup_data as backup_data_tool
-from csml.research import benchmark_ladder as benchmark_ladder_tool
-from csml.research import construction_grid as construction_grid_tool
-from csml.research import feature_evidence as feature_evidence_tool
-from csml.research import promotion_gate as promotion_gate_tool
-from csml.research import summarize_runs as summarize_tool
+from cstree import cli
+from cstree.commands import linear_sweep as sweep_tool
+from cstree.commands import run_grid as grid_tool
+from cstree.commands import tune as tune_tool
+from cstree.data_tools import backup_data as backup_data_tool
+from cstree.research import benchmark_ladder as benchmark_ladder_tool
+from cstree.research import construction_grid as construction_grid_tool
+from cstree.research import feature_evidence as feature_evidence_tool
+from cstree.research import promotion_gate as promotion_gate_tool
+from cstree.research import summarize_runs as summarize_tool
 
 
 def test_cli_parses_research_commands():
