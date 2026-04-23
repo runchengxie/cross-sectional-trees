@@ -1,9 +1,9 @@
 # HK Monthly Benchmark 梯子与强基准归因（2026-04-05）
 
-本页解决什么：解释当前 HK monthly 线里“为什么自制 benchmark 如此强”、它强在 universe 还是强在 cap-weight，以及这些发现对策略判断意味着什么。  
+本页解决什么：解释当前 HK monthly 线里“为什么自制 benchmark 如此强”、它强在研究股票池还是强在市值加权，以及这些发现对策略判断意味着什么。
 本页不解决什么：不替代 `current-state` 页面，也不把这轮结论误写成“monthly 主线已经验证完成”或“行业归因已经完全干净”。  
-适合谁：已经看到 `selected_capw` 压过策略和多条 comparator，想知道这到底说明了什么的人。  
-读完你会得到什么：一套 benchmark ladder 的解释框架、一份基于真实报表的成分/行业/集中度结论，以及为什么当前不该把信号直接反过来买。  
+适合谁：已经看到 `selected_capw` 压过策略和多条对照路线，想知道这到底说明了什么的人。
+读完你会得到什么：一套基准梯子（benchmark ladder）的解释框架、一份基于真实报表的成分/行业/集中度结论，以及为什么当前不该把信号直接反过来买。
 相关页面：`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-provider-vs-pit-20260330.md`、`docs/research/notes/hk-monthly-industry-treatment-20260404.md`、`docs/research/README.md`、`docs/concepts/benchmark-protocol.md`
 
 页面性质：`research-note`  
@@ -17,27 +17,27 @@
 这轮 benchmark ladder 和 attribution 最重要的结论只有三条：
 
 * 当前 monthly 策略几乎没有输给 `selected_eqw`，但明显输给 `selected_capw`。
-* 所以“自制 benchmark 很强”的主要来源，不是 universe 本身全面碾压策略，而是同一 research universe 里 **cap-weight / mega-cap 暴露** 很强。
-* 这组证据不支持把信号直接反过来买；它更像在提醒你：当前短板主要在组合构造和大市值暴露，而不是横截面信号方向。
+* “自制 benchmark 很强”的主要来源是同一研究股票池里的 **市值加权 / 大市值龙头暴露**；股票池本身没有全面碾压策略。
+* 这组证据不支持把信号直接反过来买；当前短板主要在组合构造和大市值暴露，横截面信号方向暂未被证伪。
 
 一句话收口：
 
-* **当前 monthly 线更像“信号方向基本对，但没有吃满大票龙头行情”；benchmark 的强势主要来自 cap-weight 集中度，而不是神秘 alpha。**
+* **当前 monthly 线更像“信号方向基本对，但没有吃满大票龙头行情”；benchmark 的强势主要来自市值加权集中度，不需要先假设有一条神秘 alpha。**
 
 ## 2. 这轮 benchmark ladder 到底比了什么
 
-当前 monthly 主线默认对照的 benchmark 可以分成四层：
+当前 monthly 主线默认对照的 benchmark 可以分成四层。这里的 benchmark 指“用来比较策略表现的基准组合”。
 
 * `hk_02800`
   * 香港宽基 ETF 代理
 * `hk_03432`
-  * 港股通主题 ETF comparator
+  * 港股通主题 ETF 对照
 * `hk_connect_full_capw`
   * 全港股通大池子 + 市值加权
 * `hk_selected_pit_research_eqw` / `hk_selected_pit_research_capw`
   * 同一 research universe 下的等权 / 市值加权对照
 
-这组设计的目的不是“多放几条 benchmark 看着热闹”，而是要把问题拆开：
+这组设计的目的，是把问题拆成三层：
 
 * 相对 `02800` / `03432`，回答“这条主动策略至少有没有强过市场代理或港股通主题 ETF”
 * 相对 `hk_connect_full_capw`，回答“这条策略有没有明显强过整个港股通池 beta”
@@ -49,7 +49,7 @@
 
 * `artifacts/runs/hk_sel_xgb_reg_tr_close_exec_balanced_local_20260405_100857_91e4bb6b/`
 
-对齐结果里，最值得记的不是绝对收益，而是下面这组相对关系：
+对齐结果最值得记的是下面这组相对关系：
 
 * 相对 `hk_selected_pit_research_eqw`
   * `active_total_return = -1.04%`
@@ -70,18 +70,7 @@
   * 但只有 `15` 个对齐期
   * 结论：可看，但证据强度明显低于前面几条
 
-这组结果最关键的解释是：
-
-* 策略并不是“连同 universe 的等权组合都打不过”
-* 真正把差距拉开的，是 `selected_capw`
-
-所以当前最合理的解释不是：
-
-* “信号全反了”
-
-而是：
-
-* “benchmark 吃到了 research universe 里大市值龙头权重放大的红利，而策略的 `top20 equal-weight` 没吃满这段行情”
+这组结果的关键解释是：策略相对 `selected_eqw` 基本打平，真正拉开差距的是 `selected_capw`。更直接地说，benchmark 吃到了同一研究股票池里大市值龙头权重放大的红利，而策略的 `top20 equal-weight` 没吃满这段行情。
 
 ## 4. Attribution 告诉了什么
 
@@ -90,7 +79,7 @@
 * `artifacts/reports/benchmark_attribution/hk_selected_pit_research_capw_20260405_v2/`
 * `artifacts/reports/benchmark_attribution/hk_selected_pit_research_eqw_20260405_v2/`
 
-这里的口径不是策略 OOS 对齐窗口，而是 benchmark 自身的完整历史：
+这里看的是 benchmark 自身完整历史；策略 OOS 对齐窗口只用于上一节的策略相对比较：
 
 * `87` 个周期
 * `selected_capw` 总收益 `125.5%`
@@ -114,8 +103,7 @@
 
 这已经足够说明：
 
-* `selected_capw` 不是“同一池子更平滑的版本”
-* 它其实是一个明显更集中、明显更偏头部大票的组合
+* `selected_capw` 是一个明显更集中、明显更偏头部大票的组合，不能理解成同一池子的平滑版本。
 
 ### 4.2 头部成分贡献
 
@@ -151,7 +139,7 @@
 
 这和你从成分上看到的大票金融/龙头行情是吻合的。
 
-不过行业结论要加 caveat：
+行业结论需要加一层边界：
 
 * 当前行业资产里有不少历史前缀是空值
 * 所以行业归因能看，但**不如成分集中度结论那么硬**
@@ -165,27 +153,22 @@
 * `long-short` 为负
 * 与等权 benchmark 也明显拉不开，甚至系统性更差
 
-但当前 monthly 线不是这个样子：
+当前 monthly 线目前看到的是另一组证据：
 
 * 测试期 `IC` 是正的
 * 高分组收益优于低分组
-* 相对 `selected_eqw` 几乎打平，而不是大幅落后
+* 相对 `selected_eqw` 几乎打平，没有大幅落后
 
-所以当前更合理的理解是：
-
-* 模型方向并没有被这组证据推翻
-* 真正值得优先解释的是：
-  * 为什么 `selected_capw` 如此强
-  * 为什么 `top20 equal-weight` 没吃满这段大票行情
+当前更合理的理解是：模型方向没有被这组证据推翻；下一步应优先解释 `selected_capw` 为什么强，以及 `top20 equal-weight` 为什么没吃满这段大票行情。
 
 这条边界很重要，因为它直接决定下一步动作：
 
-* 不是先做 reverse-signal
-* 而是先做组合构造、size 暴露和 benchmark 解释层的工作
+* 暂不优先做 reverse-signal。
+* 先做组合构造、size 暴露和 benchmark 解释层的工作。
 
 ## 6. `Unknown` 为什么这么多
 
-当前行业归因里 `Unknown` 比例不低，不是因为行业资产没有更新到最近，而是因为：
+当前行业归因里 `Unknown` 比例不低，主因是行业标签资产存在历史前缀缺口：
 
 * `industry_labels_m.parquet` 覆盖到 `2026-04-02`
 * 但很多大票在相当长一段历史里，`first_industry_name` 本身就是空值
@@ -201,10 +184,7 @@
 * `03690.HK`
   * 上市后到 `2021-11-30` 之间也有前缀空值
 
-这意味着：
-
-* 当前 `Unknown` 不是“随机少数漏标”
-* 而是行业标签资产里存在系统性的历史前缀缺口
+这意味着当前 `Unknown` 更像系统性的历史前缀缺口，而非随机少数漏标。
 
 所以现在更稳的说法应该是：
 
@@ -217,9 +197,9 @@
 
 ### 7.1 它强化了什么
 
-* `M-PIT + no_ret + bx20 / be10` 仍然值得作为当前 monthly PIT candidate 继续推进
-* `provider` 仍然是实现 comparator，而不是自然升级成研究主线
-* “为什么 benchmark 很强”已经不再是抽象疑问，而是有了具体解释框架
+* `M-PIT + no_ret + bx20 / be10` 仍然值得作为当前 monthly PIT 候选继续推进
+* `provider` 仍然是实现对照，不自然升级成研究主线
+* “为什么 benchmark 很强”已经有了具体解释框架
 
 ### 7.2 它降低了什么优先级
 
@@ -238,7 +218,7 @@
 
 ## 8. 这页现在应该怎么用
 
-如果你今天重新进入 monthly 研究，这页最合理的角色不是替代 `current-state`，而是：
+如果你今天重新进入 monthly 研究，这页的角色是解释 benchmark，不替代 `current-state`：
 
 * 先读 `hk-monthly-current-state-20260330.md`
 * 再读本页，把“为什么 benchmark 很强”这件事看清楚
@@ -252,6 +232,6 @@
 
 ## 9. 一句话结论
 
-当前 monthly 线真正值得记住的，不是“自制 benchmark 强得离谱”，而是：
+当前 monthly 线真正值得记住的是：
 
-* **它强，主要强在同一 research universe 里的 cap-weight / mega-cap 集中度；策略当前更像输在构造和大票暴露，而不是输在信号方向。**
+* **自制 benchmark 的强势主要来自同一研究股票池里的市值加权 / 大市值龙头集中度；策略当前更像输在构造和大票暴露，信号方向暂未被证伪。**

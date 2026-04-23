@@ -28,18 +28,18 @@
 | 角色 | 当前定位 | 现在怎么用 |
 | --- | --- | --- |
 | `ranker h12_w16 + close + balanced execution` | 默认主线 | 仍是 quarterly 默认锚点；它在现有证据里最稳 |
-| `reg_zscore h12_w16 + tr_close + balanced execution` | 第一候选路线（challenger） | 保留为最值得跟踪的候选；最近 OOS 亮点不能直接覆盖前段弱证据 |
+| `reg_zscore h12_w16 + tr_close + balanced execution` | 第一候选路线 | 保留为最值得跟踪的候选；最近 OOS 亮点不能直接覆盖前段弱证据 |
 | `raw-scale dedup + groupcap3` | 结构候选 / 结构探针 | 主要回答组合修形和持仓稳定性问题，不直接等同于“信号更强” |
-| `xgb_regressor + operating_margin` | 纯 PIT 基本面辅助路线（sidecar） | 作为 benchmark / challenger 线保留，不直接替掉当前 hybrid 主线 |
-| `provider_dense` variant | 数据边界配套变体 | 仅用于 coverage-sensitive probe 和 health gate，不是新的 quarterly 默认配置 |
+| `xgb_regressor + operating_margin` | 纯 PIT 基本面辅助路线 | 作为独立对照和候选路线保留，不直接替掉当前 hybrid 主线 |
+| `provider_dense` variant | 数据边界配套变体 | 仅用于覆盖率敏感的探针和健康检查，不作为新的 quarterly 默认配置 |
 
 ## 3. 为什么现在是这套分工
 
-* quarterly 的主问题仍然是 `regime shift / concept drift`，不是“模型名字还不够多”；这一点没有被后续 follow-up 推翻。
-* `tr_close` 依然是路线相关结论，不能一刀切设为默认值：它对 ranker 主线证据不足，对 `reg_zscore` challenger 才是净正向加成。
+* quarterly 的主问题仍然是 `regime shift / concept drift`，也就是市场阶段和信号含义变化；后续 follow-up 没有把问题指向“模型种类不够多”。
+* `tr_close` 依然是路线相关结论，不能一刀切设为默认值：它对 ranker 主线证据不足，对 `reg_zscore` 候选路线才是净正向加成。
 * 固定分数组合网格已经说明 construction 值得做，也给出了 shortlist，但还没有给出足够干净的证据去替掉主线默认。
 * 纯 PIT 基本面路线值得保留。它回答的是“基本面本身有没有独立信息量”，不承担替换当前 hybrid 主线的结论。
-* `2026-04-11` 的 provider coverage note 已经把 freshness warning 的性质说清楚：它更像 provider sparse 字段导致的 coverage caveat，不是 build / dedup bug；因此 `provider_dense` 只应作为覆盖率敏感场景的变体，不应回写成新默认。
+* `2026-04-11` 的 provider coverage note 已经把 freshness warning 的性质说清楚：它更像 provider sparse 字段导致的数据覆盖边界，build / dedup bug 不构成主因；因此 `provider_dense` 只应作为覆盖率敏感场景的变体，不应回写成新默认。
 
 ## 4. 当前最值得记住的边界
 
@@ -51,14 +51,14 @@
 ## 5. 当前不再优先做什么
 
 * 不回头把 `elasticnet` 当 quarterly 主线修复方案。
-* `tr_close` 在 challenger 上有效，不足以触发整个 quarterly 研究线重刷。
+* `tr_close` 在候选路线上有效，不足以触发整个 quarterly 研究线重刷。
 * 不继续围着已消费的最近 OOS 大扫价格口径、窗口和模型组合。
-* 不把 `provider_dense` 变体误写成新的 benchmark baseline。
+* 不把 `provider_dense` 变体误写成新的默认基准。
 
 ## 6. 下一步只做这 3 件事
 
-1. 冻结当前主线和 challenger 规格，把新的判断尽量留给后续前瞻样本，避免继续扩模型 zoo。
-2. 把 `raw-scale dedup + groupcap3` 继续当结构 challenger 使用，只在很小范围内看组合构造，不把 shortlist 直接升成默认。
+1. 冻结当前主线和候选路线规格，把新的判断尽量留给后续前瞻样本，避免继续扩模型 zoo。
+2. 把 `raw-scale dedup + groupcap3` 继续当结构候选使用，只在很小范围内看组合构造，不把 shortlist 直接升成默认。
 3. 在覆盖率敏感的 quarterly probe 里显式区分“默认 hybrid baseline”和“provider_dense coverage variant”，避免再把数据 caveat 和模型结论混在一起。
 
 ## 7. 推荐阅读顺序

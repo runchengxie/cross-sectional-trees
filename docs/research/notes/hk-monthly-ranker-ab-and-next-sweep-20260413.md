@@ -1,14 +1,14 @@
 # HK Monthly Ranker A/B 与下一轮探索设计（2026-04-13）
 
-> 状态提示：本页属于专题分析（`active deep-dive`），记录 monthly `no_ret` 族上的 ranker A/B、artifact 口径陷阱、ranker 原生小 sweep，以及后续固定分数组合网格。当前 monthly 默认入口仍是 [hk-monthly-current-state-20260330.md](./hk-monthly-current-state-20260330.md)。
+> 状态提示：本页属于专题分析（`active deep-dive`），记录 monthly `no_ret` 族上的排序模型 A/B、产物口径陷阱、ranker 原生小范围搜索，以及后续固定分数组合网格。当前 monthly 默认入口仍是 [hk-monthly-current-state-20260330.md](./hk-monthly-current-state-20260330.md)。
 
-本页解决什么：回答“把 round 4 gated winner 的 XGB 参数换成 ranker 后，比 regressor 和旧 ranker 好在哪里、差在哪里”，并记录第一波 ranker 原生小 sweep 与固定分数组合网格的结果。
+本页解决什么：回答“把 round 4 通过 CV gate 的 XGB 参数换成 ranker 后，比 regressor 和旧 ranker 好在哪里、差在哪里”，并记录第一波 ranker 原生小范围搜索与固定分数组合网格的结果。
 
 本页不解决什么：不把单次 ranker A/B 升级成新主线，不替代 `summary.json` / `config.used.yml`，也不重新解释季度 ranker 主线。
 
 适合谁：已经看过 `hk-monthly-pit-no-ret-tuning-follow-up-20260405.md`，并想决定 monthly 下一轮是继续调 regressor、ranker 还是 construction 的人。
 
-读完你会得到什么：一个可复现 A/B 结论、一个关于 `latest` artifact 的复现风险提醒、第一波 ranker 原生 sweep 的 shortlist、固定分数组合网格结果，以及当前执行层候选路线的初步归因风险。
+读完你会得到什么：一个可复现 A/B 结论、一个关于 `latest` 产物的复现风险提醒、第一波 ranker 原生小范围搜索的 shortlist、固定分数组合网格结果，以及当前执行层候选路线的初步归因风险。
 
 相关页面：[hk-monthly-current-state-20260330.md](./hk-monthly-current-state-20260330.md)、[hk-monthly-pit-no-ret-tuning-follow-up-20260405.md](./hk-monthly-pit-no-ret-tuning-follow-up-20260405.md)、[hk-monthly-benchmark-ladder-and-attribution-20260405.md](./hk-monthly-benchmark-ladder-and-attribution-20260405.md)、[hk-quarterly-benchmark-and-interpretation-20260405.md](./hk-quarterly-benchmark-and-interpretation-20260405.md)
 
@@ -26,8 +26,8 @@
 
 | 本页写法 | 含义 |
 | --- | --- |
-| gated winner | 通过当前 CV gate 的调参 winner |
-| ranker 原生 sweep | 按 ranker 自身参数空间做的小范围搜索 |
+| 通过 gate 的赢家（gated winner） | 通过当前 CV gate 的调参 winner |
+| ranker 原生小范围搜索（ranker 原生 sweep） | 按 ranker 自身参数空间做的小范围搜索 |
 | 固定分数组合网格 | 固定模型分数，只扫组合构造参数 |
 | 执行层候选 | 主要改善执行和组合层表现的候选路线 |
 | 带约束候选 | 带组合约束后仍有增量的候选路线 |
@@ -37,7 +37,7 @@
 这次 A/B 的最重要结论是：
 
 * monthly `no_ret` family 上，ranker 确实值得继续探索。
-* 直接把 round 4 gated regressor winner 的参数换成 `xgb_ranker + rank:pairwise`，还不是足够好的最终答案。
+* 直接把 round 4 gated regressor winner 的参数换成 `xgb_ranker + rank:pairwise`，还不足以成为最终答案。
 * ranker 的组合路径有亮点，但信号证据不够干净：
   * CV fold 覆盖更完整
   * walk-forward Sharpe 改善
@@ -49,23 +49,23 @@
 
 一句话收口：
 
-* **下一轮最值得做的是 ranker 原生小 sweep，不要继续把 regressor 的最优参数原样套给 ranker。**
+* **下一轮最值得做的是 ranker 原生小范围搜索；regressor 的最优参数不能原样套给 ranker。**
 
 第一波 ranker 原生小 sweep 跑完后，需要把结论更新为：
 
 * **ranker 原生调参已经找到一个更像样的 monthly 候选路线，但还不应直接升主线。**
 * 最强候选是 `trial_016`：`max_depth=2`、`min_child_weight=20`、`reg_lambda=10`、`reg_alpha=1.0`、`subsample=0.7`、`colsample_bytree=0.7`。
 * 它修掉了直接 ranker A/B 的两个硬伤：final OOS long-short 转正，final OOS turnover 明显下降。
-* 但它的 walk-forward IC mean 仍为负，说明还需要一次复跑 / 组合网格验证，不能只凭 final OOS Sharpe 升级。
+* 但它的 walk-forward IC mean 仍为负，还需要一次复跑 / 组合网格验证；final OOS Sharpe 不能单独作为升级依据。
 
 同口径复跑和固定分数组合网格跑完后，结论再更新一次：
 
-* `trial_016` 同口径复跑完全贴回原 run，说明它不是单次产物噪音。
+* `trial_016` 同口径复跑完全贴回原 run，说明结论可复现。
 * 组合网格的最强组合是 `k15_bx25_be12`：`top_k=15`、`buffer_exit=25`、`buffer_entry=12`。
 * 它把 final OOS Sharpe 从 `2.07` 提到 `2.26`，backtest avg turnover 从 `16.60%` 降到 `14.56%`，active IR 从 `0.38` 提到 `0.55`。
 * 初步 attribution 说明，`k15_bx25_be12` 的 active IR 改善在多个 benchmark 下都成立，但组合更集中，并且长期明显偏向大盘、低波和质量暴露。
 * walk-forward IC mean 仍是 `-7.13%`，所以这次改善更像执行 / 组合构造层增量；signal 稳定性还没有解决。
-* 当前更准确的状态是：`trial_016 + k15_bx25_be12` 可以作为 monthly `no_ret` ranker 执行层候选；还不应替代 regressor gated winner 或 monthly 默认入口。
+* 当前更准确的状态是：`trial_016 + k15_bx25_be12` 可以作为 monthly `no_ret` ranker 执行层候选；暂不替代 regressor gated winner 或 monthly 默认入口。
 
 第二波 ranker 原生邻域、bridge sweep 和 `trial_008` 固定分数组合网格跑完后，结论还要再更新一次：
 
@@ -75,7 +75,7 @@
 * 它把 final OOS Sharpe 从 `1.99` 提到 `2.19`，final OOS backtest turnover 从 `18.36%` 降到 `15.50%`，final OOS active IR 从 `0.21` 提到 `0.38`。
 * 更激进的 `k15_bx20_be10` 也值得保留：final OOS Sharpe `2.19`，active IR `0.58`，但 turnover 回到 `18.93%`。
 * 接入 dated industry labels 后，`groupcap4` 能把 top industry 名字数压到 `<= 4`，同时仍把 `trial_008 + k15_bx25_be12` 的 final OOS Sharpe 保在 `2.20` 左右。
-* `groupcap3` 在这条线上的 active IR 代价偏大，因此当前更准确的状态是：`trial_008 + k15_bx25_be12 + groupcap4` 应视为 monthly `no_ret` ranker 的主带约束候选，`trial_008 + k15_bx20_be10 + groupcap4` 是激进对照；`trial_016 + k15_bx25_be12` 仍是执行层上限参考，不是默认主线。
+* `groupcap3` 在这条线上的 active IR 代价偏大，因此当前更准确的状态是：`trial_008 + k15_bx25_be12 + groupcap4` 应视为 monthly `no_ret` ranker 的主带约束候选，`trial_008 + k15_bx20_be10 + groupcap4` 是激进对照；`trial_016 + k15_bx25_be12` 仍是执行层上限参考，不升默认主线。
 
 ## 3. 为什么先写这页
 
@@ -164,7 +164,7 @@
 这个复现足够接近，说明：
 
 * fixed dated asset A/B 是可用比较口径
-* ranker 差异主要来自 model/objective，数据漂移不是主要解释
+* ranker 差异主要来自 model/objective，数据漂移只构成次要解释
 
 ## 6. Ranker A/B 结果
 
@@ -192,7 +192,7 @@
 怎么读：
 
 * ranker 的 `CV valid folds` 明显更好，这说明它没有复现 regressor winner 的 early-fold collapse 问题。
-* ranker 的 walk-forward Sharpe 和 final OOS Sharpe 更好，这说明它不是无效分支。
+* ranker 的 walk-forward Sharpe 和 final OOS Sharpe 更好，说明它是值得保留的分支。
 * 但 ranker 的 test / final OOS IC 都明显弱，final OOS long-short 还变负。
 * ranker 的 turnover 更高，且 active IR 更差。
 
@@ -207,12 +207,12 @@
 * `ranker h12_w16 + close + balanced execution`
 * run：`artifacts/runs/hk_sel_q_g4_fixed_pit_overlay_xgb_rank_antidrift_h12_w16_exec_balanced_local_20260328_235502_6e283435/`
 
-它和本页 monthly ranker 不是严格 A/B：
+它和本页 monthly ranker 只能做方向性对照，原因是：
 
 * 一个是季度
 * 一个是月频
 * universe / rows_model / label cadence 都不同
-* 不能直接说谁全局更强
+* 无法直接判断谁全局更强
 
 只做方向性对照：
 
@@ -238,13 +238,9 @@
 * quarterly mainline 的 final OOS Sharpe 仍更高
 * 两者的 walk-forward IC 方向相反
 
-所以不能把本页结果写成：
+本页结果的边界是：
 
-* monthly ranker 已经替代 quarterly ranker
-
-只能写成：
-
-* **monthly ranker 是一个值得单独推进的分支，但它回答的是 monthly `no_ret` family 的问题，不是季度主线替换问题。**
+* **monthly ranker 是一个值得单独推进的分支，但它回答的是 monthly `no_ret` family 的问题，不承担替换季度主线的结论。**
 
 ## 8. 为什么不能直接升 ranker
 
@@ -373,7 +369,7 @@
 
 怎么读：
 
-* `trial_016` 已经不是“regressor 参数硬套 ranker”，它是 ranker 原生搜索下的强候选。
+* `trial_016` 已经脱离“regressor 参数硬套 ranker”的阶段，是 ranker 原生搜索下的强候选。
 * 它相对 direct ranker fixed 的改善很干净：final OOS IC、long-short、Sharpe、turnover、active IR 全部改善。
 * 它相对 regressor fixed 也有亮点：final OOS IC 接近或略高，Sharpe 更高，drawdown 更浅，turnover 更低，active IR 转正。
 * 主要保留意见是 walk-forward IC mean 仍然较差；它靠 walk-forward Sharpe gate 过关，walk-forward IC 还没过关。
@@ -443,7 +439,7 @@
 * 使用文件：`backtest_benchmark_compare_summary_oos.csv`、`backtest_report_oos.csv`、`positions_by_rebalance_oos.csv`、`backtest_periods_oos.csv`
 * 单名归因用 `entry_date` 的 `open` 和 `exit_date` 的 `close` 复原 gross contribution；对 `backtest_gross_oos.csv` 的逐期复原误差为 `0.00%`，无 skipped position
 
-先看 benchmark 层。`k15_bx25_be12` 相对 `k20_bx20_be10` 的 active 改善不是只换了 primary benchmark 才成立：
+先看 benchmark 层。`k15_bx25_be12` 相对 `k20_bx20_be10` 的 active 改善在多套 benchmark 下都成立：
 
 | benchmark | k15 active IR | k20 active IR | k15 active total | k20 active total | k15 beta | k20 beta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -456,7 +452,7 @@
 需要注意：
 
 * `hk_3432` 只有 `18` 个 aligned periods，不能作为主判断。
-* primary cap-weight 口径下，`k15` 的 tracking error 从 `11.36%` 升到 `12.03%`，不是纯降风险。
+* primary cap-weight 口径下，`k15` 的 tracking error 从 `11.36%` 升到 `12.03%`，说明它并非纯粹降风险。
 * primary cap-weight 口径下，`k15` 的 beta 从 `0.96` 降到 `0.89`，alpha 从 `6.04%` 升到 `11.08%`；这支持它有 execution-layer 增量，但也提示它和 benchmark 的风险暴露已经不完全一样。
 
 再看 active month concentration：
@@ -475,9 +471,9 @@
 
 * `k15` 的 active 仍然明显受 `2025-11` 这个月份影响。
 * 但相对 `k20`，`k15` 去掉最大月份后还保留一点正 active；`k20` 去掉最大月份后几乎打平。
-* `k15 - k20` 的 active improvement 主要来自 `2024-09`、`2026-02`、`2025-12` 等月份，不是简单把 `2025-11` 那个月权重放大。
+* `k15 - k20` 的 active improvement 主要来自 `2024-09`、`2026-02`、`2025-12` 等月份，而非简单把 `2025-11` 那个月权重放大。
 
-再看 size / style exposure。这里 `backtest_industry_exposure_oos.csv` 的 `industry_col` 实际是 `size_bucket_q4`，不是正式行业：
+再看 size / style exposure。这里 `backtest_industry_exposure_oos.csv` 的 `industry_col` 实际是 `size_bucket_q4`，不能当正式行业列读取：
 
 | 暴露 | k15 | k20 | 读法 |
 | --- | ---: | ---: | --- |
@@ -487,7 +483,7 @@
 | `Q4_large = 100%` 月份占比 | `30.43%` | `13.04%` | k15 更容易满仓大盘桶 |
 | `low_vol` active vs equal 均值 | `0.98` | `0.95` | 两者都强低波 |
 | `quality` active vs equal 均值 | `0.39` | `0.26` | k15 的质量暴露更强 |
-| `momentum` active vs equal 均值 | `-0.05` | `-0.06` | 两者都不是 momentum chase |
+| `momentum` active vs equal 均值 | `-0.05` | `-0.06` | 两者都没有明显追动量 |
 
 持仓集中度也要标红：
 
@@ -512,7 +508,7 @@
 
 所以 attribution 后的判断是：
 
-* `k15_bx25_be12` 的 active improvement 是真实可见的，不是 primary benchmark 特有现象。
+* `k15_bx25_be12` 的 active improvement 是真实可见的，在多套 benchmark 下都成立。
 * 它比 `k20_bx20_be10` 更像一个低 beta、大盘、低波、质量倾斜组合。
 * 它也明显更集中，top symbols 和 top month 对结果贡献不小。
 * 因此它适合作为执行层候选；下一步应该先做暴露防线 / 集中度防线 probe，不能马上升为 monthly 默认。
@@ -562,7 +558,7 @@
 4. 跑 12-18 个小 trial。已完成，实际 16 个。
 5. 统一 summarize。已完成。
 6. 按本页 gate 选 shortlist，避免只看 best objective。当前 shortlist 是 `trial_016`，观察候选是 `trial_008` / `trial_015`。
-7. 对 `trial_016` 做同口径复跑，确认不是单次 run 噪音。已完成。
+7. 对 `trial_016` 做同口径复跑，确认结论可复现。已完成。
 8. 如果复跑仍成立，再做固定分数组合网格。已完成，当前首选是 `k15_bx25_be12`。
 9. 做 benchmark active attribution 和 holding concentration 检查。已完成，结论是 active 改善成立，但集中度和大盘 / 低波 / 质量暴露风险仍需下一轮 guardrail。
 10. 围绕 `trial_016` 补第二波 ranker 原生邻域 sweep，确认 walk-forward 修复是否能在不显著牺牲 active IR 的情况下成立。已完成，当前 signal-side 更像样的候选变成 `trial_008`。
@@ -591,7 +587,7 @@
 
 ### 14.1 第二波邻域给了什么
 
-第二波邻域最重要的结果是把 signal-side 和 implementation-side 的候选分开；objective winner 本身不是重点：
+第二波邻域最重要的结果是把 signal-side 和 implementation-side 的候选分开；objective winner 本身只作参考：
 
 | trial | combo | test IC IR | WF IC mean | final OOS Sharpe | final OOS turnover | final OOS active IR |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -603,7 +599,7 @@
 
 * `trial_005` 证明 `reg_alpha = 0.5` 确实能修一部分 walk-forward IC。
 * 但它把 final OOS active IR 从 `0.38` 明显拉低到 `0.05`，所以不能直接替代 `trial_016`。
-* `trial_008` 虽然不是 objective winner，但它给出了当时最像 signal-candidate 的平衡：walk-forward IC mean 终于接近转正，同时 OOS Sharpe 和 active IR 还保留住一大段。
+* `trial_008` 虽然没有赢下 objective，但它给出了当时最像 signal-candidate 的平衡：walk-forward IC mean 终于接近转正，同时 OOS Sharpe 和 active IR 还保留住一大段。
 
 对应关键 run：
 
@@ -773,8 +769,8 @@ guardrail probe 分两轮：
 
 目标是回答：
 
-* `3Y` 的主动收益优势是不是集中在旧窗口
-* `2Y` 的 Sharpe 优势是不是只来自最近一小段
+* `3Y` 的主动收益优势是否集中在旧窗口
+* `2Y` 的 Sharpe 优势是否只来自最近一小段
 
 #### 14.6.4 必做 attribution
 
@@ -842,4 +838,4 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python -m cstree.research.hk_monthly_run_compa
 * `window_metrics.csv`：`6m / 12m / 24m / full` 下的 `Sharpe / active IR / active total return / avg turnover / IC mean / IC IR`
 * `attribution_summary.csv`：同样窗口下的轻量 exposure / industry / 持仓持续性摘要
 
-定位上它不是新的主工作流，只是为了把这份稳健性检查清单低摩擦地重复执行。
+定位上它只是低摩擦重复执行这份稳健性检查清单的入口，不作为新的主工作流。
