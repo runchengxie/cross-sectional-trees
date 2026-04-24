@@ -118,7 +118,7 @@ jobs:
       - name: Smoke liveops-hk extra
         run: |
           uv run python -c "import openpyxl; print(openpyxl.__version__)"
-          uv run python -c "from pathlib import Path; import pandas as pd; from csml.liveops.alloc_hk import write_xlsx_report; out = Path('/tmp/alloc_hk_smoke.xlsx'); write_xlsx_report(out, pd.DataFrame([{'symbol': '0001.HK'}]), pd.DataFrame([{'as_of': '2026-03-20'}]), pd.DataFrame([{'symbol': '0001.HK'}])); assert out.exists() and out.stat().st_size > 0"
+          uv run python -c "from pathlib import Path; import pandas as pd; from cstree.liveops.alloc_hk import write_xlsx_report; out = Path('/tmp/alloc_hk_smoke.xlsx'); write_xlsx_report(out, pd.DataFrame([{'symbol': '0001.HK'}]), pd.DataFrame([{'as_of': '2026-03-20'}]), pd.DataFrame([{'symbol': '0001.HK'}])); assert out.exists() and out.stat().st_size > 0"
 
   stats-extra-smoke:
     runs-on: ubuntu-latest
@@ -137,4 +137,4 @@ jobs:
       - name: Smoke stats extra
         run: |
           uv run python -c "import scipy; print(scipy.__version__)"
-          uv run python -c "import pandas as pd; from csml.metrics import summarize_ic; series = pd.Series([0.1, -0.1, 0.2]); stats = summarize_ic(series); assert 'p_value' in stats and stats['p_value'] == stats['p_value']"
+          uv run python -c "import pandas as pd; from cstree.metrics import summarize_ic; series = pd.Series([0.1, -0.1, 0.2]); stats = summarize_ic(series); assert 'p_value' in stats and stats['p_value'] == stats['p_value']"
