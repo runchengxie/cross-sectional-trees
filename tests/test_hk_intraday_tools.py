@@ -264,7 +264,9 @@ def test_build_hk_intraday_asset_packages_cache_files_for_reuse(tmp_path, monkey
             {
                 "dataset": "hk_intraday_cache",
                 "start_date": "20260324",
-                "end_date": "20260325",
+                "end_date": "20260326",
+                "min_trade_date": "20260324",
+                "max_trade_date": "20260325",
                 "frequency": "5m",
                 "adjust_type": "pre",
                 "rows": 3,
@@ -347,3 +349,98 @@ def test_build_hk_intraday_asset_packages_cache_files_for_reuse(tmp_path, monkey
     assert alias_path.is_symlink()
     assert alias_path.resolve() == second_asset_dir
     assert asset_dir.is_dir()
+
+
+def test_build_hk_intraday_asset_does_not_advance_empty_observed_patch(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    source_dir = repo_root / "artifacts" / "cache" / "intraday"
+    source_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    columns = [
+        "rq_order_book_id",
+        "trade_datetime",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+        "symbol",
+    ]
+    existing_file = source_dir / "hk_all_5m_existing.parquet"
+    pd.DataFrame(
+        {
+            "rq_order_book_id": ["00005.XHKG"],
+            "trade_datetime": [pd.Timestamp("2026-03-25 09:35:00")],
+            "open": [60.0],
+            "high": [60.0],
+            "low": [60.0],
+            "close": [60.0],
+            "volume": [1.0],
+            "amount": [60.0],
+            "symbol": ["00005.HK"],
+        }
+    ).to_parquet(existing_file, index=False)
+    existing_file.with_suffix(".meta.json").write_text(
+        json.dumps(
+            {
+                "dataset": "hk_intraday_cache",
+                "start_date": "20260325",
+                "end_date": "20260325",
+                "min_trade_date": "20260325",
+                "max_trade_date": "20260325",
+                "frequency": "5m",
+                "adjust_type": "pre",
+                "rows": 1,
+                "symbols_requested": 1,
+                "symbols_downloaded": 1,
+                "columns": columns,
+                "fields": ["open", "high", "low", "close", "volume", "total_turnover"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    empty_file = source_dir / "hk_all_5m_empty_patch.parquet"
+    pd.DataFrame(columns=columns).to_parquet(empty_file, index=False)
+    empty_file.with_suffix(".meta.json").write_text(
+        json.dumps(
+            {
+                "dataset": "hk_intraday_cache",
+                "start_date": "20260326",
+                "end_date": "20260326",
+                "min_trade_date": None,
+                "max_trade_date": None,
+                "frequency": "5m",
+                "adjust_type": "pre",
+                "rows": 0,
+                "symbols_requested": 1,
+                "symbols_downloaded": 0,
+                "columns": columns,
+                "fields": ["open", "high", "low", "close", "volume", "total_turnover"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert rqdata_assets.build_hk_intraday_asset(
+        SimpleNamespace(
+            input=[str(existing_file), str(empty_file)],
+            out_root="artifacts/assets/rqdata",
+            name="hk_intraday_empty_patch_demo",
+            alias=None,
+        )
+    ) == 0
+
+    asset_dir = (
+        repo_root
+        / "artifacts"
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "intraday"
+        / "hk_intraday_empty_patch_demo"
+    )
+    manifest = yaml.safe_load((asset_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["query"]["end_date"] == "20260325"

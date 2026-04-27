@@ -251,6 +251,61 @@ def test_merge_asset_patch_daily_updates_alias_and_preserves_base_schema(tmp_pat
     assert manifest["totals"]["symbols_written"] == 2
 
 
+def test_merge_asset_patch_copies_linked_base_files(tmp_path: Path) -> None:
+    base_dir = _write_daily_snapshot(tmp_path, "daily_base_copy", end_date="20260318")
+    patch_dir = _write_daily_patch(tmp_path, "daily_patch_copy")
+    out_dir = tmp_path / "daily_latest_copy"
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260318"],
+            "symbol": ["00007.HK"],
+            "order_book_id": ["00007.XHKG"],
+            "open": [7.0],
+            "close": [7.5],
+        }
+    ).to_parquet(base_dir / "data" / "00007.HK.parquet", index=False)
+    (base_dir / "symbols.txt").write_text("00005.HK\n00006.HK\n00007.HK\n", encoding="utf-8")
+    (patch_dir / "symbols.txt").write_text("00005.HK\n00006.HK\n00007.HK\n", encoding="utf-8")
+
+    merge_asset_patch(
+        base_dir=base_dir,
+        patch_dir=patch_dir,
+        out_dir=out_dir,
+        alias_path=None,
+        overwrite=False,
+    )
+
+    linked_base_path = out_dir / "data" / "00007.HK.parquet"
+    assert linked_base_path.exists()
+    assert not linked_base_path.is_symlink()
+    assert pd.read_parquet(linked_base_path)["close"].tolist() == [7.5]
+
+
+def test_merge_asset_patch_treats_broken_base_symlink_as_missing_remote(tmp_path: Path) -> None:
+    base_dir = _write_daily_snapshot(tmp_path, "daily_base_broken", end_date="20260318")
+    patch_dir = _write_daily_patch(tmp_path, "daily_patch_broken")
+    out_dir = tmp_path / "daily_latest_broken"
+
+    (base_dir / "symbols.txt").write_text("00005.HK\n00006.HK\n00007.HK\n", encoding="utf-8")
+    (patch_dir / "symbols.txt").write_text("00005.HK\n00006.HK\n00007.HK\n", encoding="utf-8")
+    broken_path = base_dir / "data" / "00007.HK.parquet"
+    broken_path.symlink_to(base_dir / "data" / "missing_source.parquet")
+
+    merge_asset_patch(
+        base_dir=base_dir,
+        patch_dir=patch_dir,
+        out_dir=out_dir,
+        alias_path=None,
+        overwrite=False,
+    )
+
+    assert not (out_dir / "data" / "00007.HK.parquet").exists()
+    audit = pd.read_csv(out_dir / "audit.csv")
+    row = audit.loc[audit["symbol"] == "00007.HK"].iloc[0].to_dict()
+    assert row["status"] == "missing_remote"
+
+
 def test_merge_asset_patch_daily_supports_in_place_overwrite(tmp_path: Path) -> None:
     base_dir = _write_daily_snapshot(tmp_path, "daily_in_place", end_date="20260318")
     patch_dir = _write_daily_patch(tmp_path, "daily_patch_in_place")

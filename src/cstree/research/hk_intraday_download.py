@@ -174,7 +174,19 @@ def _count_part_rows(path: Path) -> int:
     return int(len(pd.read_parquet(path, columns=["rq_order_book_id"])))
 
 
-def merge_batch_parts(parts_dir: Path, output_path: Path) -> tuple[int, int]:
+def _trade_date_range_from_table(table: pq.Table) -> tuple[str | None, str | None]:
+    if table.num_rows == 0 or "trade_datetime" not in table.column_names:
+        return None, None
+    trade_datetime = pd.to_datetime(table["trade_datetime"].to_pandas(), errors="coerce").dropna()
+    if trade_datetime.empty:
+        return None, None
+    return trade_datetime.min().strftime("%Y%m%d"), trade_datetime.max().strftime("%Y%m%d")
+
+
+def merge_batch_parts(
+    parts_dir: Path,
+    output_path: Path,
+) -> tuple[int, int, str | None, str | None]:
     part_files = sorted(parts_dir.glob("batch_*.parquet"))
     if not part_files:
         raise SystemExit(f"No batch parquet files found under: {parts_dir}")
@@ -182,12 +194,27 @@ def merge_batch_parts(parts_dir: Path, output_path: Path) -> tuple[int, int]:
     writer = None
     total_rows = 0
     total_symbols: set[str] = set()
+    min_trade_date: str | None = None
+    max_trade_date: str | None = None
     try:
         for part_path in part_files:
             table = pq.read_table(part_path)
             total_rows += int(table.num_rows)
             if "rq_order_book_id" in table.column_names:
                 total_symbols.update(table["rq_order_book_id"].to_pylist())
+            candidate_min, candidate_max = _trade_date_range_from_table(table)
+            if candidate_min is not None:
+                min_trade_date = (
+                    candidate_min
+                    if min_trade_date is None
+                    else min(min_trade_date, candidate_min)
+                )
+            if candidate_max is not None:
+                max_trade_date = (
+                    candidate_max
+                    if max_trade_date is None
+                    else max(max_trade_date, candidate_max)
+                )
             if table.num_rows == 0:
                 continue
             if writer is None:
@@ -199,7 +226,7 @@ def merge_batch_parts(parts_dir: Path, output_path: Path) -> tuple[int, int]:
     finally:
         if writer is not None:
             writer.close()
-    return total_rows, len(total_symbols)
+    return total_rows, len(total_symbols), min_trade_date, max_trade_date
 
 
 def download_hk_intraday_cache(args, rqdatac) -> dict[str, object]:
@@ -271,7 +298,10 @@ def download_hk_intraday_cache(args, rqdatac) -> dict[str, object]:
             f"{start + len(batch)}/{total} symbols, {rows} rows, {status}"
         )
 
-    total_rows, total_symbols = merge_batch_parts(parts_dir, output_path)
+    total_rows, total_symbols, min_trade_date, max_trade_date = merge_batch_parts(
+        parts_dir,
+        output_path,
+    )
     quota_after = rqdatac.user.get_quota()
     merged_columns = list(pq.ParquetFile(output_path).schema.names)
 
@@ -282,6 +312,8 @@ def download_hk_intraday_cache(args, rqdatac) -> dict[str, object]:
         "symbols_downloaded": int(total_symbols),
         "start_date": str(args.start_date),
         "end_date": str(args.end_date),
+        "min_trade_date": min_trade_date,
+        "max_trade_date": max_trade_date,
         "frequency": str(args.frequency),
         "adjust_type": str(args.adjust_type),
         "fields": list(args.fields),

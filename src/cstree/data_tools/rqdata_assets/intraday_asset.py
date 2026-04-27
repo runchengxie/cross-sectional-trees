@@ -246,16 +246,32 @@ def build_hk_intraday_asset(args) -> int:
         except (TypeError, ValueError):
             symbols_requested = None
 
-        entry_min_trade_date = _normalize_optional_date(
-            meta_payload.get("start_date") or scanned.get("min_trade_date")
-        )
-        entry_max_trade_date = _normalize_optional_date(
-            meta_payload.get("end_date") or scanned.get("max_trade_date")
-        )
+        if "min_trade_date" in meta_payload or "max_trade_date" in meta_payload:
+            entry_min_trade_date = _normalize_optional_date(
+                meta_payload.get("min_trade_date") or scanned.get("min_trade_date")
+            )
+            entry_max_trade_date = _normalize_optional_date(
+                meta_payload.get("max_trade_date") or scanned.get("max_trade_date")
+            )
+        else:
+            entry_min_trade_date = _normalize_optional_date(
+                scanned.get("min_trade_date") or meta_payload.get("start_date")
+            )
+            entry_max_trade_date = _normalize_optional_date(
+                scanned.get("max_trade_date") or meta_payload.get("end_date")
+            )
         if entry_min_trade_date:
-            min_trade_date = entry_min_trade_date if min_trade_date is None else min(min_trade_date, entry_min_trade_date)
+            min_trade_date = (
+                entry_min_trade_date
+                if min_trade_date is None
+                else min(min_trade_date, entry_min_trade_date)
+            )
         if entry_max_trade_date:
-            max_trade_date = entry_max_trade_date if max_trade_date is None else max(max_trade_date, entry_max_trade_date)
+            max_trade_date = (
+                entry_max_trade_date
+                if max_trade_date is None
+                else max(max_trade_date, entry_max_trade_date)
+            )
 
         frequency = str(meta_payload.get("frequency") or "").strip()
         if frequency and frequency not in frequencies:

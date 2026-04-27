@@ -296,7 +296,7 @@ def _merge_symbol_frames(
 def _link_or_copy_base_file(source: Path, dest: Path) -> None:
     if dest.exists() or dest.is_symlink():
         dest.unlink()
-    _create_relative_symlink(source, dest)
+    shutil.copy2(source, dest)
 
 
 def _build_manifest_and_audit(
@@ -445,8 +445,16 @@ def merge_asset_patch(
 
         base_data_dir = working_base_dir / "data"
         patch_data_dir = patch_dir / "data"
-        base_files = {path.stem: path for path in sorted(base_data_dir.glob("*.parquet"))}
-        patch_files = {path.stem: path for path in sorted(patch_data_dir.glob("*.parquet"))}
+        base_files = {
+            path.stem: path
+            for path in sorted(base_data_dir.glob("*.parquet"))
+            if path.exists()
+        }
+        patch_files = {
+            path.stem: path
+            for path in sorted(patch_data_dir.glob("*.parquet"))
+            if path.exists()
+        }
         base_audit_rows = _load_audit_rows(working_base_dir)
         patch_audit_rows = _load_audit_rows(patch_dir)
 
