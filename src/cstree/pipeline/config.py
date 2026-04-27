@@ -22,6 +22,10 @@ from ..date_utils import (
     resolve_date_token as _resolve_date_token,
 )
 from ..execution import BpsCostModel, build_execution_model, required_pricing_columns
+from ..execution_sim import (
+    build_execution_sim_config,
+    required_execution_sim_columns,
+)
 from ..modeling import resolve_model_spec
 from .config_eval import normalize_eval_settings
 from .runtime import config_hash, setup_logging
@@ -564,12 +568,6 @@ def resolve_runtime_settings(
     )
     backtest_exit_price_policy = execution_model.exit_policy.price_policy
     backtest_exit_fallback_policy = execution_model.exit_policy.fallback_policy
-    execution_pricing_cols = required_pricing_columns(execution_model)
-    _ensure_execution_daily_fields(
-        data_cfg=data_cfg,
-        provider=provider,
-        required_columns=execution_pricing_cols | {price_col},
-    )
     backtest_cost_bps_effective = backtest_cost_bps
     backtest_cost_bps_report = None
     if isinstance(execution_model.cost_model, BpsCostModel):
@@ -578,6 +576,33 @@ def resolve_runtime_settings(
     backtest_tradable_col = backtest_cfg.get("tradable_col", "is_tradable")
     if backtest_tradable_col is not None:
         backtest_tradable_col = str(backtest_tradable_col).strip() or None
+    default_sim_liquidity_col = str(
+        getattr(execution_model.slippage_model, "amount_col", "medadv20_amount")
+        or "medadv20_amount"
+    )
+    default_sim_portfolio_value = float(
+        getattr(execution_model.slippage_model, "portfolio_value", 1_000_000.0)
+        or 1_000_000.0
+    )
+    try:
+        execution_sim_config = build_execution_sim_config(
+            backtest_cfg.get("execution_sim"),
+            default_portfolio_value=default_sim_portfolio_value,
+            default_liquidity_col=default_sim_liquidity_col,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    execution_sim_pricing_cols = required_execution_sim_columns(
+        execution_sim_config,
+        price_col=execution_model.entry_policy.price_col,
+        tradable_col=backtest_tradable_col,
+    )
+    execution_pricing_cols = required_pricing_columns(execution_model) | execution_sim_pricing_cols
+    _ensure_execution_daily_fields(
+        data_cfg=data_cfg,
+        provider=provider,
+        required_columns=execution_pricing_cols | {price_col},
+    )
     if backtest_exit_mode == "label_horizon":
         if backtest_exit_horizon_days is None:
             backtest_exit_horizon_days = label_horizon_days
@@ -655,6 +680,8 @@ def resolve_runtime_settings(
         "BACKTEST_EXIT_PRICE_POLICY": backtest_exit_price_policy,
         "BACKTEST_EXIT_FALLBACK_POLICY": backtest_exit_fallback_policy,
         "execution_model": execution_model,
+        "execution_sim_config": execution_sim_config,
+        "EXECUTION_SIM_PRICING_COLS": execution_sim_pricing_cols,
         "EXECUTION_PRICING_COLS": execution_pricing_cols,
         "BACKTEST_COST_BPS_EFFECTIVE": backtest_cost_bps_effective,
         "BACKTEST_COST_BPS_REPORT": backtest_cost_bps_report,

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..backtest import backtest_topk, summarize_period_returns
+from ..execution_sim import simulate_capacity_execution
 from ..exposure import compute_backtest_exposure_analysis
 from ..metrics import (
     assign_daily_quantile_bucket,
@@ -212,6 +213,9 @@ def _empty_period_result() -> dict[str, Any]:
         "bt_industry_exposure": default_frame,
         "bt_industry_exposure_summary": {},
         "bt_active_exposure_summary": default_frame,
+        "execution_sim_summary": None,
+        "execution_sim_orders": default_frame,
+        "execution_sim_fills": default_frame,
         "perm_stats": None,
         "scored_data": default_frame,
         "eval_rebalance_dates": [],
@@ -1029,6 +1033,7 @@ def _evaluate_period(
     backtest_group_col = context["backtest_group_col"]
     backtest_max_names_per_group = context["backtest_max_names_per_group"]
     execution_model = context["execution_model"]
+    execution_sim_config = context["execution_sim_config"]
     positions_by_rebalance_live = context["positions_by_rebalance_live"]
     backtest_cost_bps_effective = context["backtest_cost_bps_effective"]
     backtest_trading_days_per_year = context["backtest_trading_days_per_year"]
@@ -1194,6 +1199,32 @@ def _evaluate_period(
     if allow_live_fallback and live_enabled and not backtest_enabled:
         positions_by_rebalance = positions_by_rebalance_live
     result["positions_by_rebalance"] = positions_by_rebalance
+
+    if (
+        backtest_enabled
+        and getattr(execution_sim_config, "enabled", False)
+        and positions_by_rebalance is not None
+        and not positions_by_rebalance.empty
+    ):
+        sim_result = simulate_capacity_execution(
+            positions_by_rebalance,
+            backtest_pricing_df,
+            execution_sim_config,
+            price_col=execution_model.entry_policy.price_col,
+            tradable_col=backtest_tradable_col
+            if backtest_tradable_col in backtest_pricing_df.columns
+            else None,
+        )
+        result["execution_sim_summary"] = sim_result.summary
+        result["execution_sim_orders"] = sim_result.orders
+        result["execution_sim_fills"] = sim_result.fills
+        if sim_result.summary.get("status") == "ok":
+            logger.info(
+                "%sExecution sim: fill ratio %.2f%%, unfilled %.2f",
+                label_prefix,
+                float(sim_result.summary.get("fill_ratio", np.nan)) * 100,
+                float(sim_result.summary.get("unfilled_notional", 0.0)),
+            )
 
     bt_result = None
     bt_attempted = False

@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..execution import describe_execution_model
+from ..execution_sim import describe_execution_sim_config
 
 
 def _build_backtest_exposure_summary(
@@ -36,6 +37,26 @@ def _build_backtest_exposure_summary(
         "industry_column": industry_meta.get("industry_column"),
         "latest_industry": industry_meta.get("latest", {}),
     }
+
+
+def _build_execution_sim_summary(
+    *,
+    summary: Mapping[str, Any] | None,
+    config: Any,
+    orders_path: Any,
+    fills_path: Any,
+) -> dict[str, Any]:
+    if isinstance(summary, Mapping):
+        out = dict(summary)
+    else:
+        out = {
+            "enabled": bool(getattr(config, "enabled", False)),
+            "status": "not_run" if getattr(config, "enabled", False) else "disabled",
+            "config": describe_execution_sim_config(config),
+        }
+    out["orders_file"] = str(orders_path) if orders_path else None
+    out["fills_file"] = str(fills_path) if fills_path else None
+    return out
 
 
 def build_run_summary_sections(
@@ -217,6 +238,12 @@ def build_run_summary_sections(
             "transaction_cost_bps": ctx["BACKTEST_COST_BPS_REPORT"],
             "execution_source": ctx["BACKTEST_EXECUTION_SOURCE"],
             "execution": describe_execution_model(ctx["execution_model"]),
+            "execution_sim": _build_execution_sim_summary(
+                summary=ctx.get("execution_sim_summary"),
+                config=ctx["execution_sim_config"],
+                orders_path=art["execution_sim_orders_path"],
+                fills_path=art["execution_sim_fills_path"],
+            ),
             "stats": ctx["bt_stats"],
             "benchmark": ctx["bt_benchmark_stats"],
             "active": ctx["bt_active_stats"],

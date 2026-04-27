@@ -33,6 +33,8 @@
 
 所以目前的状态是容量 / 冲击 stress model。
 
+如果需要回答“目标仓位是否真的能在给定成交量约束下买进去或卖出来”，可以另外启用 `backtest.execution_sim`。它不会改变主回测净值，而是把 `positions_by_rebalance.csv` 当成目标订单，按 `participation_rate * min(liquidity_cols)` 做日度成交容量模拟；未完成买入保留现金，未完成卖出保留旧仓并标记 delayed sell。
+
 仓库当前已经提供四条可直接复用的月频 HK execution 配置：
 
 * [hk_selected__execution_stress_local.yml](../../configs/experiments/variants/hk_selected__execution_stress_local.yml)：本地资产 + `adv20_amount` + 较宽松的 stress baseline。
@@ -103,8 +105,10 @@
 
 * 你开始关心开盘成交是否真的可行
 * 你需要盘中 VWAP/TWAP 偏离
-* 你在做容量边界、分批执行、集合竞价或盘口冲击
+* 你在做集合竞价、盘口冲击或 broker 级 TCA
 * 你要做真实现金分红账本
+
+`backtest.execution_sim` 可以覆盖其中一部分容量边界和分批执行问题，但仍然是日线级容量模拟，不是逐笔撮合器。
 
 ## 当前 HK `5m` 校准报告还要再记一个口径
 

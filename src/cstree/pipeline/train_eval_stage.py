@@ -147,6 +147,7 @@ def _train_eval_request_from_kwargs(kwargs: dict[str, Any]) -> TrainEvalRequest:
             backtest_group_col=get("backtest_group_col"),
             backtest_max_names_per_group=get("backtest_max_names_per_group"),
             execution_model=get("execution_model"),
+            execution_sim_config=get("execution_sim_config"),
             backtest_rebalance_frequency=get("backtest_rebalance_frequency"),
             backtest_enabled=get("backtest_enabled"),
             backtest_signal_direction_raw=get("backtest_signal_direction_raw"),
@@ -385,6 +386,7 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
     backtest_group_col = backtest_settings.backtest_group_col
     backtest_max_names_per_group = backtest_settings.backtest_max_names_per_group
     execution_model = backtest_settings.execution_model
+    execution_sim_config = backtest_settings.execution_sim_config
     backtest_rebalance_frequency = backtest_settings.backtest_rebalance_frequency
     backtest_enabled = backtest_settings.backtest_enabled
     backtest_signal_direction_raw = backtest_settings.backtest_signal_direction_raw
@@ -595,6 +597,7 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
         "backtest_group_col": backtest_group_col,
         "backtest_max_names_per_group": backtest_max_names_per_group,
         "execution_model": execution_model,
+        "execution_sim_config": execution_sim_config,
         "positions_by_rebalance_live": live_state["positions_by_rebalance_live"],
         "backtest_cost_bps_effective": backtest_cost_bps_effective,
         "backtest_trading_days_per_year": backtest_trading_days_per_year,
@@ -730,6 +733,7 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
             "backtest_exit_price_policy": backtest_exit_price_policy,
             "backtest_exit_fallback_policy": backtest_exit_fallback_policy,
             "execution_model": execution_model,
+            "execution_sim_config": execution_sim_config,
             "backtest_pricing_df": backtest_pricing_df,
             "benchmark_df": benchmark_df,
             "benchmark_return_series": benchmark_return_series,
@@ -826,6 +830,9 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
         "eval_rebalance_dates": eval_main["eval_rebalance_dates"],
         "backtest_rebalance_dates": eval_main["backtest_rebalance_dates"],
         "positions_by_rebalance": positions_by_rebalance,
+        "execution_sim_summary": eval_main["execution_sim_summary"],
+        "execution_sim_orders": eval_main["execution_sim_orders"],
+        "execution_sim_fills": eval_main["execution_sim_fills"],
         "bt_stats": eval_main["bt_stats"],
         "bt_net_series": eval_main["bt_net_series"],
         "bt_gross_series": eval_main["bt_gross_series"],

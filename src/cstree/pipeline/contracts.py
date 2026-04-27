@@ -89,6 +89,7 @@ class TrainEvalBacktestSettings:
     backtest_group_col: str | None
     backtest_max_names_per_group: int | None
     execution_model: Any
+    execution_sim_config: Any
     backtest_rebalance_frequency: str
     backtest_enabled: bool
     backtest_signal_direction_raw: float | None
@@ -214,6 +215,7 @@ class TrainEvalRequest:
             "backtest_group_col": backtest.backtest_group_col,
             "backtest_max_names_per_group": backtest.backtest_max_names_per_group,
             "execution_model": backtest.execution_model,
+            "execution_sim_config": backtest.execution_sim_config,
             "rebalance_frequency": period.rebalance_frequency,
             "sample_on_rebalance_dates": period.sample_on_rebalance_dates,
             "valid_dates_set": data.valid_dates_set,

@@ -433,6 +433,35 @@ backtest:
   [hk_selected__execution_connect_conservative_local.yml](../configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)、
   [hk_selected__tr_close_execution_balanced_local.yml](../configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml)。
 
+### 容量执行模拟 (`backtest.execution_sim`)
+
+`backtest.execution_sim` 是可选的第二层容量压力测试，不替代主 `backtest.execution` 研究回测。启用后，它会基于 `positions_by_rebalance.csv` 的目标权重，按每日成交容量尝试卖出旧仓和买入新仓，并输出订单级成交、未成交和延迟退出报告。
+
+常见配置：
+
+```yaml
+backtest:
+  execution_sim:
+    enabled: true
+    portfolio_value: 1000000
+    participation_rate: 0.05
+    liquidity_col: medadv20_amount
+    cap_daily_amount: true
+    buy_max_days: 5
+    sell_max_days: 10
+    zero_fill_abort_days_buy: 5
+    unfilled_buy_action: keep_cash
+    unfilled_sell_action: keep_position
+```
+
+说明：
+
+* `liquidity_col` 默认跟随 participation 滑点模型的 `amount_col`；`cap_daily_amount=true` 时，还会用 `amount` 做同日成交额上限，实际容量取这些列的最小正值。
+* `buy_max_days` 到期仍未买完时，剩余买入金额取消并保留现金。
+* `zero_fill_abort_days_buy` 表示买入订单连续若干交易日完全无法成交后放弃。
+* `sell_max_days` 可填正整数，也可填 `until_next_rebalance`；卖不掉的旧仓保留为 delayed sell 风险。
+* 当前模拟只支持 long-only 目标权重；long-short 组合会在 summary 中标记为跳过。
+
 ### 基本面配置 (`fundamentals`)
 
 | 键名 | 作用说明 | 常见配置值 |

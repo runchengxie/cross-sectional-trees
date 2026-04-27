@@ -43,6 +43,8 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
         "backtest_style_exposure_path": None,
         "backtest_industry_exposure_path": None,
         "backtest_active_exposure_summary_path": None,
+        "execution_sim_orders_path": None,
+        "execution_sim_fills_path": None,
         "backtest_report_path": None,
         "backtest_benchmark_compare_summary_path": None,
         "backtest_benchmark_compare_entries": [],
@@ -227,6 +229,12 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
                 ctx["bt_active_exposure_summary"],
                 artifacts["backtest_active_exposure_summary_path"],
             )
+        if not ctx["execution_sim_orders"].empty:
+            artifacts["execution_sim_orders_path"] = run_dir / "execution_sim_orders.csv"
+            save_frame(ctx["execution_sim_orders"], artifacts["execution_sim_orders_path"])
+        if not ctx["execution_sim_fills"].empty:
+            artifacts["execution_sim_fills_path"] = run_dir / "execution_sim_fills.csv"
+            save_frame(ctx["execution_sim_fills"], artifacts["execution_sim_fills_path"])
         primary_report = build_backtest_report(
             strategy_returns=ctx["bt_net_series"],
             periods_per_year=ctx["bt_stats"].get("periods_per_year", float("nan")),

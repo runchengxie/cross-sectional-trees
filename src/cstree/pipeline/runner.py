@@ -302,6 +302,7 @@ def run(
     BACKTEST_EXIT_PRICE_POLICY = runtime_settings["BACKTEST_EXIT_PRICE_POLICY"]
     BACKTEST_EXIT_FALLBACK_POLICY = runtime_settings["BACKTEST_EXIT_FALLBACK_POLICY"]
     execution_model = runtime_settings["execution_model"]
+    execution_sim_config = runtime_settings["execution_sim_config"]
     EXECUTION_PRICING_COLS = runtime_settings["EXECUTION_PRICING_COLS"]
     BACKTEST_COST_BPS_EFFECTIVE = runtime_settings["BACKTEST_COST_BPS_EFFECTIVE"]
     BACKTEST_TRADABLE_COL = runtime_settings["BACKTEST_TRADABLE_COL"]
@@ -547,6 +548,7 @@ def run(
             backtest_group_col=BACKTEST_GROUP_COL,
             backtest_max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
             execution_model=execution_model,
+            execution_sim_config=execution_sim_config,
             backtest_rebalance_frequency=BACKTEST_REBALANCE_FREQUENCY,
             backtest_enabled=BACKTEST_ENABLED,
             backtest_signal_direction_raw=BACKTEST_SIGNAL_DIRECTION_RAW,

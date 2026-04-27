@@ -99,6 +99,7 @@ def _request() -> TrainEvalRequest:
             backtest_group_col=None,
             backtest_max_names_per_group=None,
             execution_model={},
+            execution_sim_config={},
             backtest_rebalance_frequency="D",
             backtest_enabled=False,
             backtest_signal_direction_raw=None,

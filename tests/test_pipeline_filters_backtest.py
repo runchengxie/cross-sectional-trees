@@ -351,6 +351,101 @@ def test_pipeline_backtest_pricing_derives_lagged_adv_execution_columns(tmp_path
     assert float(aaa.loc[2, "adv3_amount"]) == pytest.approx(100500.0)
     assert float(aaa.loc[3, "adv3_amount"]) == pytest.approx(101000.0)
 
+
+@pytest.mark.slow
+def test_pipeline_backtest_execution_sim_writes_capacity_reports(tmp_path, monkeypatch):
+    dates = pd.date_range("2020-01-01", periods=18, freq="B")
+    symbols = ["AAA", "BBB", "CCC"]
+    frames = _build_frames(symbols, dates, include_amount=True)
+
+    output_dir = tmp_path / "runs"
+    config = {
+        "market": "hk",
+        "data": {
+            "provider": "rqdata",
+            "start_date": "20200101",
+            "end_date": "20200131",
+            "cache_dir": str(tmp_path / "cache"),
+            "price_col": "close",
+        },
+        "universe": {
+            "mode": "static",
+            "symbols": symbols,
+            "min_symbols_per_date": 2,
+            "drop_suspended": False,
+        },
+        "fundamentals": {"enabled": False, "source": "provider", "required": False},
+        "label": {
+            "horizon_mode": "fixed",
+            "horizon_days": 1,
+            "shift_days": 0,
+            "target_col": "future_return",
+        },
+        "features": {
+            "list": ["vol"],
+            "cross_sectional": {"method": "none"},
+        },
+        "model": {
+            "type": "xgb_regressor",
+            "params": {
+                "n_estimators": 5,
+                "learning_rate": 0.1,
+                "max_depth": 2,
+                "subsample": 1.0,
+                "colsample_bytree": 1.0,
+                "random_state": 7,
+                "objective": "reg:squarederror",
+            },
+            "sample_weight_mode": "none",
+        },
+        "eval": {
+            "test_size": 0.5,
+            "n_splits": 2,
+            "n_quantiles": 2,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "signal_direction_mode": "fixed",
+            "signal_direction": 1,
+            "transaction_cost_bps": 0,
+            "sample_on_rebalance_dates": False,
+            "report_train_ic": False,
+            "save_artifacts": True,
+            "save_scored_artifact": True,
+            "save_dataset": True,
+            "output_dir": str(output_dir),
+            "run_name": "execution_sim_reports",
+            "walk_forward": {"enabled": False},
+        },
+        "backtest": {
+            "enabled": True,
+            "rebalance_frequency": "W",
+            "top_k": 1,
+            "transaction_cost_bps": 0,
+            "exit_mode": "rebalance",
+            "exit_price_policy": "strict",
+            "execution_sim": {
+                "enabled": True,
+                "portfolio_value": 1000,
+                "participation_rate": 0.05,
+                "liquidity_col": "amount",
+                "cap_daily_amount": False,
+                "buy_max_days": 2,
+                "sell_max_days": 2,
+            },
+        },
+    }
+
+    run_dir = _run_pipeline(tmp_path, monkeypatch, config, frames)
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    execution_sim = summary["backtest"]["execution_sim"]
+
+    assert execution_sim["enabled"] is True
+    assert execution_sim["status"] == "ok"
+    assert execution_sim["orders_file"] == str((run_dir / "execution_sim_orders.csv").resolve())
+    assert execution_sim["fills_file"] == str((run_dir / "execution_sim_fills.csv").resolve())
+    assert (run_dir / "execution_sim_orders.csv").exists()
+    assert (run_dir / "execution_sim_fills.csv").exists()
+
 @pytest.mark.slow
 def test_pipeline_price_features_follow_price_col(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=20, freq="B")
