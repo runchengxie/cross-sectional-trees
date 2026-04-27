@@ -1,6 +1,7 @@
 from cstree import cli
 from cstree.cli import rqdata as cli_rqdata
 from cstree.data_tools import rqdata_assets as rqdata_assets_tool
+from cstree.data_tools.rqdata_assets import public_api as rqdata_public_api
 from cstree.data_tools.rqdata_assets.command_registry import (
     RQDataAssetArgsBuilder,
     rqdata_asset_command_specs,
@@ -53,6 +54,14 @@ def test_rqdata_asset_package_facade_omits_argument_builders():
     assert hasattr(rqdata_assets_tool, "mirror_hk_daily")
     assert hasattr(rqdata_assets_tool, "inspect_hk_current_health")
     assert not hasattr(rqdata_assets_tool, "add_hk_daily_mirror_args")
+
+
+def test_rqdata_asset_facades_expose_only_stable_public_names():
+    assert "mirror_hk_daily" in rqdata_assets_tool.__all__
+    assert "inspect_hk_current_health" in rqdata_assets_tool.__all__
+    assert "add_hk_daily_mirror_args" not in rqdata_assets_tool.__all__
+    assert all(not name.startswith("_") for name in rqdata_assets_tool.__all__)
+    assert all(not name.startswith("_") for name in rqdata_public_api.__all__)
 
 
 def test_cli_parses_rqdata_asset_commands():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -10,7 +11,18 @@ from ..metrics import daily_ic_series, summarize_ic
 from ..modeling import build_model, feature_importance_frame, fit_model
 from ..split import build_sample_weight, time_series_cv_ic
 from ..transform import apply_score_postprocess
-from .contracts import TrainEvalRequest
+from .contracts import (
+    TrainEvalBacktestSettings,
+    TrainEvalData,
+    TrainEvalFeatureTarget,
+    TrainEvalLiveSettings,
+    TrainEvalModelSettings,
+    TrainEvalPeriodSettings,
+    TrainEvalRequest,
+    TrainEvalServices,
+    TrainEvalSignalSettings,
+    TrainEvalWalkForwardSettings,
+)
 from .dates import build_walk_forward_windows
 from .eval import _evaluate_period, _evaluate_walk_forward_window
 from .live import _prepare_live_snapshot
@@ -27,6 +39,20 @@ from .support import (
 logger = logging.getLogger("cstree")
 
 
+@dataclass(frozen=True)
+class _TrainFitResult:
+    model: Any
+    train_eval_df: pd.DataFrame
+    updated_signal_direction: float
+    train_signal_col: str
+    train_ic_raw_stats: dict[str, Any]
+    train_ic_series: pd.Series
+    train_ic_stats: dict[str, Any]
+    train_pearson_ic_series: pd.Series
+    train_pearson_ic_stats: dict[str, Any]
+    cv_scores_adj: list[float] | None
+
+
 def run_train_eval_stage(
     *,
     request: TrainEvalRequest | None = None,
@@ -35,111 +61,372 @@ def run_train_eval_stage(
     if request is not None:
         if kwargs:
             raise TypeError("Pass either request or keyword stage fields, not both.")
-        return _run_train_eval_stage_impl(**request.to_kwargs())
-    return _run_train_eval_stage_impl(**kwargs)
+        return _run_train_eval_stage_impl(request)
+    return _run_train_eval_stage_impl(_train_eval_request_from_kwargs(kwargs))
 
 
-def _run_train_eval_stage_impl(
-    *,
+def _train_eval_request_from_kwargs(kwargs: dict[str, Any]) -> TrainEvalRequest:
+    used: set[str] = set()
+
+    def get(name: str) -> Any:
+        used.add(name)
+        try:
+            return kwargs[name]
+        except KeyError as exc:
+            raise TypeError(f"Missing train/eval stage field: {name}") from exc
+
+    request = TrainEvalRequest(
+        data=TrainEvalData(
+            train_df=get("train_df"),
+            test_df=get("test_df"),
+            test_dates=get("test_dates"),
+            df_features=get("df_features"),
+            df_full=get("df_full"),
+            df_model_sorted=get("df_model_sorted"),
+            all_dates=get("all_dates"),
+            all_date_start_rows=get("all_date_start_rows"),
+            all_date_end_rows=get("all_date_end_rows"),
+            all_date_to_pos=get("all_date_to_pos"),
+            valid_dates_set=get("valid_dates_set"),
+            backtest_pricing_df=get("backtest_pricing_df"),
+            benchmark_df=get("benchmark_df"),
+            benchmark_return_series=get("benchmark_return_series"),
+            industry_source_df=get("industry_source_df"),
+            passthrough_cols=get("passthrough_cols"),
+            industry_keep_columns=get("industry_keep_columns"),
+            price_passthrough_cols=get("price_passthrough_cols"),
+            bucket_cols=get("bucket_cols"),
+        ),
+        feature_target=TrainEvalFeatureTarget(
+            features=get("features"),
+            target=get("target"),
+            train_target=get("train_target"),
+            price_col=get("price_col"),
+            fundamentals_mcap_col=get("fundamentals_mcap_col"),
+        ),
+        model=TrainEvalModelSettings(
+            model_type=get("model_type"),
+            model_params=get("model_params"),
+            model_cfg=get("model_cfg"),
+            sample_weight_mode=get("sample_weight_mode"),
+            sample_weight_params=get("sample_weight_params"),
+            n_splits=get("n_splits"),
+            embargo_steps=get("embargo_steps"),
+            purge_steps=get("purge_steps"),
+            train_window_mode=get("train_window_mode"),
+            train_window_size=get("train_window_size"),
+            train_window_unit=get("train_window_unit"),
+        ),
+        signal=TrainEvalSignalSettings(
+            signal_direction_mode=get("signal_direction_mode"),
+            signal_direction=get("signal_direction"),
+            min_abs_ic_to_flip=get("min_abs_ic_to_flip"),
+            score_postprocess_method=get("score_postprocess_method"),
+            score_postprocess_columns=get("score_postprocess_columns"),
+            score_postprocess_strength=get("score_postprocess_strength"),
+            score_postprocess_min_obs=get("score_postprocess_min_obs"),
+            report_train_ic=get("report_train_ic"),
+        ),
+        live=TrainEvalLiveSettings(
+            live_enabled=get("live_enabled"),
+            live_as_of=get("live_as_of"),
+            market=get("market"),
+            provider=get("provider"),
+            live_train_mode=get("live_train_mode"),
+            min_symbols_per_date=get("min_symbols_per_date"),
+        ),
+        backtest=TrainEvalBacktestSettings(
+            backtest_top_k=get("backtest_top_k"),
+            label_shift_days=get("label_shift_days"),
+            backtest_weighting=get("backtest_weighting"),
+            backtest_buffer_exit=get("backtest_buffer_exit"),
+            backtest_buffer_entry=get("backtest_buffer_entry"),
+            backtest_long_only=get("backtest_long_only"),
+            backtest_short_k=get("backtest_short_k"),
+            backtest_tradable_col=get("backtest_tradable_col"),
+            backtest_group_col=get("backtest_group_col"),
+            backtest_max_names_per_group=get("backtest_max_names_per_group"),
+            execution_model=get("execution_model"),
+            backtest_rebalance_frequency=get("backtest_rebalance_frequency"),
+            backtest_enabled=get("backtest_enabled"),
+            backtest_signal_direction_raw=get("backtest_signal_direction_raw"),
+            backtest_cost_bps_effective=get("backtest_cost_bps_effective"),
+            backtest_trading_days_per_year=get("backtest_trading_days_per_year"),
+            backtest_exit_mode=get("backtest_exit_mode"),
+            backtest_exit_horizon_days=get("backtest_exit_horizon_days"),
+            backtest_exit_price_policy=get("backtest_exit_price_policy"),
+            backtest_exit_fallback_policy=get("backtest_exit_fallback_policy"),
+        ),
+        period=TrainEvalPeriodSettings(
+            rebalance_frequency=get("rebalance_frequency"),
+            sample_on_rebalance_dates=get("sample_on_rebalance_dates"),
+            perm_test_runs=get("perm_test_runs"),
+            perm_test_seed=get("perm_test_seed"),
+            label_horizon_mode=get("label_horizon_mode"),
+            label_horizon_effective=get("label_horizon_effective"),
+            n_quantiles=get("n_quantiles"),
+            top_k=get("top_k"),
+            eval_buffer_exit=get("eval_buffer_exit"),
+            eval_buffer_entry=get("eval_buffer_entry"),
+            transaction_cost_bps=get("transaction_cost_bps"),
+            bucket_ic_enabled=get("bucket_ic_enabled"),
+            bucket_ic_schemes=get("bucket_ic_schemes"),
+            bucket_ic_method=get("bucket_ic_method"),
+            bucket_ic_min_count=get("bucket_ic_min_count"),
+            rolling_windows_months=get("rolling_windows_months"),
+        ),
+        walk_forward=TrainEvalWalkForwardSettings(
+            wf_enabled=get("wf_enabled"),
+            wf_n_windows=get("wf_n_windows"),
+            wf_test_size=get("wf_test_size"),
+            wf_step_size=get("wf_step_size"),
+            effective_gap_steps=get("effective_gap_steps"),
+            wf_anchor_end=get("wf_anchor_end"),
+            wf_feature_top_k=get("wf_feature_top_k"),
+            wf_backtest_enabled=get("wf_backtest_enabled"),
+            wf_perm_test_enabled=get("wf_perm_test_enabled"),
+            wf_perm_test_runs=get("wf_perm_test_runs"),
+            wf_perm_test_seed=get("wf_perm_test_seed"),
+        ),
+        services=TrainEvalServices(
+            backtest_topk_fn=get("backtest_topk_fn"),
+            bucket_ic_summary_fn=get("bucket_ic_summary_fn"),
+        ),
+    )
+    unknown = sorted(set(kwargs) - used)
+    if unknown:
+        raise TypeError(f"Unexpected train/eval stage fields: {', '.join(unknown)}")
+    return request
+
+
+def _fit_model_and_score_train(
     train_df: pd.DataFrame,
-    test_df: pd.DataFrame,
-    test_dates: np.ndarray,
-    df_features: pd.DataFrame,
-    df_full: pd.DataFrame,
-    df_model_sorted: pd.DataFrame,
-    all_dates: np.ndarray,
-    all_date_start_rows: np.ndarray,
-    all_date_end_rows: np.ndarray,
-    all_date_to_pos: dict[pd.Timestamp, int],
-    features: list[str],
-    target: str,
-    train_target: str,
-    model_type: str,
-    model_params: dict[str, Any],
-    model_cfg: dict[str, Any],
-    sample_weight_mode: str,
-    sample_weight_params: dict[str, Any],
-    n_splits: int,
-    embargo_steps: int,
-    purge_steps: int,
-    train_window_mode: str,
-    train_window_size: int | None,
-    train_window_unit: str | None,
-    signal_direction_mode: str,
-    signal_direction: float,
-    min_abs_ic_to_flip: float,
-    score_postprocess_method: str,
-    score_postprocess_columns: list[str] | None,
-    score_postprocess_strength: float,
-    score_postprocess_min_obs: int,
-    report_train_ic: bool,
-    live_enabled: bool,
-    live_as_of: str | None,
-    market: str,
-    provider: str,
-    live_train_mode: str,
-    min_symbols_per_date: int,
-    price_col: str,
-    backtest_top_k: int,
-    label_shift_days: int,
-    backtest_weighting: str,
-    backtest_buffer_exit: int,
-    backtest_buffer_entry: int,
-    backtest_long_only: bool,
-    backtest_short_k: int | None,
-    backtest_tradable_col: str | None,
-    backtest_group_col: str | None,
-    backtest_max_names_per_group: int | None,
-    execution_model: dict[str, Any],
-    rebalance_frequency: str,
-    sample_on_rebalance_dates: bool,
-    valid_dates_set: set[pd.Timestamp],
-    perm_test_runs: int,
-    perm_test_seed: int | None,
-    label_horizon_mode: str,
-    label_horizon_effective: int | float,
-    n_quantiles: int,
-    top_k: int,
-    eval_buffer_exit: int,
-    eval_buffer_entry: int,
-    transaction_cost_bps: float,
-    bucket_ic_enabled: bool,
-    bucket_ic_schemes: list[dict[str, Any]],
-    bucket_ic_method: str,
-    bucket_ic_min_count: int,
-    backtest_rebalance_frequency: str,
-    backtest_enabled: bool,
-    backtest_signal_direction_raw: float | None,
-    backtest_cost_bps_effective: float,
-    backtest_trading_days_per_year: int,
-    backtest_exit_mode: str,
-    backtest_exit_horizon_days: int,
-    backtest_pricing_df: pd.DataFrame,
-    backtest_exit_price_policy: str,
-    backtest_exit_fallback_policy: str,
-    benchmark_df: pd.DataFrame | None,
-    benchmark_return_series: pd.Series,
-    industry_source_df: pd.DataFrame,
-    fundamentals_mcap_col: str,
-    passthrough_cols: list[str],
-    industry_keep_columns: list[str],
-    price_passthrough_cols: list[str],
-    bucket_cols: list[str],
-    backtest_topk_fn: Any,
-    bucket_ic_summary_fn: Any,
-    rolling_windows_months: list[int],
-    wf_enabled: bool,
-    wf_n_windows: int,
-    wf_test_size: float | int | None,
-    wf_step_size: float | int | None,
-    effective_gap_steps: int,
-    wf_anchor_end: bool,
-    wf_feature_top_k: int,
-    wf_backtest_enabled: bool,
-    wf_perm_test_enabled: bool,
-    wf_perm_test_runs: int,
-    wf_perm_test_seed: int | None,
-) -> dict[str, Any]:
+    *,
+    feature_target: TrainEvalFeatureTarget,
+    model_settings: TrainEvalModelSettings,
+    signal_settings: TrainEvalSignalSettings,
+    cv_scores_raw: list[float],
+) -> _TrainFitResult:
+    features = feature_target.features
+    target = feature_target.target
+    train_target = feature_target.train_target
+    updated_signal_direction = signal_settings.signal_direction
+
+    logger.info("Fitting model (%s) ...", model_settings.model_type)
+    model = build_model(model_settings.model_type, model_settings.model_params)
+    train_weights = build_sample_weight(
+        train_df,
+        model_settings.sample_weight_mode,
+        params=model_settings.sample_weight_params,
+    )
+    fit_model(
+        model,
+        model_settings.model_type,
+        train_df,
+        features=features,
+        target_col=train_target,
+        sample_weight=train_weights,
+    )
+
+    train_eval_df = train_df.copy()
+    train_eval_df["pred"] = model.predict(train_eval_df[features])
+    train_eval_df["pred"] = apply_score_postprocess(
+        train_eval_df,
+        "pred",
+        method=signal_settings.score_postprocess_method,
+        columns=signal_settings.score_postprocess_columns,
+        strength=signal_settings.score_postprocess_strength,
+        min_obs=signal_settings.score_postprocess_min_obs,
+    )
+    train_ic_raw_stats = {}
+    if signal_settings.signal_direction_mode == "train_ic":
+        train_ic_raw_series = daily_ic_series(train_eval_df, target, "pred")
+        train_ic_raw_stats = summarize_ic(train_ic_raw_series)
+        raw_mean = train_ic_raw_stats.get("mean", np.nan)
+        if np.isfinite(raw_mean) and raw_mean != 0:
+            updated_signal_direction = float(np.sign(raw_mean))
+        else:
+            updated_signal_direction = 1.0
+        logger.info("Signal direction set from Train IC: %s", updated_signal_direction)
+
+    train_signal_col = "pred"
+    if updated_signal_direction != 1.0:
+        train_eval_df["signal"] = train_eval_df["pred"] * updated_signal_direction
+        train_signal_col = "signal"
+
+    cv_scores_adj = None
+    if cv_scores_raw:
+        cv_scores_adj = [float(score) * updated_signal_direction for score in cv_scores_raw]
+        if updated_signal_direction != 1.0:
+            logger.info(
+                "CV IC (adj): mean=%.4f, std=%.4f",
+                np.nanmean(cv_scores_adj),
+                np.nanstd(cv_scores_adj),
+            )
+            logger.info("CV fold ICs (adj): %s", [f"{s:.4f}" for s in cv_scores_adj])
+
+    train_ic_series = pd.Series(dtype=float, name="ic")
+    train_ic_stats = {}
+    train_pearson_ic_series = pd.Series(dtype=float, name="ic_pearson")
+    train_pearson_ic_stats = {}
+    if signal_settings.report_train_ic:
+        train_ic_series = daily_ic_series(train_eval_df, target, train_signal_col)
+        train_ic_stats = summarize_ic(train_ic_series)
+        logger.info(
+            "Train Daily IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
+            train_ic_stats["mean"],
+            train_ic_stats["std"],
+            train_ic_stats["ir"],
+            train_ic_stats["t_stat"],
+            train_ic_stats["p_value"],
+            train_ic_stats["n"],
+        )
+        train_pearson_ic_series = daily_ic_series(
+            train_eval_df, target, train_signal_col, method="pearson"
+        )
+        train_pearson_ic_stats = summarize_ic(train_pearson_ic_series)
+        logger.info(
+            "Train Daily Pearson IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
+            train_pearson_ic_stats["mean"],
+            train_pearson_ic_stats["std"],
+            train_pearson_ic_stats["ir"],
+            train_pearson_ic_stats["t_stat"],
+            train_pearson_ic_stats["p_value"],
+            train_pearson_ic_stats["n"],
+        )
+
+    return _TrainFitResult(
+        model=model,
+        train_eval_df=train_eval_df,
+        updated_signal_direction=updated_signal_direction,
+        train_signal_col=train_signal_col,
+        train_ic_raw_stats=train_ic_raw_stats,
+        train_ic_series=train_ic_series,
+        train_ic_stats=train_ic_stats,
+        train_pearson_ic_series=train_pearson_ic_series,
+        train_pearson_ic_stats=train_pearson_ic_stats,
+        cv_scores_adj=cv_scores_adj,
+    )
+
+
+def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
+    data = request.data
+    feature_target = request.feature_target
+    model_settings = request.model
+    signal_settings = request.signal
+    live_settings = request.live
+    backtest_settings = request.backtest
+    period_settings = request.period
+    walk_forward_settings = request.walk_forward
+    services = request.services
+
+    train_df = data.train_df
+    test_df = data.test_df
+    test_dates = data.test_dates
+    df_features = data.df_features
+    df_full = data.df_full
+    df_model_sorted = data.df_model_sorted
+    all_dates = data.all_dates
+    all_date_start_rows = data.all_date_start_rows
+    all_date_end_rows = data.all_date_end_rows
+    all_date_to_pos = data.all_date_to_pos
+    valid_dates_set = data.valid_dates_set
+    backtest_pricing_df = data.backtest_pricing_df
+    benchmark_df = data.benchmark_df
+    benchmark_return_series = data.benchmark_return_series
+    industry_source_df = data.industry_source_df
+    passthrough_cols = data.passthrough_cols
+    industry_keep_columns = data.industry_keep_columns
+    price_passthrough_cols = data.price_passthrough_cols
+    bucket_cols = data.bucket_cols
+
+    features = feature_target.features
+    target = feature_target.target
+    train_target = feature_target.train_target
+    price_col = feature_target.price_col
+    fundamentals_mcap_col = feature_target.fundamentals_mcap_col
+
+    model_type = model_settings.model_type
+    model_params = model_settings.model_params
+    model_cfg = model_settings.model_cfg
+    sample_weight_mode = model_settings.sample_weight_mode
+    sample_weight_params = model_settings.sample_weight_params
+    n_splits = model_settings.n_splits
+    embargo_steps = model_settings.embargo_steps
+    purge_steps = model_settings.purge_steps
+    train_window_mode = model_settings.train_window_mode
+    train_window_size = model_settings.train_window_size
+    train_window_unit = model_settings.train_window_unit
+
+    signal_direction_mode = signal_settings.signal_direction_mode
+    signal_direction = signal_settings.signal_direction
+    min_abs_ic_to_flip = signal_settings.min_abs_ic_to_flip
+    score_postprocess_method = signal_settings.score_postprocess_method
+    score_postprocess_columns = signal_settings.score_postprocess_columns
+    score_postprocess_strength = signal_settings.score_postprocess_strength
+    score_postprocess_min_obs = signal_settings.score_postprocess_min_obs
+    report_train_ic = signal_settings.report_train_ic
+
+    live_enabled = live_settings.live_enabled
+    live_as_of = live_settings.live_as_of
+    market = live_settings.market
+    provider = live_settings.provider
+    live_train_mode = live_settings.live_train_mode
+    min_symbols_per_date = live_settings.min_symbols_per_date
+
+    backtest_top_k = backtest_settings.backtest_top_k
+    label_shift_days = backtest_settings.label_shift_days
+    backtest_weighting = backtest_settings.backtest_weighting
+    backtest_buffer_exit = backtest_settings.backtest_buffer_exit
+    backtest_buffer_entry = backtest_settings.backtest_buffer_entry
+    backtest_long_only = backtest_settings.backtest_long_only
+    backtest_short_k = backtest_settings.backtest_short_k
+    backtest_tradable_col = backtest_settings.backtest_tradable_col
+    backtest_group_col = backtest_settings.backtest_group_col
+    backtest_max_names_per_group = backtest_settings.backtest_max_names_per_group
+    execution_model = backtest_settings.execution_model
+    backtest_rebalance_frequency = backtest_settings.backtest_rebalance_frequency
+    backtest_enabled = backtest_settings.backtest_enabled
+    backtest_signal_direction_raw = backtest_settings.backtest_signal_direction_raw
+    backtest_cost_bps_effective = backtest_settings.backtest_cost_bps_effective
+    backtest_trading_days_per_year = backtest_settings.backtest_trading_days_per_year
+    backtest_exit_mode = backtest_settings.backtest_exit_mode
+    backtest_exit_horizon_days = backtest_settings.backtest_exit_horizon_days
+    backtest_exit_price_policy = backtest_settings.backtest_exit_price_policy
+    backtest_exit_fallback_policy = backtest_settings.backtest_exit_fallback_policy
+
+    rebalance_frequency = period_settings.rebalance_frequency
+    sample_on_rebalance_dates = period_settings.sample_on_rebalance_dates
+    perm_test_runs = period_settings.perm_test_runs
+    perm_test_seed = period_settings.perm_test_seed
+    label_horizon_mode = period_settings.label_horizon_mode
+    label_horizon_effective = period_settings.label_horizon_effective
+    n_quantiles = period_settings.n_quantiles
+    top_k = period_settings.top_k
+    eval_buffer_exit = period_settings.eval_buffer_exit
+    eval_buffer_entry = period_settings.eval_buffer_entry
+    transaction_cost_bps = period_settings.transaction_cost_bps
+    bucket_ic_enabled = period_settings.bucket_ic_enabled
+    bucket_ic_schemes = period_settings.bucket_ic_schemes
+    bucket_ic_method = period_settings.bucket_ic_method
+    bucket_ic_min_count = period_settings.bucket_ic_min_count
+    rolling_windows_months = period_settings.rolling_windows_months
+
+    wf_enabled = walk_forward_settings.wf_enabled
+    wf_n_windows = walk_forward_settings.wf_n_windows
+    wf_test_size = walk_forward_settings.wf_test_size
+    wf_step_size = walk_forward_settings.wf_step_size
+    effective_gap_steps = walk_forward_settings.effective_gap_steps
+    wf_anchor_end = walk_forward_settings.wf_anchor_end
+    wf_feature_top_k = walk_forward_settings.wf_feature_top_k
+    wf_backtest_enabled = walk_forward_settings.wf_backtest_enabled
+    wf_perm_test_enabled = walk_forward_settings.wf_perm_test_enabled
+    wf_perm_test_runs = walk_forward_settings.wf_perm_test_runs
+    wf_perm_test_seed = walk_forward_settings.wf_perm_test_seed
+
+    backtest_topk_fn = services.backtest_topk_fn
+    bucket_ic_summary_fn = services.bucket_ic_summary_fn
+
     logger.info("Time-series cross-validation (IC) ...")
 
     walk_forward_importance_rows: list[dict[str, Any]] = []
@@ -186,21 +473,21 @@ def _run_train_eval_stage_impl(
                 updated_signal_direction,
             )
 
-    logger.info("Fitting model (%s) ...", model_type)
-    model = build_model(model_type, model_params)
-    train_weights = build_sample_weight(
+    fit_state = _fit_model_and_score_train(
         train_df,
-        sample_weight_mode,
-        params=sample_weight_params,
+        feature_target=feature_target,
+        model_settings=model_settings,
+        signal_settings=signal_settings,
+        cv_scores_raw=cv_scores_raw,
     )
-    fit_model(
-        model,
-        model_type,
-        train_df,
-        features=features,
-        target_col=train_target,
-        sample_weight=train_weights,
-    )
+    model = fit_state.model
+    updated_signal_direction = fit_state.updated_signal_direction
+    train_ic_raw_stats = fit_state.train_ic_raw_stats
+    train_ic_series = fit_state.train_ic_series
+    train_ic_stats = fit_state.train_ic_stats
+    train_pearson_ic_series = fit_state.train_pearson_ic_series
+    train_pearson_ic_stats = fit_state.train_pearson_ic_stats
+    cv_scores_adj = fit_state.cv_scores_adj
 
     logger.info("Evaluating model on train/test sets ...")
     test_start = pd.to_datetime(test_dates[0])
@@ -210,72 +497,6 @@ def _run_train_eval_stage_impl(
     ].copy()
     if test_df_full.empty:
         raise SystemExit("Not enough test data after applying the split window.")
-
-    train_eval_df = train_df.copy()
-    train_eval_df["pred"] = model.predict(train_eval_df[features])
-    train_eval_df["pred"] = apply_score_postprocess(
-        train_eval_df,
-        "pred",
-        method=score_postprocess_method,
-        columns=score_postprocess_columns,
-        strength=score_postprocess_strength,
-        min_obs=score_postprocess_min_obs,
-    )
-    train_ic_raw_stats = {}
-    if signal_direction_mode == "train_ic":
-        train_ic_raw_series = daily_ic_series(train_eval_df, target, "pred")
-        train_ic_raw_stats = summarize_ic(train_ic_raw_series)
-        raw_mean = train_ic_raw_stats.get("mean", np.nan)
-        if np.isfinite(raw_mean) and raw_mean != 0:
-            updated_signal_direction = float(np.sign(raw_mean))
-        else:
-            updated_signal_direction = 1.0
-        logger.info("Signal direction set from Train IC: %s", updated_signal_direction)
-
-    train_signal_col = "pred"
-    if updated_signal_direction != 1.0:
-        train_eval_df["signal"] = train_eval_df["pred"] * updated_signal_direction
-        train_signal_col = "signal"
-
-    if cv_scores_raw:
-        cv_scores_adj = [float(score) * updated_signal_direction for score in cv_scores_raw]
-        if updated_signal_direction != 1.0:
-            logger.info(
-                "CV IC (adj): mean=%.4f, std=%.4f",
-                np.nanmean(cv_scores_adj),
-                np.nanstd(cv_scores_adj),
-            )
-            logger.info("CV fold ICs (adj): %s", [f"{s:.4f}" for s in cv_scores_adj])
-
-    train_ic_series = pd.Series(dtype=float, name="ic")
-    train_ic_stats = {}
-    train_pearson_ic_series = pd.Series(dtype=float, name="ic_pearson")
-    train_pearson_ic_stats = {}
-    if report_train_ic:
-        train_ic_series = daily_ic_series(train_eval_df, target, train_signal_col)
-        train_ic_stats = summarize_ic(train_ic_series)
-        logger.info(
-            "Train Daily IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
-            train_ic_stats["mean"],
-            train_ic_stats["std"],
-            train_ic_stats["ir"],
-            train_ic_stats["t_stat"],
-            train_ic_stats["p_value"],
-            train_ic_stats["n"],
-        )
-        train_pearson_ic_series = daily_ic_series(
-            train_eval_df, target, train_signal_col, method="pearson"
-        )
-        train_pearson_ic_stats = summarize_ic(train_pearson_ic_series)
-        logger.info(
-            "Train Daily Pearson IC: mean=%.4f, std=%.4f, IR=%.2f, t=%.2f, p=%.4f (n=%s)",
-            train_pearson_ic_stats["mean"],
-            train_pearson_ic_stats["std"],
-            train_pearson_ic_stats["ir"],
-            train_pearson_ic_stats["t_stat"],
-            train_pearson_ic_stats["p_value"],
-            train_pearson_ic_stats["n"],
-        )
 
     live_state = _prepare_live_snapshot(
         df_features,

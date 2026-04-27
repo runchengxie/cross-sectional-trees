@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+import cstree.pipeline as pipeline_pkg
+from cstree.pipeline import runner as pipeline_runner
 from cstree.pipeline.dates import _build_trade_date_slices
 from cstree.pipeline.runtime import _prepare_split_context
 
@@ -53,3 +55,37 @@ def test_prepare_split_context_uses_reference_trade_calendar_for_rebalance_gap()
     assert split_state["embargo_steps"] == 1
     assert len(split_state["train_dates_full"]) == 5
     assert len(split_state["test_dates"]) == 7
+
+
+def test_resolve_train_eval_service_hooks_prefers_package_monkeypatch(monkeypatch):
+    def fake_backtest_topk(*args, **kwargs):
+        return None
+
+    def fake_bucket_ic_summary(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(pipeline_pkg, "backtest_topk", fake_backtest_topk)
+    monkeypatch.setattr(pipeline_pkg, "bucket_ic_summary", fake_bucket_ic_summary)
+
+    backtest_topk_fn, bucket_ic_summary_fn = pipeline_runner._resolve_train_eval_service_hooks()
+
+    assert backtest_topk_fn is fake_backtest_topk
+    assert bucket_ic_summary_fn is fake_bucket_ic_summary
+
+
+def test_attach_benchmark_compare_frames_adds_symbol_frames_without_mutating_specs():
+    specs = [
+        {"source_type": "symbol", "symbol": "02800.HK"},
+        {"source_type": "file", "name": "local"},
+    ]
+    benchmark_frame = pd.DataFrame({"trade_date": ["2024-01-31"], "benchmark_return": [0.01]})
+
+    resolved = pipeline_runner._attach_benchmark_compare_frames(
+        specs,
+        {"02800.HK": benchmark_frame},
+    )
+
+    assert resolved[0]["benchmark_df"].equals(benchmark_frame)
+    assert resolved[0]["series"].empty
+    assert resolved[1] == specs[1]
+    assert "benchmark_df" not in specs[0]

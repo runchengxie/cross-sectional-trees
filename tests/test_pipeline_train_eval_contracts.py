@@ -160,13 +160,27 @@ def test_train_eval_request_flattens_to_legacy_kwargs():
 def test_run_train_eval_stage_accepts_contract_request(monkeypatch):
     captured = {}
 
-    def _fake_impl(**kwargs):
-        captured.update(kwargs)
+    def _fake_impl(request):
+        captured.update(request.to_kwargs())
         return {"ok": True}
 
     monkeypatch.setattr(train_eval_stage, "_run_train_eval_stage_impl", _fake_impl)
 
     assert train_eval_stage.run_train_eval_stage(request=_request()) == {"ok": True}
+    assert captured["features"] == ["f1"]
+    assert captured["model_type"] == "ridge"
+
+
+def test_run_train_eval_stage_accepts_legacy_kwargs(monkeypatch):
+    captured = {}
+
+    def _fake_impl(request):
+        captured.update(request.to_kwargs())
+        return {"ok": True}
+
+    monkeypatch.setattr(train_eval_stage, "_run_train_eval_stage_impl", _fake_impl)
+
+    assert train_eval_stage.run_train_eval_stage(**_request().to_kwargs()) == {"ok": True}
     assert captured["features"] == ["f1"]
     assert captured["model_type"] == "ridge"
 

@@ -1343,6 +1343,153 @@ def _load_hk_instrument_reference_map(instruments_path: Path | None) -> dict[str
     return grouped
 
 
+def _build_field_quality_checks(
+    *,
+    field_rows: list[dict[str, object]],
+    dataset: str | None,
+    sample_limit: int,
+) -> list[dict[str, object]]:
+    quality_checks: list[dict[str, object]] = []
+    for row in field_rows:
+        if not isinstance(row, Mapping):
+            continue
+        field = str(row.get("field") or "")
+        denominator = int(row.get("symbols_with_target_date_row") or 0)
+        clean_nonmissing = int(row.get("clean_nonmissing_on_target_date") or 0)
+        unusable = int(row.get("unusable_on_target_date") or 0)
+        provider_like_unusable = int(row.get("provider_like_unusable_on_target_date") or 0)
+        placeholder_count = int(row.get("placeholder_on_target_date") or 0)
+        nonfinite_count = int(row.get("nonfinite_on_target_date") or 0)
+        zero_count = int(row.get("zero_on_target_date") or 0)
+        constant_cross_section = bool(row.get("is_constant_across_clean_values_on_target_date"))
+        all_zero_clean = (
+            clean_nonmissing > 0
+            and zero_count == clean_nonmissing
+            and row.get("most_common_clean_value_on_target_date") == 0
+        )
+        if denominator > 0 and clean_nonmissing == 0:
+            if (
+                dataset == "valuation"
+                and provider_like_unusable > 0
+                and provider_like_unusable == unusable
+            ):
+                quality_checks.append(
+                    {
+                        "check": "field_all_clean_missing_on_target_date_provider_like",
+                        "field": field,
+                        "severity": "info",
+                        "affected_symbols": denominator,
+                        "affected_pct": _round_pct(denominator, denominator),
+                        "sample_symbols": [
+                            str(item.get("symbol"))
+                            for item in (row.get("sample_provider_like_ffill_symbols") or [])
+                            if isinstance(item, Mapping)
+                        ][:sample_limit],
+                    }
+                )
+            else:
+                quality_checks.append(
+                    {
+                        "check": "field_all_clean_missing_on_target_date",
+                        "field": field,
+                        "severity": "error",
+                        "affected_symbols": denominator,
+                        "affected_pct": _round_pct(denominator, denominator),
+                        "sample_symbols": _combine_samples(
+                            row.get("sample_unusable_symbols") or [],
+                            row.get("sample_prior_clean_symbols") or [],
+                            row.get("sample_missing_symbols") or [],
+                            limit=sample_limit,
+                        ),
+                    }
+                )
+        if placeholder_count > 0:
+            quality_checks.append(
+                {
+                    "check": "field_placeholder_values_on_target_date",
+                    "field": field,
+                    "severity": "warning",
+                    "affected_symbols": placeholder_count,
+                    "affected_pct": _round_pct(placeholder_count, denominator),
+                    "sample_symbols": list(row.get("sample_placeholder_symbols") or []),
+                }
+            )
+        if nonfinite_count > 0:
+            quality_checks.append(
+                {
+                    "check": "field_nonfinite_values_on_target_date",
+                    "field": field,
+                    "severity": "error",
+                    "affected_symbols": nonfinite_count,
+                    "affected_pct": _round_pct(nonfinite_count, denominator),
+                    "sample_symbols": list(row.get("sample_nonfinite_symbols") or []),
+                }
+            )
+        if all_zero_clean:
+            quality_checks.append(
+                {
+                    "check": "field_all_clean_values_zero_on_target_date",
+                    "field": field,
+                    "severity": "warning",
+                    "affected_symbols": zero_count,
+                    "affected_pct": _round_pct(zero_count, clean_nonmissing),
+                    "sample_symbols": list(row.get("sample_zero_symbols") or []),
+                }
+            )
+        if (
+            clean_nonmissing > 1
+            and constant_cross_section
+            and not _skip_constant_cross_section_quality_check(dataset=dataset, field=field)
+        ):
+            quality_checks.append(
+                {
+                    "check": "field_constant_cross_section_on_target_date",
+                    "field": field,
+                    "severity": "warning",
+                    "affected_symbols": clean_nonmissing,
+                    "affected_pct": _round_pct(clean_nonmissing, denominator),
+                    "sample_symbols": list(row.get("sample_clean_symbols") or [])[:sample_limit],
+                }
+            )
+        for threshold, severity in ((10, "error"), (5, "warning"), (1, "info")):
+            affected = int(row.get(f"ffill_age_gt_{threshold}d_symbols") or 0)
+            if affected <= 0:
+                continue
+            quality_checks.append(
+                {
+                    "check": f"field_ffill_age_gt_{threshold}d",
+                    "field": field,
+                    "severity": severity,
+                    "affected_symbols": affected,
+                    "affected_pct": _round_pct(affected, unusable),
+                    "sample_symbols": [
+                        str(item.get("symbol"))
+                        for item in (row.get("sample_oldest_ffill_symbols") or [])
+                        if isinstance(item, Mapping)
+                    ][:sample_limit],
+                }
+            )
+        for threshold, severity in ((10, "warning"), (5, "info"), (1, "info")):
+            affected = int(row.get(f"provider_ffill_age_gt_{threshold}d_symbols") or 0)
+            if affected <= 0:
+                continue
+            quality_checks.append(
+                {
+                    "check": f"field_provider_like_ffill_age_gt_{threshold}d",
+                    "field": field,
+                    "severity": severity,
+                    "affected_symbols": affected,
+                    "affected_pct": _round_pct(affected, unusable),
+                    "sample_symbols": [
+                        str(item.get("symbol"))
+                        for item in (row.get("sample_provider_like_ffill_symbols") or [])
+                        if isinstance(item, Mapping)
+                    ][:sample_limit],
+                }
+            )
+    return quality_checks
+
+
 def inspect_hk_asset_health(args) -> int:
     asset_dir = _resolve_path(args.asset_dir)
     data_dir = asset_dir / "data"
@@ -1828,140 +1975,11 @@ def inspect_hk_asset_health(args) -> int:
             }
         )
 
-    quality_checks: list[dict[str, object]] = []
-    for row in field_rows:
-        if not isinstance(row, Mapping):
-            continue
-        field = str(row.get("field") or "")
-        denominator = int(row.get("symbols_with_target_date_row") or 0)
-        clean_nonmissing = int(row.get("clean_nonmissing_on_target_date") or 0)
-        unusable = int(row.get("unusable_on_target_date") or 0)
-        provider_like_unusable = int(row.get("provider_like_unusable_on_target_date") or 0)
-        placeholder_count = int(row.get("placeholder_on_target_date") or 0)
-        nonfinite_count = int(row.get("nonfinite_on_target_date") or 0)
-        zero_count = int(row.get("zero_on_target_date") or 0)
-        constant_cross_section = bool(row.get("is_constant_across_clean_values_on_target_date"))
-        all_zero_clean = (
-            clean_nonmissing > 0
-            and zero_count == clean_nonmissing
-            and row.get("most_common_clean_value_on_target_date") == 0
-        )
-        if denominator > 0 and clean_nonmissing == 0:
-            if dataset == "valuation" and provider_like_unusable > 0 and provider_like_unusable == unusable:
-                quality_checks.append(
-                    {
-                        "check": "field_all_clean_missing_on_target_date_provider_like",
-                        "field": field,
-                        "severity": "info",
-                        "affected_symbols": denominator,
-                        "affected_pct": _round_pct(denominator, denominator),
-                        "sample_symbols": [
-                            str(item.get("symbol"))
-                            for item in (row.get("sample_provider_like_ffill_symbols") or [])
-                            if isinstance(item, Mapping)
-                        ][:sample_limit],
-                    }
-                )
-            else:
-                quality_checks.append(
-                    {
-                        "check": "field_all_clean_missing_on_target_date",
-                        "field": field,
-                        "severity": "error",
-                        "affected_symbols": denominator,
-                        "affected_pct": _round_pct(denominator, denominator),
-                        "sample_symbols": _combine_samples(
-                            row.get("sample_unusable_symbols") or [],
-                            row.get("sample_prior_clean_symbols") or [],
-                            row.get("sample_missing_symbols") or [],
-                            limit=sample_limit,
-                        ),
-                    }
-                )
-        if placeholder_count > 0:
-            quality_checks.append(
-                {
-                    "check": "field_placeholder_values_on_target_date",
-                    "field": field,
-                    "severity": "warning",
-                    "affected_symbols": placeholder_count,
-                    "affected_pct": _round_pct(placeholder_count, denominator),
-                    "sample_symbols": list(row.get("sample_placeholder_symbols") or []),
-                }
-            )
-        if nonfinite_count > 0:
-            quality_checks.append(
-                {
-                    "check": "field_nonfinite_values_on_target_date",
-                    "field": field,
-                    "severity": "error",
-                    "affected_symbols": nonfinite_count,
-                    "affected_pct": _round_pct(nonfinite_count, denominator),
-                    "sample_symbols": list(row.get("sample_nonfinite_symbols") or []),
-                }
-            )
-        if all_zero_clean:
-            quality_checks.append(
-                {
-                    "check": "field_all_clean_values_zero_on_target_date",
-                    "field": field,
-                    "severity": "warning",
-                    "affected_symbols": zero_count,
-                    "affected_pct": _round_pct(zero_count, clean_nonmissing),
-                    "sample_symbols": list(row.get("sample_zero_symbols") or []),
-                }
-            )
-        if (
-            clean_nonmissing > 1
-            and constant_cross_section
-            and not _skip_constant_cross_section_quality_check(dataset=dataset, field=field)
-        ):
-            quality_checks.append(
-                {
-                    "check": "field_constant_cross_section_on_target_date",
-                    "field": field,
-                    "severity": "warning",
-                    "affected_symbols": clean_nonmissing,
-                    "affected_pct": _round_pct(clean_nonmissing, denominator),
-                    "sample_symbols": list(row.get("sample_clean_symbols") or [])[:sample_limit],
-                }
-            )
-        for threshold, severity in ((10, "error"), (5, "warning"), (1, "info")):
-            affected = int(row.get(f"ffill_age_gt_{threshold}d_symbols") or 0)
-            if affected <= 0:
-                continue
-            quality_checks.append(
-                {
-                    "check": f"field_ffill_age_gt_{threshold}d",
-                    "field": field,
-                    "severity": severity,
-                    "affected_symbols": affected,
-                    "affected_pct": _round_pct(affected, unusable),
-                    "sample_symbols": [
-                        str(item.get("symbol"))
-                        for item in (row.get("sample_oldest_ffill_symbols") or [])
-                        if isinstance(item, Mapping)
-                    ][:sample_limit],
-                }
-            )
-        for threshold, severity in ((10, "warning"), (5, "info"), (1, "info")):
-            affected = int(row.get(f"provider_ffill_age_gt_{threshold}d_symbols") or 0)
-            if affected <= 0:
-                continue
-            quality_checks.append(
-                {
-                    "check": f"field_provider_like_ffill_age_gt_{threshold}d",
-                    "field": field,
-                    "severity": severity,
-                    "affected_symbols": affected,
-                    "affected_pct": _round_pct(affected, unusable),
-                    "sample_symbols": [
-                        str(item.get("symbol"))
-                        for item in (row.get("sample_provider_like_ffill_symbols") or [])
-                        if isinstance(item, Mapping)
-                    ][:sample_limit],
-                }
-            )
+    quality_checks = _build_field_quality_checks(
+        field_rows=field_rows,
+        dataset=dataset,
+        sample_limit=sample_limit,
+    )
 
     if dataset == "daily":
         quality_checks.extend(

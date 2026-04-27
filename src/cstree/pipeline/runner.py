@@ -40,6 +40,44 @@ from .train_eval_stage import run_train_eval_stage
 
 logger = logging.getLogger("cstree")
 
+DEFAULT_SYMBOLS = [
+    "00700.HK",
+    "00005.HK",
+    "00941.HK",
+    "00001.HK",
+    "00388.HK",
+]
+
+
+def _resolve_train_eval_service_hooks() -> tuple[Any, Any]:
+    package_api = sys.modules.get(__package__)
+    backtest_topk_fn = (
+        getattr(package_api, "backtest_topk", backtest_topk)
+        if package_api is not None
+        else backtest_topk
+    )
+    bucket_ic_summary_fn = (
+        getattr(package_api, "bucket_ic_summary", bucket_ic_summary)
+        if package_api is not None
+        else bucket_ic_summary
+    )
+    return backtest_topk_fn, bucket_ic_summary_fn
+
+
+def _attach_benchmark_compare_frames(
+    benchmark_compare_specs: list[dict[str, Any]],
+    benchmark_compare_dfs: dict[str, pd.DataFrame],
+) -> list[dict[str, Any]]:
+    resolved_specs: list[dict[str, Any]] = []
+    for spec in benchmark_compare_specs:
+        resolved = dict(spec)
+        if str(spec.get("source_type") or "") == "symbol":
+            symbol = str(spec["symbol"]).strip()
+            resolved["benchmark_df"] = benchmark_compare_dfs.get(symbol, pd.DataFrame())
+            resolved["series"] = pd.Series(dtype=float, name="benchmark_return")
+        resolved_specs.append(resolved)
+    return resolved_specs
+
 
 def _load_benchmark_return_series(path: Path) -> pd.Series:
     if not path.exists():
@@ -111,17 +149,7 @@ def run(
     fail_on_quality: str | None = None,
     artifacts_root: str | Path | None = None,
 ) -> None:
-    package_api = sys.modules.get(__package__)
-    backtest_topk_fn = (
-        getattr(package_api, "backtest_topk", backtest_topk)
-        if package_api is not None
-        else backtest_topk
-    )
-    bucket_ic_summary_fn = (
-        getattr(package_api, "bucket_ic_summary", bucket_ic_summary)
-        if package_api is not None
-        else bucket_ic_summary
-    )
+    backtest_topk_fn, bucket_ic_summary_fn = _resolve_train_eval_service_hooks()
     loaded = load_run_config(
         config_ref,
         artifacts_root_override=artifacts_root,
@@ -130,13 +158,6 @@ def run(
     MARKET = loaded["market"]
     ARTIFACTS_ROOT = loaded["artifacts_root"]
     CACHE_DIR = loaded["cache_dir"]
-    DEFAULT_SYMBOLS = [
-        "00700.HK",
-        "00005.HK",
-        "00941.HK",
-        "00001.HK",
-        "00388.HK",
-    ]
     setup = prepare_pipeline_setup(
         loaded=loaded,
         fail_on_quality=fail_on_quality,
@@ -598,14 +619,10 @@ def run(
         period_eval_context=period_eval_context,
         rolling_windows_months=ROLLING_WINDOWS_MONTHS,
     )
-    resolved_benchmark_compare_specs: list[dict[str, Any]] = []
-    for spec in benchmark_compare_specs:
-        resolved = dict(spec)
-        if str(spec.get("source_type") or "") == "symbol":
-            symbol = str(spec["symbol"]).strip()
-            resolved["benchmark_df"] = benchmark_compare_dfs.get(symbol, pd.DataFrame())
-            resolved["series"] = pd.Series(dtype=float, name="benchmark_return")
-        resolved_benchmark_compare_specs.append(resolved)
+    resolved_benchmark_compare_specs = _attach_benchmark_compare_frames(
+        benchmark_compare_specs,
+        benchmark_compare_dfs,
+    )
     persist_pipeline_outputs(
         loaded=loaded,
         universe_inputs=universe_inputs,
