@@ -1,9 +1,8 @@
 # 配置参考
 
-本文档的核心目标：提供配置键与默认行为的速查参考。
-本文档的范围限制：仅涉及配置项说明，不展开探讨具体的研究路线与概念选择。
-目标读者：需要查阅配置定义与模板参考的开发者或研究员。
-阅读收益：能够快速掌握配置键的权威定义，并定位常用模板的入口。
+用途：提供配置键与默认行为的速查参考。
+范围：只说明配置项、默认值和模板入口；研究路线与概念取舍见相关页面。
+适合读者：需要查配置定义或模板入口的开发者、研究员。
 相关页面：`docs/concepts/model-selection.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/universe-modes.md`、`docs/concepts/data-sources.md`、`docs/concepts/execution-costs.md`
 
 ## 常用模板速查
@@ -19,17 +18,17 @@
 | 拓展的季度实验路线 | `configs/experiments/variants/hk_selected__pit_quarterly_*` | 适合在此基础上进一步派生专题研究路线 |
 | 本地独立实验 | `configs/local/*.yml`（个人自建目录，默认不纳入版本控制）或任意自建实验目录 | 仅作个人本地派生使用，不作为官方基线入口 |
 
-> 注意：在命令 `cstree run --config default` 中，`default` 为内置别名。所有的内置别名以及 `cstree init-config` 命令均会读取仓库根目录下的 `configs/` 文件夹。其默认的适用场景为源码检出（checkout）环境，或包含了 `configs/` 文件夹的导出源码目录，不适用于脱离仓库上下文的独立运行环境。
+> 注意：在命令 `cstree run --config default` 中，`default` 为内置别名。所有内置别名以及 `cstree init-config` 都会读取仓库根目录下的 `configs/` 文件夹。默认使用场景是源码检出（checkout）环境，或包含 `configs/` 文件夹的导出源码目录。
 
 ### `PIT` 在本仓库中的多重语义
 
-为避免混淆，需注意 `PIT`（Point-in-Time）在本仓库中可能代表以下三种语义层面：
+`PIT`（Point-in-Time）在本仓库中常见于三种语境：
 
 1. PIT universe（股票池）：反映按日期动态变化的股票池成员关系，通常通过 `research_universe.by_date_file` 配置项体现。
 2. PIT fundamentals（基本面）：指代严格按历史披露节奏对齐的本地财务平面文件，通常通过 `fundamentals.source=file` 配合 `pipeline_fundamentals.parquet` 配置项体现。
-3. 季度 PIT 研究路线：在同一研究单元内，将季度（`Q`）频率、PIT 财务特征与 benchmark 协议组合而成的一条完整的正式研究工作流。
+3. 季度 PIT 研究路线：在同一研究单元内组合季度（`Q`）频率、PIT 财务特征和 benchmark 协议。
 
-当本文档提及 `hk.yml` 模板时，默认指代包含了部分基础设定的 HK Starter 配置，请勿将其自动等同于“完整的季度 PIT 基本面研究路线”。
+本文档提到 `hk.yml` 模板时，默认指 HK Starter 配置；完整季度 PIT 基本面研究路线请看 `configs/presets/hk_quarterly_pit_hybrid.yml`。
 
 ---
 
@@ -113,8 +112,8 @@ data:
 
 * 若设定了 `data.price_col: tr_close`，并希望价格类特征、标签及回测流程统一采用总回报（Total Return）口径，强烈建议同步配置 `data.rqdata.ex_factors_dir`。
 * 选用该配置时，系统会在读取日线数据后自动派生 `tr_close` 字段。原始的 `close` 字段仍将保留在数据集中，供对照参考或执行逻辑使用。
-* 若通过 RQData 在线接口拉取数据，并显式配置了 `data.rqdata.adjust_type: pre/post`，系统同样支持将提供商返回的复权后价格别名映射为 `tr_close`。
-* 当 `price_col=tr_close` 且已配置本地 `ex_factors_dir` 时，若发现部分股票缺少对应的复权因子数据，运行日志将抛出显式告警。同时，`summary.json -> data -> price_col_diagnostics` 中会详细记录具体的异常归类（如 `local_ex_factors`、`provider_adjusted_price`、`input_frame_missing_ex_factors` 抑或 `close_fallback_missing_ex_factors`）。
+* 若通过 RQData 在线接口拉取数据，并显式配置了 `data.rqdata.adjust_type: pre/post`，系统也可以把服务商返回的复权后价格映射为 `tr_close`。
+* 当 `price_col=tr_close` 且已配置本地 `ex_factors_dir` 时，缺少复权因子的股票会触发日志告警。`summary.json -> data -> price_col_diagnostics` 会记录异常分类，例如 `local_ex_factors`、`provider_adjusted_price`、`input_frame_missing_ex_factors` 或 `close_fallback_missing_ex_factors`。
 
 ### 股票池配置 (`research_universe`)
 
@@ -237,7 +236,7 @@ live:
 
 ### 质量闸门配置 (`quality`)
 
-系统目前在主流程及 liveops 环节支持接入可选的质量闸门。当前版本重点针对“HK + RQData + `fundamentals.source=file`”构成的本地 PIT 场景进行约束。运行 `cstree run` 前会触发 `inspect-hk-pit-coverage` 健康度检测，其结论将同步沉淀至 `summary.json -> quality.preflight`。
+系统目前在主流程及 liveops 环节支持可选的质量闸门。当前版本重点约束 “HK + RQData + `fundamentals.source=file`” 的本地 PIT 场景。运行 `cstree run` 前会触发 `inspect-hk-pit-coverage` 健康度检测，结论会写入 `summary.json -> quality.preflight`。
 
 ```yaml
 quality:
@@ -304,8 +303,8 @@ logging:
 说明：
 
 * `train_target_transform` 仅修饰输入至训练、交叉验证（CV）、walk-forward 前向验证及全量重训模式（`live.train_mode=full`）的标签列。
-* 评估体系中的 `IC` 测试、分位追踪、Top-K 选股以及所有回测流程，均严格绑定于 `label.target_col` 所锚定的原始未映射收益率。
-* 对待 `xgb_regressor` 模型，该转换开关非常适合用于评估“绝对收益回归与相对强弱回归”的效果差异；而对于本身具备排序属性的 `xgb_ranker` 模型，单调变换所带来的影响通常微乎其微。
+* `IC` 测试、分位追踪、Top-K 选股和回测流程都使用 `label.target_col` 指定的原始未映射收益率。
+* 对 `xgb_regressor`，该开关适合评估“绝对收益回归”和“相对强弱回归”的差异；对 `xgb_ranker`，单调变换的影响通常较小。
 
 ### 算法与调优 (`model`)
 
@@ -321,10 +320,10 @@ logging:
 
 说明：
 
-* 启用 `sample_weight_mode=exp_decay` 后，距离预测基准点越近的历史样本将获得更高的拟合权重。同时，处于同一日期的横截面样本群仍会先行依据群体规模实施一次平均降权处理，以防样本数量的突变扭曲整体梯度。
-* 配置 `sample_weight_params` 时，必须保证至少声明了 `halflife` 或 `decay_rate` 二者之一。
-* `model.train_window` 约束的是主训练集、CV 折叠、walk-forward 的训练侧、终局样本外推拟合以及实盘全量再训练过程的数据输入量。它并非评估环节 `walk_forward` 的代名词。
-* 当 `train_window.unit=dates` 时，提取的是时序轴上最近的 `N` 个交易截面；若配置为 `years`，则是立足于终点时刻向回溯 `N` 个自然年。
+* 启用 `sample_weight_mode=exp_decay` 后，距离预测基准点越近的历史样本会获得更高拟合权重。同一日期的横截面样本还会先按样本数平均降权，避免样本数量突变扭曲整体梯度。
+* 配置 `sample_weight_params` 时，至少声明 `halflife` 或 `decay_rate` 二者之一。
+* `model.train_window` 约束主训练集、CV 折叠、walk-forward 训练侧、最终样本外拟合以及实盘全量再训练的数据输入量。它不是评估环节 `walk_forward` 的同义词。
+* 当 `train_window.unit=dates` 时，提取时序轴上最近的 `N` 个交易截面；配置为 `years` 时，从终点向前回溯 `N` 个自然年。
 
 ### 核心评估环节 (`eval`)
 
@@ -341,10 +340,10 @@ logging:
 
 说明：
 
-* `eval.score_postprocess` 的介入时点严格排布于模型预测输出之后，但在后续的 `IC` 计算、分位收益追踪与投资组合构建之前。该操作不会污染训练时的特征输入，也不等同于前置的特征层面中性化（Feature Neutralization）。
+* `eval.score_postprocess` 在模型预测输出之后、`IC` 计算和组合构建之前执行。它不会改变训练时的特征输入，也不同于前置的特征层面中性化（Feature Neutralization）。
 * 目前配置的 `method=neutralize` 将逐日执行针对目标控制列的正交去线性相关运算；支持在 `columns` 数组下挂载单个或多个解释变量列。
-* 参数 `strength=1.0` 象征着将所选因子的横截面线性暴露彻底抹平；而配置为 `0.5` 则仅作半数扣减，适用于执行类似于 “soft size control” 的探针分析。
-* 统计截面的有效观测容量（`min_obs`）须确保超越 `len(columns) + 1` 的下限门槛。若样本数量不足，算法将主动放弃正交化操作，复用原始模型得分。
+* `strength=1.0` 表示完全移除所选因子的横截面线性暴露；`0.5` 表示移除一半，适合做类似 “soft size control” 的探针分析。
+* 统计截面的有效观测数（`min_obs`）需要大于 `len(columns) + 1`。若样本数量不足，算法会跳过正交化并复用原始模型得分。
 
 ### 步进样本外验证 (`eval.walk_forward`)
 
@@ -352,15 +351,15 @@ logging:
 |---|------|--------|
 | `enabled` | 激活 walk-forward 验证流程 | `true` 或 `false` |
 | `n_windows` | 计划切分的目标外延窗数量 | `2`、`4`、`6` |
-| `test_size` | 独立测试窗的比重或跨度。空置时继承主干 `eval.test_size` | `0.2`、`0.3` 或 `null` |
+| `test_size` | 独立测试窗的比重或跨度。留空时继承顶层 `eval.test_size` | `0.2`、`0.3` 或 `null` |
 | `step_size` | 窗口滑动的步长。空置时默认与测试窗跨度保持一致 | `0.1`、`0.2` 或 `null` |
 | `anchor_end` | 是否自最尾端逆向推演窗体排布 | `true` 或 `false` |
 
 说明：
 
-* 将 `eval.walk_forward.test_size` 赋为 `null` 并非唤醒内置的默认值，而是直接继承顶层的 `eval.test_size` 设定。
-* 当选择 `anchor_end=true` 且 `step_size=null` 时，系统将测试窗的跨度复制为步移距离。若 `test_size` 自身占比较大（如 `0.6`），在试图获取 `4` 个观测窗时，历史全集可能仅有空间承载最后 `1` 个验证窗。
-* 当请求的窗口数量超过了历史数据的承载极限，执行引擎将在控制台抛出超载警告，提醒用户 `walk_forward.n_windows` 仅作为预期上限，而非保底产出的绝对指标。
+* 将 `eval.walk_forward.test_size` 设为 `null` 时，系统直接继承顶层 `eval.test_size`。
+* 当 `anchor_end=true` 且 `step_size=null` 时，系统会把测试窗跨度作为移动步长。若 `test_size` 较大（如 `0.6`），请求 `4` 个窗口时，历史数据可能只够生成最后 `1` 个验证窗。
+* 当请求窗口数超过历史数据可用范围时，执行引擎会在控制台给出警告。`walk_forward.n_windows` 是预期上限，不保证一定产出这么多窗口。
 
 ### 策略回测配置 (`backtest`)
 
@@ -379,20 +378,20 @@ logging:
 
 说明：
 
-* 即便启用了 `research_universe.by_date_file` 过滤引擎，构建名单依然将严格受限于该 PIT 时点有效池的成分羁绊之中。
-* 回测环节执行进离场交割计算和甄别市场交易资质（`tradable` 鉴别）时，系统会调取未经 `universe_by_date` 剔除的原生行情源，以此防范已成功建仓的股票因稍后惨遭基准池剔除而“消失”。
-* `backtest.group_col` 与 `max_names_per_group` 配合使用可视为组合构建期的暴露额度封顶。这不会改变算法产出的评分次序，也不等同于完整的行业中性化机制。
-* 启用 `backtest.execution` 会在 `transaction_cost_bps`、`exit_price_policy` 和 `data.price_col` 的基础上架设更为精细的交割模拟网；若未配置此项，原有的默认行为仍将生效。
-* `execution.entry_policy.price_col` 及 `execution.exit_policy.price_col` 仅影响回测与持仓结算，不会篡改作为机器学习标签、主基准或价格衍生特征的全局标尺 `data.price_col`。
+* 启用 `research_universe.by_date_file` 后，候选名单会限制在该 PIT 时点有效的股票池内。
+* 回测执行进出场结算和交易资格（`tradable`）判断时，会读取未被 `universe_by_date` 裁剪的原始行情，避免已建仓股票在移出基准池后从回测中消失。
+* `backtest.group_col` 与 `max_names_per_group` 可用于限制组合构建期的单组持仓数量。它不会改变模型评分排序，也不是完整的行业中性化机制。
+* 启用 `backtest.execution` 后，系统会在 `transaction_cost_bps`、`exit_price_policy` 和 `data.price_col` 的基础上使用更细的执行模拟；未配置时沿用默认行为。
+* `execution.entry_policy.price_col` 和 `execution.exit_policy.price_col` 只影响回测与持仓结算，不改变机器学习标签、主基准或价格衍生特征使用的全局价格列 `data.price_col`。
 * 核心参照锚标 `backtest.benchmark_symbol` 与 `backtest.benchmark_returns_file` 存在天然互斥，两者选其一配置即可。前者适用于使用现成 ETF 指代，后者则适合自行定制。
 * `backtest.benchmark_returns_file` 支持 `csv` 及 `parquet` 格式；时间轴坐标列可命名为 `trade_date`、`date`、`exit_date` 及 `rebalance_date`；回报比率列接受 `benchmark_return`、`return` 或 `net_return`。
-* `backtest.benchmark_compare` 属纯粹报表层的多维补充。它不会干预系统沉淀到 `summary.json -> backtest.benchmark` / `backtest.active` 的主干统计数字，也不会影响前置的训练或调仓决议。
+* `backtest.benchmark_compare` 只用于报表层的多基准补充。它不会改变 `summary.json -> backtest.benchmark` / `backtest.active` 的主统计口径，也不会影响训练或调仓。
 * `backtest.benchmark_compare` 的各配置项支持三种表达形式：直接填入收益文件的路径字符串；使用包含 `{name, returns_file}` 的字典项；或针对单一代码采用 `{name, symbol}` 格式。若省略 `name` 属性，系统会就地提取文件名或标的代码作为替代。
 * 启用 `backtest.benchmark_compare` 后，运行结果会随附生成 `backtest_benchmark_compare_summary*.csv` 及 `backtest_benchmark_compare_<name>*.csv` 对照明细，并将关联线索汇集于 `summary.json -> backtest.benchmark_compare` 中。
-* 核心回测流程当前将附赠一份名为 `backtest_report*.csv` 的汇总报表，包含策略净值轨迹、相对基准的超额收益线、按自然年测算的滑动 1Y/3Y/5Y CAGR 以及滚动最大回撤统计。
-* 有关流转费用、滑点、复权修饰后的净价 `tr_close` 乃至真实现金分派的综合账本机制，请参阅专题文档：`docs/concepts/execution-costs.md`。
+* 核心回测流程会生成 `backtest_report*.csv` 汇总报表，包含策略净值、相对基准的超额收益、按自然年测算的滚动 1Y/3Y/5Y CAGR 以及滚动最大回撤。
+* 交易费用、滑点、复权后的净价 `tr_close` 和现金分红假设见：`docs/concepts/execution-costs.md`。
 
-配置样例典范：
+配置示例：
 
 ```yaml
 backtest:
@@ -422,13 +421,13 @@ backtest:
 
 补充说明：
 
-* 在 `cost_model.name=bps` 情景下，用户依然可以继续使用 `backtest.transaction_cost_bps` 简化配置。
-* `cost_model.name=side_bps` 适合分别设定做多/做空以及建仓/清仓的损耗成本；配置项 `short_borrow_bps_per_day` 用于估测融券借贷下的日均利息开支。
-* `slippage_model.name=bps` 对应单边固定滑点额度；而 `participation` 模式将依据实际盘面占比推算滑点影响，计算逻辑为 `trade_weight * portfolio_value / amount_col`。
-* `constraints.min_amount` 与配套模块 `slippage_model.amount_col` 须使用系统归一化后的标准列名。例如原始字段如 `total_turnover`，必须写成被转换后的 `amount` 字段名。
-* 若希望避免使用 `open` 入场价直接关联当日总成交额所带入的极微弱“未来数据（look-ahead）”成分，可将 `amount_col` 替换为某种历史平滑的流动性指标列（例如 `adv20_amount` 或 `medadv20_amount`，它们排除了交易当日的数据并分别计算了过去 20 个交易日的平均/中位数成交金额）。
-* `summary.json -> backtest -> execution_source` 会详细记录本轮回测是恪守了简单的 `default_flat_cost` 模式，还是启用了高规级的 `explicit_execution_config` 执行流程。
-* 仓库已内置了多套历经考验的港股月频执行层交割样例，详情参见：
+* 在 `cost_model.name=bps` 场景下，仍可使用 `backtest.transaction_cost_bps` 简化配置。
+* `cost_model.name=side_bps` 适合分别设定做多/做空以及建仓/清仓成本；`short_borrow_bps_per_day` 用于估算融券借贷的日均利息。
+* `slippage_model.name=bps` 对应单边固定滑点；`participation` 模式按成交参与率估算滑点，计算逻辑为 `trade_weight * portfolio_value / amount_col`。
+* `constraints.min_amount` 与 `slippage_model.amount_col` 需要使用系统归一化后的标准列名。例如原始字段是 `total_turnover` 时，应写转换后的 `amount` 字段名。
+* 若要避免 `open` 入场价直接关联当日成交额带来的轻微未来数据（look-ahead）风险，可将 `amount_col` 替换为历史平滑的流动性指标列，例如 `adv20_amount` 或 `medadv20_amount`。它们排除了交易当日数据，并分别计算过去 20 个交易日的平均或中位数成交金额。
+* `summary.json -> backtest -> execution_source` 会记录本轮回测使用的是简单的 `default_flat_cost` 模式，还是显式的 `explicit_execution_config` 执行配置。
+* 仓库已内置多套港股月频执行层配置示例，详情参见：
   [hk_selected__execution_stress_local.yml](../configs/experiments/variants/hk_selected__execution_stress_local.yml)、
   [hk_selected__execution_balanced_local.yml](../configs/experiments/variants/hk_selected__execution_balanced_local.yml)、
   [hk_selected__execution_connect_conservative_local.yml](../configs/experiments/variants/hk_selected__execution_connect_conservative_local.yml)、
@@ -445,18 +444,18 @@ backtest:
 
 说明：
 
-* 在特征列表 `features.list` 内声明的 PIT 财报二次派生列，不仅涵盖诸如 `growth_*`、`delta_*` 或 `profit_margin` 之类的单期切片运算，也支持 `sales_cagr_3y`、`eps_cagr_3y` 等复合年化增长指标，以及 `cfo_margin_avg_3y`、`profit_margin_std_3y`、`positive_cfo_ratio_2y` 乃至带有条件约束的 `positive_cfo_ratio_3y_min2` 这类表征长周期稳定性的深度扩展特征。这些计算会首先在严格对齐发布日期的财报事件序列上完成预演，待到并入最终的日线宽表（daily panel）时，才会执行最终的 `ffill` 操作。
+* `features.list` 可以声明 PIT 财报派生列。支持单期派生字段（如 `growth_*`、`delta_*`、`profit_margin`），也支持复合年化增长和稳定性字段（如 `sales_cagr_3y`、`eps_cagr_3y`、`cfo_margin_avg_3y`、`profit_margin_std_3y`、`positive_cfo_ratio_2y`、`positive_cfo_ratio_3y_min2`）。这些字段先在对齐披露日期的财报事件序列上计算，再合并到日线宽表（daily panel）并按配置执行 `ffill`。
 
-### 缺失值干预规程 (`features.missing`)
+### 缺失值处理 (`features.missing`)
 
 | 键名 | 作用说明 | 常见配置值 |
 |---|------|--------|
 | `method` | 缺失值填补策略 | `none`（留空） / `zero`（填零） / `cross_sectional_median`（使用截面中位数填补） |
 | `add_indicators` | 是否增加缺失标记指示列 | `true` 或 `false` |
 
-### 高频估值数据补充挂载策略 (`fundamentals.provider_overlay`)
+### 日频估值补充 (`fundamentals.provider_overlay`)
 
-当主干财务数据依赖 `fundamentals.source=file` 读取本地 PIT 文件时，通常面临文件更新滞后或离散留档的困境。此时可以开启 `provider_overlay`，单线向数据供应商拉取每日滚动的估值序列，并直接将其拼接融入最终的日线大表（daily panel）中，进而规避将高频估值反向回填入 PIT 底层库再执行费时的前向填充（ffill）操作。
+当主要财务数据来自 `fundamentals.source=file` 的本地 PIT 文件时，可以用 `provider_overlay` 从数据服务商拉取日频估值序列，并按 `trade_date + symbol` 合并到日线宽表（daily panel）。这适合补充 `market_cap`、`pe_ttm`、`pb` 等滚动更新字段，避免把日频估值写回稀疏 PIT 文件后再前向填充（`ffill`）。
 
 ```yaml
 fundamentals:
@@ -487,22 +486,22 @@ fundamentals:
     required: true
 ```
 
-统约共识：
+约定：
 
-- 目前 `provider_overlay` 仅支持 `source=provider` 这一单轨输入模式。
-- 在规范对齐目标的基准主键时，要求统一标定为 `symbol`。若旧有外部数据源依然沿用如 `ts_code` 之类的命名，请务必在 `column_map` 映射字典中配置诸如 `symbol: ts_code` 的规则转换。
-- 处于宏观配置层的 `fundamentals.symbol_param` 其默认规范值同样为 `symbol`。
-- 系统核心运算链路内部仅认领 `symbol` 作为唯一主键标识；过往配置中的 `column_map.ts_code` 设定仍旧予以向下兼容。
-- 主干配置 `fundamentals.file` 继续维持按 `symbol` 实施前向填充（ffill）的既有逻辑，完全贴合 PIT 财报特质。
-- 而 `provider_overlay` 数据会严格凭借 `trade_date + symbol` 的二维坐标网格合并至日线层版面上，决不会触发跨日期的自动 `ffill` 顺延。
-- 即使本地已经装载了全套日线与仪表面板的缓存数据，负责总调度的程序仍能在遭遇 `overlay` 缓存缺失（cache miss）时，自发启动懒加载（lazy init）机制并连线 `rqdatac` 补拉估值。
-- 注意严苛规则：若 `provider_overlay.required=true` 且在该轮实验中未能成功拉取哪怕一条 `overlay` 记录，pipeline 将直接抛出致命错误并中止执行，绝不允许静默降级以避免后续逻辑受到污染。
-- 倘若抓取回来的 `overlay` 数据集中没有找到 `valuation_trade_date` 字段，pipeline 将自动剥离原行自带的 `trade_date` 充当其定位值，并支持在需要时演算生成对应的新鲜度表征属性（`valuation_age_days`）。
-- 衍生指标 `log_market_cap` 依旧交由顶层参数 `fundamentals.log_market_cap` 把控，只要特征版面上加载了 `market_cap`，系统即可自动演算并派生出相应的 `log_mcap` 字段。
+- `provider_overlay` 当前只支持 `source=provider`。
+- 主研究链路统一使用 `symbol` 作为股票主键。旧数据如果使用 `ts_code`，请在 `column_map` 中写 `symbol: ts_code`。
+- `fundamentals.symbol_param` 的默认值也是 `symbol`。
+- 历史配置中的 `column_map.ts_code` 仍可读取，但新增配置应使用 `symbol`。
+- `fundamentals.file` 仍按 `symbol` 执行前向填充（`ffill`），以匹配 PIT 财报语义。
+- `provider_overlay` 只按 `trade_date + symbol` 合并，不跨日期自动 `ffill`。
+- 本地日线和基础信息已就绪时，`overlay` 缓存缺失仍可能触发 lazy init `rqdatac`，用于补拉估值。
+- 若 `provider_overlay.required=true`，本轮实验没有成功拉到任何 `overlay` 记录时，pipeline 会直接报错退出。
+- `overlay` 数据没有 `valuation_trade_date` 时，pipeline 会使用原始 `trade_date` 作为估值日期，并可生成 `valuation_age_days`。
+- `log_market_cap` 仍由顶层参数 `fundamentals.log_market_cap` 控制。特征表里有 `market_cap` 时，系统可自动派生 `log_mcap`。
 
-### 行业标签融入配置 (`industry`)
+### 行业标签配置 (`industry`)
 
-若本地已留存了 `industry_labels_<freq>.parquet` 系列文件，您可径直将行业分类标签导入研究的主面板中。这将为后续实施的行业中性化、特定风险暴露度分析或精细的 `bucket_ic` 对比提供现成的、可直接连接（join）的结构化输入条件。
+如果本地已有 `industry_labels_<freq>.parquet` 文件，可以把行业标签导入研究主面板。它们可用于后续行业中性化、风险暴露分析或 `bucket_ic` 分组评估。
 
 ```yaml
 industry:
@@ -518,14 +517,14 @@ industry:
   required: true
 ```
 
-统约共识：
+约定：
 
-- 在当前的阶段版本里，`industry` 模块排他性地仅支持 `source=file` 作为唯一的受信任引入渠道。
-- 连接操作的核心主键锁死在 `trade_date + symbol` 二维坐标网格上。为了顾及历史遗留问题，源自旧式档案内依旧沿用的如 `ts_code`、`stock_ticker` 或 `order_book_id` 等别名将受到自动化识别并予以兼容处理。
-- 倘若 `keep_columns` 配置列表为空，系统将默认采用全盘收录策略，将源文件中除主键外所有的附加列一并合并。
-- 必须明确：引入的类别标签列决不会自动侵占并跻身主导运算决策的核心 `features` 阵营内；不过它们必定会栖身并保底存储于沉淀收口的 `dataset.parquet` 库表中。更进一步论，当总开关 `eval.save_scored_artifact=true` 被激活后，这些行业属性也会顺带被转录至带有综合量化打分记录的大表 `eval_scored.parquet` 之内，从而为 `eval.bucket_ic.schemes` 提供名正言顺的调遣与评测用材。
-- 这条特定的接入链路职能边界清晰：它纯粹专职地负责将孤立的行业标识标签平顺接引入主研究面板版图；若期望后续能够进一步完成行业本色抽离中性化运作作业，抑或是实现基于行业归类的强限制壁垒隔离管控，则完全仰赖您在后续的具体模型构建与探究开发环节中亲自动手编写代码以实施并落实相关的逻辑闭环。
-- 选用诸如 `industry_labels_m/q.parquet` 这种带有频段标记的文件格式时，更稳妥的做法是保持文件频率与研究单元相一致。仅在明确需要顺延最近一次标签数据时，才开启 `ffill=true`。
+- `industry` 当前只支持 `source=file`。
+- 合并主键固定为 `trade_date + symbol`。旧文件中的 `ts_code`、`stock_ticker` 或 `order_book_id` 会在输入边界做兼容识别。
+- `keep_columns` 为空时，系统会合并源文件中除主键外的所有附加列。
+- 行业标签会写入 `dataset.parquet`。设置 `eval.save_scored_artifact=true` 后，也会写入 `eval_scored.parquet`，供 `eval.bucket_ic.schemes` 使用。
+- 行业标签接入只负责把标签合并进主面板；行业中性化、行业暴露约束或按行业限制持仓，需要在模型、评分后处理或组合构建层另行配置或开发。
+- 使用 `industry_labels_m/q.parquet` 这类带频率标记的文件时，建议保持文件频率与研究频率一致。只有明确需要顺延最近一次标签时，才开启 `ffill=true`。
 
 ## 路径迁移（针对旧版仓库的升级指导）
 
@@ -535,13 +534,13 @@ industry:
 | `config/default.yml` | `configs/presets/default.yml` |
 | `config/hk_selected__xgb_regressor.yml` | `configs/experiments/variants/hk_selected__xgb_regressor.yml` |
 
-若本地环境中仍遗留有沿袭旧版规制划定的目录痕迹，当前版本已终止提供自动搬迁工具。请自行手动将数据挪移至全新的目录体系架构内。
+如果本地环境仍保留旧目录，当前版本不提供自动迁移工具。请手动把数据移动到新的目录结构。
 
-更为详实的细节脉络拆解，请移步查阅：`docs/troubleshooting.md`。
+更多排障细节见：`docs/troubleshooting.md`。
 
 ## 相关关联文档参考索引
 
-- CLI 操作命令行：`docs/cli.md`
-- 输出结果文档：`docs/outputs.md`
-- 远端提供商区别对照：`docs/providers.md`
-- 概念理论体系指南：`docs/concepts/`
+- CLI 命令：`docs/cli.md`
+- 输出结果：`docs/outputs.md`
+- 数据服务商差异：`docs/providers.md`
+- 概念指南：`docs/concepts/`

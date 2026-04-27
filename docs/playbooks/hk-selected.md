@@ -1,9 +1,9 @@
 # HK selected 研究路线
 
-本页解决什么：在 HK selected 路线上选择频率、数据路线和比较顺序。\
-本页不解决什么：不展开参数定义、资产整备细节或专题研究流水账。\
-适合谁：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。\
-读完你会得到什么：一条按当前仓库模板和最新研究结论整理过的可执行路线图。 \
+用途：帮助选择 HK selected 路线的频率、数据路线和比较顺序。\
+范围：只给路线判断，不展开参数定义、资产整备细节或专题研究流水账。\
+适合读者：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。\
+阅读后应得到一条按当前仓库模板和最新研究结论整理过的可执行路线图。\
 相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-industry-treatment-20260404.md`、`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/cli.md`、`docs/config.md`
 
 页面性质：`current-state` \
@@ -169,7 +169,7 @@ cstree promotion-gate \
   --candidate-run artifacts/runs/<candidate_run_dir>
 ```
 
-这些命令的目标不是再造一个模型，而是把 RF 项目里更硬的研究协议迁移过来：固定 OOS / final holdout、成本换手前置、分数到仓位独立比较、利润导向特征证据和 benchmark ladder。
+这些命令把 RF 项目里更硬的研究协议迁移过来：固定 OOS / final holdout、成本换手前置、分数到仓位独立比较、利润导向特征证据和 benchmark ladder。
 
 为避免混淆，再单独记一条：
 

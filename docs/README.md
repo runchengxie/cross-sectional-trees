@@ -1,9 +1,9 @@
 # 文档首页
 
-本页解决什么：提供唯一文档入口、问题索引和阅读路径。\
-本页不解决什么：不展开具体命令、配置或概念细节。\
-适合谁：不知道先看哪一页的读者。\
-读完你会得到什么：问题到页面的映射、阅读路径和页面分工边界。\
+用途：提供唯一文档入口、问题索引和阅读路径。\
+范围：这里只做导航；具体命令、配置和概念细节放在对应页面。\
+适合读者：不知道先看哪一页的人。\
+相关页面分工：问题索引、阅读路径和页面边界见下文。\
 相关页面：`README.md`、`docs/get-started.md`、`docs/pipeline-overview.md`、`docs/capabilities.md`、`docs/cookbook.md`、`docs/playbooks/README.md`、`docs/rqdata/README.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`、`docs/dev.md`、`scripts/README.md`
 
 ## 先按问题找页面
@@ -26,9 +26,9 @@
 | 我想看港股五分钟线快照、配额量级和滑点校准文件 | `docs/playbooks/hk-intraday-assets.md` |
 | 我想理解为什么当前只保留四个模型，以及别的算法何时值得引入 | `docs/concepts/model-landscape.md` |
 | 我想查港股或 RQData 专题资料 | `docs/rqdata/README.md` |
-| 我想看研究笔记和当前结论沉淀状态 | `docs/research/README.md` |
+| 我想看研究笔记和当前结论状态 | `docs/research/README.md` |
 
-## 四条阅读路径
+## 五条阅读路径
 
 1. 我想先跑起来：`docs/get-started.md`
 2. 我想先建立系统心智模型：`docs/pipeline-overview.md` → `docs/capabilities.md` → `docs/config.md` → `docs/outputs.md`
@@ -47,3 +47,15 @@
 概念解释：`docs/concepts/`（包括 `docs/concepts/execution-costs.md`、`docs/concepts/external-artifacts-root.md`）\
 开发与内部：`docs/dev.md`、`scripts/README.md`、`docs/internal/`\
 研究笔记：`docs/research/`
+
+## 常用术语
+
+| 术语 | 本仓库推荐写法 |
+| --- | --- |
+| artifact | 产物；路径名或配置键里保留 `artifacts/` |
+| run | 运行；目录语境可写 `run 目录` |
+| provider | 数据服务商；配置键仍写 `provider` |
+| benchmark ladder | 基准阶梯（benchmark ladder） |
+| health gate | 健康检查门控 |
+| final OOS | 最终样本外（final OOS） |
+| PIT universe | 特定时间点股票池（PIT universe） |

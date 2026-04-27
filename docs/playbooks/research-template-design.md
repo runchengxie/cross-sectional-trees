@@ -1,9 +1,9 @@
 # 研究模板设计原则
 
-本页解决什么：判断本地派生与仓库模板沉淀的边界。\
-本页不解决什么：不展开具体模型与参数选择。\
-适合谁：维护 `configs/` 模板或准备沉淀研究路线的人。\
-读完你会得到什么：清晰的模板沉淀判断标准与行动建议。\
+用途：判断本地派生与仓库模板沉淀的边界。\
+范围：只说明模板沉淀规则，不展开具体模型与参数选择。\
+适合读者：维护 `configs/` 模板或准备沉淀研究路线的人。\
+阅读后应能判断什么时候继续本地派生、什么时候新建仓库模板。\
 相关页面：`docs/playbooks/hk-selected.md`、`docs/playbooks/hk-data-assets.md`、`docs/config.md`
 
 任务摘要：先判断是否仍在同一研究矩阵单元，再决定派生本地配置或新建模板。
@@ -126,7 +126,7 @@
 * `configs/experiments/variants/hk_selected__xgb_regressor.yml`
 * `configs/experiments/variants/hk_selected__xgb_ranker_pairwise.yml`
 
-如果你的目标不是四模型 PK，而是直接进入当前更贴近现实的本地研究口径，优先从 `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml` 开始。  
+如果你的目标是当前更贴近现实的本地研究口径，优先从 `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml` 开始。
 这些显式模型模板仍然主要服务历史 benchmark 对照和同一路线下的模型比较。
 
 季度路线现在已经有一套官方 benchmark protocol，所以更适合：
