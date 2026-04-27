@@ -8,6 +8,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .asset_health_daily_rules import (
+    build_daily_rule_quality_checks as _build_daily_rule_quality_checks,
+    init_daily_rule_stats as _init_daily_rule_stats,
+    record_daily_rule_stats as _record_daily_rule_stats,
+)
 from .asset_health_rendering import render_asset_health_text as _render_asset_health_text
 from .health_shared import (
     format_date as _format_date,
@@ -1433,12 +1438,7 @@ def inspect_hk_asset_health(args) -> int:
         }
         for field in selected_fields
     }
-    daily_rule_stats = {
-        "daily_price_bounds_violation": {"count": 0, "sample_symbols": []},
-        "daily_nonpositive_price": {"count": 0, "sample_symbols": []},
-        "daily_negative_volume": {"count": 0, "sample_symbols": []},
-        "daily_negative_total_turnover": {"count": 0, "sample_symbols": []},
-    }
+    daily_rule_stats = _init_daily_rule_stats()
     duplicate_date_stats = {
         "symbols": 0,
         "duplicate_date_groups": 0,
@@ -1615,52 +1615,12 @@ def inspect_hk_asset_health(args) -> int:
         prior_frame = work.loc[work[date_column] < target_date]
 
         if dataset == "daily":
-            price_values: dict[str, float] = {}
-            for price_field in ("open", "high", "low", "close"):
-                if price_field not in target_frame.columns:
-                    continue
-                price_numeric = pd.to_numeric(target_frame[price_field], errors="coerce")
-                price_numeric = price_numeric[np.isfinite(price_numeric.to_numpy(dtype="float64"))]
-                if not price_numeric.empty:
-                    price_values[price_field] = float(price_numeric.iloc[0])
-
-            if {"open", "high", "low", "close"}.issubset(price_values):
-                open_price = price_values["open"]
-                high_price = price_values["high"]
-                low_price = price_values["low"]
-                close_price = price_values["close"]
-                if high_price < max(open_price, low_price, close_price) or low_price > min(
-                    open_price, high_price, close_price
-                ):
-                    daily_rule_stats["daily_price_bounds_violation"]["count"] += 1
-                    _append_sample(
-                        daily_rule_stats["daily_price_bounds_violation"]["sample_symbols"],
-                        symbol,
-                        limit=sample_limit,
-                    )
-                if min(open_price, high_price, low_price, close_price) <= 0:
-                    daily_rule_stats["daily_nonpositive_price"]["count"] += 1
-                    _append_sample(
-                        daily_rule_stats["daily_nonpositive_price"]["sample_symbols"],
-                        symbol,
-                        limit=sample_limit,
-                    )
-
-            for field_name, stat_key in (
-                ("volume", "daily_negative_volume"),
-                ("total_turnover", "daily_negative_total_turnover"),
-            ):
-                if field_name not in target_frame.columns:
-                    continue
-                numeric_series = pd.to_numeric(target_frame[field_name], errors="coerce")
-                numeric_series = numeric_series[np.isfinite(numeric_series.to_numpy(dtype="float64"))]
-                if not numeric_series.empty and float(numeric_series.iloc[0]) < 0:
-                    daily_rule_stats[stat_key]["count"] += 1
-                    _append_sample(
-                        daily_rule_stats[stat_key]["sample_symbols"],
-                        symbol,
-                        limit=sample_limit,
-                    )
+            _record_daily_rule_stats(
+                target_frame=target_frame,
+                symbol=symbol,
+                stats=daily_rule_stats,
+                sample_limit=sample_limit,
+            )
 
         for field in selected_fields:
             stats = field_stats[field]
@@ -2004,20 +1964,13 @@ def inspect_hk_asset_health(args) -> int:
             )
 
     if dataset == "daily":
-        for check_name, stats in daily_rule_stats.items():
-            count = int(stats["count"])
-            if count <= 0:
-                continue
-            quality_checks.append(
-                {
-                    "check": check_name,
-                    "field": None,
-                    "severity": "error",
-                    "affected_symbols": count,
-                    "affected_pct": _round_pct(count, symbols_with_target_date_row),
-                    "sample_symbols": list(stats["sample_symbols"]),
-                }
+        quality_checks.extend(
+            _build_daily_rule_quality_checks(
+                daily_rule_stats=daily_rule_stats,
+                symbols_with_target_date_row=symbols_with_target_date_row,
+                sample_limit=sample_limit,
             )
+        )
 
     if int(duplicate_date_stats["symbols"]) > 0:
         quality_checks.append(

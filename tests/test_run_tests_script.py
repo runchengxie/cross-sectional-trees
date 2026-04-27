@@ -71,6 +71,15 @@ def test_run_tests_script_help_lists_supported_modes():
     assert "it is not the full CI matrix" in result.stdout
 
 
+def test_run_tests_script_lint_ratchet_mentions_high_signal_rules():
+    repo_root = _repo_root()
+    script = (repo_root / "scripts/dev/run_tests.sh").read_text(encoding="utf-8")
+
+    assert "--select I,F401,F841,B023" in script
+    assert "check_added_c901_ignores" in script
+    assert "maintenance-debt-inventory.md" in script
+
+
 @pytest.mark.parametrize(
     ("mode", "expected_argv"),
     [

@@ -47,6 +47,59 @@
 长行和超大函数数量下降。`C901` 豁免没有新增，也暂时没有移除，因为首轮拆分后的
 5 个原始大文件仍有真实复杂函数命中。
 
+### 2026-04-27 apply 基线
+
+`improve-pipeline-maintainability` 开始 implementation 前，按同一统计口径重新核对：
+
+| 指标 | 当前值 | 相对上轮后 |
+| --- | ---: | ---: |
+| Python 文件数 | 245 | 0 |
+| Python 总行数 | 88,133 | +238 |
+| 超过 100 字符的行 | 1,180 | -2 |
+| 超过 100 行的函数 | 166 | 0 |
+| 超过 250 行的函数 | 29 | 0 |
+| `C901` 文件级豁免 | 34 | 0 |
+
+本 change 的目标验证矩阵：
+
+| 改动范围 | 首选验证 |
+| --- | --- |
+| train/eval contracts | `uv run pytest tests/test_pipeline_train_eval_contracts.py -q` |
+| model registry / split CV | `uv run pytest tests/test_modeling.py tests/test_split.py -q` |
+| pipeline runner compatibility | `uv run pytest tests/test_pipeline_runtime.py tests/test_pipeline_filters_core.py -q` |
+| period evaluation / backtest | `uv run pytest tests/test_metrics.py tests/test_backtest.py tests/test_backtest_reporting.py tests/test_pipeline_e2e.py -q` |
+| RQData asset health | `uv run pytest tests/rqdata_assets/ -q` |
+| release workflow helpers | `uv run pytest tests/test_hk_asset_workflow.py tests/test_run_release_scripts.py -q` |
+| static quality ratchet | `scripts/dev/run_tests.sh lint` and `uv run pytest tests/test_run_tests_script.py -q` |
+
+### 2026-04-27 apply 收尾统计
+
+`improve-pipeline-maintainability` 完成 contract / registry / eval / ratchet / large-module
+首轮拆分后，按同一统计口径重新核对：
+
+| 指标 | apply 基线 | 当前值 | 变化 |
+| --- | ---: | ---: | ---: |
+| Python 文件数 | 245 | 249 | +4 |
+| Python 总行数 | 88,133 | 89,020 | +887 |
+| 超过 100 字符的行 | 1,180 | 1,176 | -4 |
+| 超过 100 行的函数 | 166 | 169 | +3 |
+| 超过 250 行的函数 | 29 | 29 | 0 |
+| `C901` 文件级豁免 | 34 | 34 | 0 |
+
+行数增加来自新增 stage contract、model registry 测试、asset health daily rule helper 和
+workflow report helper。`>250` 超大函数没有新增，`C901` 豁免没有新增；`>100` 函数数量
+仍需下一轮继续用职责拆分下降。
+
+本轮 large-module 抽取记录：
+
+| 原文件 | 新边界 | before | after | 说明 |
+| --- | --- | ---: | ---: | --- |
+| `src/cstree/data_tools/rqdata_assets/asset_health.py` | `asset_health_daily_rules.py` | 2,102 行 | 2,055 行；新模块 133 行 | 抽出 daily target-day 价格 / 成交规则检查；`inspect_hk_asset_health` 约 762 行降到 710 行 |
+| `src/cstree/release_tools/hk_asset_workflow.py` | `hk_asset_workflow_report.py` | 2,244 行 | 2,131 行；新模块 169 行 | 抽出 workflow report 初始化、写入、gate trigger / skipped step 记录 |
+
+验证：`uv run pytest tests/rqdata_assets/ tests/test_hk_asset_workflow.py tests/test_run_release_scripts.py -q`
+和 `scripts/dev/run_tests.sh lint` 均通过。
+
 ### 最大实现文件
 
 | 行数 | 文件 | 类别 | 初步处理 |

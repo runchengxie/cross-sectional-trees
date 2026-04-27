@@ -94,6 +94,32 @@ check_added_python_long_lines() {
   fi
 }
 
+check_added_c901_ignores() {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local added_ignores
+  added_ignores="$(
+    git diff --unified=0 -- pyproject.toml | awk '
+      /^\+/ && $0 !~ /^\+\+\+/ && $0 ~ /C901/ {
+        print substr($0, 2)
+      }
+    '
+  )"
+  if [[ -z "$added_ignores" ]]; then
+    return 0
+  fi
+
+  if git diff --name-only -- docs/internal/maintenance-debt-inventory.md | grep -q .; then
+    return 0
+  fi
+
+  echo "New C901 ignores must be documented in docs/internal/maintenance-debt-inventory.md:" >&2
+  printf '%s\n' "$added_ignores" >&2
+  return 1
+}
+
 mode="${1:-all}"
 if [[ $# -gt 0 ]]; then
   shift
@@ -119,9 +145,10 @@ case "$mode" in
     run_ruff check src tests scripts "$@"
     mapfile -t changed_python < <(changed_python_files)
     if [[ ${#changed_python[@]} -gt 0 ]]; then
-      run_ruff check --select I "${changed_python[@]}" "$@"
+      run_ruff check --select I,F401,F841,B023 "${changed_python[@]}" "$@"
     fi
     check_added_python_long_lines
+    check_added_c901_ignores
     ;;
   imports)
     run_ruff check --select I src tests scripts "$@"

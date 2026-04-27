@@ -17,6 +17,18 @@ import pandas as pd
 from ..backtest import backtest_topk
 from ..metrics import bucket_ic_summary
 from .config import load_run_config
+from .contracts import (
+    TrainEvalBacktestSettings,
+    TrainEvalData,
+    TrainEvalFeatureTarget,
+    TrainEvalLiveSettings,
+    TrainEvalModelSettings,
+    TrainEvalPeriodSettings,
+    TrainEvalRequest,
+    TrainEvalServices,
+    TrainEvalSignalSettings,
+    TrainEvalWalkForwardSettings,
+)
 from .feature_dataset import _prepare_feature_dataset
 from .final_oos_stage import run_final_oos_stage
 from .output_orchestration import persist_pipeline_outputs
@@ -143,16 +155,9 @@ def run(
     run_artifacts = setup["run_artifacts"]
     quality_summary = setup["quality_summary"]
 
-    UNIVERSE_MODE = universe_inputs["UNIVERSE_MODE"]
-    REQUIRE_BY_DATE = universe_inputs["REQUIRE_BY_DATE"]
     symbols = universe_inputs["symbols"]
-    symbols_file = universe_inputs["symbols_file"]
-    by_date_file = universe_inputs["by_date_file"]
     universe_by_date = universe_inputs["universe_by_date"]
-    universe_mode_effective = universe_inputs["universe_mode_effective"]
 
-    end_date = date_label_settings["end_date"]
-    start_date = date_label_settings["start_date"]
     START_DATE = date_label_settings["START_DATE"]
     END_DATE = date_label_settings["END_DATE"]
     PRICE_COL = date_label_settings["PRICE_COL"]
@@ -183,7 +188,6 @@ def run(
     EFFECTIVE_GAP_STEPS = eval_settings["EFFECTIVE_GAP_STEPS"]
     REPORT_TRAIN_IC = eval_settings["REPORT_TRAIN_IC"]
     SAMPLE_ON_REBALANCE_DATES = eval_settings["SAMPLE_ON_REBALANCE_DATES"]
-    SCORE_POSTPROCESS_ENABLED = eval_settings["SCORE_POSTPROCESS_ENABLED"]
     SCORE_POSTPROCESS_METHOD = eval_settings["SCORE_POSTPROCESS_METHOD"]
     SCORE_POSTPROCESS_COLUMNS = eval_settings["SCORE_POSTPROCESS_COLUMNS"]
     SCORE_POSTPROCESS_STRENGTH = eval_settings["SCORE_POSTPROCESS_STRENGTH"]
@@ -193,7 +197,6 @@ def run(
     BUCKET_IC_METHOD = eval_settings["BUCKET_IC_METHOD"]
     BUCKET_IC_MIN_COUNT = eval_settings["BUCKET_IC_MIN_COUNT"]
     BUCKET_IC_SCHEMES = eval_settings["BUCKET_IC_SCHEMES"]
-    PERM_TEST_ENABLED = eval_settings["PERM_TEST_ENABLED"]
     PERM_TEST_RUNS = eval_settings["PERM_TEST_RUNS"]
     PERM_TEST_SEED = eval_settings["PERM_TEST_SEED"]
     WF_ENABLED = eval_settings["WF_ENABLED"]
@@ -208,9 +211,6 @@ def run(
     WF_PERM_TEST_SEED = eval_settings["WF_PERM_TEST_SEED"]
     FINAL_OOS_ENABLED = eval_settings["FINAL_OOS_ENABLED"]
     FINAL_OOS_SIZE_RAW = eval_settings["FINAL_OOS_SIZE_RAW"]
-    SAVE_ARTIFACTS = eval_settings["SAVE_ARTIFACTS"]
-    SAVE_SCORED_ARTIFACT = eval_settings["SAVE_SCORED_ARTIFACT"]
-    SAVE_DATASET = eval_settings["SAVE_DATASET"]
     MIN_SYMBOLS_PER_DATE = universe_filters["MIN_SYMBOLS_PER_DATE"]
     MIN_LISTED_DAYS = universe_filters["MIN_LISTED_DAYS"]
     MIN_TURNOVER = universe_filters["MIN_TURNOVER"]
@@ -298,7 +298,6 @@ def run(
         for spec in benchmark_compare_specs
         if str(spec.get("source_type") or "") == "symbol" and spec.get("symbol")
     ]
-    run_dir = run_artifacts["run_dir"]
     panel_state = _load_research_panel(
         data_interface=data_interface,
         symbols=symbols,
@@ -342,15 +341,12 @@ def run(
     df = panel_state["df"]
     benchmark_df = panel_state["benchmark_df"]
     benchmark_compare_dfs = panel_state["benchmark_compare_dfs"]
-    symbols_for_non_price = panel_state["symbols_for_non_price"]
-    fundamentals_cols = panel_state["fundamentals_cols"]
     industry_cols = panel_state["industry_cols"]
     industry_source_df = panel_state["industry_source_df"]
     FEATURES = panel_state["features"]
     LABEL_HORIZON_MODE = panel_state["label_horizon_mode"]
     label_next_rebalance_map = panel_state["label_next_rebalance_map"]
     label_horizon_gap = panel_state["label_horizon_gap"]
-    price_col_diagnostics = panel_state["price_col_diagnostics"]
 
     # -----------------------------------------------------------------------------
     # 3. Feature engineering (per symbol) + label
@@ -386,24 +382,17 @@ def run(
         min_symbols_per_date=MIN_SYMBOLS_PER_DATE,
     )
     FEATURES = dataset_state["features"]
-    dataset = dataset_state["dataset"]
     df_features = dataset_state["df_features"]
     df_full = dataset_state["df_full"]
-    df_full_sorted = dataset_state["df_full_sorted"]
     reference_trade_dates = dataset_state["reference_trade_dates"]
     all_dates_full = dataset_state["all_dates_full"]
-    full_date_start_rows = dataset_state["full_date_start_rows"]
-    full_date_end_rows = dataset_state["full_date_end_rows"]
-    full_date_to_pos = dataset_state["full_date_to_pos"]
     df_model_all = dataset_state["df_model_all"]
     df_model_all_sorted = dataset_state["df_model_all_sorted"]
     all_dates_model_full = dataset_state["all_dates_model_full"]
     model_date_start_rows = dataset_state["model_date_start_rows"]
     model_date_end_rows = dataset_state["model_date_end_rows"]
     model_date_to_pos = dataset_state["model_date_to_pos"]
-    valid_dates = dataset_state["valid_dates"]
     valid_dates_set = dataset_state["valid_dates_set"]
-    dropped_date_counts = dataset_state["dropped_date_counts"]
     backtest_pricing_df = dataset_state["backtest_pricing_df"]
     bucket_cols = dataset_state["bucket_cols"]
     passthrough_cols = dataset_state["passthrough_cols"]
@@ -449,9 +438,6 @@ def run(
     )
     FINAL_OOS_ENABLED = split_state["final_oos_enabled"]
     final_oos_dates = split_state["final_oos_dates"]
-    final_oos_len = split_state["final_oos_len"]
-    final_oos_start = split_state["final_oos_start"]
-    final_oos_end = split_state["final_oos_end"]
     label_horizon_effective = split_state["label_horizon_effective"]
     PURGE_STEPS = split_state["purge_steps"]
     EMBARGO_STEPS = split_state["embargo_steps"]
@@ -468,107 +454,127 @@ def run(
     # -----------------------------------------------------------------------------
     # 5. Train / eval / walk-forward stages
     # -----------------------------------------------------------------------------
-    train_eval_state = run_train_eval_stage(
-        train_df=train_df,
-        test_df=test_df,
-        test_dates=test_dates,
-        df_features=df_features,
-        df_full=df_full,
-        df_model_sorted=df_model_sorted,
-        all_dates=all_dates,
-        all_date_start_rows=all_date_start_rows,
-        all_date_end_rows=all_date_end_rows,
-        all_date_to_pos=all_date_to_pos,
-        features=FEATURES,
-        target=TARGET,
-        train_target=TRAIN_TARGET,
-        model_type=MODEL_TYPE,
-        model_params=MODEL_PARAMS,
-        model_cfg=MODEL_CFG,
-        sample_weight_mode=SAMPLE_WEIGHT_MODE,
-        sample_weight_params=SAMPLE_WEIGHT_PARAMS,
-        n_splits=N_SPLITS,
-        embargo_steps=EMBARGO_STEPS,
-        purge_steps=PURGE_STEPS,
-        train_window_mode=TRAIN_WINDOW_MODE,
-        train_window_size=TRAIN_WINDOW_SIZE,
-        train_window_unit=TRAIN_WINDOW_UNIT,
-        signal_direction_mode=SIGNAL_DIRECTION_MODE,
-        signal_direction=SIGNAL_DIRECTION,
-        min_abs_ic_to_flip=MIN_ABS_IC_TO_FLIP,
-        score_postprocess_method=SCORE_POSTPROCESS_METHOD,
-        score_postprocess_columns=SCORE_POSTPROCESS_COLUMNS,
-        score_postprocess_strength=SCORE_POSTPROCESS_STRENGTH,
-        score_postprocess_min_obs=SCORE_POSTPROCESS_MIN_OBS,
-        report_train_ic=REPORT_TRAIN_IC,
-        live_enabled=LIVE_ENABLED,
-        live_as_of=LIVE_AS_OF,
-        market=MARKET,
-        provider=provider,
-        live_train_mode=LIVE_TRAIN_MODE,
-        min_symbols_per_date=MIN_SYMBOLS_PER_DATE,
-        price_col=PRICE_COL,
-        backtest_top_k=BACKTEST_TOP_K,
-        label_shift_days=LABEL_SHIFT_DAYS,
-        backtest_weighting=BACKTEST_WEIGHTING,
-        backtest_buffer_exit=BACKTEST_BUFFER_EXIT,
-        backtest_buffer_entry=BACKTEST_BUFFER_ENTRY,
-        backtest_long_only=BACKTEST_LONG_ONLY,
-        backtest_short_k=BACKTEST_SHORT_K,
-        backtest_tradable_col=BACKTEST_TRADABLE_COL,
-        backtest_group_col=BACKTEST_GROUP_COL,
-        backtest_max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
-        execution_model=execution_model,
-        rebalance_frequency=REBALANCE_FREQUENCY,
-        sample_on_rebalance_dates=SAMPLE_ON_REBALANCE_DATES,
-        valid_dates_set=valid_dates_set,
-        perm_test_runs=PERM_TEST_RUNS,
-        perm_test_seed=PERM_TEST_SEED,
-        label_horizon_mode=LABEL_HORIZON_MODE,
-        label_horizon_effective=label_horizon_effective,
-        n_quantiles=N_QUANTILES,
-        top_k=TOP_K,
-        eval_buffer_exit=EVAL_BUFFER_EXIT,
-        eval_buffer_entry=EVAL_BUFFER_ENTRY,
-        transaction_cost_bps=TRANSACTION_COST_BPS,
-        bucket_ic_enabled=BUCKET_IC_ENABLED,
-        bucket_ic_schemes=BUCKET_IC_SCHEMES,
-        bucket_ic_method=BUCKET_IC_METHOD,
-        bucket_ic_min_count=BUCKET_IC_MIN_COUNT,
-        backtest_rebalance_frequency=BACKTEST_REBALANCE_FREQUENCY,
-        backtest_enabled=BACKTEST_ENABLED,
-        backtest_signal_direction_raw=BACKTEST_SIGNAL_DIRECTION_RAW,
-        backtest_cost_bps_effective=BACKTEST_COST_BPS_EFFECTIVE,
-        backtest_trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
-        backtest_exit_mode=BACKTEST_EXIT_MODE,
-        backtest_exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
-        backtest_pricing_df=backtest_pricing_df,
-        backtest_exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
-        backtest_exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
-        benchmark_df=benchmark_df,
-        benchmark_return_series=benchmark_return_series,
-        industry_source_df=industry_source_df,
-        fundamentals_mcap_col=FUNDAMENTALS_MCAP_COL,
-        passthrough_cols=passthrough_cols,
-        industry_keep_columns=INDUSTRY_KEEP_COLUMNS,
-        price_passthrough_cols=price_passthrough_cols,
-        bucket_cols=bucket_cols,
-        backtest_topk_fn=backtest_topk_fn,
-        bucket_ic_summary_fn=bucket_ic_summary_fn,
-        rolling_windows_months=ROLLING_WINDOWS_MONTHS,
-        wf_enabled=WF_ENABLED,
-        wf_n_windows=WF_N_WINDOWS,
-        wf_test_size=WF_TEST_SIZE if WF_TEST_SIZE is not None else TEST_SIZE,
-        wf_step_size=WF_STEP_SIZE,
-        effective_gap_steps=EFFECTIVE_GAP_STEPS,
-        wf_anchor_end=WF_ANCHOR_END,
-        wf_feature_top_k=WF_FEATURE_TOP_K,
-        wf_backtest_enabled=WF_BACKTEST_ENABLED,
-        wf_perm_test_enabled=WF_PERM_TEST_ENABLED,
-        wf_perm_test_runs=WF_PERM_TEST_RUNS,
-        wf_perm_test_seed=WF_PERM_TEST_SEED,
+    train_eval_request = TrainEvalRequest(
+        data=TrainEvalData(
+            train_df=train_df,
+            test_df=test_df,
+            test_dates=test_dates,
+            df_features=df_features,
+            df_full=df_full,
+            df_model_sorted=df_model_sorted,
+            all_dates=all_dates,
+            all_date_start_rows=all_date_start_rows,
+            all_date_end_rows=all_date_end_rows,
+            all_date_to_pos=all_date_to_pos,
+            valid_dates_set=valid_dates_set,
+            backtest_pricing_df=backtest_pricing_df,
+            benchmark_df=benchmark_df,
+            benchmark_return_series=benchmark_return_series,
+            industry_source_df=industry_source_df,
+            passthrough_cols=passthrough_cols,
+            industry_keep_columns=INDUSTRY_KEEP_COLUMNS,
+            price_passthrough_cols=price_passthrough_cols,
+            bucket_cols=bucket_cols,
+        ),
+        feature_target=TrainEvalFeatureTarget(
+            features=FEATURES,
+            target=TARGET,
+            train_target=TRAIN_TARGET,
+            price_col=PRICE_COL,
+            fundamentals_mcap_col=FUNDAMENTALS_MCAP_COL,
+        ),
+        model=TrainEvalModelSettings(
+            model_type=MODEL_TYPE,
+            model_params=MODEL_PARAMS,
+            model_cfg=MODEL_CFG,
+            sample_weight_mode=SAMPLE_WEIGHT_MODE,
+            sample_weight_params=SAMPLE_WEIGHT_PARAMS,
+            n_splits=N_SPLITS,
+            embargo_steps=EMBARGO_STEPS,
+            purge_steps=PURGE_STEPS,
+            train_window_mode=TRAIN_WINDOW_MODE,
+            train_window_size=TRAIN_WINDOW_SIZE,
+            train_window_unit=TRAIN_WINDOW_UNIT,
+        ),
+        signal=TrainEvalSignalSettings(
+            signal_direction_mode=SIGNAL_DIRECTION_MODE,
+            signal_direction=SIGNAL_DIRECTION,
+            min_abs_ic_to_flip=MIN_ABS_IC_TO_FLIP,
+            score_postprocess_method=SCORE_POSTPROCESS_METHOD,
+            score_postprocess_columns=SCORE_POSTPROCESS_COLUMNS,
+            score_postprocess_strength=SCORE_POSTPROCESS_STRENGTH,
+            score_postprocess_min_obs=SCORE_POSTPROCESS_MIN_OBS,
+            report_train_ic=REPORT_TRAIN_IC,
+        ),
+        live=TrainEvalLiveSettings(
+            live_enabled=LIVE_ENABLED,
+            live_as_of=LIVE_AS_OF,
+            market=MARKET,
+            provider=provider,
+            live_train_mode=LIVE_TRAIN_MODE,
+            min_symbols_per_date=MIN_SYMBOLS_PER_DATE,
+        ),
+        backtest=TrainEvalBacktestSettings(
+            backtest_top_k=BACKTEST_TOP_K,
+            label_shift_days=LABEL_SHIFT_DAYS,
+            backtest_weighting=BACKTEST_WEIGHTING,
+            backtest_buffer_exit=BACKTEST_BUFFER_EXIT,
+            backtest_buffer_entry=BACKTEST_BUFFER_ENTRY,
+            backtest_long_only=BACKTEST_LONG_ONLY,
+            backtest_short_k=BACKTEST_SHORT_K,
+            backtest_tradable_col=BACKTEST_TRADABLE_COL,
+            backtest_group_col=BACKTEST_GROUP_COL,
+            backtest_max_names_per_group=BACKTEST_MAX_NAMES_PER_GROUP,
+            execution_model=execution_model,
+            backtest_rebalance_frequency=BACKTEST_REBALANCE_FREQUENCY,
+            backtest_enabled=BACKTEST_ENABLED,
+            backtest_signal_direction_raw=BACKTEST_SIGNAL_DIRECTION_RAW,
+            backtest_cost_bps_effective=BACKTEST_COST_BPS_EFFECTIVE,
+            backtest_trading_days_per_year=BACKTEST_TRADING_DAYS_PER_YEAR,
+            backtest_exit_mode=BACKTEST_EXIT_MODE,
+            backtest_exit_horizon_days=BACKTEST_EXIT_HORIZON_DAYS,
+            backtest_exit_price_policy=BACKTEST_EXIT_PRICE_POLICY,
+            backtest_exit_fallback_policy=BACKTEST_EXIT_FALLBACK_POLICY,
+        ),
+        period=TrainEvalPeriodSettings(
+            rebalance_frequency=REBALANCE_FREQUENCY,
+            sample_on_rebalance_dates=SAMPLE_ON_REBALANCE_DATES,
+            perm_test_runs=PERM_TEST_RUNS,
+            perm_test_seed=PERM_TEST_SEED,
+            label_horizon_mode=LABEL_HORIZON_MODE,
+            label_horizon_effective=label_horizon_effective,
+            n_quantiles=N_QUANTILES,
+            top_k=TOP_K,
+            eval_buffer_exit=EVAL_BUFFER_EXIT,
+            eval_buffer_entry=EVAL_BUFFER_ENTRY,
+            transaction_cost_bps=TRANSACTION_COST_BPS,
+            bucket_ic_enabled=BUCKET_IC_ENABLED,
+            bucket_ic_schemes=BUCKET_IC_SCHEMES,
+            bucket_ic_method=BUCKET_IC_METHOD,
+            bucket_ic_min_count=BUCKET_IC_MIN_COUNT,
+            rolling_windows_months=ROLLING_WINDOWS_MONTHS,
+        ),
+        walk_forward=TrainEvalWalkForwardSettings(
+            wf_enabled=WF_ENABLED,
+            wf_n_windows=WF_N_WINDOWS,
+            wf_test_size=WF_TEST_SIZE if WF_TEST_SIZE is not None else TEST_SIZE,
+            wf_step_size=WF_STEP_SIZE,
+            effective_gap_steps=EFFECTIVE_GAP_STEPS,
+            wf_anchor_end=WF_ANCHOR_END,
+            wf_feature_top_k=WF_FEATURE_TOP_K,
+            wf_backtest_enabled=WF_BACKTEST_ENABLED,
+            wf_perm_test_enabled=WF_PERM_TEST_ENABLED,
+            wf_perm_test_runs=WF_PERM_TEST_RUNS,
+            wf_perm_test_seed=WF_PERM_TEST_SEED,
+        ),
+        services=TrainEvalServices(
+            backtest_topk_fn=backtest_topk_fn,
+            bucket_ic_summary_fn=bucket_ic_summary_fn,
+        ),
     )
-    model = train_eval_state["model"]
+    train_eval_state = run_train_eval_stage(
+        request=train_eval_request,
+    )
     period_eval_context = train_eval_state["period_eval_context"]
 
     final_oos_state = run_final_oos_stage(

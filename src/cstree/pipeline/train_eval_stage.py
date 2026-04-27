@@ -10,6 +10,8 @@ from ..metrics import daily_ic_series, summarize_ic
 from ..modeling import build_model, feature_importance_frame, fit_model
 from ..split import build_sample_weight, time_series_cv_ic
 from ..transform import apply_score_postprocess
+from .contracts import TrainEvalRequest
+from .dates import build_walk_forward_windows
 from .eval import _evaluate_period, _evaluate_walk_forward_window
 from .live import _prepare_live_snapshot
 from .stats import (
@@ -21,12 +23,23 @@ from .support import (
     _annotate_positions_window,
     _summarize_walk_forward_feature_stability,
 )
-from .dates import build_walk_forward_windows
 
 logger = logging.getLogger("cstree")
 
 
 def run_train_eval_stage(
+    *,
+    request: TrainEvalRequest | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    if request is not None:
+        if kwargs:
+            raise TypeError("Pass either request or keyword stage fields, not both.")
+        return _run_train_eval_stage_impl(**request.to_kwargs())
+    return _run_train_eval_stage_impl(**kwargs)
+
+
+def _run_train_eval_stage_impl(
     *,
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,

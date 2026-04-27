@@ -169,10 +169,11 @@ PY
 
 * 本地 hook 用来提前发现问题，不能替代远端 CI。
 * 特殊情况下可以用 `git commit --no-verify` 或 `git push --no-verify` 跳过。
-* Ruff 已启用 formatter、import 排序和基础复杂度检查。`lint` 会拦截高风险语法错误、新增高复杂函数，并检查本次改动的 Python import 排序和新增 Python 长行。
+* Ruff 已启用 formatter、import 排序和基础复杂度检查。`lint` 会拦截高风险语法错误、新增高复杂函数，并检查本次改动的 Python import 排序、未使用 import、未使用变量、lambda / closure late-binding 风险和新增 Python 长行。
 * 历史 import 和 format 遗留问题可用 `imports`、`format-all` 单独盘点。
 * 已知复杂度历史债务记录在 `pyproject.toml` 的 `per-file-ignores`。完成拆分优化后，应逐个撤销豁免。
-* 触碰 Python 文件时，不要新增超过 100 字符的代码行或新的 `C901` 文件级豁免；如果豁免仍不能撤销，要在内部维护债清单里记录原因。
+* 触碰 Python 文件时，不要新增超过 100 字符的代码行或新的 `C901` 文件级豁免；如果豁免仍不能撤销，要在内部维护债清单里记录原因。`lint` 会在新增 `C901` ignore 但未同步维护债清单时失败。
+* 全仓库严格规则可用诊断命令盘点，不默认作为 gate：`.venv/bin/ruff check src tests --select E,F,W,I,B,UP,SIM,RUF --ignore E501 --statistics`。
 * `tests/test_docs_contracts.py` 只接受指向仓库内受版本控制文件的 Markdown 相对链接。引用本地 `artifacts/...` 运行产物时，用代码文本记录，不要写成可点击相对链接。
 
 ## 测试分层

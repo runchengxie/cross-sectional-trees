@@ -33,6 +33,18 @@ from .hk_asset_workflow_paths import (
     default_workflow_report_path as _default_workflow_report_path_impl,
     refreshed_snapshot_bundle as _refreshed_snapshot_bundle_impl,
 )
+from .hk_asset_workflow_report import (
+    GATE_SEVERITY_RANK,
+    REPAIR_SEVERITY_RANK,
+    health_summary_hits_gate as _health_summary_hits_gate,
+    init_workflow_report as _init_workflow_report_impl,
+    record_blocked_alias_update as _record_blocked_alias_update,
+    record_gate_trigger as _record_gate_trigger,
+    record_skipped_step as _record_skipped_step,
+    workflow_gate_enabled as _workflow_gate_enabled,
+    write_json_report as _write_json_report,
+    write_workflow_report as _write_workflow_report,
+)
 from .package_assets import AVAILABLE_PART_CHOICES, create_relative_symlink
 
 REFRESH_ASSETS = (
@@ -63,8 +75,6 @@ PATCH_MERGE_SUPPORTED_ASSETS = frozenset(PATCH_MERGE_SUPPORTED_ASSET_ORDER)
 REPAIR_ASSETS = PATCH_MERGE_SUPPORTED_ASSET_ORDER
 DEFAULT_DAILY_PATCH_LOOKBACK_DAYS = 20
 DEFAULT_DATED_PATCH_LOOKBACK_DAYS = 40
-REPAIR_SEVERITY_RANK = {"error": 2, "warning": 1, "info": 0}
-GATE_SEVERITY_RANK = {"none": -1, **REPAIR_SEVERITY_RANK}
 
 
 def _normalize_target_date(value: str) -> str:
@@ -634,67 +644,26 @@ def _normalize_gate_severity(value: str) -> str:
     return text
 
 
-def _workflow_gate_enabled(*, phases: tuple[str, ...], threshold: str, repair_rerun_inspect: bool) -> bool:
-    return (
-        threshold != "none"
-        and ("inspect" in phases or ("repair" in phases and repair_rerun_inspect))
-        and any(phase in phases for phase in ("refresh", "repair", "package", "release"))
-    )
-
-
-def _health_summary_hits_gate(summary: Mapping[str, Any], *, threshold: str) -> bool:
-    overall = str(summary.get("overall_severity") or "none").strip().lower() or "none"
-    return GATE_SEVERITY_RANK.get(overall, -1) >= GATE_SEVERITY_RANK[threshold]
-
-
 def _init_workflow_report(
     *,
     args: argparse.Namespace,
     phases: tuple[str, ...],
 ) -> dict[str, Any]:
-    return {
-        "workflow": {
-            "target_date": args.target_date,
-            "refresh_mode": args.refresh_mode,
-            "phases": list(phases),
-            "selected_refresh_assets": list(_selected_refresh_assets(args)),
-            "selected_inspect_assets": list(_selected_inspect_assets(args)),
-            "selected_repair_assets": list(_selected_repair_assets(args)),
-            "selected_parts": list(_selected_parts(args)),
-            "inspect_fail_on_severity": args.inspect_fail_on_severity,
-            "gate_on_severity": args.gate_on_severity,
-            "repair_rerun_inspect": args.repair_rerun_inspect,
-            "repair_only_unresolved": args.repair_only_unresolved,
-            "repair_min_severity": args.repair_min_severity,
-            "repair_source_report": str(args.repair_source_report) if args.repair_source_report else None,
-            "started_at": datetime.now().isoformat(timespec="seconds"),
-        },
-        "refresh": {
-            "assets": {},
-        },
-        "inspect": {
-            "assets": {},
-        },
-        "repair": {
-            "assets": {},
-            "queue": None,
-            "remaining_candidates": None,
-        },
-        "gate": {
-            "enabled": _workflow_gate_enabled(
-                phases=phases,
-                threshold=args.gate_on_severity,
-                repair_rerun_inspect=args.repair_rerun_inspect,
-            ),
-            "threshold": args.gate_on_severity,
-            "stage": None,
-            "triggered": False,
-            "triggered_assets": [],
-            "blocked_alias_updates": [],
-            "skipped_steps": [],
-        },
-        "steps": [],
-    }
+    return _init_workflow_report_impl(
+        target_date=args.target_date,
+        refresh_mode=args.refresh_mode,
+        phases=phases,
+        selected_refresh_assets=_selected_refresh_assets(args),
+        selected_inspect_assets=_selected_inspect_assets(args),
+        selected_repair_assets=_selected_repair_assets(args),
+        selected_parts=_selected_parts(args),
+        inspect_fail_on_severity=args.inspect_fail_on_severity,
+        gate_on_severity=args.gate_on_severity,
+        repair_rerun_inspect=args.repair_rerun_inspect,
+        repair_only_unresolved=args.repair_only_unresolved,
+        repair_min_severity=args.repair_min_severity,
+        repair_source_report=args.repair_source_report,
+    )
 
 
 def _record_refresh_report(
@@ -798,88 +767,6 @@ def _record_step_report(
         _record_refresh_report(report, step=step)
     elif step.phase == "inspect":
         _record_inspect_report(report, step=step)
-
-
-def _write_workflow_report(
-    path: Path,
-    *,
-    report: dict[str, Any],
-) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    report.setdefault("workflow", {})["finished_at"] = datetime.now().isoformat(timespec="seconds")
-    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _write_json_report(path: Path, *, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _record_gate_trigger(
-    report: dict[str, Any],
-    *,
-    step: Step,
-    summary: Mapping[str, Any],
-) -> None:
-    gate = report.setdefault("gate", {})
-    gate["triggered"] = True
-    triggered_assets = gate.setdefault("triggered_assets", [])
-    entry = {
-        "asset_name": step.asset_name,
-        "overall_severity": summary.get("overall_severity"),
-        "severity_counts": dict(summary.get("severity_counts") or {}),
-        "report_path": summary.get("report_path"),
-    }
-    if entry not in triggered_assets:
-        triggered_assets.append(entry)
-
-
-def _record_blocked_alias_update(
-    report: dict[str, Any],
-    *,
-    step: Step,
-    reason: str,
-) -> None:
-    if step.alias_target is None or step.alias_link is None:
-        return
-    blocked = report.setdefault("gate", {}).setdefault("blocked_alias_updates", [])
-    entry = {
-        "phase": step.phase,
-        "asset_name": step.asset_name,
-        "alias_path": str(step.alias_link),
-        "target_path": str(step.alias_target),
-        "reason": reason,
-    }
-    if entry not in blocked:
-        blocked.append(entry)
-
-
-def _record_skipped_step(
-    report: dict[str, Any],
-    *,
-    step: Step,
-    reason: str,
-) -> None:
-    report.setdefault("steps", []).append(
-        {
-            "phase": step.phase,
-            "label": step.label,
-            "asset_name": step.asset_name,
-            "returncode": None,
-            "command": step.command,
-            "skipped": True,
-            "reason": reason,
-        }
-    )
-    skipped = report.setdefault("gate", {}).setdefault("skipped_steps", [])
-    entry = {
-        "phase": step.phase,
-        "label": step.label,
-        "asset_name": step.asset_name,
-        "reason": reason,
-    }
-    if entry not in skipped:
-        skipped.append(entry)
 
 
 def _build_patch_refresh_steps(

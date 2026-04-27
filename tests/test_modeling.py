@@ -3,9 +3,11 @@ import pandas as pd
 import pytest
 
 from cstree.modeling import (
+    SUPPORTED_MODEL_TYPES,
     build_model,
     feature_importance_frame,
     fit_model,
+    normalize_model_type,
     resolve_model_spec,
 )
 
@@ -20,6 +22,23 @@ def test_resolve_model_spec_accepts_alias():
     model_type, params = resolve_model_spec({"type": "ridge_regressor", "params": {"alpha": 2.0}})
     assert model_type == "ridge"
     assert params == {"alpha": 2.0}
+
+
+@pytest.mark.parametrize(
+    ("alias", "expected"),
+    [
+        ("xgb", "xgb_regressor"),
+        ("xgboost-ranker", "xgb_ranker"),
+        ("ridge_regression", "ridge"),
+        ("elastic_net", "elasticnet"),
+    ],
+)
+def test_normalize_model_type_uses_registry_aliases(alias, expected):
+    assert normalize_model_type(alias) == expected
+
+
+def test_supported_model_types_come_from_registry():
+    assert SUPPORTED_MODEL_TYPES == ("xgb_regressor", "xgb_ranker", "ridge", "elasticnet")
 
 
 @pytest.mark.parametrize(
@@ -57,6 +76,17 @@ def test_feature_importance_frame_for_linear_model_uses_abs_coef():
     assert source == "coef_abs"
     assert set(importance_df["feature"]) == {"f1", "f2"}
     assert importance_df["importance"].ge(0).all()
+
+
+def test_feature_importance_frame_accepts_model_type_hint():
+    model = build_model("ridge", {"alpha": 0.1})
+    model.fit(np.array([[0.0], [1.0], [2.0]]), np.array([0.0, 1.0, 2.0]))
+
+    importance_df, source = feature_importance_frame(model, ["f1"], model_type="ridge")
+
+    assert source == "coef_abs"
+    assert importance_df["feature"].tolist() == ["f1"]
+    assert float(importance_df["importance"].iloc[0]) > 0
 
 
 def test_resolve_model_spec_rejects_unknown_type():
