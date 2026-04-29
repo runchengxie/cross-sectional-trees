@@ -828,6 +828,7 @@ artifacts/sweeps/<tag>/
 1. 读取 promotion gate YAML 的 `baseline_run` 与 `candidate_run`。
 1. 分别读取 run 目录下的 `summary.json` 与 `config.used.yml`。
 1. 按配置里的 comparability keys、required evidence、hard rejections、soft thresholds 产出单条晋升记录。
+1. 如果配置了 `promotion_gate.cpcv.candidate_report` 或 `baseline_report`，会额外读取对应 `cpcv_summary.json`。
 
 JSON 顶层常用字段：
 
@@ -845,7 +846,7 @@ JSON 顶层常用字段：
 CSV 平面列契约：
 
 ```text
-baseline_run,candidate_run,promotion_status,is_comparable,comparability_mismatches,missing_evidence,hard_failures,soft_failures,baseline_backtest_sharpe,candidate_backtest_sharpe,candidate_eval_ic_ir,candidate_walk_forward_test_ic_mean,candidate_final_oos_ic_mean,candidate_final_oos_long_short,candidate_backtest_avg_turnover,candidate_backtest_avg_cost_drag
+baseline_run,candidate_run,promotion_status,is_comparable,comparability_mismatches,missing_evidence,hard_failures,soft_failures,baseline_backtest_sharpe,candidate_backtest_sharpe,candidate_eval_ic_ir,candidate_walk_forward_test_ic_mean,candidate_final_oos_ic_mean,candidate_final_oos_long_short,candidate_backtest_avg_turnover,candidate_backtest_avg_cost_drag,baseline_cpcv_sharpe_median,baseline_cpcv_sharpe_p25,candidate_cpcv_path_count,candidate_cpcv_valid_path_count,candidate_cpcv_sharpe_median,candidate_cpcv_sharpe_p25,candidate_cpcv_sharpe_min,candidate_cpcv_positive_sharpe_ratio,candidate_cpcv_ic_median,candidate_cpcv_long_short_median,candidate_cpcv_max_drawdown_p10,candidate_cpcv_turnover_median,candidate_cpcv_cost_drag_median
 ```
 
 `promotion_status` 当前稳定取值：
@@ -854,6 +855,61 @@ baseline_run,candidate_run,promotion_status,is_comparable,comparability_mismatch
 * `reviewable`：可比、没有硬拒绝，但一个或多个软阈值未通过，需要人工复核。
 * `rejected`：可比，但命中硬拒绝或缺少被配置为必需的晋升证据。
 * `non-comparable`：baseline 与 candidate 的研究单元不一致，不产出可晋升结论。
+
+### `cstree cpcv`：CPCV 稳健性审计报告
+
+默认写入 `artifacts/reports/cpcv_<config_stem>/`；也可以通过 `--out` 指定目录。
+
+输出目录结构：
+
+```text
+artifacts/reports/cpcv_<tag>/
+  cpcv_splits.csv
+  cpcv_path_returns.csv
+  cpcv_path_metrics.csv
+  cpcv_summary.json
+```
+
+`cpcv_splits.csv` 常用列：
+
+```text
+split_id,test_groups,train_groups,train_start,train_end,test_start,test_end,train_dates_raw,train_dates,test_dates,purged_train_dates,embargoed_train_dates,purge_mode,status
+```
+
+`cpcv_path_returns.csv` 常用列：
+
+```text
+path_id,date,net_return,gross_return,benchmark_return,active_return
+```
+
+`cpcv_path_metrics.csv` 常用列：
+
+```text
+path_id,split_ids,test_start,test_end,observation_count,sharpe,total_return,ann_return,ann_vol,max_drawdown,ic_mean,ic_ir,long_short,avg_turnover,avg_cost_drag,active_total_return,information_ratio,tracking_error
+```
+
+`cpcv_summary.json` 顶层常用字段：
+
+* `n_groups`
+* `test_groups`
+* `split_count`
+* `valid_split_count`
+* `path_count`
+* `valid_path_count`
+* `include_final_oos`
+* `excluded_final_oos_dates`
+* `purge_mode`
+* `sharpe_mean`
+* `sharpe_median`
+* `sharpe_p25`
+* `sharpe_p10`
+* `sharpe_min`
+* `positive_sharpe_ratio`
+* `ic_median`
+* `long_short_median`
+* `max_drawdown_p10`
+* `turnover_median`
+* `cost_drag_median`
 
 ### `cstree construction-grid`：固定分数组合层对比
 

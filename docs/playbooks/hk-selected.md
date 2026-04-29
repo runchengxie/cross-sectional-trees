@@ -163,13 +163,26 @@ cstree feature-evidence summarize-ablation \
 cstree benchmark-ladder \
   --config configs/experiments/sweeps/hk_selected__research_protocol_benchmark_ladder.yml
 
+cstree cpcv \
+  --config configs/experiments/variants/<candidate_config>.yml \
+  --n-groups 8 \
+  --test-groups 2 \
+  --out artifacts/reports/cpcv_<candidate_tag>
+
 cstree promotion-gate \
   --config configs/experiments/sweeps/hk_selected__research_protocol_promotion_gate.yml \
   --baseline-run artifacts/runs/<baseline_run_dir> \
   --candidate-run artifacts/runs/<candidate_run_dir>
 ```
 
-这些命令把 RF 项目里更硬的研究协议迁移过来：固定 OOS / final holdout、成本换手前置、分数到仓位独立比较、利润导向特征证据和 benchmark ladder。
+这些命令把 RF 项目里更硬的研究协议迁移过来：固定 OOS / final holdout、成本换手前置、分数到仓位独立比较、利润导向特征证据、benchmark ladder 和 CPCV 稳健性审计。
+
+CPCV 的推荐定位：
+
+* 只对 shortlisted candidate 跑，不要对每个 tune / sweep trial 跑。
+* monthly 线优先从 `n_groups=8, test_groups=2` 开始；如果计算可接受，再试 `10/2`。
+* 默认不要传 `--include-final-oos`，保留 final OOS 作为独立 holdout；需要压力观察时再单独跑 include-final-OOS 版本。
+* promotion gate 可把 `artifacts/reports/cpcv_<candidate_tag>/cpcv_summary.json` 配成 `promotion_gate.cpcv.candidate_report`，并用 `required_evidence: cpcv` 作为升主线前的附加证据。
 
 为避免混淆，再单独记一条：
 

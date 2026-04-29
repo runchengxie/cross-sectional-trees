@@ -361,6 +361,24 @@ logging:
 * 当 `anchor_end=true` 且 `step_size=null` 时，系统会把测试窗跨度作为移动步长。若 `test_size` 较大（如 `0.6`），请求 `4` 个窗口时，历史数据可能只够生成最后 `1` 个验证窗。
 * 当请求窗口数超过历史数据可用范围时，执行引擎会在控制台给出警告。`walk_forward.n_windows` 是预期上限，不保证一定产出这么多窗口。
 
+### CPCV 稳健性审计 (`cstree cpcv`)
+
+`cstree cpcv` 读取普通 pipeline 配置，但它不是 `eval` 下的默认阶段。它适合在 tune / sweep 之后，只对少数 shortlisted candidate 运行。
+
+| CLI 参数 | 作用说明 | 常见配置值 |
+|---|------|--------|
+| `--n-groups` | 将 eligible rebalance dates 切成多少个连续时间组 | monthly 常用 `8` |
+| `--test-groups` | 每个 split 抽多少组做测试 | monthly 常用 `2` |
+| `--embargo-days` | 覆盖 pipeline split 中的 embargo 天数 | `0`、`20` 或留空 |
+| `--include-final-oos` | 是否把 final OOS 日期也纳入 CPCV 压力审计 | 默认不纳入 |
+
+说明：
+
+* 若配置开启了 `eval.final_oos.enabled=true`，CPCV 默认保留这段 final OOS，不参与 CPCV split；这保持了 final OOS 作为独立 holdout 的语义。
+* CPCV 优先按 label event window purge：固定 horizon 使用 `trade_date + shift_days -> trade_date + shift_days + horizon_days`，`next_rebalance` 使用下一次调仓映射。
+* 如果 event window 无法完整推导，报告会记录 `purge_mode=fallback_gap`，并退回到现有 split 的 gap 口径。
+* promotion gate 可通过 `required_evidence: cpcv` 和 `cpcv.candidate_report` 把 `cpcv_summary.json` 纳入候选晋升证据。
+
 ### 策略回测配置 (`backtest`)
 
 | 键名 | 作用说明 | 常见配置值 |

@@ -5,6 +5,7 @@ from cstree.commands import tune as tune_tool
 from cstree.data_tools import backup_data as backup_data_tool
 from cstree.research import benchmark_ladder as benchmark_ladder_tool
 from cstree.research import construction_grid as construction_grid_tool
+from cstree.research import cpcv as cpcv_tool
 from cstree.research import feature_evidence as feature_evidence_tool
 from cstree.research import promotion_gate as promotion_gate_tool
 from cstree.research import summarize_runs as summarize_tool
@@ -175,6 +176,27 @@ def test_cli_parses_research_commands():
     assert benchmark_ladder.command == "benchmark-ladder"
     assert benchmark_ladder.output_json == "artifacts/reports/benchmarks.json"
 
+    cpcv = parser.parse_args(
+        [
+            "cpcv",
+            "--config",
+            "configs/experiments/baseline/hk_selected.yml",
+            "--n-groups",
+            "8",
+            "--test-groups",
+            "2",
+            "--out",
+            "artifacts/reports/cpcv_hk_selected",
+            "--include-final-oos",
+        ]
+    )
+    assert cpcv.command == "cpcv"
+    assert cpcv.config == "configs/experiments/baseline/hk_selected.yml"
+    assert cpcv.n_groups == 8
+    assert cpcv.test_groups == 2
+    assert cpcv.out == "artifacts/reports/cpcv_hk_selected"
+    assert cpcv.include_final_oos is True
+
     backup = parser.parse_args(
         [
             "backup-data",
@@ -313,16 +335,19 @@ def test_cli_main_research_protocol_tools_pass_namespace_to_runners(monkeypatch)
     monkeypatch.setattr(construction_grid_tool, "run", _capture("construction"))
     monkeypatch.setattr(feature_evidence_tool, "run", _capture("feature"))
     monkeypatch.setattr(benchmark_ladder_tool, "run", _capture("benchmark"))
+    monkeypatch.setattr(cpcv_tool, "run", _capture("cpcv"))
 
     assert cli.main(["promotion-gate", "--config", "gate.yml"]) == 0
     assert cli.main(["construction-grid", "--config", "construction.yml"]) == 0
     assert cli.main(["feature-evidence", "generate-ablation", "--config", "features.yml"]) == 0
     assert cli.main(["benchmark-ladder", "--config", "ladder.yml"]) == 0
+    assert cli.main(["cpcv", "--config", "cpcv.yml"]) == 0
 
     assert calls["promotion"].config == "gate.yml"
     assert calls["construction"].config == "construction.yml"
     assert calls["feature"].mode == "generate-ablation"
     assert calls["benchmark"].config == "ladder.yml"
+    assert calls["cpcv"].config == "cpcv.yml"
 
 
 def test_cli_main_sweep_linear_passes_through_args(monkeypatch):

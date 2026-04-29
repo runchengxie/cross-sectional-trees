@@ -144,6 +144,12 @@ def handle_benchmark_ladder(args) -> int:
     return 0
 
 
+def handle_cpcv(args) -> int:
+    from ..research import cpcv
+
+    return cpcv.run(args)
+
+
 def handle_backup_data(args) -> int:
     from ..data_tools import backup_data
 
@@ -173,6 +179,7 @@ def register_research_commands(subparsers) -> None:
     from ..data_tools import backup_data as backup_data_tool
     from ..research import benchmark_ladder as benchmark_ladder_tool
     from ..research import construction_grid as construction_grid_tool
+    from ..research import cpcv as cpcv_tool
     from ..research import feature_evidence as feature_evidence_tool
     from ..research import promotion_gate as promotion_gate_tool
     from ..research import summarize_runs
@@ -232,6 +239,13 @@ def register_research_commands(subparsers) -> None:
     )
     benchmark_ladder_tool.add_benchmark_ladder_args(benchmark_ladder)
     benchmark_ladder.set_defaults(func=handle_benchmark_ladder)
+
+    cpcv = subparsers.add_parser(
+        "cpcv",
+        help="Run a CPCV robustness audit for a shortlisted candidate config",
+    )
+    cpcv_tool.add_cpcv_args(cpcv)
+    cpcv.set_defaults(func=handle_cpcv)
 
     backup_data = subparsers.add_parser(
         "backup-data",

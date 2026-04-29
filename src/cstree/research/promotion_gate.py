@@ -48,6 +48,7 @@ class PromotionHardRejections:
     zero_feature_importance: bool = True
     require_final_oos: bool = True
     min_cv_ic_valid_folds: int = 0
+    min_cpcv_path_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,20 @@ class PromotionSoftThresholds:
     max_backtest_drawdown: float | None = 0.30
     max_backtest_avg_turnover: float | None = 0.70
     max_backtest_avg_cost_drag: float | None = 0.02
+    min_cpcv_sharpe_median: float | None = None
+    min_cpcv_sharpe_p25: float | None = None
+    min_cpcv_positive_sharpe_ratio: float | None = None
+    min_cpcv_ic_median: float | None = None
+    min_cpcv_long_short_median: float | None = None
+    max_cpcv_drawdown_p10: float | None = None
+    min_cpcv_sharpe_median_delta: float | None = None
+    min_cpcv_sharpe_p25_delta: float | None = None
+
+
+@dataclass(frozen=True)
+class PromotionCPCVConfig:
+    baseline_report: Path | None = None
+    candidate_report: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +87,7 @@ class PromotionGateConfig:
     required_evidence: tuple[str, ...] = DEFAULT_REQUIRED_EVIDENCE
     hard_rejections: PromotionHardRejections = field(default_factory=PromotionHardRejections)
     soft_thresholds: PromotionSoftThresholds = field(default_factory=PromotionSoftThresholds)
+    cpcv: PromotionCPCVConfig = field(default_factory=PromotionCPCVConfig)
 
 
 def _resolve_path(path_text: str | Path | None) -> Path | None:
@@ -178,6 +194,13 @@ def load_promotion_gate_config(path_or_payload: str | Path | dict[str, Any]) -> 
                 key="hard_rejections.min_cv_ic_valid_folds",
             ),
         ),
+        min_cpcv_path_count=max(
+            0,
+            _coerce_int(
+                hard_raw.get("min_cpcv_path_count", default_hard.min_cpcv_path_count),
+                key="hard_rejections.min_cpcv_path_count",
+            ),
+        ),
     )
 
     soft_raw = gate_payload.get("soft_thresholds") or {}
@@ -192,6 +215,17 @@ def load_promotion_gate_config(path_or_payload: str | Path | dict[str, Any]) -> 
             )
             for field_name in default_soft.__dataclass_fields__
         }
+    )
+    cpcv_raw = gate_payload.get("cpcv") or {}
+    if not isinstance(cpcv_raw, dict):
+        raise SystemExit("promotion_gate.cpcv must be a mapping.")
+    cpcv_cfg = PromotionCPCVConfig(
+        baseline_report=_resolve_path(
+            cpcv_raw.get("baseline_report", gate_payload.get("baseline_cpcv_report"))
+        ),
+        candidate_report=_resolve_path(
+            cpcv_raw.get("candidate_report", gate_payload.get("candidate_cpcv_report"))
+        ),
     )
 
     return PromotionGateConfig(
@@ -209,6 +243,7 @@ def load_promotion_gate_config(path_or_payload: str | Path | dict[str, Any]) -> 
         ),
         hard_rejections=hard,
         soft_thresholds=soft,
+        cpcv=cpcv_cfg,
     )
 
 
@@ -227,6 +262,29 @@ def _load_run(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         config = payload if isinstance(payload, dict) else {}
     return summary, config
+
+
+def _load_cpcv_summary(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {"available": False, "path": None}
+    payload = _load_json(path)
+    if not payload:
+        return {"available": False, "path": str(path)}
+    return {
+        "available": True,
+        "path": str(path),
+        "path_count": _to_float(payload.get("path_count")),
+        "valid_path_count": _to_float(payload.get("valid_path_count")),
+        "sharpe_median": _to_float(payload.get("sharpe_median")),
+        "sharpe_p25": _to_float(payload.get("sharpe_p25")),
+        "sharpe_min": _to_float(payload.get("sharpe_min")),
+        "positive_sharpe_ratio": _to_float(payload.get("positive_sharpe_ratio")),
+        "ic_median": _to_float(payload.get("ic_median")),
+        "long_short_median": _to_float(payload.get("long_short_median")),
+        "max_drawdown_p10": _to_float(payload.get("max_drawdown_p10")),
+        "turnover_median": _to_float(payload.get("turnover_median")),
+        "cost_drag_median": _to_float(payload.get("cost_drag_median")),
+    }
 
 
 def _get_nested(payload: dict[str, Any], path: str) -> Any:
@@ -318,7 +376,12 @@ def _feature_stability(run_dir: Path, summary: dict[str, Any]) -> dict[str, Any]
     return {"available": False, "path": None, "top_k_hit_rate": None, "nonzero_hit_rate": None}
 
 
-def _evidence(run_dir: Path, summary: dict[str, Any]) -> dict[str, Any]:
+def _evidence(
+    run_dir: Path,
+    summary: dict[str, Any],
+    *,
+    cpcv_report: Path | None = None,
+) -> dict[str, Any]:
     bt_stats = _get_nested(summary, "backtest.stats") or {}
     final_bt_stats = _get_nested(summary, "final_oos.backtest.stats") or {}
     return {
@@ -353,6 +416,7 @@ def _evidence(run_dir: Path, summary: dict[str, Any]) -> dict[str, Any]:
             "active_information_ratio": _to_float(_get_nested(summary, "backtest.active.information_ratio")),
             "benchmark_compare_file": _get_nested(summary, "backtest.benchmark_compare.summary_file"),
         },
+        "cpcv": _load_cpcv_summary(cpcv_report),
     }
 
 
@@ -379,6 +443,9 @@ def _missing_evidence(evidence: dict[str, Any], required: tuple[str, ...]) -> li
                 missing.append(category)
         elif category == "benchmark":
             if evidence["benchmark"]["active_information_ratio"] is None:
+                missing.append(category)
+        elif category == "cpcv":
+            if not evidence["cpcv"]["available"]:
                 missing.append(category)
     return missing
 
@@ -443,6 +510,42 @@ def _soft_failures(
             thresholds.max_backtest_avg_cost_drag,
             "<=",
         ),
+        (
+            "min_cpcv_sharpe_median",
+            candidate["cpcv"].get("sharpe_median"),
+            thresholds.min_cpcv_sharpe_median,
+            ">=",
+        ),
+        (
+            "min_cpcv_sharpe_p25",
+            candidate["cpcv"].get("sharpe_p25"),
+            thresholds.min_cpcv_sharpe_p25,
+            ">=",
+        ),
+        (
+            "min_cpcv_positive_sharpe_ratio",
+            candidate["cpcv"].get("positive_sharpe_ratio"),
+            thresholds.min_cpcv_positive_sharpe_ratio,
+            ">=",
+        ),
+        (
+            "min_cpcv_ic_median",
+            candidate["cpcv"].get("ic_median"),
+            thresholds.min_cpcv_ic_median,
+            ">=",
+        ),
+        (
+            "min_cpcv_long_short_median",
+            candidate["cpcv"].get("long_short_median"),
+            thresholds.min_cpcv_long_short_median,
+            ">=",
+        ),
+        (
+            "max_cpcv_drawdown_p10",
+            candidate["cpcv"].get("max_drawdown_p10"),
+            thresholds.max_cpcv_drawdown_p10,
+            "<=",
+        ),
     )
     for name, value, threshold, op in checks:
         if threshold is None:
@@ -462,6 +565,18 @@ def _soft_failures(
         if base is None or cand is None or cand - base < thresholds.min_final_oos_sharpe_delta:
             failures.append("min_final_oos_sharpe_delta")
 
+    if thresholds.min_cpcv_sharpe_median_delta is not None:
+        base = baseline["cpcv"].get("sharpe_median")
+        cand = candidate["cpcv"].get("sharpe_median")
+        if base is None or cand is None or cand - base < thresholds.min_cpcv_sharpe_median_delta:
+            failures.append("min_cpcv_sharpe_median_delta")
+
+    if thresholds.min_cpcv_sharpe_p25_delta is not None:
+        base = baseline["cpcv"].get("sharpe_p25")
+        cand = candidate["cpcv"].get("sharpe_p25")
+        if base is None or cand is None or cand - base < thresholds.min_cpcv_sharpe_p25_delta:
+            failures.append("min_cpcv_sharpe_p25_delta")
+
     return failures
 
 
@@ -476,8 +591,16 @@ def build_promotion_record(config: PromotionGateConfig) -> dict[str, Any]:
         candidate_config,
         config.comparability_keys,
     )
-    baseline_evidence = _evidence(config.baseline_run, baseline_summary)
-    candidate_evidence = _evidence(config.candidate_run, candidate_summary)
+    baseline_evidence = _evidence(
+        config.baseline_run,
+        baseline_summary,
+        cpcv_report=config.cpcv.baseline_report,
+    )
+    candidate_evidence = _evidence(
+        config.candidate_run,
+        candidate_summary,
+        cpcv_report=config.cpcv.candidate_report,
+    )
     missing = _missing_evidence(candidate_evidence, config.required_evidence)
 
     hard_failures: list[str] = []
@@ -491,6 +614,10 @@ def build_promotion_record(config: PromotionGateConfig) -> dict[str, Any]:
     valid_folds = candidate_evidence["main_eval"]["cv_ic_valid_folds"]
     if hard.min_cv_ic_valid_folds > 0 and (valid_folds or 0) < hard.min_cv_ic_valid_folds:
         hard_failures.append("insufficient_cv_ic_valid_folds")
+    if hard.min_cpcv_path_count > 0:
+        cpcv_paths = candidate_evidence["cpcv"]["valid_path_count"]
+        if cpcv_paths is None or cpcv_paths < hard.min_cpcv_path_count:
+            hard_failures.append("insufficient_cpcv_path_count")
 
     soft_failures = _soft_failures(baseline_evidence, candidate_evidence, config.soft_thresholds)
 
@@ -542,6 +669,19 @@ def flatten_promotion_record(record: dict[str, Any]) -> dict[str, Any]:
         "candidate_final_oos_long_short": _get_nested(cand, "final_oos.long_short"),
         "candidate_backtest_avg_turnover": _get_nested(cand, "backtest.avg_turnover"),
         "candidate_backtest_avg_cost_drag": _get_nested(cand, "backtest.avg_cost_drag"),
+        "baseline_cpcv_sharpe_median": _get_nested(base, "cpcv.sharpe_median"),
+        "baseline_cpcv_sharpe_p25": _get_nested(base, "cpcv.sharpe_p25"),
+        "candidate_cpcv_path_count": _get_nested(cand, "cpcv.path_count"),
+        "candidate_cpcv_valid_path_count": _get_nested(cand, "cpcv.valid_path_count"),
+        "candidate_cpcv_sharpe_median": _get_nested(cand, "cpcv.sharpe_median"),
+        "candidate_cpcv_sharpe_p25": _get_nested(cand, "cpcv.sharpe_p25"),
+        "candidate_cpcv_sharpe_min": _get_nested(cand, "cpcv.sharpe_min"),
+        "candidate_cpcv_positive_sharpe_ratio": _get_nested(cand, "cpcv.positive_sharpe_ratio"),
+        "candidate_cpcv_ic_median": _get_nested(cand, "cpcv.ic_median"),
+        "candidate_cpcv_long_short_median": _get_nested(cand, "cpcv.long_short_median"),
+        "candidate_cpcv_max_drawdown_p10": _get_nested(cand, "cpcv.max_drawdown_p10"),
+        "candidate_cpcv_turnover_median": _get_nested(cand, "cpcv.turnover_median"),
+        "candidate_cpcv_cost_drag_median": _get_nested(cand, "cpcv.cost_drag_median"),
     }
 
 

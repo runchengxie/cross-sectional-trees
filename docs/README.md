@@ -58,4 +58,5 @@
 | benchmark ladder | 基准阶梯（benchmark ladder） |
 | health gate | 健康检查门控 |
 | final OOS | 最终样本外（final OOS） |
+| CPCV | 组合式清除交叉验证（CPCV） |
 | PIT universe | 特定时间点股票池（PIT universe） |

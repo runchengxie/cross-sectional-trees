@@ -22,6 +22,7 @@
 | `cstree tune` | 按 YAML 搜索空间批量生成实验配置、运行流水线、打分并自动汇总 | `artifacts/sweeps/<tag>/` |
 | `cstree sweep-linear` | 批量运行港股精选路线的岭回归（`ridge`）或弹性网络（`elasticnet`）模型并自动汇总 | `artifacts/sweeps/<tag>/` |
 | `cstree promotion-gate` | 对比 baseline 与 candidate，检查候选策略是否具备升主线证据 | `artifacts/reports/*promotion_gate*` |
+| `cstree cpcv` | 对 shortlisted candidate 做 CPCV 稳健性审计，输出多条样本外路径的指标分布 | `artifacts/reports/cpcv_*` |
 | `cstree construction-grid` | 固定模型分数，比较 Top-K、buffer、权重和执行参数 | `artifacts/reports/*construction_grid*` |
 | `cstree feature-evidence ...` | 生成特征族消融、汇总消融结果或计算特征置换重要度 | `artifacts/reports/*feature*` |
 | `cstree benchmark-ladder` | 把策略收益和多组 benchmark 分层对比 | `artifacts/reports/*benchmark_ladder*` |
@@ -68,7 +69,7 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree rqdata ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree rqdata ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
 | 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_assets`、`python -m cstree.release_tools.release_assets`、`python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
 | 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
@@ -103,9 +104,9 @@
 
 * 模型：支持 XGBoost 回归器（`xgb_regressor`）、XGBoost 排序器（`xgb_ranker`）、岭回归（`ridge`）以及弹性网络（`elasticnet`）。
 * 评估：提供信息系数（IC）、分位数收益、换手率、训练期表现对照、滚动评估（rolling）以及分桶信息系数（bucket IC）。
-* 稳健性：内置特征置换检验（permutation test）、滚动前向验证（walk-forward）以及最终留出期检验（final OOS）。
+* 稳健性：内置特征置换检验（permutation test）、滚动前向验证（walk-forward）、最终留出期检验（final OOS）以及候选升主线前的 CPCV sidecar。
 * 研究编排：支持结果汇总（`summarize`）、参数网格分析（`grid`）、超参搜索（`tune`）以及线性模型搜索（`sweep-linear`）。
-* 研究证据：支持候选策略晋升检查（`promotion-gate`）、固定分数组合层比较（`construction-grid`）、特征证据生成与汇总（`feature-evidence`）以及 benchmark 阶梯报告（`benchmark-ladder`）。
+* 研究证据：支持候选策略晋升检查（`promotion-gate`）、CPCV 稳健性审计（`cpcv`）、固定分数组合层比较（`construction-grid`）、特征证据生成与汇总（`feature-evidence`）以及 benchmark 阶梯报告（`benchmark-ladder`）。
 
 具体的评估指标说明请参阅 `docs/metrics.md`。
 

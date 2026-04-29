@@ -16,6 +16,7 @@
 | 模型调参 | `cstree tune --tune-config <>` |
 | 线性模型搜索 | `cstree sweep-linear --sweep-config <>` |
 | 候选策略升主线检查 | `cstree promotion-gate --config <>` |
+| CPCV 稳健性审计 | `cstree cpcv --config <> --n-groups 8 --test-groups 2` |
 | 固定分数组合层比较 | `cstree construction-grid --config <>` |
 | 特征证据生成或汇总 | `cstree feature-evidence <mode> --config <>` |
 | Benchmark 阶梯报告 | `cstree benchmark-ladder --config <>` |
@@ -58,6 +59,7 @@ cstree <subcommand> --help
 以下命令支持传入 `--artifacts-root` 参数，用于将默认的产物根目录从仓库内的 `artifacts/` 重新定向至仓库外的指定路径：
 
 - `cstree run`
+- `cstree cpcv`
 - `cstree holdings`
 - `cstree snapshot`
 - `cstree alloc`
@@ -196,7 +198,34 @@ cstree promotion-gate \
 - `missing_evidence`
 - `hard_failures`
 - `soft_failures`
-- 同时对比 baseline 和 candidate 双方的主评估指标、步进验证（walk-forward）、最终样本外（final OOS）表现、成本换手率以及 benchmark 证据。
+- 同时对比 baseline 和 candidate 双方的主评估指标、步进验证（walk-forward）、最终样本外（final OOS）表现、成本换手率、benchmark 证据以及可选 CPCV 证据。
+
+### cstree cpcv
+
+对候选配置执行 CPCV（Combinatorial Purged Cross-Validation）稳健性审计。本命令是 research sidecar，不会替代 `cstree run`、walk-forward 或 final OOS，也不会自动用于每个 tune / sweep trial。
+
+```bash
+cstree cpcv \
+  --config configs/experiments/baseline/hk_selected.yml \
+  --n-groups 8 \
+  --test-groups 2 \
+  --out artifacts/reports/cpcv_hk_selected
+```
+
+常用参数：
+
+- `--n-groups`：按时间顺序切成多少组；monthly 线默认建议从 `8` 开始。
+- `--test-groups`：每个 split 选几组做测试；monthly 线默认建议从 `2` 开始。
+- `--embargo-days`：覆盖配置里的 embargo 天数；留空时继承 pipeline split 设置。
+- `--include-final-oos`：默认保留 final OOS，不纳入 CPCV；传入该参数后才把 final OOS 日期纳入压力审计。
+- `--out`：报告目录；默认写到 `artifacts/reports/cpcv_<config_stem>/`。
+
+输出文件：
+
+- `cpcv_splits.csv`
+- `cpcv_path_returns.csv`
+- `cpcv_path_metrics.csv`
+- `cpcv_summary.json`
 
 ### cstree construction-grid
 

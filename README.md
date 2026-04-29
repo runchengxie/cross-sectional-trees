@@ -51,7 +51,7 @@ cstree run --config default
 
 * 主流程：`cstree run`
 * 研究汇总与参数调优：`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`
-* 研究治理与证据工具：`cstree promotion-gate`、`cstree construction-grid`、`cstree feature-evidence`、`cstree benchmark-ladder`
+* 研究治理与证据工具：`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence`、`cstree benchmark-ladder`
 * 实盘结果与持仓分配：`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`（包含港股执行前场景矩阵分析）
 * 配置模板与本地备份：`cstree init-config`、`cstree backup-data`
 * 数据与资产运维工具：`cstree rqdata ...`、`cstree universe ...`

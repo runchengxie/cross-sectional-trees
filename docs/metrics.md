@@ -543,6 +543,27 @@ artifacts/runs/<run_name>_<timestamp>_<hash>/
 * `walk_forward_summary.csv` 可以理解为每个窗口的一份小型成绩单。
 * `walk_forward_feature_stability.csv` 的 `top_k_hit_rate` 和 `nonzero_hit_rate` 可用于判断特征是偶然出现，还是持续有用。
 
+### CPCV
+
+运行 `cstree cpcv` 后会输出：
+
+* `cpcv_splits.csv`
+* `cpcv_path_returns.csv`
+* `cpcv_path_metrics.csv`
+* `cpcv_summary.json`
+
+它回答什么：
+
+* 候选配置是否只在某一条历史样本外路径上好看。
+* 换成多条组合式样本外路径后，Sharpe、IC、long-short、回撤、换手和成本的分布是否仍可接受。
+
+怎么看：
+
+* `cpcv_summary.json` 里的 `sharpe_median`、`sharpe_p25`、`sharpe_min` 和 `positive_sharpe_ratio` 是晋升前最直接的稳健性指标。
+* `ic_median` 与 `long_short_median` 用来确认信号层方向是否仍然成立。
+* `max_drawdown_p10`、`turnover_median` 和 `cost_drag_median` 用来检查路径分布里的风险与交易成本。
+* CPCV 是 shortlisted candidate 的最终审计 sidecar，不替代 walk-forward，也不替代 final OOS。
+
 ### Feature Importance
 
 默认情况下，只要模型训练成功且支持重要度输出，系统会写出：
