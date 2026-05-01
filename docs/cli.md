@@ -248,7 +248,7 @@ cstree construction-grid \
 
 ### cstree feature-evidence
 
-特征证据分析工具，目前支持三种模式：
+特征证据分析工具，目前支持四种模式：
 
 ```bash
 cstree feature-evidence generate-ablation \
@@ -259,6 +259,10 @@ cstree feature-evidence summarize-ablation \
 
 cstree feature-evidence permutation-importance \
   --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml
+
+cstree feature-evidence factor-ic \
+  --config configs/experiments/sweeps/hk_selected__research_protocol_feature_evidence.yml \
+  --output artifacts/reports/factor_ic.csv
 ```
 
 说明：
@@ -266,6 +270,7 @@ cstree feature-evidence permutation-importance \
 - `generate-ablation`：依据配置文件中的 `families` 列表，自动生成 baseline 以及各项 `minus_<family>` 实验配置，并同步输出 `jobs.csv` 调度列表。
 - `summarize-ablation`：读取所有已完成消融实验的 `summary.json` 文件，输出相对于 baseline 的各项指标变化以及特征稳定性的分析摘要。
 - `permutation-importance`：利用已有的 scored artifact 数据集，直接计算单一特征或 feature family 的 profit proxy 及排列重要性（permutation importance）。
+- `factor-ic`：读取包含特征列和目标列的 parquet，逐个 feature 计算单因子 Rank IC、Pearson IC、分位收益、long-short、覆盖率和正 IC 占比。
 
 ### cstree benchmark-ladder
 

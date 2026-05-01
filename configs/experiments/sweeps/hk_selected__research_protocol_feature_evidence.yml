@@ -40,5 +40,10 @@ feature_evidence:
   top_k: 15
   n_repeats: 5
   seed: 42
+
+  # Used by factor-ic. Prefer dataset.parquet because it contains feature columns.
+  factor_ic_file: artifacts/runs/<run_dir>/dataset.parquet
+  n_quantiles: 5
+
   output_csv: artifacts/reports/hk_selected_feature_evidence.csv
   output_json: artifacts/reports/hk_selected_feature_evidence.json

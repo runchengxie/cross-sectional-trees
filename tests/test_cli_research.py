@@ -164,6 +164,19 @@ def test_cli_parses_research_commands():
     assert feature_evidence.command == "feature-evidence"
     assert feature_evidence.mode == "permutation-importance"
 
+    factor_ic = parser.parse_args(
+        [
+            "feature-evidence",
+            "factor-ic",
+            "--config",
+            "configs/experiments/sweeps/hk_selected__feature_evidence.yml",
+            "--output",
+            "artifacts/reports/factor_ic.csv",
+        ]
+    )
+    assert factor_ic.command == "feature-evidence"
+    assert factor_ic.mode == "factor-ic"
+
     benchmark_ladder = parser.parse_args(
         [
             "benchmark-ladder",
@@ -339,13 +352,13 @@ def test_cli_main_research_protocol_tools_pass_namespace_to_runners(monkeypatch)
 
     assert cli.main(["promotion-gate", "--config", "gate.yml"]) == 0
     assert cli.main(["construction-grid", "--config", "construction.yml"]) == 0
-    assert cli.main(["feature-evidence", "generate-ablation", "--config", "features.yml"]) == 0
+    assert cli.main(["feature-evidence", "factor-ic", "--config", "features.yml"]) == 0
     assert cli.main(["benchmark-ladder", "--config", "ladder.yml"]) == 0
     assert cli.main(["cpcv", "--config", "cpcv.yml"]) == 0
 
     assert calls["promotion"].config == "gate.yml"
     assert calls["construction"].config == "construction.yml"
-    assert calls["feature"].mode == "generate-ablation"
+    assert calls["feature"].mode == "factor-ic"
     assert calls["benchmark"].config == "ladder.yml"
     assert calls["cpcv"].config == "cpcv.yml"
 

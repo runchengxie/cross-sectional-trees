@@ -128,3 +128,47 @@ def test_permutation_active_return_importance_outputs_feature_and_family_rows(tm
     good = next(row for row in result if row["name"] == "f_good")
     assert good["baseline_score_metric"] > 0
     assert good["permutation_importance"] >= 0
+
+
+def test_factor_ic_report_outputs_feature_ic_and_quantile_fields(tmp_path):
+    rows = []
+    dates = pd.to_datetime(["2020-01-03", "2020-01-10", "2020-01-17"])
+    for trade_date in dates:
+        for rank in range(4):
+            target = 0.01 * (rank + 1)
+            rows.append(
+                {
+                    "trade_date": trade_date,
+                    "symbol": f"s{rank}",
+                    "future_return": target,
+                    "f_good": target,
+                    "f_bad": -target,
+                }
+            )
+    factor_file = tmp_path / "dataset.parquet"
+    pd.DataFrame(rows).set_index(["trade_date", "symbol"]).to_parquet(factor_file)
+
+    cfg = {
+        "feature_evidence": {
+            "factor_ic_file": str(factor_file),
+            "features": ["f_good", "f_bad"],
+            "target_col": "future_return",
+            "n_quantiles": 2,
+        }
+    }
+
+    result = feature_evidence.factor_ic_report(cfg, config_dir=tmp_path)
+
+    assert [row["feature"] for row in result] == ["f_bad", "f_good"]
+    good = next(row for row in result if row["feature"] == "f_good")
+    bad = next(row for row in result if row["feature"] == "f_bad")
+    assert good["n"] == 3
+    assert good["ic_mean"] == pytest.approx(1.0)
+    assert good["pearson_ic_mean"] == pytest.approx(1.0)
+    assert good["q1_return"] == pytest.approx(0.015)
+    assert good["qN_return"] == pytest.approx(0.035)
+    assert good["long_short"] == pytest.approx(0.02)
+    assert good["coverage"] == pytest.approx(1.0)
+    assert good["positive_ic_ratio"] == pytest.approx(1.0)
+    assert bad["ic_mean"] == pytest.approx(-1.0)
+    assert bad["long_short"] == pytest.approx(-0.02)

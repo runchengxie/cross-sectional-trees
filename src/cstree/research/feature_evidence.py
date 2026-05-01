@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from ..metrics import daily_ic_series, quantile_returns, summarize_ic
+
 
 def _resolve_path(path_text: str | Path | None, *, base_dir: Path | None = None) -> Path | None:
     if path_text is None:
@@ -22,6 +24,18 @@ def _resolve_path(path_text: str | Path | None, *, base_dir: Path | None = None)
     if base_dir is not None:
         return (base_dir / candidate).resolve()
     return (Path.cwd() / candidate).resolve()
+
+
+def _resolve_input_path(path_text: str | Path | None, *, base_dir: Path | None = None) -> Path | None:
+    path = _resolve_path(path_text, base_dir=base_dir)
+    if path is None or path.exists():
+        return path
+    candidate = Path(path_text).expanduser()
+    if not candidate.is_absolute():
+        cwd_path = (Path.cwd() / candidate).resolve()
+        if cwd_path.exists():
+            return cwd_path
+    return path
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -108,6 +122,52 @@ def _families(raw: Any) -> dict[str, list[str]]:
             out[name] = [str(feature) for feature in features]
         return out
     raise SystemExit("feature_evidence.families must be a mapping or list.")
+
+
+def _features_from_base_config(cfg: dict[str, Any], *, config_dir: Path) -> list[str]:
+    base_config_path = _resolve_input_path(cfg.get("base_config"), base_dir=config_dir)
+    if base_config_path is None or not base_config_path.exists():
+        return []
+    base_cfg = _load_yaml(base_config_path)
+    features_cfg = base_cfg.get("features") if isinstance(base_cfg.get("features"), dict) else {}
+    feature_list = features_cfg.get("list")
+    if not isinstance(feature_list, list):
+        return []
+    return [str(item) for item in feature_list]
+
+
+def _resolve_feature_list(
+    cfg: dict[str, Any],
+    *,
+    config_dir: Path,
+    prefer_base_config: bool,
+) -> list[str]:
+    features_raw = cfg.get("features")
+    if isinstance(features_raw, list):
+        return [str(feature) for feature in features_raw]
+    if features_raw is not None:
+        raise SystemExit("feature_evidence.features must be a list when provided.")
+
+    if prefer_base_config:
+        base_features = _features_from_base_config(cfg, config_dir=config_dir)
+        if base_features:
+            return base_features
+
+    if cfg.get("families"):
+        families = _families(cfg.get("families"))
+        features = sorted({feature for values in families.values() for feature in values})
+        if features:
+            return features
+
+    if not prefer_base_config:
+        base_features = _features_from_base_config(cfg, config_dir=config_dir)
+        if base_features:
+            return base_features
+
+    raise SystemExit(
+        "feature_evidence.features, feature_evidence.base_config with features.list, "
+        "or feature_evidence.families is required."
+    )
 
 
 def _safe_name(name: str) -> str:
@@ -321,13 +381,140 @@ def _permute_within_date(data: pd.DataFrame, column: str, rng: np.random.Generat
     return out
 
 
+def _load_factor_ic_frame(path: Path) -> pd.DataFrame:
+    data = pd.read_parquet(path)
+    if "trade_date" not in data.columns:
+        index_names = [name for name in data.index.names if name is not None]
+        if "trade_date" in index_names:
+            data = data.reset_index()
+    if "trade_date" not in data.columns:
+        raise SystemExit("Factor IC input must include trade_date as a column or index level.")
+    data = data.copy()
+    data["trade_date"] = pd.to_datetime(data["trade_date"])
+    return data
+
+
+def _finite_or_nan(value: Any) -> float:
+    number = _to_float(value)
+    return float(number) if number is not None else np.nan
+
+
+def _factor_ic_input_path(cfg: dict[str, Any], *, config_dir: Path) -> Path:
+    path = _resolve_input_path(
+        _first_non_empty(
+            cfg.get("factor_ic_file"),
+            cfg.get("dataset_file"),
+            cfg.get("scored_file"),
+        ),
+        base_dir=config_dir,
+    )
+    if path is None or not path.exists():
+        raise SystemExit(
+            "feature_evidence.factor_ic_file, dataset_file, or scored_file is required for factor-ic."
+        )
+    return path
+
+
+def factor_ic_report(
+    config: dict[str, Any],
+    *,
+    config_dir: Path,
+) -> list[dict[str, Any]]:
+    cfg = _section(config)
+    input_path = _factor_ic_input_path(cfg, config_dir=config_dir)
+    data = _load_factor_ic_frame(input_path)
+    target_col = str(cfg.get("target_col") or "future_return")
+    n_quantiles = int(cfg.get("n_quantiles") or 5)
+    if n_quantiles < 2:
+        raise SystemExit("feature_evidence.n_quantiles must be >= 2 for factor-ic.")
+    if target_col not in data.columns:
+        raise SystemExit(f"Missing target column: {target_col}")
+
+    features = _resolve_feature_list(cfg, config_dir=config_dir, prefer_base_config=True)
+    missing_features = [feature for feature in features if feature not in data.columns]
+    if missing_features:
+        raise SystemExit(
+            "Missing feature columns for factor-ic: "
+            + ", ".join(missing_features)
+            + ". Use dataset.parquet or another factor_ic_file that includes the feature columns."
+        )
+
+    total_rows = int(data[target_col].notna().sum())
+    rows: list[dict[str, Any]] = []
+    for feature in features:
+        subset = data[["trade_date", target_col, feature]].copy()
+        valid = subset.dropna(subset=[target_col, feature])
+        valid_rows = int(valid.shape[0])
+        coverage = float(valid_rows / total_rows) if total_rows > 0 else np.nan
+
+        ic_series = daily_ic_series(valid, target_col, feature)
+        ic_stats = summarize_ic(ic_series)
+        pearson_ic_series = daily_ic_series(valid, target_col, feature, method="pearson")
+        pearson_ic_stats = summarize_ic(pearson_ic_series)
+
+        quantile_ts = quantile_returns(valid, feature, target_col, n_quantiles)
+        quantile_mean = quantile_ts.mean() if not quantile_ts.empty else pd.Series(dtype=float)
+        q1_return = (
+            float(quantile_mean.iloc[0])
+            if not quantile_mean.empty and np.isfinite(quantile_mean.iloc[0])
+            else np.nan
+        )
+        qN_return = (
+            float(quantile_mean.iloc[-1])
+            if not quantile_mean.empty and np.isfinite(quantile_mean.iloc[-1])
+            else np.nan
+        )
+        long_short = (
+            float(qN_return - q1_return)
+            if np.isfinite(q1_return) and np.isfinite(qN_return)
+            else np.nan
+        )
+        positive_ic_ratio = (
+            float((ic_series.dropna() > 0).mean()) if not ic_series.dropna().empty else np.nan
+        )
+
+        rows.append(
+            {
+                "feature": feature,
+                "n": int(ic_stats["n"]),
+                "ic_mean": _finite_or_nan(ic_stats["mean"]),
+                "ic_std": _finite_or_nan(ic_stats["std"]),
+                "ic_ir": _finite_or_nan(ic_stats["ir"]),
+                "t_stat": _finite_or_nan(ic_stats["t_stat"]),
+                "p_value": _finite_or_nan(ic_stats["p_value"]),
+                "pearson_ic_mean": _finite_or_nan(pearson_ic_stats["mean"]),
+                "pearson_ic_std": _finite_or_nan(pearson_ic_stats["std"]),
+                "pearson_ic_ir": _finite_or_nan(pearson_ic_stats["ir"]),
+                "pearson_t_stat": _finite_or_nan(pearson_ic_stats["t_stat"]),
+                "pearson_p_value": _finite_or_nan(pearson_ic_stats["p_value"]),
+                "q1_return": q1_return,
+                "qN_return": qN_return,
+                "long_short": long_short,
+                "coverage": coverage,
+                "positive_ic_ratio": positive_ic_ratio,
+                "valid_rows": valid_rows,
+                "total_rows": total_rows,
+                "n_quantiles": n_quantiles,
+                "input_file": str(input_path),
+                "target_col": target_col,
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            -abs(row["ic_mean"]) if np.isfinite(row["ic_mean"]) else float("inf"),
+            row["feature"],
+        )
+    )
+    return rows
+
+
 def permutation_active_return_importance(
     config: dict[str, Any],
     *,
     config_dir: Path,
 ) -> list[dict[str, Any]]:
     cfg = _section(config)
-    scored_path = _resolve_path(cfg.get("scored_file"), base_dir=config_dir)
+    scored_path = _resolve_input_path(cfg.get("scored_file"), base_dir=config_dir)
     if scored_path is None or not scored_path.exists():
         raise SystemExit("feature_evidence.scored_file is required for permutation importance.")
     data = pd.read_parquet(scored_path)
@@ -341,15 +528,8 @@ def permutation_active_return_importance(
     if missing:
         raise SystemExit("Missing required scored columns: " + ", ".join(missing))
 
-    features_raw = cfg.get("features")
-    if features_raw is None:
-        families = _families(cfg.get("families"))
-        features = sorted({feature for values in families.values() for feature in values})
-    elif isinstance(features_raw, list):
-        features = [str(feature) for feature in features_raw]
-        families = _families(cfg.get("families", {})) if cfg.get("families") else {}
-    else:
-        raise SystemExit("feature_evidence.features must be a list when provided.")
+    features = _resolve_feature_list(cfg, config_dir=config_dir, prefer_base_config=False)
+    families = _families(cfg.get("families", {})) if cfg.get("families") else {}
     missing_features = [feature for feature in features if feature not in data.columns]
     if missing_features:
         raise SystemExit("Missing feature columns: " + ", ".join(missing_features))
@@ -426,7 +606,7 @@ def _write_rows(rows: list[dict[str, Any]], *, output_csv: Path | None, output_j
 def add_feature_evidence_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument(
         "mode",
-        choices=["generate-ablation", "summarize-ablation", "permutation-importance"],
+        choices=["generate-ablation", "summarize-ablation", "permutation-importance", "factor-ic"],
         help="Feature evidence workflow to run.",
     )
     parser.add_argument("--config", required=True, help="Feature evidence YAML config.")
@@ -464,12 +644,13 @@ def run(args: argparse.Namespace) -> Any:
 
     if args.mode == "summarize-ablation":
         rows = summarize_ablation_results(config, config_dir=config_path.parent)
-    else:
+    elif args.mode == "permutation-importance":
         rows = permutation_active_return_importance(config, config_dir=config_path.parent)
+    else:
+        rows = factor_ic_report(config, config_dir=config_path.parent)
 
     if output_csv is None and output_json is None:
         print(json.dumps(rows, ensure_ascii=True, indent=2, default=str))
     else:
         _write_rows(rows, output_csv=output_csv, output_json=output_json)
     return rows
-

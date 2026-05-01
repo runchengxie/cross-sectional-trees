@@ -42,6 +42,7 @@ artifacts/runs/<run_name>_<timestamp>_<hash>/
 
 * `cstree feature-evidence generate-ablation` / `summarize-ablation`：生成和汇总特征族消融实验，比较相对 baseline 的增量。
 * `cstree feature-evidence permutation-importance`：基于已有 scored artifact 评估单特征和特征族的置换重要度。
+* `cstree feature-evidence factor-ic`：基于包含 feature 列的 parquet 输出单因子 IC、分位收益和覆盖率。
 * `cstree construction-grid`：固定模型分数，只比较组合构建参数带来的变化。
 * `cstree benchmark-ladder`：把策略收益曲线和多组 benchmark 逐层对比。
 
@@ -598,6 +599,20 @@ artifacts/runs/<run_name>_<timestamp>_<hash>/
 * 重要度高的特征，不一定单独拿出来也能赚钱。
 * 单因子有效性要看该因子的 IC、分位收益、long-short，或单独建模验证。
 * 联合模型里的边际贡献需要消融、drop-column、SHAP 或特征置换重要度等方法评估。
+
+### 单因子 IC
+
+`cstree feature-evidence factor-ic` 用来把单个 feature 当作原始排序信号，逐列计算单因子证据。
+
+它输出：
+
+* `ic_mean` / `ic_ir`：单因子 Spearman Rank IC 的均值和稳定性。
+* `pearson_ic_mean` / `pearson_ic_ir`：单因子 Pearson IC 的均值和稳定性。
+* `q1_return` / `qN_return` / `long_short`：按因子原始方向分组后的低分组、高分组和高减低收益。
+* `coverage`：feature 与目标都非空的样本占目标非空样本比例。
+* `positive_ic_ratio`：日度 Rank IC 大于 0 的比例。
+
+常用输入是 run 目录里的 `dataset.parquet`，因为它保留 feature 列。`eval_scored.parquet` 不一定包含全部 feature 列，除非相关列被额外保留下来。
 
 ## 常见误读
 

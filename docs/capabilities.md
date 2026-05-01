@@ -24,7 +24,7 @@
 | `cstree promotion-gate` | 对比 baseline 与 candidate，检查候选策略是否具备升主线证据 | `artifacts/reports/*promotion_gate*` |
 | `cstree cpcv` | 对 shortlisted candidate 做 CPCV 稳健性审计，输出多条样本外路径的指标分布 | `artifacts/reports/cpcv_*` |
 | `cstree construction-grid` | 固定模型分数，比较 Top-K、buffer、权重和执行参数 | `artifacts/reports/*construction_grid*` |
-| `cstree feature-evidence ...` | 生成特征族消融、汇总消融结果或计算特征置换重要度 | `artifacts/reports/*feature*` |
+| `cstree feature-evidence ...` | 生成特征族消融、汇总消融结果、计算特征置换重要度或单因子 IC | `artifacts/reports/*feature*` |
 | `cstree benchmark-ladder` | 把策略收益和多组 benchmark 分层对比 | `artifacts/reports/*benchmark_ladder*` |
 | `cstree holdings` | 读取当前持仓 | 文本 / csv / json |
 | `cstree snapshot` | 运行实盘快照，或从现有的运行结果中导出快照 | 文本 / csv / json |
@@ -106,7 +106,7 @@
 * 评估：提供信息系数（IC）、分位数收益、换手率、训练期表现对照、滚动评估（rolling）以及分桶信息系数（bucket IC）。
 * 稳健性：内置特征置换检验（permutation test）、滚动前向验证（walk-forward）、最终留出期检验（final OOS）以及候选升主线前的 CPCV sidecar。
 * 研究编排：支持结果汇总（`summarize`）、参数网格分析（`grid`）、超参搜索（`tune`）以及线性模型搜索（`sweep-linear`）。
-* 研究证据：支持候选策略晋升检查（`promotion-gate`）、CPCV 稳健性审计（`cpcv`）、固定分数组合层比较（`construction-grid`）、特征证据生成与汇总（`feature-evidence`）以及 benchmark 阶梯报告（`benchmark-ladder`）。
+* 研究证据：支持候选策略晋升检查（`promotion-gate`）、CPCV 稳健性审计（`cpcv`）、固定分数组合层比较（`construction-grid`）、特征证据生成与汇总、单因子 IC（`feature-evidence`）以及 benchmark 阶梯报告（`benchmark-ladder`）。
 
 具体的评估指标说明请参阅 `docs/metrics.md`。
 

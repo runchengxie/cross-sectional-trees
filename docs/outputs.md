@@ -937,7 +937,7 @@ variant,scored_file,summary_path,target_col,price_col,eval_signal_col,backtest_s
 
 ### `cstree feature-evidence`：特征证据报告
 
-`feature-evidence` 有三个模式。
+`feature-evidence` 有四个模式。
 
 `generate-ablation` 输出目录：
 
@@ -967,12 +967,20 @@ family,run_dir,summary_path,eval_ic_mean,eval_ic_ir,eval_long_short,walk_forward
 name,kind,features,feature_count,top_k,n_dates,baseline_score_metric,baseline_score_n_dates,feature_metric,permuted_metric,permutation_importance,delta_vs_baseline_score
 ```
 
+`factor-ic` CSV / JSON 行常用字段：
+
+```text
+feature,n,ic_mean,ic_std,ic_ir,t_stat,p_value,pearson_ic_mean,pearson_ic_std,pearson_ic_ir,pearson_t_stat,pearson_p_value,q1_return,qN_return,long_short,coverage,positive_ic_ratio,valid_rows,total_rows,n_quantiles,input_file,target_col
+```
+
 补充：
 
 1. `kind` 当前取值为 `feature` 或 `family`。
 1. `baseline_score_metric` 是原始 score 选 top-k 后的目标均值，作为当前 scored artifact 的参考。
 1. `feature_metric` 是使用特征或特征簇横截面 z-score proxy 排序后的目标均值。
 1. `permutation_importance = feature_metric - permuted_metric`。
+1. `factor-ic` 优先读取 `feature_evidence.factor_ic_file` / `dataset_file`，再兼容 `scored_file`；若使用 run 产物，通常应指向包含特征列的 `dataset.parquet`。
+1. `factor-ic` 的 `long_short = qN_return - q1_return`，按因子原始方向计算，不自动按训练期 IC 翻转方向。
 1. 如果 run 目录存在 `walk_forward_feature_stability.csv`，`summarize-ablation` 会带出 `feature_stability_*` 字段；不存在时 `feature_stability_available=false`。
 
 ### `cstree benchmark-ladder`：benchmark 阶梯报告

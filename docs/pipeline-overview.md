@@ -72,7 +72,7 @@
 | 参数与构造搜索 | `cstree grid`、`cstree tune`、`cstree sweep-linear` | 比较 Top-K / 成本 / buffer、超参搜索、线性模型批跑 |
 | 研究治理 | `cstree promotion-gate` | 判断 candidate 是否具备升主线证据 |
 | 固定分数组合层比较 | `cstree construction-grid` | 固定模型分数，只比较组合构造参数 |
-| 特征证据 | `cstree feature-evidence ...` | 生成消融配置、汇总消融结果、计算特征置换重要度 |
+| 特征证据 | `cstree feature-evidence ...` | 生成消融配置、汇总消融结果、计算特征置换重要度和单因子 IC |
 | Benchmark 阶梯 | `cstree benchmark-ladder` | 把策略收益和多组 benchmark 分层对比 |
 | 持仓与分配 | `cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk` | 查看当前持仓、导出快照、做资金和手数分配 |
 | 数据标准层 | `cstree data catalog/materialize/query` | 管理 metadata、物化 standardized layer、用 DuckDB 查询 |
