@@ -19,9 +19,11 @@ from .quality_gate import (
 from .shared import _normalize_frame_columns, _resolve_path
 
 
+_EXPECTED_HK_5M_MORNING_TIME_KEYS = pd.date_range("09:35", "12:00", freq="5min").strftime("%H:%M").tolist()
+_EXPECTED_HK_5M_AFTERNOON_TIME_KEYS = pd.date_range("13:05", "16:00", freq="5min").strftime("%H:%M").tolist()
 _EXPECTED_HK_5M_TIME_KEYS = [
-    *pd.date_range("09:35", "12:00", freq="5min").strftime("%H:%M").tolist(),
-    *pd.date_range("13:05", "16:00", freq="5min").strftime("%H:%M").tolist(),
+    *_EXPECTED_HK_5M_MORNING_TIME_KEYS,
+    *_EXPECTED_HK_5M_AFTERNOON_TIME_KEYS,
 ]
 _EXPECTED_HK_5M_TIME_KEY_SET = set(_EXPECTED_HK_5M_TIME_KEYS)
 _EXPECTED_HK_5M_TIME_KEY_INDEX = {
@@ -33,6 +35,17 @@ _EXPECTED_HK_5M_TIME_MASK_HI = sum(
     1 << (index - 63)
     for index in range(63, len(_EXPECTED_HK_5M_TIME_KEYS))
 )
+_EXPECTED_HK_5M_MORNING_TIME_MASK_LO = sum(
+    1 << _EXPECTED_HK_5M_TIME_KEY_INDEX[time_key]
+    for time_key in _EXPECTED_HK_5M_MORNING_TIME_KEYS
+    if _EXPECTED_HK_5M_TIME_KEY_INDEX[time_key] < 63
+)
+_EXPECTED_HK_5M_MORNING_TIME_MASK_HI = sum(
+    1 << (_EXPECTED_HK_5M_TIME_KEY_INDEX[time_key] - 63)
+    for time_key in _EXPECTED_HK_5M_MORNING_TIME_KEYS
+    if _EXPECTED_HK_5M_TIME_KEY_INDEX[time_key] >= 63
+)
+_INFERRED_HALF_DAY_MIN_SYMBOL_DAYS = 50
 _MINOR_DAILY_RECON_PRICE_DIFF_ATOL = 0.2
 _INTRADAY_HEALTH_COLUMNS = (
     "symbol",
@@ -141,17 +154,71 @@ def _add_expected_time_masks(work: pd.DataFrame) -> pd.DataFrame:
     return work
 
 
-def _missing_times_from_masks(lo_mask: int, hi_mask: int) -> list[str]:
+def _missing_times_from_masks(
+    lo_mask: int,
+    hi_mask: int,
+    *,
+    expected_lo_mask: int = _EXPECTED_HK_5M_TIME_MASK_LO,
+    expected_hi_mask: int = _EXPECTED_HK_5M_TIME_MASK_HI,
+) -> list[str]:
     missing: list[str] = []
     lo_value = int(lo_mask)
     hi_value = int(hi_mask)
     for time_key, index in _EXPECTED_HK_5M_TIME_KEY_INDEX.items():
         if index < 63:
-            if not (lo_value & (1 << index)):
+            expected = bool(int(expected_lo_mask) & (1 << index))
+            if expected and not (lo_value & (1 << index)):
                 missing.append(time_key)
-        elif not (hi_value & (1 << (index - 63))):
-            missing.append(time_key)
+        else:
+            expected = bool(int(expected_hi_mask) & (1 << (index - 63)))
+            if expected and not (hi_value & (1 << (index - 63))):
+                missing.append(time_key)
     return missing
+
+
+def _infer_half_day_dates(intraday_daily: pd.DataFrame) -> set[str]:
+    """Infer market-wide morning-only sessions from observed all-market 5m bars."""
+    if intraday_daily.empty:
+        return set()
+
+    inferred: set[str] = set()
+    for trade_date, date_frame in intraday_daily.groupby("trade_date", sort=True):
+        if len(date_frame) < _INFERRED_HALF_DAY_MIN_SYMBOL_DAYS:
+            continue
+        afternoon_mask = pd.to_numeric(
+            date_frame["intraday_time_mask_hi"],
+            errors="coerce",
+        ).fillna(0)
+        if bool((afternoon_mask != 0).any()):
+            continue
+        bar_counts = pd.to_numeric(date_frame["intraday_bar_count"], errors="coerce").dropna()
+        if bar_counts.empty:
+            continue
+        if float(bar_counts.quantile(0.9)) <= len(_EXPECTED_HK_5M_MORNING_TIME_KEYS):
+            date_key = _format_date(trade_date)
+            if date_key:
+                inferred.add(date_key)
+    return inferred
+
+
+def _expected_masks_for_date(
+    trade_date: object,
+    inferred_half_day_dates: set[str],
+    *,
+    full_day_expected_bars: int = len(_EXPECTED_HK_5M_TIME_KEYS),
+) -> tuple[int, int, int]:
+    date_key = _format_date(trade_date)
+    if date_key in inferred_half_day_dates:
+        return (
+            _EXPECTED_HK_5M_MORNING_TIME_MASK_LO,
+            _EXPECTED_HK_5M_MORNING_TIME_MASK_HI,
+            len(_EXPECTED_HK_5M_MORNING_TIME_KEYS),
+        )
+    return (
+        _EXPECTED_HK_5M_TIME_MASK_LO,
+        _EXPECTED_HK_5M_TIME_MASK_HI,
+        full_day_expected_bars,
+    )
 
 
 def _resolve_intraday_symbol_series(frame: pd.DataFrame) -> pd.Series:
@@ -302,6 +369,17 @@ def _daily_reconciliation_exact_match_mask(
     }
 
 
+def _zero_volume_amount_mask(frame: pd.DataFrame) -> pd.Series:
+    volume = pd.to_numeric(frame.get("intraday_volume"), errors="coerce")
+    amount = pd.to_numeric(frame.get("intraday_amount"), errors="coerce")
+    return volume.notna() & amount.notna() & np.isclose(volume, 0.0, rtol=0.0, atol=1e-8) & np.isclose(
+        amount,
+        0.0,
+        rtol=0.0,
+        atol=1e-8,
+    )
+
+
 def _resolve_reconciliation_suppressed_mask(
     *,
     merged: pd.DataFrame,
@@ -375,9 +453,17 @@ def _build_daily_reconciliation(
     mismatch_counts: Counter[str] = Counter()
     suppressed_mismatch_counts: Counter[str] = Counter()
     sample_missing_daily_rows: list[dict[str, object]] = []
+    sample_inactive_zero_volume_rows: list[dict[str, object]] = []
+    sample_intraday_after_daily_end_with_trading_rows: list[dict[str, object]] = []
+    sample_daily_active_missing_intraday_rows: list[dict[str, object]] = []
     sample_mismatch_rows: list[dict[str, object]] = []
     reconciled_symbol_days = 0
     missing_daily_rows = 0
+    inactive_zero_volume_after_daily_end_rows = 0
+    intraday_after_daily_end_with_trading_rows = 0
+    daily_active_missing_intraday_rows = 0
+    intraday_date_min = intraday_daily["trade_date"].min() if not intraday_daily.empty else None
+    intraday_date_max = intraday_daily["trade_date"].max() if not intraday_daily.empty else None
 
     for symbol, symbol_df in intraday_daily.groupby("symbol", sort=True):
         daily_path = data_dir / f"{symbol}.parquet"
@@ -412,6 +498,38 @@ def _build_daily_reconciliation(
                 "total_turnover": "daily_amount",
             }
         )
+        if pd.notna(intraday_date_min) and pd.notna(intraday_date_max):
+            daily_active_candidates = daily_frame.loc[
+                (daily_frame["trade_date"] >= intraday_date_min)
+                & (daily_frame["trade_date"] <= intraday_date_max)
+            ].copy()
+            daily_volume = pd.to_numeric(
+                daily_active_candidates.get("daily_volume"),
+                errors="coerce",
+            ).fillna(0.0)
+            daily_amount = pd.to_numeric(
+                daily_active_candidates.get("daily_amount"),
+                errors="coerce",
+            ).fillna(0.0)
+            daily_active_candidates = daily_active_candidates.loc[(daily_volume > 0.0) | (daily_amount > 0.0)]
+            intraday_dates = set(symbol_df["trade_date"].dropna().tolist())
+            daily_missing_intraday = daily_active_candidates.loc[
+                ~daily_active_candidates["trade_date"].isin(intraday_dates)
+            ]
+            if not daily_missing_intraday.empty:
+                daily_active_missing_intraday_rows += int(len(daily_missing_intraday))
+                for _, row in daily_missing_intraday.head(sample_limit).iterrows():
+                    _append_sample(
+                        sample_daily_active_missing_intraday_rows,
+                        {
+                            "symbol": symbol,
+                            "trade_date": row["trade_date"],
+                            "daily_volume": row.get("daily_volume"),
+                            "daily_amount": row.get("daily_amount"),
+                        },
+                        limit=sample_limit,
+                    )
+
         merged = symbol_df.merge(
             daily_frame,
             on="trade_date",
@@ -420,8 +538,44 @@ def _build_daily_reconciliation(
         )
         missing_match_mask = merged["daily_open"].isna() & merged["daily_close"].isna()
         if bool(missing_match_mask.any()):
-            missing_daily_rows += int(missing_match_mask.sum())
-            for _, row in merged.loc[missing_match_mask].head(sample_limit).iterrows():
+            daily_max_date = daily_frame["trade_date"].max()
+            after_daily_end_mask = missing_match_mask & merged["trade_date"].notna() & (merged["trade_date"] > daily_max_date)
+            inactive_zero_mask = after_daily_end_mask & _zero_volume_amount_mask(merged)
+            trading_after_end_mask = after_daily_end_mask & ~inactive_zero_mask
+            unclassified_missing_mask = missing_match_mask & ~inactive_zero_mask & ~trading_after_end_mask
+
+            if bool(inactive_zero_mask.any()):
+                inactive_zero_volume_after_daily_end_rows += int(inactive_zero_mask.sum())
+                for _, row in merged.loc[inactive_zero_mask].head(sample_limit).iterrows():
+                    _append_sample(
+                        sample_inactive_zero_volume_rows,
+                        {
+                            "symbol": symbol,
+                            "trade_date": row["trade_date"],
+                            "reason": "inactive_zero_volume_intraday_after_daily_end",
+                            "intraday_volume": row.get("intraday_volume"),
+                            "intraday_amount": row.get("intraday_amount"),
+                        },
+                        limit=sample_limit,
+                    )
+
+            if bool(trading_after_end_mask.any()):
+                intraday_after_daily_end_with_trading_rows += int(trading_after_end_mask.sum())
+                for _, row in merged.loc[trading_after_end_mask].head(sample_limit).iterrows():
+                    _append_sample(
+                        sample_intraday_after_daily_end_with_trading_rows,
+                        {
+                            "symbol": symbol,
+                            "trade_date": row["trade_date"],
+                            "reason": "intraday_after_daily_end_with_trading",
+                            "intraday_volume": row.get("intraday_volume"),
+                            "intraday_amount": row.get("intraday_amount"),
+                        },
+                        limit=sample_limit,
+                    )
+
+            missing_daily_rows += int(unclassified_missing_mask.sum())
+            for _, row in merged.loc[unclassified_missing_mask].head(sample_limit).iterrows():
                 _append_sample(
                     sample_missing_daily_rows,
                     {
@@ -487,10 +641,16 @@ def _build_daily_reconciliation(
             "daily_asset_dir": str(daily_asset_dir),
             "reconciled_symbol_days": reconciled_symbol_days,
             "missing_daily_symbol_days": missing_daily_rows,
+            "inactive_zero_volume_intraday_after_daily_end_symbol_days": inactive_zero_volume_after_daily_end_rows,
+            "intraday_after_daily_end_with_trading_symbol_days": intraday_after_daily_end_with_trading_rows,
+            "daily_active_symbol_days_missing_intraday": daily_active_missing_intraday_rows,
             "mismatch_counts": dict(sorted(mismatch_counts.items())),
             "suppressed_mismatch_counts": dict(sorted(suppressed_mismatch_counts.items())),
         },
         "sample_missing_daily_rows": sample_missing_daily_rows,
+        "sample_inactive_zero_volume_intraday_after_daily_end": sample_inactive_zero_volume_rows,
+        "sample_intraday_after_daily_end_with_trading": sample_intraday_after_daily_end_with_trading_rows,
+        "sample_daily_active_missing_intraday_rows": sample_daily_active_missing_intraday_rows,
         "sample_mismatch_rows": sample_mismatch_rows,
     }
 
@@ -516,6 +676,9 @@ def _render_intraday_health_text(payload: Mapping[str, object]) -> str:
         "negative_amount_rows",
         "daily_reconciliation_symbol_days",
         "daily_reconciliation_missing_daily_rows",
+        "daily_reconciliation_inactive_zero_volume_after_daily_end_rows",
+        "daily_reconciliation_intraday_after_daily_end_with_trading_rows",
+        "daily_reconciliation_daily_active_missing_intraday_rows",
     ):
         lines.append(f"{key}: {summary.get(key)}")
 
@@ -637,18 +800,24 @@ def inspect_hk_intraday_health(args) -> int:
             daily_parts.append(_aggregate_intraday_daily(deduped))
 
     intraday_daily = _combine_intraday_daily_parts(daily_parts)
+    inferred_half_day_dates = _infer_half_day_dates(intraday_daily)
     if not intraday_daily.empty:
         for _, row in intraday_daily.iterrows():
             observed_bars = int(row["intraday_bar_count"])
             bar_count_values.append(observed_bars)
-            if observed_bars != expected_bars_per_day:
+            expected_lo_mask, expected_hi_mask, expected_bars_for_date = _expected_masks_for_date(
+                row["trade_date"],
+                inferred_half_day_dates,
+                full_day_expected_bars=expected_bars_per_day,
+            )
+            if observed_bars != expected_bars_for_date:
                 _append_sample(
                     sample_unexpected_bar_count_symbol_days,
                     {
                         "symbol": row["symbol"],
                         "trade_date": row["trade_date"],
                         "observed_bars": observed_bars,
-                        "expected_bars": expected_bars_per_day,
+                        "expected_bars": expected_bars_for_date,
                     },
                     limit=sample_limit,
                 )
@@ -656,6 +825,8 @@ def inspect_hk_intraday_health(args) -> int:
             missing_times = _missing_times_from_masks(
                 int(row.get("intraday_time_mask_lo") or 0),
                 int(row.get("intraday_time_mask_hi") or 0),
+                expected_lo_mask=expected_lo_mask,
+                expected_hi_mask=expected_hi_mask,
             )
             if missing_times:
                 missing_bar_symbol_days += 1
@@ -704,7 +875,16 @@ def inspect_hk_intraday_health(args) -> int:
                 "sample_rows": sample_missing_symbol_days,
             }
         )
-    unexpected_bar_count_symbol_days = int(sum(value != expected_bars_per_day for value in bar_count_values))
+    unexpected_bar_count_symbol_days = 0
+    if not intraday_daily.empty:
+        for _, row in intraday_daily.iterrows():
+            _, _, expected_bars_for_date = _expected_masks_for_date(
+                row["trade_date"],
+                inferred_half_day_dates,
+                full_day_expected_bars=expected_bars_per_day,
+            )
+            if int(row["intraday_bar_count"]) != expected_bars_for_date:
+                unexpected_bar_count_symbol_days += 1
     if unexpected_bar_count_symbol_days > 0:
         quality_checks.append(
             {
@@ -764,6 +944,52 @@ def inspect_hk_intraday_health(args) -> int:
                     "sample_rows": list(reconciliation.get("sample_missing_daily_rows") or []),
                 }
             )
+        inactive_zero_count = int(
+            reconciliation_summary.get("inactive_zero_volume_intraday_after_daily_end_symbol_days") or 0
+        )
+        if inactive_zero_count > 0:
+            quality_checks.append(
+                {
+                    "check": "inactive_zero_volume_intraday_after_daily_end",
+                    "severity": "info",
+                    "affected_items": inactive_zero_count,
+                    "affected_pct": _round_pct(inactive_zero_count, symbol_days_scanned),
+                    "classification": "provider-inactive-boundary",
+                    "sample_rows": list(
+                        reconciliation.get("sample_inactive_zero_volume_intraday_after_daily_end") or []
+                    ),
+                }
+            )
+        trading_after_end_count = int(
+            reconciliation_summary.get("intraday_after_daily_end_with_trading_symbol_days") or 0
+        )
+        if trading_after_end_count > 0:
+            quality_checks.append(
+                {
+                    "check": "intraday_after_daily_end_with_trading",
+                    "severity": "warning",
+                    "affected_items": trading_after_end_count,
+                    "affected_pct": _round_pct(trading_after_end_count, symbol_days_scanned),
+                    "sample_rows": list(
+                        reconciliation.get("sample_intraday_after_daily_end_with_trading") or []
+                    ),
+                }
+            )
+        daily_active_missing_intraday_count = int(
+            reconciliation_summary.get("daily_active_symbol_days_missing_intraday") or 0
+        )
+        if daily_active_missing_intraday_count > 0:
+            quality_checks.append(
+                {
+                    "check": "daily_active_but_intraday_missing",
+                    "severity": "warning",
+                    "affected_items": daily_active_missing_intraday_count,
+                    "affected_pct": _round_pct(daily_active_missing_intraday_count, symbol_days_scanned),
+                    "sample_rows": list(
+                        reconciliation.get("sample_daily_active_missing_intraday_rows") or []
+                    ),
+                }
+            )
         mismatch_counts = (
             reconciliation_summary.get("mismatch_counts")
             if isinstance(reconciliation_summary.get("mismatch_counts"), Mapping)
@@ -803,6 +1029,8 @@ def inspect_hk_intraday_health(args) -> int:
         "trade_date_min": _format_date(trade_date_min),
         "trade_date_max": _format_date(trade_date_max),
         "expected_bars_per_day": expected_bars_per_day,
+        "inferred_half_day_dates": sorted(inferred_half_day_dates),
+        "inferred_half_day_count": len(inferred_half_day_dates),
         "duplicate_timestamp_groups": duplicate_timestamp_groups,
         "duplicate_timestamp_rows": duplicate_timestamp_rows,
         "symbol_days_with_missing_bars": missing_bar_symbol_days,
@@ -817,6 +1045,15 @@ def inspect_hk_intraday_health(args) -> int:
         "negative_amount_rows": negative_amount_rows,
         "daily_reconciliation_symbol_days": int(reconciliation_summary.get("reconciled_symbol_days") or 0),
         "daily_reconciliation_missing_daily_rows": int(reconciliation_summary.get("missing_daily_symbol_days") or 0),
+        "daily_reconciliation_inactive_zero_volume_after_daily_end_rows": int(
+            reconciliation_summary.get("inactive_zero_volume_intraday_after_daily_end_symbol_days") or 0
+        ),
+        "daily_reconciliation_intraday_after_daily_end_with_trading_rows": int(
+            reconciliation_summary.get("intraday_after_daily_end_with_trading_symbol_days") or 0
+        ),
+        "daily_reconciliation_daily_active_missing_intraday_rows": int(
+            reconciliation_summary.get("daily_active_symbol_days_missing_intraday") or 0
+        ),
         "quality_check_issue_count": len(quality_checks),
     }
     quality_verdict = summarize_quality_checks(

@@ -13,6 +13,164 @@ def _hk_5m_timestamps(date_text: str) -> list[pd.Timestamp]:
     ]
 
 
+def _hk_5m_morning_timestamps(date_text: str) -> list[pd.Timestamp]:
+    return pd.date_range(f"{date_text} 09:35:00", f"{date_text} 12:00:00", freq="5min").tolist()
+
+
+def test_inspect_hk_intraday_health_infers_market_wide_half_days(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    intraday_path = repo_root / "artifacts" / "cache" / "intraday" / "hk_half_day_5m.parquet"
+    intraday_path.parent.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    date_text = "2025-12-24"
+    rows: list[dict[str, object]] = []
+    for symbol_index in range(50):
+        symbol = f"{symbol_index + 1:05d}.HK"
+        for bar_index, timestamp in enumerate(_hk_5m_morning_timestamps(date_text)):
+            price = 100.0 + symbol_index + bar_index * 0.01
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "trade_datetime": timestamp,
+                    "open": price,
+                    "high": price + 0.1,
+                    "low": price - 0.1,
+                    "close": price + 0.05,
+                    "volume": 10.0,
+                    "amount": price * 10.0,
+                }
+            )
+    pd.DataFrame(rows).to_parquet(intraday_path, index=False)
+
+    out_path = repo_root / "intraday_half_day_health.json"
+    args = SimpleNamespace(
+        input=[str(intraday_path)],
+        daily_asset_dir=None,
+        sample_limit=5,
+        expected_bars_per_day=66,
+        numeric_rtol=1e-6,
+        numeric_atol=1e-8,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_intraday_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["inferred_half_day_dates"] == ["2025-12-24"]
+    assert payload["summary"]["symbol_days_with_missing_bars"] == 0
+    assert payload["summary"]["symbol_days_with_unexpected_bar_count"] == 0
+    assert payload["quality_checks"] == []
+
+
+def test_inspect_hk_intraday_health_classifies_daily_reconciliation_boundaries(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    intraday_path = repo_root / "artifacts" / "cache" / "intraday" / "hk_reconciliation_boundaries.parquet"
+    intraday_path.parent.mkdir(parents=True)
+    daily_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_demo"
+    (daily_dir / "data").mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    rows: list[dict[str, object]] = []
+    for date_text in ("2024-05-02", "2024-05-03"):
+        for timestamp in _hk_5m_timestamps(date_text):
+            rows.append(
+                {
+                    "symbol": "00007.HK",
+                    "trade_datetime": timestamp,
+                    "open": 0.032,
+                    "high": 0.032,
+                    "low": 0.032,
+                    "close": 0.032,
+                    "volume": 0.0,
+                    "amount": 0.0,
+                }
+            )
+            rows.append(
+                {
+                    "symbol": "00008.HK",
+                    "trade_datetime": timestamp,
+                    "open": 1.0,
+                    "high": 1.1,
+                    "low": 0.9,
+                    "close": 1.0,
+                    "volume": 10.0,
+                    "amount": 10.0,
+                }
+            )
+    for timestamp in _hk_5m_timestamps("2024-05-02"):
+        rows.append(
+            {
+                "symbol": "00009.HK",
+                "trade_datetime": timestamp,
+                "open": 2.0,
+                "high": 2.1,
+                "low": 1.9,
+                "close": 2.0,
+                "volume": 10.0,
+                "amount": 20.0,
+            }
+        )
+    pd.DataFrame(rows).to_parquet(intraday_path, index=False)
+
+    for symbol in ("00007.HK", "00008.HK"):
+        pd.DataFrame(
+            {
+                "trade_date": ["20240328"],
+                "open": [1.0],
+                "high": [1.0],
+                "low": [1.0],
+                "close": [1.0],
+                "volume": [100.0],
+                "total_turnover": [100.0],
+            }
+        ).to_parquet(daily_dir / "data" / f"{symbol}.parquet", index=False)
+    pd.DataFrame(
+        {
+            "trade_date": ["20240502", "20240503"],
+            "open": [2.0, 2.1],
+            "high": [2.1, 2.2],
+            "low": [1.9, 2.0],
+            "close": [2.0, 2.1],
+            "volume": [660.0, 100.0],
+            "total_turnover": [1320.0, 210.0],
+        }
+    ).to_parquet(daily_dir / "data" / "00009.HK.parquet", index=False)
+
+    out_path = repo_root / "intraday_reconciliation_boundaries.json"
+    args = SimpleNamespace(
+        input=[str(intraday_path)],
+        daily_asset_dir=str(daily_dir),
+        sample_limit=5,
+        expected_bars_per_day=66,
+        numeric_rtol=1e-6,
+        numeric_atol=1e-8,
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_intraday_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    reconciliation_summary = payload["daily_reconciliation"]["summary"]
+    assert reconciliation_summary["missing_daily_symbol_days"] == 0
+    assert reconciliation_summary["inactive_zero_volume_intraday_after_daily_end_symbol_days"] == 2
+    assert reconciliation_summary["intraday_after_daily_end_with_trading_symbol_days"] == 2
+    assert reconciliation_summary["daily_active_symbol_days_missing_intraday"] == 1
+
+    checks = {item["check"]: item for item in payload["quality_checks"]}
+    assert "intraday_daily_rows_missing_from_asset" not in checks
+    assert checks["inactive_zero_volume_intraday_after_daily_end"]["severity"] == "info"
+    assert checks["inactive_zero_volume_intraday_after_daily_end"]["affected_items"] == 2
+    assert checks["intraday_after_daily_end_with_trading"]["affected_items"] == 2
+    assert checks["daily_active_but_intraday_missing"]["affected_items"] == 1
+
+
 def test_inspect_hk_intraday_health_reports_integrity_and_daily_reconciliation(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     intraday_path = repo_root / "artifacts" / "cache" / "intraday" / "hk_all_5m_demo.parquet"

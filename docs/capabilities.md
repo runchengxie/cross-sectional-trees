@@ -42,7 +42,7 @@
 
 仓库另外还提供两组模块级的分发工具：
 
-* `python -m cstree.release_tools.package_assets` 与 `python -m cstree.release_tools.release_assets`：将港股数据资产按模块打包并上传至 GitHub Releases；默认覆盖主线的九个模块，也支持显式附加公告（`announcement`）等补充层。
+* `python -m cstree.release_tools.package_assets` 与 `python -m cstree.release_tools.release_assets`：将港股数据资产按模块打包并上传至 GitHub Releases；`hk_current` 默认覆盖 current contract 中的核心、分钟、ETF、参考、汇率、南向、financial_details、行业和 universe 分层，也支持显式附加公告（`announcement`）等补充层。
 * `python -m cstree.release_tools.package_runs` 与 `python -m cstree.release_tools.release_runs`：将历史运行结果按次拆包并上传至 GitHub Releases，支持轻量、里程碑、完整（`light` / `milestone` / `full`）这三档配置。
 
 它们主要用于公开分享、跨机器搬运以及正式版本分发，而非个人的私有备份。

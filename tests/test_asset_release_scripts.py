@@ -544,6 +544,67 @@ def test_package_assets_current_preset_stages_intraday_etf_and_valuation_parts(t
     assert sorted(root_manifest["parts"].keys()) == ["etf", "intraday", "valuation"]
 
 
+def test_package_assets_current_preset_default_parts_cover_current_contract_layers(tmp_path):
+    package_script = _load_module("cstree.release_tools.package_assets")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _prepare_demo_assets(repo_root)
+
+    package_script.REPO_ROOT = repo_root
+    package_script.ASSETS_ROOT = repo_root / "artifacts" / "assets"
+
+    stage_root = tmp_path / "stage_current_default"
+    exit_code = package_script.main(
+        [
+            "--preset",
+            "hk_current",
+            "--dest",
+            str(stage_root),
+            "--name",
+            "demo_current_default_assets",
+            "--as-of",
+            "20260403",
+        ]
+    )
+
+    assert exit_code == 0
+    root_manifest = yaml.safe_load((stage_root / "manifest.yml").read_text(encoding="utf-8"))
+    assert list(root_manifest["parts"]) == [
+        "daily",
+        "intraday",
+        "etf",
+        "valuation",
+        "instruments",
+        "pit",
+        "reference",
+        "exchange_rate",
+        "southbound",
+        "financial_details",
+        "industry",
+        "universe",
+    ]
+    assert (
+        stage_root
+        / "exchange_rate"
+        / "rqdata"
+        / "hk"
+        / "exchange_rate"
+        / "hk_all_2000_20260319_exchange_rate_latest"
+        / "data"
+        / "exchange_rate.parquet"
+    ).exists()
+    assert (
+        stage_root
+        / "financial_details"
+        / "rqdata"
+        / "hk"
+        / "financial_details"
+        / "hk_financial_details_portable_bundle_20260324"
+        / "data"
+        / "00005.HK.parquet"
+    ).exists()
+
+
 def test_package_assets_current_preset_prefers_current_contract_over_alias_targets(tmp_path):
     package_script = _load_module("cstree.release_tools.package_assets")
     repo_root = tmp_path / "repo"

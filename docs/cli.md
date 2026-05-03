@@ -721,8 +721,8 @@ cstree rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intr
 说明：
 
 - `--input` 接收包含单独文件、存放片段的 `.parts/` 工作夹、整包缓存乃至正式的数据资产在内的混杂格式支持。如果同名 `.parts/` 存在，应用内部将启动自动展开解构机制。
-- 根据港股交易日准则，全天完整的 `5m` 记录理论数值锁定在 `66` 根柱线。基于此，逻辑检测模块会自动标识不足柱线、溢出排程或显著非标定的情形。
-- 一旦挂接 `--daily-asset-dir` 账本对比源，分析模块将分钟内的 `open/high/low/close/volume/amount` 进行高频重构合并，同标准的本地日线基准做穿透式对账，直接把问题定位到 intraday 本身漏缺还是源端层级不一致。
+- 根据港股交易日准则，全天完整的 `5m` 记录理论数值锁定在 `66` 根柱线；全市场上午盘结束的半日市会从观测到的交易日排程中自动推断，并记录到 JSON summary 的 `inferred_half_day_dates`。基于这些排程，逻辑检测模块会自动标识不足柱线、溢出排程或显著非标定的情形。
+- 一旦挂接 `--daily-asset-dir` 账本对比源，分析模块将分钟内的 `open/high/low/close/volume/amount` 进行高频重构合并，同标准的本地日线基准做穿透式对账，直接把问题定位到 intraday 本身漏缺还是源端层级不一致。对账会把日线结束后分钟线仍返回零成交占位的情形归类为 `inactive_zero_volume_intraday_after_daily_end`，并单独标出 `intraday_after_daily_end_with_trading` 与 `daily_active_but_intraday_missing` 这类更值得排查的缺口。
 - 对账过程中，`close`、`volume` 和 `amount` 字段依然采用严格数值比较。对于 `open`、`high` 和 `low` 字段，工具会自动过滤由于轻微 tick 或集合竞价口径差异导致的噪音（前提是前述三个字段已对齐）。这样保留下来的警告信息均具有较高的人工排查价值。
 - 最终生成的 JSON 评估文档末段同样含有 `quality_verdict` 分级定音；通过配置 `--fail-on-severity` 可达成强制拦截效果。
 

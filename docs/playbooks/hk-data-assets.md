@@ -711,7 +711,7 @@ uv run python -m cstree.release_tools.package_assets \
 这条链路的特点：
 
 * `valuation` 其实一直都支持单独打包；之前缺的是 `intraday` 和 ETF 这两类当前也值得长期留档的资产
-* `hk_current` preset 会优先读取 `artifacts/metadata/current_assets/hk_current.json` 里声明的 current contract；只有 contract 缺失或对应项不存在时，才回退到当前 alias。`daily` 默认取 `hk_all_daily_clean_latest` 这一层，然后再打 `intraday / etf / valuation / instruments / pit / reference / southbound / industry / universe`
+* `hk_current` preset 会优先读取 `artifacts/metadata/current_assets/hk_current.json` 里声明的 current contract；只有 contract 缺失或对应项不存在时，才回退到当前 alias。`daily` 默认取 `hk_all_daily_clean_latest` 这一层，然后再打 `intraday / etf / valuation / instruments / pit / reference / exchange_rate / southbound / financial_details / industry / universe`
 * `hk_full` / `hk_connect` 这些旧 preset 仍然保留，它们更像历史快照模板，里面的 snapshot 名不会自动前移
 * 新增了 `hk_etf` preset，默认只打 `daily + instruments` 两个 part，不再强依赖 universe / PIT / reference 那些 ETF 当前没有主线快照的层
 * `intraday` part 会打包正式 `artifacts/assets/rqdata/hk/intraday/<snapshot>/` 资产层；`etf` part 会把 ETF `daily` snapshot 和 ETF instruments 一起打进去
