@@ -43,6 +43,7 @@ from .mirror_financial import (
     list_hk_financial_fields,
     mirror_hk_financial_details,
     mirror_hk_pit_financials,
+    patch_hk_pit_financials,
 )
 from .mirror_industry import (
     mirror_hk_industry_changes,
@@ -148,6 +149,10 @@ HK_FINANCIAL_MIRROR_ARGS = RQDataAssetArgsBuilder(
     _args.add_hk_financial_mirror_args,
     BATCHED_MIRROR_KWARGS,
 )
+HK_PIT_PATCH_MIRROR_ARGS = RQDataAssetArgsBuilder(
+    _args.add_hk_pit_patch_mirror_args,
+    BATCHED_MIRROR_KWARGS,
+)
 HK_PIT_FUNDAMENTALS_BUILD_ARGS = RQDataAssetArgsBuilder(
     _args.add_hk_pit_fundamentals_build_args,
     {"default_pipeline_fundamentals_name": DEFAULT_PIPELINE_FUNDAMENTALS_NAME},
@@ -214,6 +219,13 @@ def rqdata_asset_command_specs() -> Sequence[RQDataAssetCommandSpec]:
             help="Mirror HK PIT financial statements into parquet + manifest assets",
             add_args=HK_FINANCIAL_MIRROR_ARGS,
             runner=mirror_hk_pit_financials,
+            requires_client=True,
+        ),
+        RQDataAssetCommandSpec(
+            name="patch-hk-pit-financials",
+            help="Build a HK PIT base + recent-quarter patch snapshot",
+            add_args=HK_PIT_PATCH_MIRROR_ARGS,
+            runner=patch_hk_pit_financials,
             requires_client=True,
         ),
         RQDataAssetCommandSpec(

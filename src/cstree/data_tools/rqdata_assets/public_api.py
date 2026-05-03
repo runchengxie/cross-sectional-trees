@@ -215,6 +215,7 @@ from .mirror_financial import (
     list_hk_financial_fields,
     mirror_hk_financial_details,
     mirror_hk_pit_financials,
+    patch_hk_pit_financials,
 )
 from .mirror_industry import (
     mirror_hk_industry_changes,
@@ -384,6 +385,17 @@ def add_hk_financial_mirror_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_hk_pit_patch_mirror_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_pit_patch_mirror_args(
+        parser,
+        default_batch_size=DEFAULT_BATCH_SIZE,
+        default_out_root=DEFAULT_OUT_ROOT,
+        max_attempts_default=DEFAULT_MIRROR_MAX_ATTEMPTS,
+        backoff_seconds_default=DEFAULT_MIRROR_BACKOFF_SECONDS,
+        max_backoff_seconds_default=DEFAULT_MIRROR_MAX_BACKOFF_SECONDS,
+    )
+
+
 def add_hk_pit_fundamentals_build_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_pit_fundamentals_build_args(
         parser,
@@ -483,6 +495,7 @@ __all__ = [
     "mirror_hk_industry_changes",
     "mirror_hk_instrument_industry",
     "mirror_hk_pit_financials",
+    "patch_hk_pit_financials",
     "mirror_hk_shares",
     "mirror_hk_southbound",
     "mirror_hk_valuation",

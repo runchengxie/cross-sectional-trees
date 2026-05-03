@@ -483,6 +483,14 @@ cstree rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connec
 cstree rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest --fields-file configs/field_profiles/hk_financial_fields_starter.txt --start-quarter 2011q1 --end-quarter 2025q4 --date 20260310
 ```
 
+### cstree rqdata patch-hk-pit-financials
+
+基于已有完整 PIT 快照，只重拉一个近期 quarter 窗口，并将这些 quarter 按 `symbol + quarter` 替换合并到新快照中。该命令适合日常追新；如果需要捕获 base 快照之后发生的更早历史 quarter 重述，需扩大 patch 窗口或重新跑完整镜像。
+
+```bash
+cstree rqdata patch-hk-pit-financials --base-asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_asof_20260424 --target-date 20260430 --patch-start-quarter 2024q4 --patch-end-quarter 2025q4 --name hk_all_2000_2025_full_market_asof_20260430_patch_2024q4_2025q4
+```
+
 ### cstree rqdata mirror-hk-financial-details
 
 拉取港股财务报表的细项数据明细。

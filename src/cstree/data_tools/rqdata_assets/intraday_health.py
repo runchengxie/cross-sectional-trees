@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 from ..symbols import normalize_symbol_for_market
 from ...research.hk_intraday_slippage_report import resolve_input_parquet_paths
@@ -23,7 +24,32 @@ _EXPECTED_HK_5M_TIME_KEYS = [
     *pd.date_range("13:05", "16:00", freq="5min").strftime("%H:%M").tolist(),
 ]
 _EXPECTED_HK_5M_TIME_KEY_SET = set(_EXPECTED_HK_5M_TIME_KEYS)
+_EXPECTED_HK_5M_TIME_KEY_INDEX = {
+    time_key: index
+    for index, time_key in enumerate(_EXPECTED_HK_5M_TIME_KEYS)
+}
+_EXPECTED_HK_5M_TIME_MASK_LO = sum(1 << index for index in range(min(63, len(_EXPECTED_HK_5M_TIME_KEYS))))
+_EXPECTED_HK_5M_TIME_MASK_HI = sum(
+    1 << (index - 63)
+    for index in range(63, len(_EXPECTED_HK_5M_TIME_KEYS))
+)
 _MINOR_DAILY_RECON_PRICE_DIFF_ATOL = 0.2
+_INTRADAY_HEALTH_COLUMNS = (
+    "symbol",
+    "ts_code",
+    "rq_order_book_id",
+    "order_book_id",
+    "trade_datetime",
+    "datetime",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+    "total_turnover",
+)
+_INTRADAY_READ_BATCH_SIZE = 500_000
 
 
 def _round_pct(numerator: int, denominator: int) -> float:
@@ -74,6 +100,60 @@ def _serialize_scalar(value: object) -> int | float | str | None:
     return str(value)
 
 
+def _bitwise_or_int(values: pd.Series) -> int:
+    if values.empty:
+        return 0
+    return int(np.bitwise_or.reduce(values.to_numpy(dtype=np.uint64)))
+
+
+def _read_intraday_frame_chunks(path: Path) -> Sequence[pd.DataFrame]:
+    parquet_file = pq.ParquetFile(path)
+    available_columns = set(parquet_file.schema_arrow.names)
+    columns = [column for column in _INTRADAY_HEALTH_COLUMNS if column in available_columns]
+    if not columns:
+        return []
+    return (
+        batch.to_pandas()
+        for batch in parquet_file.iter_batches(
+            batch_size=_INTRADAY_READ_BATCH_SIZE,
+            columns=columns,
+        )
+    )
+
+
+def _add_expected_time_masks(work: pd.DataFrame) -> pd.DataFrame:
+    time_index = work["time_key"].map(_EXPECTED_HK_5M_TIME_KEY_INDEX)
+    valid_mask = time_index.notna()
+    work["_time_mask_lo"] = np.uint64(0)
+    work["_time_mask_hi"] = np.uint64(0)
+    if not bool(valid_mask.any()):
+        return work
+
+    index_values = time_index.loc[valid_mask].astype("int64")
+    low_mask = index_values < 63
+    if bool(low_mask.any()):
+        low_index = index_values.loc[low_mask].to_numpy(dtype=np.uint64)
+        work.loc[index_values.loc[low_mask].index, "_time_mask_lo"] = np.left_shift(np.uint64(1), low_index)
+    high_mask = ~low_mask
+    if bool(high_mask.any()):
+        high_index = (index_values.loc[high_mask] - 63).to_numpy(dtype=np.uint64)
+        work.loc[index_values.loc[high_mask].index, "_time_mask_hi"] = np.left_shift(np.uint64(1), high_index)
+    return work
+
+
+def _missing_times_from_masks(lo_mask: int, hi_mask: int) -> list[str]:
+    missing: list[str] = []
+    lo_value = int(lo_mask)
+    hi_value = int(hi_mask)
+    for time_key, index in _EXPECTED_HK_5M_TIME_KEY_INDEX.items():
+        if index < 63:
+            if not (lo_value & (1 << index)):
+                missing.append(time_key)
+        elif not (hi_value & (1 << (index - 63))):
+            missing.append(time_key)
+    return missing
+
+
 def _resolve_intraday_symbol_series(frame: pd.DataFrame) -> pd.Series:
     for column in ("symbol", "ts_code", "rq_order_book_id", "order_book_id"):
         if column in frame.columns:
@@ -117,7 +197,8 @@ def _append_sample(samples: list[dict[str, object]], row: Mapping[str, object], 
 
 
 def _aggregate_intraday_daily(frame: pd.DataFrame) -> pd.DataFrame:
-    grouped = frame.groupby(["symbol", "trade_date"], sort=True)
+    work = _add_expected_time_masks(frame.copy())
+    grouped = work.groupby(["symbol", "trade_date"], sort=True)
     daily = grouped.agg(
         intraday_open=("open", "first"),
         intraday_high=("high", "max"),
@@ -126,8 +207,65 @@ def _aggregate_intraday_daily(frame: pd.DataFrame) -> pd.DataFrame:
         intraday_volume=("volume", "sum"),
         intraday_amount=("amount", "sum"),
         intraday_bar_count=("trade_datetime", "size"),
+        intraday_first_datetime=("trade_datetime", "first"),
+        intraday_last_datetime=("trade_datetime", "last"),
+        intraday_time_mask_lo=("_time_mask_lo", _bitwise_or_int),
+        intraday_time_mask_hi=("_time_mask_hi", _bitwise_or_int),
     ).reset_index()
     return daily
+
+
+def _combine_intraday_daily_parts(parts: list[pd.DataFrame]) -> pd.DataFrame:
+    if not parts:
+        return pd.DataFrame(
+            columns=[
+                "symbol",
+                "trade_date",
+                "intraday_open",
+                "intraday_high",
+                "intraday_low",
+                "intraday_close",
+                "intraday_volume",
+                "intraday_amount",
+                "intraday_bar_count",
+                "intraday_first_datetime",
+                "intraday_last_datetime",
+                "intraday_time_mask_lo",
+                "intraday_time_mask_hi",
+            ]
+        )
+
+    combined = pd.concat(parts, ignore_index=True)
+    combined = combined.sort_values(["symbol", "trade_date", "intraday_first_datetime"]).reset_index(drop=True)
+    open_frame = (
+        combined.groupby(["symbol", "trade_date"], sort=True)
+        .first()[["intraday_open", "intraday_first_datetime"]]
+        .reset_index()
+    )
+    close_frame = (
+        combined.sort_values(["symbol", "trade_date", "intraday_last_datetime"])
+        .groupby(["symbol", "trade_date"], sort=True)
+        .last()[["intraday_close", "intraday_last_datetime"]]
+        .reset_index()
+    )
+    aggregate_frame = (
+        combined.groupby(["symbol", "trade_date"], sort=True, as_index=False)
+        .agg(
+            intraday_high=("intraday_high", "max"),
+            intraday_low=("intraday_low", "min"),
+            intraday_volume=("intraday_volume", "sum"),
+            intraday_amount=("intraday_amount", "sum"),
+            intraday_bar_count=("intraday_bar_count", "sum"),
+            intraday_time_mask_lo=("intraday_time_mask_lo", _bitwise_or_int),
+            intraday_time_mask_hi=("intraday_time_mask_hi", _bitwise_or_int),
+        )
+    )
+    return (
+        aggregate_frame.merge(open_frame, on=["symbol", "trade_date"], how="left")
+        .merge(close_frame, on=["symbol", "trade_date"], how="left")
+        .sort_values(["symbol", "trade_date"])
+        .reset_index(drop=True)
+    )
 
 
 def _compare_numeric(
@@ -430,139 +568,109 @@ def inspect_hk_intraday_health(args) -> int:
     daily_parts: list[pd.DataFrame] = []
 
     for parquet_path in parquet_paths:
-        frame = pd.read_parquet(parquet_path)
-        work = _normalize_intraday_frame(frame)
-        if work.empty:
-            continue
-        rows_scanned += int(len(work))
-        symbols_seen.update(work["symbol"].dropna().astype(str).tolist())
-        part_date_min = work["trade_date"].min()
-        part_date_max = work["trade_date"].max()
-        trade_date_min = part_date_min if trade_date_min is None or part_date_min < trade_date_min else trade_date_min
-        trade_date_max = part_date_max if trade_date_max is None or part_date_max > trade_date_max else trade_date_max
-
-        duplicate_groups = (
-            work.groupby(["symbol", "trade_datetime"], sort=True).size().rename("duplicate_rows").reset_index()
-        )
-        duplicate_groups = duplicate_groups.loc[duplicate_groups["duplicate_rows"] > 1].copy()
-        duplicate_timestamp_groups += int(len(duplicate_groups))
-        duplicate_timestamp_rows += int(duplicate_groups["duplicate_rows"].sum()) if not duplicate_groups.empty else 0
-        for _, row in duplicate_groups.head(sample_limit).iterrows():
-            _append_sample(
-                sample_duplicate_rows,
-                {
-                    "symbol": row["symbol"],
-                    "trade_datetime": pd.to_datetime(row["trade_datetime"]),
-                    "duplicate_rows": row["duplicate_rows"],
-                },
-                limit=sample_limit,
-            )
-
-        negative_volume_mask = work["volume"].notna() & (work["volume"] < 0.0)
-        negative_amount_mask = work["amount"].notna() & (work["amount"] < 0.0)
-        negative_volume_rows += int(negative_volume_mask.sum())
-        negative_amount_rows += int(negative_amount_mask.sum())
-        for field_name, mask in (("volume", negative_volume_mask), ("amount", negative_amount_mask)):
-            if not bool(mask.any()):
+        for frame in _read_intraday_frame_chunks(parquet_path):
+            work = _normalize_intraday_frame(frame)
+            if work.empty:
                 continue
-            for _, row in work.loc[mask].head(sample_limit).iterrows():
+            rows_scanned += int(len(work))
+            symbols_seen.update(work["symbol"].dropna().astype(str).tolist())
+            part_date_min = work["trade_date"].min()
+            part_date_max = work["trade_date"].max()
+            trade_date_min = part_date_min if trade_date_min is None or part_date_min < trade_date_min else trade_date_min
+            trade_date_max = part_date_max if trade_date_max is None or part_date_max > trade_date_max else trade_date_max
+
+            duplicate_groups = (
+                work.groupby(["symbol", "trade_datetime"], sort=True).size().rename("duplicate_rows").reset_index()
+            )
+            duplicate_groups = duplicate_groups.loc[duplicate_groups["duplicate_rows"] > 1].copy()
+            duplicate_timestamp_groups += int(len(duplicate_groups))
+            duplicate_timestamp_rows += int(duplicate_groups["duplicate_rows"].sum()) if not duplicate_groups.empty else 0
+            for _, row in duplicate_groups.head(sample_limit).iterrows():
                 _append_sample(
-                    sample_negative_rows,
+                    sample_duplicate_rows,
                     {
                         "symbol": row["symbol"],
-                        "trade_datetime": row["trade_datetime"],
-                        "field": field_name,
-                        "value": row[field_name],
+                        "trade_datetime": pd.to_datetime(row["trade_datetime"]),
+                        "duplicate_rows": row["duplicate_rows"],
                     },
                     limit=sample_limit,
                 )
 
-        off_schedule_mask = ~work["time_key"].isin(_EXPECTED_HK_5M_TIME_KEY_SET)
-        off_schedule_bar_rows += int(off_schedule_mask.sum())
-        if bool(off_schedule_mask.any()):
-            for _, row in work.loc[off_schedule_mask].head(sample_limit).iterrows():
-                _append_sample(
-                    sample_off_schedule_rows,
-                    {
-                        "symbol": row["symbol"],
-                        "trade_datetime": row["trade_datetime"],
-                        "time_key": row["time_key"],
-                    },
-                    limit=sample_limit,
-                )
+            negative_volume_mask = work["volume"].notna() & (work["volume"] < 0.0)
+            negative_amount_mask = work["amount"].notna() & (work["amount"] < 0.0)
+            negative_volume_rows += int(negative_volume_mask.sum())
+            negative_amount_rows += int(negative_amount_mask.sum())
+            for field_name, mask in (("volume", negative_volume_mask), ("amount", negative_amount_mask)):
+                if not bool(mask.any()):
+                    continue
+                for _, row in work.loc[mask].head(sample_limit).iterrows():
+                    _append_sample(
+                        sample_negative_rows,
+                        {
+                            "symbol": row["symbol"],
+                            "trade_datetime": row["trade_datetime"],
+                            "field": field_name,
+                            "value": row[field_name],
+                        },
+                        limit=sample_limit,
+                    )
 
-        deduped = (
-            work.drop_duplicates(subset=["symbol", "trade_datetime"], keep="last")
-            .sort_values(["symbol", "trade_datetime"])
-            .reset_index(drop=True)
-        )
-        grouped = deduped.groupby(["symbol", "trade_date"], sort=True)
-        for (symbol, trade_date), group in grouped:
-            observed_times = group["time_key"].astype(str).tolist()
-            observed_set = set(observed_times)
-            missing_times = [time_key for time_key in _EXPECTED_HK_5M_TIME_KEYS if time_key not in observed_set]
-            observed_bars = int(len(group))
+            off_schedule_mask = ~work["time_key"].isin(_EXPECTED_HK_5M_TIME_KEY_SET)
+            off_schedule_bar_rows += int(off_schedule_mask.sum())
+            if bool(off_schedule_mask.any()):
+                for _, row in work.loc[off_schedule_mask].head(sample_limit).iterrows():
+                    _append_sample(
+                        sample_off_schedule_rows,
+                        {
+                            "symbol": row["symbol"],
+                            "trade_datetime": row["trade_datetime"],
+                            "time_key": row["time_key"],
+                        },
+                        limit=sample_limit,
+                    )
+
+            deduped = (
+                work.drop_duplicates(subset=["symbol", "trade_datetime"], keep="last")
+                .sort_values(["symbol", "trade_datetime"])
+                .reset_index(drop=True)
+            )
+            daily_parts.append(_aggregate_intraday_daily(deduped))
+
+    intraday_daily = _combine_intraday_daily_parts(daily_parts)
+    if not intraday_daily.empty:
+        for _, row in intraday_daily.iterrows():
+            observed_bars = int(row["intraday_bar_count"])
             bar_count_values.append(observed_bars)
             if observed_bars != expected_bars_per_day:
                 _append_sample(
                     sample_unexpected_bar_count_symbol_days,
                     {
-                        "symbol": symbol,
-                        "trade_date": trade_date,
+                        "symbol": row["symbol"],
+                        "trade_date": row["trade_date"],
                         "observed_bars": observed_bars,
                         "expected_bars": expected_bars_per_day,
                     },
                     limit=sample_limit,
                 )
+
+            missing_times = _missing_times_from_masks(
+                int(row.get("intraday_time_mask_lo") or 0),
+                int(row.get("intraday_time_mask_hi") or 0),
+            )
             if missing_times:
                 missing_bar_symbol_days += 1
                 missing_bar_rows += int(len(missing_times))
                 _append_sample(
                     sample_missing_symbol_days,
                     {
-                        "symbol": symbol,
-                        "trade_date": trade_date,
+                        "symbol": row["symbol"],
+                        "trade_date": row["trade_date"],
                         "observed_bars": observed_bars,
                         "missing_bars": len(missing_times),
                         "sample_missing_times": ",".join(missing_times[:5]),
                     },
                     limit=sample_limit,
                 )
-
-        daily_parts.append(_aggregate_intraday_daily(deduped))
-
-    intraday_daily = (
-        pd.concat(daily_parts, ignore_index=True)
-        .sort_values(["symbol", "trade_date"])
-        .reset_index(drop=True)
-        if daily_parts
-        else pd.DataFrame(
-            columns=[
-                "symbol",
-                "trade_date",
-                "intraday_open",
-                "intraday_high",
-                "intraday_low",
-                "intraday_close",
-                "intraday_volume",
-                "intraday_amount",
-                "intraday_bar_count",
-            ]
-        )
-    )
-    if not intraday_daily.empty:
-        intraday_daily = (
-            intraday_daily.groupby(["symbol", "trade_date"], sort=True, as_index=False)
-            .agg(
-                intraday_open=("intraday_open", "first"),
-                intraday_high=("intraday_high", "max"),
-                intraday_low=("intraday_low", "min"),
-                intraday_close=("intraday_close", "last"),
-                intraday_volume=("intraday_volume", "sum"),
-                intraday_amount=("intraday_amount", "sum"),
-                intraday_bar_count=("intraday_bar_count", "sum"),
-            )
-        )
 
     reconciliation = None
     if getattr(args, "daily_asset_dir", None):

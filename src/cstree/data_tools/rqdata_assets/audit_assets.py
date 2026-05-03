@@ -416,6 +416,29 @@ def _read_symbol_dates(path: Path, *, date_column: str | None = None) -> tuple[s
     return _iso_date(dates.min()), _iso_date(dates.max()), int(len(frame))
 
 
+def _read_asset_audit_rows(asset_dir: Path) -> dict[str, dict[str, str]]:
+    audit_path = asset_dir / "audit.csv"
+    if not audit_path.exists():
+        return {}
+    try:
+        frame = pd.read_csv(audit_path, dtype=str).fillna("")
+    except Exception:
+        return {}
+    if "symbol" not in frame.columns:
+        return {}
+    rows: dict[str, dict[str, str]] = {}
+    for item in frame.to_dict("records"):
+        symbol = str(item.get("symbol") or "").strip()
+        if symbol:
+            rows[symbol] = {str(key): str(value) for key, value in item.items()}
+    return rows
+
+
+def _is_provider_permission_error(text: object) -> bool:
+    lowered = str(text or "").lower()
+    return "permission" in lowered and ("ricequant" in lowered or "instrument" in lowered or "access" in lowered)
+
+
 def verify_etf_daily_completeness(
     *,
     inventory: Mapping[str, Any],
@@ -446,21 +469,37 @@ def verify_etf_daily_completeness(
         if line.strip()
     ] if symbols_file.exists() else [path.stem for path in data_files]
     files_by_symbol = {path.stem: path for path in data_files}
+    audit_rows = _read_asset_audit_rows(asset_dir)
     missing_files = [symbol for symbol in expected_symbols if symbol not in files_by_symbol]
-    if missing_files:
+    provider_permission_missing = [
+        symbol for symbol in missing_files if _is_provider_permission_error(audit_rows.get(symbol, {}).get("error"))
+    ]
+    local_missing = [symbol for symbol in missing_files if symbol not in set(provider_permission_missing)]
+    if local_missing:
         issues.append(
             {
                 "code": "missing_symbol_files",
                 "severity": "error",
                 "classification": "local-gap",
-                "affected_symbols": len(missing_files),
-                "sample_symbols": missing_files[:sample_limit],
+                "affected_symbols": len(local_missing),
+                "sample_symbols": local_missing[:sample_limit],
+            }
+        )
+    if provider_permission_missing:
+        issues.append(
+            {
+                "code": "provider_permission_symbol_files",
+                "severity": "warning",
+                "classification": "provider-permission-gap",
+                "affected_symbols": len(provider_permission_missing),
+                "sample_symbols": provider_permission_missing[:sample_limit],
             }
         )
 
     date_min_values: list[str] = []
     date_max_values: list[str] = []
-    stale_symbols: list[dict[str, Any]] = []
+    local_stale_symbols: list[dict[str, Any]] = []
+    provider_boundary_stale_symbols: list[dict[str, Any]] = []
     rows_scanned = 0
     if scan_data:
         for symbol, path in files_by_symbol.items():
@@ -472,7 +511,13 @@ def verify_etf_daily_completeness(
                 max_date_norm = _norm_date(max_date) or ""
                 date_max_values.append(max_date_norm)
                 if max_date_norm < target_date:
-                    stale_symbols.append({"symbol": symbol, "latest_date": _iso_date(max_date_norm)})
+                    row = audit_rows.get(symbol, {})
+                    status = str(row.get("status") or "").strip().lower()
+                    stale_item = {"symbol": symbol, "latest_date": _iso_date(max_date_norm)}
+                    if status in {"linked_base", "missing_remote"} or _is_provider_permission_error(row.get("error")):
+                        provider_boundary_stale_symbols.append(stale_item)
+                    else:
+                        local_stale_symbols.append(stale_item)
             if len(samples) < sample_limit:
                 samples.append(
                     {
@@ -525,14 +570,24 @@ def verify_etf_daily_completeness(
                 "latest_observed_date": _iso_date(effective_end),
             }
         )
-    if stale_symbols:
+    if local_stale_symbols:
         issues.append(
             {
                 "code": "stale_symbols_before_target",
                 "severity": "error",
                 "classification": "local-gap",
-                "affected_symbols": len(stale_symbols),
-                "sample_symbols": stale_symbols[:sample_limit],
+                "affected_symbols": len(local_stale_symbols),
+                "sample_symbols": local_stale_symbols[:sample_limit],
+            }
+        )
+    if provider_boundary_stale_symbols:
+        issues.append(
+            {
+                "code": "provider_boundary_stale_symbols_before_target",
+                "severity": "warning",
+                "classification": "provider-boundary",
+                "affected_symbols": len(provider_boundary_stale_symbols),
+                "sample_symbols": provider_boundary_stale_symbols[:sample_limit],
             }
         )
 
@@ -541,7 +596,7 @@ def verify_etf_daily_completeness(
     return {
         "asset_key": "etf_daily",
         "status": status,
-        "classification": "complete" if status == "pass" else "local-gap",
+        "classification": "complete" if not issues else ("local-gap" if local_failures else "provider-boundary"),
         "checked_path": str(asset_dir),
         "target_date": _iso_date(target_date),
         "expected_start_date": _iso_date(expected_start_date),
@@ -690,6 +745,21 @@ def _default_health_report_paths(*, reports_dir: Path, target_date: str) -> dict
     }
 
 
+def _latest_report_only(paths: Sequence[Path]) -> list[Path]:
+    existing = [path for path in paths if path.exists()]
+    if not existing:
+        return []
+
+    def sort_key(path: Path) -> tuple[float, str]:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        return (mtime, path.name)
+
+    return [max(existing, key=sort_key)]
+
+
 def aggregate_health_reports(
     *,
     reports_dir: Path,
@@ -703,6 +773,8 @@ def aggregate_health_reports(
     merged_issues: list[dict[str, Any]] = []
     for kind in (*_EXPECTED_REPORT_KINDS, "explicit"):
         paths = grouped.get(kind) or []
+        if kind != "explicit":
+            paths = _latest_report_only(paths)
         if not paths and kind in _EXPECTED_REPORT_KINDS:
             sources.append({"kind": kind, "status": "missing", "paths": [], "overall_severity": "warning", "issue_count": 1})
             merged_issues.append({"source": kind, "check": "expected_report_missing", "severity": "warning"})
@@ -763,7 +835,7 @@ def aggregate_health_reports(
 def _candidate_action_for_issue(issue: Mapping[str, Any], *, asset_key: str) -> str:
     classification = str(issue.get("classification") or "").strip()
     code = str(issue.get("code") or issue.get("check") or "").strip()
-    if classification == "provider-boundary" or "provider" in code:
+    if classification.startswith("provider") or "provider" in code:
         return "provider-boundary"
     if asset_key == "intraday" and ("stale" in code or "missing" in code):
         return "targeted-rebuild"
@@ -772,6 +844,36 @@ def _candidate_action_for_issue(issue: Mapping[str, Any], *, asset_key: str) -> 
     if "stale" in code or "gap" in code or "missing" in code:
         return "patch-refresh"
     return "manual-review"
+
+
+def _next_business_date(value: object) -> str | None:
+    normalized = _norm_date(value)
+    if normalized is None:
+        return None
+    timestamp = pd.to_datetime(normalized, errors="coerce")
+    if pd.isna(timestamp):
+        return None
+    return (timestamp + pd.offsets.BDay(1)).strftime("%Y%m%d")
+
+
+def _candidate_affected_range(
+    *,
+    asset_key: str,
+    issue: Mapping[str, Any],
+    result: Mapping[str, Any],
+    target_date: str,
+) -> dict[str, str | None]:
+    code = str(issue.get("code") or issue.get("check") or "").strip()
+    if asset_key == "intraday" and "stale" in code:
+        latest = issue.get("latest_observed_date") or result.get("latest_observed_trade_date")
+        return {
+            "start": _iso_date(_next_business_date(latest) or target_date),
+            "end": _iso_date(target_date),
+        }
+    return {
+        "start": issue.get("observed_start_date") or result.get("effective_start_date"),
+        "end": issue.get("latest_observed_date") or result.get("effective_end_date"),
+    }
 
 
 def _candidate_action_for_inventory_record(record: Mapping[str, Any]) -> str:
@@ -800,19 +902,27 @@ def build_repair_candidates(
             if not isinstance(issue, Mapping):
                 continue
             action = _candidate_action_for_issue(issue, asset_key=asset_key)
+            affected_range = _candidate_affected_range(
+                asset_key=asset_key,
+                issue=issue,
+                result=result,
+                target_date=target_date,
+            )
             candidate = {
                 "asset_key": asset_key,
                 "action": action,
                 "severity": issue.get("severity", "warning"),
                 "target_date": _iso_date(target_date),
-                "affected_range": {
-                    "start": issue.get("observed_start_date") or result.get("effective_start_date"),
-                    "end": issue.get("latest_observed_date") or result.get("effective_end_date"),
-                },
+                "affected_range": affected_range,
                 "evidence": dict(issue),
                 "checked_path": result.get("checked_path"),
                 "auto_executable": action in {"patch-refresh", "targeted-rebuild"},
-                "command": _repair_command(asset_key=asset_key, action=action, target_date=target_date),
+                "command": _repair_command(
+                    asset_key=asset_key,
+                    action=action,
+                    target_date=target_date,
+                    affected_range=affected_range,
+                ),
             }
             candidates.append(candidate)
 
@@ -855,7 +965,13 @@ def build_repair_candidates(
     return candidates
 
 
-def _repair_command(*, asset_key: str, action: str, target_date: str) -> list[str] | None:
+def _repair_command(
+    *,
+    asset_key: str,
+    action: str,
+    target_date: str,
+    affected_range: Mapping[str, Any] | None = None,
+) -> list[str] | None:
     if action == "patch-refresh":
         return [
             "scripts/dev/refresh_hk_current.sh",
@@ -866,14 +982,16 @@ def _repair_command(*, asset_key: str, action: str, target_date: str) -> list[st
             "patch",
         ]
     if action == "targeted-rebuild" and asset_key == "intraday":
+        start_date = _norm_date((affected_range or {}).get("start")) or target_date
+        end_date = _norm_date((affected_range or {}).get("end")) or target_date
         return [
             "cstree",
             "rqdata",
             "sync-hk-intraday",
             "--start-date",
-            target_date,
+            start_date,
             "--end-date",
-            target_date,
+            end_date,
             "--resume",
         ]
     return None

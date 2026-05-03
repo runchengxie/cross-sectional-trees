@@ -151,6 +151,88 @@ def test_hk_data_asset_audit_classifies_stale_etf_daily_repair_candidate(tmp_pat
     )
 
 
+def test_hk_data_asset_audit_classifies_etf_provider_permission_gap(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    artifacts_root = repo_root / "artifacts"
+    candidate_paths = hk_current_candidate_paths(artifacts_root)
+    monkeypatch.chdir(repo_root)
+
+    etf_snapshot = artifacts_root / "assets" / "rqdata" / "hk" / "daily" / "hk_etf_2000_20260410_daily_latest"
+    _write_manifest(etf_snapshot, dataset="daily")
+    (etf_snapshot / "symbols.txt").write_text("02800.HK\n02802_01.HK\n", encoding="utf-8")
+    pd.DataFrame(
+        {
+            "trade_date": ["20000103", "20260410"],
+            "close": [1.0, 2.0],
+        }
+    ).to_parquet(etf_snapshot / "data" / "02800.HK.parquet", index=False)
+    pd.DataFrame(
+        [
+            {"symbol": "02800.HK", "status": "written", "error": ""},
+            {
+                "symbol": "02802_01.HK",
+                "status": "missing_remote",
+                "error": "daily fetch failed: no permission to access day bar for instruments with type ETF, please contact RiceQuant",
+            },
+        ]
+    ).to_csv(etf_snapshot / "audit.csv", index=False)
+    _symlink(etf_snapshot, candidate_paths["etf_daily"])
+
+    contract = build_hk_current_contract(artifacts_root, generated_by="test", target_date="20260410")
+    write_current_contract(default_hk_current_contract_path(artifacts_root), contract)
+
+    report = build_hk_data_asset_audit_report(
+        _args(asset=["etf_daily"], scan_family=["daily"], metadata_only_etf_daily=False)
+    )
+
+    assert report["freshness"]["etf_daily"]["status"] == "pass"
+    assert report["freshness"]["etf_daily"]["classification"] == "provider-boundary"
+    assert any(
+        item["code"] == "provider_permission_symbol_files"
+        and item["classification"] == "provider-permission-gap"
+        for item in report["freshness"]["etf_daily"]["issues"]
+    )
+    provider_candidates = [
+        item for item in report["repair"]["candidates"] if item["asset_key"] == "etf_daily"
+    ]
+    assert provider_candidates
+    assert all(item["action"] == "provider-boundary" for item in provider_candidates)
+    assert all(item["command"] is None for item in provider_candidates)
+
+
+def test_hk_data_asset_audit_intraday_repair_command_uses_stale_range(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    artifacts_root = repo_root / "artifacts"
+    candidate_paths = hk_current_candidate_paths(artifacts_root)
+    monkeypatch.chdir(repo_root)
+
+    intraday_snapshot = artifacts_root / "assets" / "rqdata" / "hk" / "intraday" / "intraday_20240501_20260424"
+    _write_manifest(intraday_snapshot, dataset="intraday", start_date="20240501", end_date="20260424")
+    _symlink(intraday_snapshot, candidate_paths["intraday"])
+
+    contract = build_hk_current_contract(artifacts_root, generated_by="test", target_date="20260430")
+    write_current_contract(default_hk_current_contract_path(artifacts_root), contract)
+
+    report = build_hk_data_asset_audit_report(
+        _args(
+            asset=["intraday"],
+            scan_family=["intraday"],
+            intraday_mode="metadata",
+            target_date="20260430",
+        )
+    )
+
+    intraday_candidates = [
+        item for item in report["repair"]["candidates"] if item["asset_key"] == "intraday"
+    ]
+    assert intraday_candidates
+    command = intraday_candidates[0]["command"]
+    assert command[command.index("--start-date") + 1] == "20260427"
+    assert command[command.index("--end-date") + 1] == "20260430"
+
+
 def test_hk_data_asset_audit_classifies_current_manifest_mismatch_as_repoint(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

@@ -12,6 +12,7 @@ from .args_mirror import (
     add_hk_financial_mirror_args,
     add_hk_industry_changes_mirror_args,
     add_hk_instrument_industry_mirror_args,
+    add_hk_pit_patch_mirror_args,
     add_hk_shares_mirror_args,
     add_hk_southbound_mirror_args,
     add_hk_valuation_mirror_args,

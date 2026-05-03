@@ -491,3 +491,80 @@ def add_hk_financial_mirror_args(
         max_backoff_seconds_default=max_backoff_seconds_default,
         attempts_help="Retry attempts per request batch.",
     )
+
+
+def add_hk_pit_patch_mirror_args(
+    parser: argparse.ArgumentParser,
+    *,
+    default_batch_size: int,
+    default_out_root: str,
+    max_attempts_default: int,
+    backoff_seconds_default: float,
+    max_backoff_seconds_default: float,
+) -> None:
+    _add_rqdata_credentials_args(
+        parser,
+        config_help="Optional config path or alias for rqdata.init.",
+    )
+    parser.add_argument(
+        "--base-asset-dir",
+        required=True,
+        help="Existing mirror-hk-pit-financials output directory used as the full base snapshot.",
+    )
+    parser.add_argument(
+        "--target-date",
+        required=True,
+        help="Target PIT as-of date for the patch, for example 20260430.",
+    )
+    parser.add_argument(
+        "--patch-start-quarter",
+        required=True,
+        help="First quarter to refresh from RQData, for example 2024q4.",
+    )
+    parser.add_argument(
+        "--patch-end-quarter",
+        required=True,
+        help="Last quarter to refresh from RQData, for example 2025q4.",
+    )
+    parser.add_argument(
+        "--statements",
+        default="latest",
+        choices=["latest", "all"],
+        help="Return latest or all statements for patched quarters. Default: latest.",
+    )
+    parser.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Optional HK symbol subset to patch, for example 00005.HK. Repeatable. Default: all base symbols.",
+    )
+    parser.add_argument(
+        "--symbols-file",
+        help="Optional text file with one HK symbol per line. Default: use base symbols.txt.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Optional cap on the selected symbol count after dedupe.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=default_batch_size,
+        help=f"Number of order_book_ids per RQData patch request. Default: {default_batch_size}.",
+    )
+    _add_mirror_output_args(parser, default_out_root=default_out_root)
+    _add_resume_args(
+        parser,
+        resume_help=(
+            "Resume into an existing PIT patch snapshot directory. Existing data/*.parquet files "
+            "are treated as completed symbols."
+        ),
+    )
+    _add_retry_args(
+        parser,
+        max_attempts_default=max_attempts_default,
+        backoff_seconds_default=backoff_seconds_default,
+        max_backoff_seconds_default=max_backoff_seconds_default,
+        attempts_help="Retry attempts per PIT patch request batch.",
+    )

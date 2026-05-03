@@ -120,6 +120,126 @@ def test_mirror_hk_pit_financials_uses_config_universe_with_legacy_symbol_column
     assert first["quarter"].tolist() == ["2024q4", "2025q1"]
     assert set(["revenue", "net_profit", "info_date", "fiscal_year"]).issubset(first.columns)
 
+
+def test_patch_hk_pit_financials_merges_recent_quarters_from_base_snapshot(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    base_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_base"
+    base_data_dir = base_dir / "data"
+    base_data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+    monkeypatch.setattr(rqdata_assets, "_ensure_rqdatac_hk_plugin", lambda: None)
+
+    pd.DataFrame(
+        {
+            "symbol": ["00005.HK", "00005.HK"],
+            "order_book_id": ["00005.XHKG", "00005.XHKG"],
+            "quarter": ["2023q4", "2024q4"],
+            "info_date": pd.to_datetime(["2024-03-20", "2025-03-01"]),
+            "revenue": [80.0, 90.0],
+            "net_profit": [8.0, 9.0],
+        }
+    ).to_parquet(base_data_dir / "00005.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "symbol": ["00012.HK"],
+            "order_book_id": ["00012.XHKG"],
+            "quarter": ["2023q4"],
+            "info_date": pd.to_datetime(["2024-03-22"]),
+            "revenue": [70.0],
+            "net_profit": [7.0],
+        }
+    ).to_parquet(base_data_dir / "00012.HK.parquet", index=False)
+    (base_dir / "fields.txt").write_text("revenue\nnet_profit\n", encoding="utf-8")
+    (base_dir / "symbols.txt").write_text(
+        "00005.HK\n00012.HK\n00013.HK\n",
+        encoding="utf-8",
+    )
+    (base_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "pit_financials",
+                "status": "completed",
+                "query": {
+                    "start_quarter": "2023q4",
+                    "end_quarter": "2025q1",
+                    "date": "20260424",
+                    "statements": "latest",
+                    "fields": ["revenue", "net_profit"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    client = _FakeRQPitClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        base_asset_dir=str(base_dir),
+        target_date="20260430",
+        patch_start_quarter="2024q4",
+        patch_end_quarter="2025q1",
+        statements="latest",
+        symbol=[],
+        symbols_file=None,
+        limit=None,
+        batch_size=20,
+        out_root="artifacts/assets/rqdata",
+        name="pit_patch_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.patch_hk_pit_financials(args, client) == 0
+    assert client.calls == [
+        {
+            "order_book_ids": ["00005.XHKG", "00012.XHKG", "00013.XHKG"],
+            "fields": ["revenue", "net_profit"],
+            "start_quarter": "2024q4",
+            "end_quarter": "2025q1",
+            "date": "20260430",
+            "statements": "latest",
+            "market": "hk",
+        }
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_patch_demo"
+    patched = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert patched["quarter"].tolist() == ["2023q4", "2024q4", "2025q1"]
+    assert patched["revenue"].tolist() == [80.0, 100.0, 120.0]
+    assert patched["net_profit"].tolist() == [8.0, 10.0, 12.0]
+
+    linked = pd.read_parquet(output_dir / "data" / "00012.HK.parquet")
+    assert linked["quarter"].tolist() == ["2023q4"]
+
+    audit = pd.read_csv(output_dir / "audit.csv")
+    status_map = dict(zip(audit["symbol"], audit["status"]))
+    assert status_map["00005.HK"] == "merged_patch"
+    assert status_map["00012.HK"] == "linked_base"
+    assert status_map["00013.HK"] == "missing_base_and_patch"
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["status"] == "completed"
+    assert manifest["query"]["date"] == "20260430"
+    assert manifest["patch"]["strict_full_snapshot"] is False
+    assert manifest["patch"]["base_as_of"] == "20260424"
+    assert manifest["status_counts"] == {
+        "merged_patch": 1,
+        "linked_base": 1,
+        "missing_base_and_patch": 1,
+    }
+    assert manifest["totals"]["symbols_written"] == 2
+    assert manifest["totals"]["symbols_missing_remote"] == 1
+
+
 def test_mirror_hk_financial_details_tracks_missing_symbols(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
