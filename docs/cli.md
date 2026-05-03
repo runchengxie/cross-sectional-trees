@@ -483,6 +483,11 @@ cstree rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connec
 cstree rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest --fields-file configs/field_profiles/hk_financial_fields_starter.txt --start-quarter 2011q1 --end-quarter 2025q4 --date 20260310
 ```
 
+补充说明：
+
+- `--quarter-chunk-size` 可将严格全量 PIT 快照按 quarter 窗口分段下载，再合成为最终资产。例如 `--quarter-chunk-size 8 --resume` 会每 8 个 quarter 建一个可恢复 part，适合全市场 + 全字段 + 长历史的重型下载。
+- 分段全量和 `patch-hk-pit-financials` 不同：前者最终 manifest 标记为严格全量快照；后者是 base + 近季度 patch，适合日常追新。
+
 ### cstree rqdata patch-hk-pit-financials
 
 基于已有完整 PIT 快照，只重拉一个近期 quarter 窗口，并将这些 quarter 按 `symbol + quarter` 替换合并到新快照中。该命令适合日常追新；如果需要捕获 base 快照之后发生的更早历史 quarter 重述，需扩大 patch 窗口或重新跑完整镜像。

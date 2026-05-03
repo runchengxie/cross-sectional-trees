@@ -18,6 +18,72 @@ from tests.rqdata_assets._fakes import (
 )
 
 
+class _QuarterRangeRQPitClient:
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def get_pit_financials_ex(
+        self,
+        *,
+        order_book_ids,
+        fields,
+        start_quarter,
+        end_quarter,
+        date=None,
+        statements="latest",
+        market="hk",
+    ):
+        self.calls.append(
+            {
+                "order_book_ids": list(order_book_ids),
+                "fields": list(fields),
+                "start_quarter": start_quarter,
+                "end_quarter": end_quarter,
+                "date": date,
+                "statements": statements,
+                "market": market,
+            }
+        )
+        all_quarters = ["2024q4", "2025q1"]
+        selected_quarters = [
+            quarter for quarter in all_quarters if start_quarter <= quarter <= end_quarter
+        ]
+        values = {
+            ("00005.XHKG", "2024q4"): (100.0, 10.0, "2025-03-20"),
+            ("00005.XHKG", "2025q1"): (120.0, 12.0, "2025-08-20"),
+            ("00011.XHKG", "2025q1"): (220.0, 22.0, "2025-08-25"),
+        }
+        rows: list[dict] = []
+        index: list[tuple[str, str]] = []
+        for order_book_id in order_book_ids:
+            for quarter in selected_quarters:
+                payload = values.get((order_book_id, quarter))
+                if payload is None:
+                    continue
+                revenue, net_profit, info_date = payload
+                rows.append(
+                    {
+                        "info_date": pd.Timestamp(info_date),
+                        "fiscal_year": pd.Timestamp("2025-12-31"),
+                        "standard": "IFRS",
+                        "if_adjusted": 0,
+                        "rice_create_tm": pd.Timestamp(f"{info_date} 09:00:00"),
+                        "revenue": revenue,
+                        "net_profit": net_profit,
+                    }
+                )
+                index.append((order_book_id, quarter))
+        if not rows:
+            return pd.DataFrame(
+                columns=list(fields),
+                index=pd.MultiIndex.from_arrays([[], []], names=["order_book_id", "quarter"]),
+            )
+        return pd.DataFrame(
+            rows,
+            index=pd.MultiIndex.from_tuples(index, names=["order_book_id", "quarter"]),
+        )
+
+
 def test_mirror_hk_pit_financials_uses_config_universe_with_legacy_symbol_column_and_writes_manifest(
     tmp_path, monkeypatch
 ):
@@ -119,6 +185,109 @@ def test_mirror_hk_pit_financials_uses_config_universe_with_legacy_symbol_column
     assert first["order_book_id"].tolist() == ["00005.XHKG", "00005.XHKG"]
     assert first["quarter"].tolist() == ["2024q4", "2025q1"]
     assert set(["revenue", "net_profit", "info_date", "fiscal_year"]).issubset(first.columns)
+
+
+def test_mirror_hk_pit_financials_quarter_chunk_size_composes_strict_snapshot(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+
+    client = _QuarterRangeRQPitClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_quarter="2024q4",
+        end_quarter="2025q1",
+        date="20260310",
+        statements="latest",
+        field=["revenue", "net_profit"],
+        fields_file=[],
+        symbol=["00005.HK", "00011.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=20,
+        quarter_chunk_size=1,
+        out_root="artifacts/assets/rqdata",
+        name="pit_partitioned_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=1,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+    )
+
+    assert rqdata_assets.mirror_hk_pit_financials(args, client) == 0
+    assert client.calls == [
+        {
+            "order_book_ids": ["00005.XHKG", "00011.XHKG"],
+            "fields": ["revenue", "net_profit"],
+            "start_quarter": "2024q4",
+            "end_quarter": "2024q4",
+            "date": "20260310",
+            "statements": "latest",
+            "market": "hk",
+        },
+        {
+            "order_book_ids": ["00005.XHKG", "00011.XHKG"],
+            "fields": ["revenue", "net_profit"],
+            "start_quarter": "2025q1",
+            "end_quarter": "2025q1",
+            "date": "20260310",
+            "statements": "latest",
+            "market": "hk",
+        },
+    ]
+
+    output_dir = (
+        repo_root
+        / "artifacts"
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "pit_financials"
+        / "pit_partitioned_demo"
+    )
+    first = pd.read_parquet(output_dir / "data" / "00005.HK.parquet")
+    assert first["quarter"].tolist() == ["2024q4", "2025q1"]
+    assert first["revenue"].tolist() == [100.0, 120.0]
+
+    second = pd.read_parquet(output_dir / "data" / "00011.HK.parquet")
+    assert second["quarter"].tolist() == ["2025q1"]
+    assert second["revenue"].tolist() == [220.0]
+
+    assert (
+        output_dir
+        / ".parts"
+        / "hk"
+        / "pit_financials"
+        / "pit_partitioned_demo__part_2024q4_2024q4"
+        / "manifest.yml"
+    ).exists()
+    assert (
+        output_dir
+        / ".parts"
+        / "hk"
+        / "pit_financials"
+        / "pit_partitioned_demo__part_2025q1_2025q1"
+        / "manifest.yml"
+    ).exists()
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["status"] == "completed"
+    assert manifest["api"] == "rqdatac.get_pit_financials_ex + quarter_partition_compose"
+    assert manifest["partitioning"]["strategy"] == "quarter_window_parts"
+    assert manifest["partitioning"]["strict_full_snapshot"] is True
+    assert manifest["partitioning"]["quarter_chunk_size"] == 1
+    assert [part["start_quarter"] for part in manifest["partitioning"]["parts"]] == [
+        "2024q4",
+        "2025q1",
+    ]
+    assert manifest["totals"]["symbols_requested"] == 2
+    assert manifest["totals"]["symbols_written"] == 2
 
 
 def test_patch_hk_pit_financials_merges_recent_quarters_from_base_snapshot(

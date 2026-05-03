@@ -427,6 +427,7 @@ def add_hk_financial_mirror_args(
     max_attempts_default: int,
     backoff_seconds_default: float,
     max_backoff_seconds_default: float,
+    supports_quarter_chunk: bool = False,
 ) -> None:
     _add_rqdata_credentials_args(
         parser,
@@ -479,6 +480,16 @@ def add_hk_financial_mirror_args(
         default=default_batch_size,
         help=f"Number of order_book_ids per RQData request. Default: {default_batch_size}.",
     )
+    if supports_quarter_chunk:
+        parser.add_argument(
+            "--quarter-chunk-size",
+            type=int,
+            help=(
+                "Optional number of quarters per PIT provider request partition. "
+                "Useful for strict full PIT snapshots because it keeps each request window small "
+                "and resumable. Default: disabled."
+            ),
+        )
     _add_mirror_output_args(parser, default_out_root=default_out_root)
     _add_resume_args(
         parser,

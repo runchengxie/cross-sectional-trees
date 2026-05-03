@@ -145,6 +145,13 @@ HK_INDUSTRY_CHANGES_MIRROR_ARGS = RQDataAssetArgsBuilder(
         "default_change_level": DEFAULT_HK_INDUSTRY_CHANGE_LEVEL,
     },
 )
+HK_PIT_FINANCIAL_MIRROR_ARGS = RQDataAssetArgsBuilder(
+    _args.add_hk_financial_mirror_args,
+    {
+        **BATCHED_MIRROR_KWARGS,
+        "supports_quarter_chunk": True,
+    },
+)
 HK_FINANCIAL_MIRROR_ARGS = RQDataAssetArgsBuilder(
     _args.add_hk_financial_mirror_args,
     BATCHED_MIRROR_KWARGS,
@@ -217,7 +224,7 @@ def rqdata_asset_command_specs() -> Sequence[RQDataAssetCommandSpec]:
         RQDataAssetCommandSpec(
             name="mirror-hk-pit-financials",
             help="Mirror HK PIT financial statements into parquet + manifest assets",
-            add_args=HK_FINANCIAL_MIRROR_ARGS,
+            add_args=HK_PIT_FINANCIAL_MIRROR_ARGS,
             runner=mirror_hk_pit_financials,
             requires_client=True,
         ),

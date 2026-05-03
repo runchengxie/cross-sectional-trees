@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+from types import SimpleNamespace
 
 import pandas as pd
 
@@ -25,6 +26,7 @@ from .fetch_runtime import _retry_fetch
 from .models import MirrorFetchError, MirrorQuotaError
 from .package_api import _package_attr
 from .fetch_runtime import _ensure_rqdatac_hk_plugin as _ensure_rqdatac_hk_plugin_runtime
+from .manifest_ops import _build_manifest
 from .mirror_workflow import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_MIRROR_BACKOFF_SECONDS,
@@ -33,7 +35,11 @@ from .mirror_workflow import (
     DEFAULT_OUT_ROOT,
     _mirror_dataset,
 )
-from .request_groups import _default_hk_instruments_out_path, _resolve_instrument_symbol_filter
+from .request_groups import (
+    _default_hk_instruments_out_path,
+    _resolve_instrument_symbol_filter,
+    _resolve_symbols,
+)
 from .shared import (
     _dedupe_preserve_order,
     _git_metadata,
@@ -46,6 +52,7 @@ from .shared import (
     _normalize_hk_symbol,
     _path_mtime_iso,
     _prepare_output_dir,
+    _resolve_fields_with_overrides,
     _resolve_path,
     _timestamp_now,
     _write_manifest,
@@ -228,11 +235,20 @@ def _quarter_text(key: tuple[int, int]) -> str:
     return f"{key[0]}q{key[1]}"
 
 
+def _quarter_index(key: tuple[int, int]) -> int:
+    return key[0] * 4 + key[1] - 1
+
+
+def _quarter_from_index(index: int) -> tuple[int, int]:
+    year, offset = divmod(index, 4)
+    return year, offset + 1
+
+
 def _quarter_sort_value(value: object) -> int:
     key = _quarter_key(value)
     if key is None:
         return -1
-    return key[0] * 4 + key[1]
+    return _quarter_index(key)
 
 
 def _quarter_in_range(value: object, start_key: tuple[int, int], end_key: tuple[int, int]) -> bool:
@@ -253,6 +269,35 @@ def _sort_pit_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if sort_columns:
         work = work.sort_values(sort_columns, kind="mergesort")
     return work.drop(columns=["__quarter_order"]).reset_index(drop=True)
+
+
+def _iter_quarter_chunks(
+    start_quarter: str,
+    end_quarter: str,
+    *,
+    chunk_size: int,
+) -> list[tuple[str, str]]:
+    if chunk_size <= 0:
+        raise SystemExit("--quarter-chunk-size must be > 0.")
+    start_key = _normalize_quarter_arg(start_quarter, label="--start-quarter")
+    end_key = _normalize_quarter_arg(end_quarter, label="--end-quarter")
+    start = _quarter_index(_quarter_key(start_key) or (0, 1))
+    end = _quarter_index(_quarter_key(end_key) or (0, 1))
+    if start > end:
+        raise SystemExit("--start-quarter must be <= --end-quarter.")
+
+    chunks: list[tuple[str, str]] = []
+    current = start
+    while current <= end:
+        chunk_end = min(current + chunk_size - 1, end)
+        chunks.append(
+            (
+                _quarter_text(_quarter_from_index(current)),
+                _quarter_text(_quarter_from_index(chunk_end)),
+            )
+        )
+        current = chunk_end + 1
+    return chunks
 
 
 def _load_base_pit_asset(base_dir: Path) -> tuple[dict, list[str], list[str]]:
@@ -392,6 +437,257 @@ def _merge_pit_patch_frame(
     columns = _pit_merge_columns(base_columns, patch.columns.tolist())
     merged = merged.reindex(columns=columns)
     return _sort_pit_frame(merged)
+
+
+def _resolve_pit_mirror_fields(args) -> tuple[list[str], dict]:
+    return _resolve_fields_with_overrides(
+        args,
+        load_hk_financial_fields_override=_load_hk_financial_fields,
+    )
+
+
+def _copy_args_with(args, **overrides) -> SimpleNamespace:
+    values = dict(vars(args))
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _mirror_hk_pit_financials_unpartitioned(args, rqdatac) -> int:
+    return _mirror_dataset(
+        args=args,
+        rqdatac=rqdatac,
+        dataset_name="pit_financials",
+        api_name="rqdatac.get_pit_financials_ex",
+        fetch_batch=lambda order_book_ids, fields, start_quarter, end_quarter, **kwargs: rqdatac.get_pit_financials_ex(
+            order_book_ids=order_book_ids,
+            fields=list(fields),
+            start_quarter=start_quarter,
+            end_quarter=end_quarter,
+            market="hk",
+            **kwargs,
+        ),
+    )
+
+
+def _compose_partitioned_pit_snapshot(
+    *,
+    args,
+    output_dir: Path,
+    part_dirs: Sequence[Path],
+    partition_batches: Sequence[Mapping[str, object]],
+    fields: Sequence[str],
+    field_metadata: Mapping[str, object],
+    symbols: Sequence[str],
+    symbol_metadata: Mapping[str, object],
+    status: str,
+    error: str | None,
+    result_code: int,
+    started_at: str,
+) -> int:
+    data_dir = output_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    audit_path = output_dir / "audit.csv"
+
+    entries_by_symbol = {}
+    audit_by_symbol = {}
+    columns: list[str] = []
+    field_coverage = _field_coverage_template(fields)
+    compose_started_at = _timestamp_now()
+
+    def _record_written(symbol: str, entry, symbol_frame: pd.DataFrame) -> None:
+        nonlocal columns
+        entries_by_symbol[symbol] = entry
+        if not columns and not symbol_frame.empty:
+            columns = symbol_frame.columns.tolist()
+        _update_field_coverage(field_coverage, symbol_frame, fields=fields)
+        audit_by_symbol[symbol] = _audit_record(
+            symbol=symbol,
+            order_book_id=entry.order_book_id,
+            status="written",
+            attempts=0,
+            started_at=compose_started_at,
+            finished_at=_timestamp_now(),
+            file_mtime=_path_mtime_iso(entry.path),
+            error=None,
+            entry=entry,
+        )
+
+    def _record_missing(symbol: str) -> None:
+        audit_by_symbol[symbol] = _audit_record(
+            symbol=symbol,
+            order_book_id=_to_rqdata_symbol("hk", symbol),
+            status="missing_remote",
+            attempts=0,
+            started_at=compose_started_at,
+            finished_at=_timestamp_now(),
+            file_mtime=None,
+            error=None,
+            entry=None,
+        )
+
+    for symbol in symbols:
+        frames: list[pd.DataFrame] = []
+        for part_dir in part_dirs:
+            part_path = part_dir / "data" / f"{symbol}.parquet"
+            if not part_path.exists():
+                continue
+            _, frame = _load_existing_entry(part_path, fields=fields)
+            if not frame.empty:
+                frames.append(frame)
+        if not frames:
+            _record_missing(symbol)
+            continue
+
+        combined = pd.concat(frames, ignore_index=True, sort=False)
+        combined = _sort_pit_frame(_ensure_requested_fields(combined, fields))
+        entry = _write_symbol_frame(data_dir, combined)
+        _record_written(symbol, entry, combined)
+
+    finished_at = _timestamp_now()
+    audit_records = [audit_by_symbol[symbol] for symbol in symbols]
+    _write_audit_csv(audit_path, audit_records)
+
+    manifest = _build_manifest(
+        dataset_name="pit_financials",
+        api_name="rqdatac.get_pit_financials_ex + quarter_partition_compose",
+        output_dir=output_dir,
+        fields=fields,
+        field_metadata=field_metadata,
+        symbol_metadata=symbol_metadata,
+        symbols_requested=symbols,
+        entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
+        missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
+        query_date=getattr(args, "date", None),
+        start_quarter=args.start_quarter,
+        end_quarter=args.end_quarter,
+        statements=args.statements,
+        batches=partition_batches,
+        columns=columns,
+        audit_file=audit_path,
+        audit_records=audit_records,
+        field_coverage=list(field_coverage.values()),
+        started_at=started_at,
+        finished_at=finished_at,
+        status=status,
+        error=error,
+        config_ref=getattr(args, "config", None),
+    )
+    manifest["partitioning"] = {
+        "strategy": "quarter_window_parts",
+        "strict_full_snapshot": status == "completed",
+        "quarter_chunk_size": int(getattr(args, "quarter_chunk_size")),
+        "parts_root": str(output_dir / ".parts"),
+        "parts": [
+            {
+                "name": item.get("name"),
+                "start_quarter": item.get("start_quarter"),
+                "end_quarter": item.get("end_quarter"),
+                "status": item.get("status"),
+                "path": item.get("path"),
+                "return_code": item.get("return_code"),
+            }
+            for item in partition_batches
+        ],
+    }
+    _write_manifest(output_dir / "manifest.yml", manifest)
+    print(
+        f"Wrote partitioned pit_financials mirror to {output_dir} "
+        f"({manifest['totals']['symbols_written']} symbols, {manifest['totals']['rows']} rows, "
+        f"{len(partition_batches)} quarter parts, status={status})"
+    )
+    return result_code
+
+
+def _mirror_hk_pit_financials_partitioned(args, rqdatac) -> int:
+    chunk_size = int(getattr(args, "quarter_chunk_size", 0) or 0)
+    chunks = _iter_quarter_chunks(
+        args.start_quarter,
+        args.end_quarter,
+        chunk_size=chunk_size,
+    )
+    fields, field_metadata = _resolve_pit_mirror_fields(args)
+    symbols, symbol_metadata = _resolve_symbols(args)
+    resume = bool(getattr(args, "resume", False))
+    output_dir = _prepare_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        dataset_name="pit_financials",
+        start_quarter=args.start_quarter,
+        end_quarter=args.end_quarter,
+        statements=args.statements,
+        name=getattr(args, "name", None),
+        resume=resume,
+    )
+    _write_text_list(output_dir / "fields.txt", fields)
+    _write_text_list(output_dir / "symbols.txt", symbols)
+
+    parts_root = output_dir / ".parts"
+    partition_batches: list[dict[str, object]] = []
+    part_dirs: list[Path] = []
+    started_at = _timestamp_now()
+    status = "completed"
+    error: str | None = None
+    result_code = 0
+    output_name = output_dir.name
+
+    for chunk_start, chunk_end in chunks:
+        part_name = f"{output_name}__part_{chunk_start}_{chunk_end}"
+        part_args = _copy_args_with(
+            args,
+            out_root=str(parts_root),
+            name=part_name,
+            start_quarter=chunk_start,
+            end_quarter=chunk_end,
+            quarter_chunk_size=None,
+        )
+        part_dir = parts_root / "hk" / "pit_financials" / part_name
+        part_code = _mirror_hk_pit_financials_unpartitioned(part_args, rqdatac)
+        part_manifest = _load_manifest(part_dir / "manifest.yml") or {}
+        part_status = str(part_manifest.get("status") or "missing_manifest")
+        part_error = part_manifest.get("error")
+        partition_batches.append(
+            {
+                "name": part_name,
+                "start_quarter": chunk_start,
+                "end_quarter": chunk_end,
+                "status": part_status,
+                "return_code": part_code,
+                "path": str(part_dir),
+                "rows": (part_manifest.get("totals") or {}).get("rows")
+                if isinstance(part_manifest.get("totals"), Mapping)
+                else None,
+                "symbols_written": (part_manifest.get("totals") or {}).get("symbols_written")
+                if isinstance(part_manifest.get("totals"), Mapping)
+                else None,
+                "error": part_error,
+            }
+        )
+        part_dirs.append(part_dir)
+        result_code = max(result_code, int(part_code or 0))
+        if part_status == "stopped_quota":
+            status = "stopped_quota"
+            error = str(part_error or "quarter partition stopped on quota")
+            result_code = max(result_code, 2)
+            break
+        if part_code or part_status not in {"completed"}:
+            status = "completed_with_failures"
+            error = str(part_error or f"quarter partition {part_name} did not complete")
+            result_code = max(result_code, 1)
+            break
+
+    return _compose_partitioned_pit_snapshot(
+        args=args,
+        output_dir=output_dir,
+        part_dirs=part_dirs,
+        partition_batches=partition_batches,
+        fields=fields,
+        field_metadata=field_metadata,
+        symbols=symbols,
+        symbol_metadata=symbol_metadata,
+        status=status,
+        error=error,
+        result_code=result_code,
+        started_at=started_at,
+    )
 
 
 def patch_hk_pit_financials(args, rqdatac) -> int:
@@ -922,20 +1218,9 @@ def patch_hk_pit_financials(args, rqdatac) -> int:
 
 
 def mirror_hk_pit_financials(args, rqdatac) -> int:
-    return _mirror_dataset(
-        args=args,
-        rqdatac=rqdatac,
-        dataset_name="pit_financials",
-        api_name="rqdatac.get_pit_financials_ex",
-        fetch_batch=lambda order_book_ids, fields, start_quarter, end_quarter, **kwargs: rqdatac.get_pit_financials_ex(
-            order_book_ids=order_book_ids,
-            fields=list(fields),
-            start_quarter=start_quarter,
-            end_quarter=end_quarter,
-            market="hk",
-            **kwargs,
-        ),
-    )
+    if int(getattr(args, "quarter_chunk_size", 0) or 0) > 0:
+        return _mirror_hk_pit_financials_partitioned(args, rqdatac)
+    return _mirror_hk_pit_financials_unpartitioned(args, rqdatac)
 
 
 def mirror_hk_financial_details(args, rqdatac) -> int:
