@@ -2,6 +2,13 @@
 
 本页面向维护者，记录 `csml` 到 `cstree` 的 breaking migration、迁移映射、发布说明和 rollback 条件。用户入口仍以 `README.md`、`docs/README.md` 和 `docs/capabilities.md` 为准。
 
+页面性质：`historical-migration-record`\
+当前状态：`completed`\
+最后核对时间：`2026-05-05`
+
+本页保留为 `csml` 到 `cstree` 命名空间迁移的历史记录。当前项目公开入口已经是
+`cstree`-only；本页不再表示待执行迁移计划或活跃待办清单。
+
 ## 当前状态
 
 `1.0.0` 起采用 `cstree`-only 合约：
@@ -52,7 +59,7 @@
 * logger namespace 已切换到 `cstree.*`，并更新 `caplog` / logging filter 测试。
 * coverage、ruff per-file ignores、monkeypatch target 和内部导入已匹配 `src/cstree/` 实现包所有权。
 
-## Release Notes 草案
+## 1.0.0 Release Notes
 
 `1.0.0` breaking change:
 

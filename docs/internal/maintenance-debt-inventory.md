@@ -7,7 +7,21 @@
 相关页面：`docs/internal/feature-planning.md`、`docs/capabilities.md`、`docs/dev.md`、`scripts/README.md`
 
 页面性质：`internal-inventory`\
-最后核对时间：`2026-04-27`
+当前状态：`active-maintenance-inventory`\
+最后核对时间：`2026-05-05`
+
+## 当前状态摘要
+
+本页同时包含四类内容：
+
+* historical baseline：2026-04-23 / 2026-04-27 的维护债静态盘点快照。
+* completed work：已经完成的首轮收口、拆分、兼容治理和验证记录。
+* active backlog：仍建议继续推进的维护项。
+* deferred decisions：当前不默认推进删除的兼容层、legacy 输入和维护者 wrapper。
+
+当前优先推进的是降低未来改动风险的维护工作：继续拆大函数 / 大模块、推进静态质量
+ratchet、在触碰 RQData asset 模块时收窄 public facade。兼容层删除不是本页默认任务；
+只有在 breaking release 规划、外部风险确认或替代路径齐备后再单独处理。
 
 ## 使用规则
 
@@ -17,7 +31,37 @@
 * 静态治理走 ratchet：先约束触碰文件，再逐步减少历史豁免。
 * RQData 大资产检查默认不在代理会话里重扫；需要时由维护者本地生成 report 后复核。
 
-## 当前基线
+## 当前静态快照
+
+生成时间：2026-05-05。统计范围为 `src/`、`scripts/`、`tests/` 下排除 `__pycache__`
+的 Python 文件；此快照只用于趋势判断，不代表实时仪表盘。
+
+| 指标 | 当前值 | 说明 |
+| --- | ---: | --- |
+| Python 文件数 | 255 | 包括源码、脚本和测试 |
+| Python 总行数 | 94,953 | 仅静态行数，用作趋势参考 |
+| 超过 100 字符的行 | 1,227 | Markdown 不计入 |
+| 超过 100 行的函数 | 184 | 包含测试函数 |
+| 超过 250 行的函数 | 31 | 优先关注实现代码 |
+| 超过 500 行的函数 | 5 | 需要单独跟踪的超大函数 |
+| `C901` 文件级豁免 | 34 | 见 `pyproject.toml` |
+
+当前最大函数仍集中在 RQData asset health / mirror、pipeline train-eval / runner、
+backtest 和大型 CLI parse 测试。下一轮应继续按职责拆分，不把 import sorting、
+unused import 或 pyupgrade 清理混进行为保持重构。
+
+## Active Backlog
+
+| 优先级 | 事项 | 当前建议 |
+| --- | --- | --- |
+| P1 | 继续拆大函数 / 大模块 | 优先 `asset_health.py` 的扫描 / field aggregation / report，`train_eval_stage.py` 的 period / walk-forward context，`pipeline/runner.py` 的 setup / dataset load，以及 RQData mirror 大函数 |
+| P2 | 静态质量 ratchet | 优先单独处理 import sorting；`F401`、`UP` 等继续走 touched-file gate，不和行为重构混做 |
+| P3 | `public_api.py` facade 收口 | 随 RQData asset 模块改动逐步判断 private helper 应留在模块内测试还是提升为稳定 public API |
+| P4 | compatibility shim 删除 | `cstree.pipeline.data` 等只在 breaking release 或外部风险确认后处理 |
+| P4 | legacy config / symbol aliases | `universe`、`ts_code` / `stock_ticker` / `order_book_id` 继续边界层兼容，内部和新输出收敛到 canonical 字段 |
+| P4 | 维护者 wrapper / private helper | `run_hk_asset_workflow.py`、`package_repo.sh`、`export_repo_source.py` 先保留；删除前必须提供替代路径和引用更新 |
+
+## 历史基线
 
 生成时间：2026-04-23。统计范围为 `src/`、`scripts/`、`tests/` 下排除 `__pycache__` 的 Python 文件。
 
@@ -284,7 +328,9 @@ ratchet，避免和行为保持 refactor 混在一起。
 | release workflow helpers | `uv run pytest tests/test_hk_asset_workflow.py tests/test_run_release_scripts.py -q` |
 | static quality ratchet | `scripts/dev/run_tests.sh lint` and `uv run pytest tests/test_run_tests_script.py -q` |
 
-## 剩余决策
+## Deferred Decisions
+
+这些事项当前不默认推进删除；只有在外部兼容风险确认、breaking release 规划或替代路径文档齐备后再处理。
 
 * legacy `universe` 和 legacy symbol aliases 暂不设置移除窗口；当前只在边界层保留兼容。
 * `cstree.pipeline.data` 暂时保留为短期外部导入兼容 shim；repo 内部已改用 canonical 模块。
@@ -292,3 +338,14 @@ ratchet，避免和行为保持 refactor 混在一起。
   外部包使用风险，或明确接受 breaking import 变更。
 * `scripts/internal/run_hk_asset_workflow.py` 暂时保留为维护者 driver / 兼容 wrapper；两个 dev 脚本仍引用它。
 * `public_api.py` 已先收窄 package facade；下一轮继续判断哪些 private helper 应改成模块内测试或真实 public API。
+
+## 刷新触发条件
+
+发生以下变化时，应更新本页：
+
+* 新增或移除 `C901` 文件级豁免。
+* 新增、删除或改变 compatibility shim 的退出路径。
+* 修改 `public_api.py` 或 package facade 的导出边界。
+* 删除 legacy config key、symbol alias 或 provider 边界兼容规则。
+* 完成一轮大函数 / 大模块拆分后，重新生成最大函数、最大文件和静态治理基线。
+* 修改维护者 wrapper、private helper 脚本或其替代入口。

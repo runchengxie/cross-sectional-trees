@@ -7,7 +7,8 @@
 相关页面：`README.md`、`docs/README.md`、`docs/capabilities.md`、`docs/pipeline-overview.md`、`docs/cli.md`
 
 页面性质：`internal-index`\
-最后核对时间：`2026-04-22`
+当前状态：`active-governance-index`\
+最后核对时间：`2026-05-05`
 
 ## 使用规则
 
@@ -16,3 +17,5 @@
 * 新增数据资产流程时，先判断它属于流程页、状态页还是操作快照，避免把会过期的状态复制到多个页面。
 * 研究想法可以先放研究笔记；成为正式路径后，再提升到 playbook、concept 或 capabilities。
 * 维护债盘点先写入维护债 inventory 页面，再决定是否进入公开文档或实施任务。
+* 已完成的大型迁移、breaking change、维护债 inventory 和活跃治理页，应在页面顶部标注
+  historical / completed / active 状态，避免把历史记录、当前规则和待办 backlog 混读。
