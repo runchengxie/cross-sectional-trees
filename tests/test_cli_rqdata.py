@@ -64,7 +64,7 @@ def test_rqdata_asset_facades_expose_only_stable_public_names():
     assert all(not name.startswith("_") for name in rqdata_public_api.__all__)
 
 
-def test_cli_parses_rqdata_asset_commands():
+def test_cli_parses_rqdata_core_asset_commands():
     parser = cli.build_parser()
 
     list_fields = parser.parse_args(
@@ -208,6 +208,10 @@ def test_cli_parses_rqdata_asset_commands():
     assert details.end_quarter == "2025q4"
     assert callable(details.func)
 
+
+def test_cli_parses_rqdata_dated_mirror_commands():
+    parser = cli.build_parser()
+
     ex_factors = parser.parse_args(
         [
             "rqdata",
@@ -303,6 +307,10 @@ def test_cli_parses_rqdata_asset_commands():
     assert announcement.resume is True
     assert callable(announcement.func)
 
+
+def test_cli_parses_rqdata_industry_mirror_commands():
+    parser = cli.build_parser()
+
     southbound = parser.parse_args(
         [
             "rqdata",
@@ -379,6 +387,10 @@ def test_cli_parses_rqdata_asset_commands():
     assert industry_changes.level == "1"
     assert industry_changes.mapping_date == "20251231"
     assert callable(industry_changes.func)
+
+
+def test_cli_parses_rqdata_valuation_build_and_coverage_commands():
+    parser = cli.build_parser()
 
     valuation = parser.parse_args(
         [
@@ -521,6 +533,10 @@ def test_cli_parses_rqdata_asset_commands():
     assert pit_coverage.format == "json"
     assert pit_coverage.out == "artifacts/reports/hk_pit_coverage.json"
     assert callable(pit_coverage.func)
+
+
+def test_cli_parses_rqdata_health_and_audit_commands():
+    parser = cli.build_parser()
 
     asset_health = parser.parse_args(
         [
@@ -702,6 +718,10 @@ def test_cli_parses_rqdata_asset_commands():
     assert intraday_health.format == "json"
     assert intraday_health.out == "artifacts/reports/hk_intraday_health.json"
     assert callable(intraday_health.func)
+
+
+def test_cli_parses_rqdata_intraday_and_daily_clean_commands():
+    parser = cli.build_parser()
 
     intraday_asset = parser.parse_args(
         [

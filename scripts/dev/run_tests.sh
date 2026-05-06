@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|imports|format|format-all|c901-debt] [args...]
+Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|imports|format|format-all|c901-debt|maintainability] [args...]
 
 Modes:
   all          Run the main pytest suite without coverage.
@@ -19,6 +19,8 @@ Modes:
   format       Check Ruff formatting on changed Python files.
   format-all   Check Ruff formatting across src, tests, and scripts.
   c901-debt    Validate that C901 file ignores are documented in the debt inventory.
+  maintainability
+               Print static maintainability metrics for src, tests, and scripts.
 EOF
 }
 
@@ -172,6 +174,9 @@ case "$mode" in
     ;;
   c901-debt)
     check_c901_debt_registry
+    ;;
+  maintainability)
+    python scripts/dev/maintainability_metrics.py "$@"
     ;;
   -h | --help | help)
     usage

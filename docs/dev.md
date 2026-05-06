@@ -98,6 +98,9 @@ scripts/dev/run_tests.sh lint
 # 轻量校验 C901 豁免是否登记在维护债 inventory
 scripts/dev/run_tests.sh c901-debt
 
+# 输出维护债静态指标；可加 --json 或 --markdown
+scripts/dev/run_tests.sh maintainability
+
 # 全仓库 import 排序检查；历史文件可能仍有遗留问题
 scripts/dev/run_tests.sh imports
 
@@ -111,48 +114,12 @@ scripts/dev/run_tests.sh format-all
 CSTREE_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
 ```
 
-维护债指标需要看趋势时，用下面的本地片段生成快照；它只读源码，不访问
-`artifacts/`：
+维护债指标需要看趋势时，用下面的只读入口生成快照；它只扫描 `src/`、`scripts/`
+和 `tests/` 下的 Python 文件，不访问 `artifacts/`：
 
 ```bash
-python - <<'PY'
-import ast
-import pathlib
-import tomllib
-
-roots = [pathlib.Path("src"), pathlib.Path("scripts"), pathlib.Path("tests")]
-files = [
-    path
-    for root in roots
-    for path in root.rglob("*.py")
-    if "__pycache__" not in path.parts
-]
-line_total = 0
-long_lines = 0
-large_functions = 0
-very_large_functions = 0
-for path in files:
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    line_total += len(lines)
-    long_lines += sum(len(line) > 100 for line in lines)
-    tree = ast.parse(text)
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.end_lineno:
-            length = node.end_lineno - node.lineno + 1
-            large_functions += int(length > 100)
-            very_large_functions += int(length > 250)
-
-config = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
-per_file = config["tool"]["ruff"]["lint"].get("per-file-ignores", {})
-c901_ignores = sum("C901" in values for values in per_file.values())
-print(f"python_files={len(files)}")
-print(f"python_lines={line_total}")
-print(f"lines_over_100={long_lines}")
-print(f"functions_over_100={large_functions}")
-print(f"functions_over_250={very_large_functions}")
-print(f"c901_file_ignores={c901_ignores}")
-PY
+scripts/dev/run_tests.sh maintainability --markdown
+scripts/dev/run_tests.sh maintainability --json --limit 20
 ```
 
 ## 本地 Git Hooks

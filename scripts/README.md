@@ -5,7 +5,7 @@
 ## 常用入口
 
 * `scripts/dev/run_tests.sh`：开发与 CI 的测试入口。
-  * 常用模式：`all`、`fast`、`unit`、`slow`、`integration`、`coverage`、`lint`、`imports`、`format`、`format-all`、`c901-debt`。
+  * 常用模式：`all`、`fast`、`unit`、`slow`、`integration`、`coverage`、`lint`、`imports`、`format`、`format-all`、`c901-debt`、`maintainability`。
   * `all` 覆盖主 `pytest` 测试集，不包含可选依赖冒烟检查和显式开启的真实 provider 联调。
   * `coverage` 的范围与 `all` 一致，只是额外输出覆盖率报告；它也不是完整 CI 矩阵。
 * test-impact helper：按改动路径推荐 focused verification，适合在决定是否跑 `all` / `slow` 前先定位最小回归范围。
@@ -35,6 +35,7 @@ python scripts/dev/test_impact.py src/cstree/pipeline/runner.py docs/dev.md
 | `format` | 检查本次改动的 Python 文件格式 |
 | `format-all` | 检查 `src`、`tests` 和 `scripts` 下所有 Python 文件格式 |
 | `c901-debt` | 校验 `C901` 文件级豁免是否已登记在维护债 inventory |
+| `maintainability` | 输出 Python 文件数、长行、大函数、`C901` 豁免和重点 facade 指标 |
 
 ## 维护者脚本
 
