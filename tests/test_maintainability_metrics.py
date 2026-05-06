@@ -70,7 +70,7 @@ def test_repo_metrics_include_c901_and_public_api_counts():
     assert metrics.c901_file_ignores == 35
     assert metrics.rqdata_public_api_all == 49
     assert metrics.python_files >= 250
-    assert metrics.functions_over_500 >= 4
+    assert metrics.functions_over_500 <= 4
 
 
 def test_maintainability_metrics_cli_outputs_json():

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections import Counter
-from collections.abc import Mapping, Sequence
 import os
-from pathlib import Path
 import re
 import shutil
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -22,10 +22,10 @@ from .asset_io import (
     _write_audit_csv,
     _write_symbol_frame,
 )
-from .fetch_runtime import _retry_fetch
-from .models import MirrorFetchError, MirrorQuotaError
-from .package_api import _package_attr
-from .fetch_runtime import _ensure_rqdatac_hk_plugin as _ensure_rqdatac_hk_plugin_runtime
+from .fetch_runtime import (
+    _ensure_rqdatac_hk_plugin as _ensure_rqdatac_hk_plugin_runtime,
+    _retry_fetch,
+)
 from .manifest_ops import _build_manifest
 from .mirror_workflow import (
     DEFAULT_BATCH_SIZE,
@@ -35,6 +35,8 @@ from .mirror_workflow import (
     DEFAULT_OUT_ROOT,
     _mirror_dataset,
 )
+from .models import MirrorFetchError, MirrorQuotaError
+from .package_api import _package_attr
 from .request_groups import (
     _default_hk_instruments_out_path,
     _resolve_instrument_symbol_filter,
@@ -43,8 +45,8 @@ from .request_groups import (
 from .shared import (
     _dedupe_preserve_order,
     _git_metadata,
-    _load_hk_financial_fields as _load_hk_financial_fields_shared,
     _load_existing_text_list,
+    _load_hk_financial_fields as _load_hk_financial_fields_shared,
     _load_manifest,
     _load_text_list,
     _normalize_absolute_date,
@@ -690,6 +692,185 @@ def _mirror_hk_pit_financials_partitioned(args, rqdatac) -> int:
     )
 
 
+def _validate_pit_patch_resume_manifest(
+    existing_manifest: Mapping[str, object] | None,
+    *,
+    target_date: str,
+    statements: str,
+    patch_start_quarter: str,
+    patch_end_quarter: str,
+) -> None:
+    if not existing_manifest:
+        return
+
+    existing_query = (
+        existing_manifest.get("query")
+        if isinstance(existing_manifest.get("query"), Mapping)
+        else {}
+    )
+    existing_patch = (
+        existing_manifest.get("patch")
+        if isinstance(existing_manifest.get("patch"), Mapping)
+        else {}
+    )
+    checks = [
+        ("query.date", existing_query.get("date"), target_date),
+        ("query.statements", existing_query.get("statements"), statements),
+        (
+            "patch.patch_start_quarter",
+            existing_patch.get("patch_start_quarter"),
+            patch_start_quarter,
+        ),
+        ("patch.patch_end_quarter", existing_patch.get("patch_end_quarter"), patch_end_quarter),
+    ]
+    for label, actual, expected in checks:
+        if actual not in {None, expected}:
+            raise SystemExit(
+                f"Resume target mismatch for {label}: expected {expected!r}, got {actual!r}."
+            )
+
+
+def _pit_entry_manifest_rows(entries: Sequence[object]) -> list[dict[str, object]]:
+    return [
+        {
+            "symbol": item.symbol,
+            "order_book_id": item.order_book_id,
+            "path": str(item.path),
+            "rows": item.rows,
+            "total_bytes": item.total_bytes,
+            "min_quarter": item.min_quarter,
+            "max_quarter": item.max_quarter,
+            "min_info_date": item.min_info_date,
+            "max_info_date": item.max_info_date,
+        }
+        for item in entries
+    ]
+
+
+def _pit_audit_symbols_with_status(
+    audit_records: Sequence[object],
+    status: str,
+) -> list[str]:
+    return [item.symbol for item in audit_records if item.status == status]
+
+
+def _pit_patch_totals(
+    *,
+    symbols: Sequence[str],
+    entries: Sequence[object],
+    status_counts: Counter,
+) -> dict[str, int]:
+    return {
+        "symbols_requested": len(symbols),
+        "symbols_written": len(entries),
+        "symbols_merged_patch": int(status_counts.get("merged_patch", 0)),
+        "symbols_patch_only": int(status_counts.get("patch_only", 0)),
+        "symbols_linked_base": int(status_counts.get("linked_base", 0)),
+        "symbols_skipped_existing": int(status_counts.get("skipped_existing", 0)),
+        "symbols_missing_remote": int(status_counts.get("missing_base_and_patch", 0)),
+        "symbols_failed": int(status_counts.get("failed", 0)),
+        "symbols_quota_blocked": int(status_counts.get("quota_blocked", 0)),
+        "files": len(entries),
+        "rows": sum(item.rows for item in entries),
+        "bytes": sum(item.total_bytes for item in entries),
+    }
+
+
+def _build_pit_patch_manifest(
+    *,
+    args,
+    output_dir: Path,
+    audit_path: Path,
+    base_dir: Path,
+    base_manifest: Mapping[str, object],
+    base_query: Mapping[str, object],
+    target_date: str,
+    statements: str,
+    fields: Sequence[str],
+    patch_start_quarter: str,
+    patch_end_quarter: str,
+    query_start_quarter: str,
+    query_end_quarter: str,
+    symbol_metadata: Mapping[str, object],
+    symbols: Sequence[str],
+    columns: Sequence[str],
+    field_coverage_rows: Sequence[Mapping[str, object]],
+    batches: Sequence[Mapping[str, object]],
+    entries: Sequence[object],
+    audit_records: Sequence[object],
+    status_counts: Counter,
+    started_at: str,
+    finished_at: str,
+    status: str,
+    error: str | None,
+) -> dict[str, object]:
+    return {
+        "name": output_dir.name,
+        "created_at": finished_at,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "status": status,
+        "error": error,
+        "dataset": "pit_financials",
+        "api": "rqdatac.get_pit_financials_ex + base_patch_merge",
+        "market": "hk",
+        "config_ref": getattr(args, "config", None),
+        "repo_root": str(Path.cwd().resolve()),
+        "output_dir": str(output_dir),
+        "query": {
+            "start_quarter": query_start_quarter,
+            "end_quarter": query_end_quarter,
+            "date": target_date,
+            "statements": statements,
+            "fields_count": len(fields),
+            "fields": list(fields),
+            "patch_start_quarter": patch_start_quarter,
+            "patch_end_quarter": patch_end_quarter,
+        },
+        "patch": {
+            "strategy": "base_plus_quarter_patch",
+            "strict_full_snapshot": False,
+            "merge_key": ["symbol", "quarter"],
+            "base_asset_dir": str(base_dir),
+            "base_name": base_dir.name,
+            "base_status": base_manifest.get("status"),
+            "base_query": dict(base_query),
+            "base_as_of": base_query.get("date"),
+            "target_as_of": target_date,
+            "patch_start_quarter": patch_start_quarter,
+            "patch_end_quarter": patch_end_quarter,
+            "unchanged_base_file_mode": "hardlink_or_copy",
+            "limitation": (
+                "Only quarters in the patch window are refreshed at target_as_of; older-quarter "
+                "restatements after the base snapshot require a wider patch window or a strict "
+                "full mirror."
+            ),
+        },
+        "symbol_source": dict(symbol_metadata),
+        "columns": list(columns),
+        "audit_file": str(audit_path),
+        "status_counts": dict(status_counts),
+        "field_coverage": list(field_coverage_rows),
+        "batches": list(batches),
+        "entries": _pit_entry_manifest_rows(entries),
+        "missing_symbols": _pit_audit_symbols_with_status(
+            audit_records,
+            "missing_base_and_patch",
+        ),
+        "failed_symbols": _pit_audit_symbols_with_status(audit_records, "failed"),
+        "quota_blocked_symbols": _pit_audit_symbols_with_status(
+            audit_records,
+            "quota_blocked",
+        ),
+        "totals": _pit_patch_totals(
+            symbols=symbols,
+            entries=entries,
+            status_counts=status_counts,
+        ),
+        "git": _git_metadata(Path.cwd().resolve()),
+    }
+
+
 def patch_hk_pit_financials(args, rqdatac) -> int:
     _ensure_rqdatac_hk_plugin()
 
@@ -749,28 +930,13 @@ def patch_hk_pit_financials(args, rqdatac) -> int:
     audit_path = output_dir / "audit.csv"
 
     existing_manifest = _load_manifest(output_dir / "manifest.yml") if resume else None
-    if existing_manifest:
-        existing_query = (
-            existing_manifest.get("query")
-            if isinstance(existing_manifest.get("query"), Mapping)
-            else {}
-        )
-        existing_patch = (
-            existing_manifest.get("patch")
-            if isinstance(existing_manifest.get("patch"), Mapping)
-            else {}
-        )
-        checks = [
-            ("query.date", existing_query.get("date"), target_date),
-            ("query.statements", existing_query.get("statements"), statements),
-            ("patch.patch_start_quarter", existing_patch.get("patch_start_quarter"), patch_start_quarter),
-            ("patch.patch_end_quarter", existing_patch.get("patch_end_quarter"), patch_end_quarter),
-        ]
-        for label, actual, expected in checks:
-            if actual not in {None, expected}:
-                raise SystemExit(
-                    f"Resume target mismatch for {label}: expected {expected!r}, got {actual!r}."
-                )
+    _validate_pit_patch_resume_manifest(
+        existing_manifest,
+        target_date=target_date,
+        statements=statements,
+        patch_start_quarter=patch_start_quarter,
+        patch_end_quarter=patch_end_quarter,
+    )
 
     _write_text_list(output_dir / "fields.txt", fields)
     _write_text_list(output_dir / "symbols.txt", symbols)
@@ -1124,90 +1290,33 @@ def patch_hk_pit_financials(args, rqdatac) -> int:
 
     _write_audit_csv(audit_path, audit_records)
     entries = [entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol]
-    manifest = {
-        "name": output_dir.name,
-        "created_at": finished_at,
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "status": status,
-        "error": error,
-        "dataset": "pit_financials",
-        "api": "rqdatac.get_pit_financials_ex + base_patch_merge",
-        "market": "hk",
-        "config_ref": getattr(args, "config", None),
-        "repo_root": str(Path.cwd().resolve()),
-        "output_dir": str(output_dir),
-        "query": {
-            "start_quarter": query_start_quarter,
-            "end_quarter": query_end_quarter,
-            "date": target_date,
-            "statements": statements,
-            "fields_count": len(fields),
-            "fields": list(fields),
-            "patch_start_quarter": patch_start_quarter,
-            "patch_end_quarter": patch_end_quarter,
-        },
-        "patch": {
-            "strategy": "base_plus_quarter_patch",
-            "strict_full_snapshot": False,
-            "merge_key": ["symbol", "quarter"],
-            "base_asset_dir": str(base_dir),
-            "base_name": base_dir.name,
-            "base_status": base_manifest.get("status"),
-            "base_query": dict(base_query) if isinstance(base_query, Mapping) else {},
-            "base_as_of": base_query.get("date") if isinstance(base_query, Mapping) else None,
-            "target_as_of": target_date,
-            "patch_start_quarter": patch_start_quarter,
-            "patch_end_quarter": patch_end_quarter,
-            "unchanged_base_file_mode": "hardlink_or_copy",
-            "limitation": (
-                "Only quarters in the patch window are refreshed at target_as_of; older-quarter "
-                "restatements after the base snapshot require a wider patch window or a strict full mirror."
-            ),
-        },
-        "symbol_source": symbol_metadata,
-        "columns": columns,
-        "audit_file": str(audit_path),
-        "status_counts": dict(status_counts),
-        "field_coverage": list(field_coverage.values()),
-        "batches": batches,
-        "entries": [
-            {
-                "symbol": item.symbol,
-                "order_book_id": item.order_book_id,
-                "path": str(item.path),
-                "rows": item.rows,
-                "total_bytes": item.total_bytes,
-                "min_quarter": item.min_quarter,
-                "max_quarter": item.max_quarter,
-                "min_info_date": item.min_info_date,
-                "max_info_date": item.max_info_date,
-            }
-            for item in entries
-        ],
-        "missing_symbols": [
-            item.symbol for item in audit_records if item.status == "missing_base_and_patch"
-        ],
-        "failed_symbols": [item.symbol for item in audit_records if item.status == "failed"],
-        "quota_blocked_symbols": [
-            item.symbol for item in audit_records if item.status == "quota_blocked"
-        ],
-        "totals": {
-            "symbols_requested": len(symbols),
-            "symbols_written": len(entries),
-            "symbols_merged_patch": int(status_counts.get("merged_patch", 0)),
-            "symbols_patch_only": int(status_counts.get("patch_only", 0)),
-            "symbols_linked_base": int(status_counts.get("linked_base", 0)),
-            "symbols_skipped_existing": int(status_counts.get("skipped_existing", 0)),
-            "symbols_missing_remote": int(status_counts.get("missing_base_and_patch", 0)),
-            "symbols_failed": int(status_counts.get("failed", 0)),
-            "symbols_quota_blocked": int(status_counts.get("quota_blocked", 0)),
-            "files": len(entries),
-            "rows": sum(item.rows for item in entries),
-            "bytes": sum(item.total_bytes for item in entries),
-        },
-        "git": _git_metadata(Path.cwd().resolve()),
-    }
+    manifest = _build_pit_patch_manifest(
+        args=args,
+        output_dir=output_dir,
+        audit_path=audit_path,
+        base_dir=base_dir,
+        base_manifest=base_manifest,
+        base_query=base_query,
+        target_date=target_date,
+        statements=statements,
+        fields=fields,
+        patch_start_quarter=patch_start_quarter,
+        patch_end_quarter=patch_end_quarter,
+        query_start_quarter=query_start_quarter,
+        query_end_quarter=query_end_quarter,
+        symbol_metadata=symbol_metadata,
+        symbols=symbols,
+        columns=columns,
+        field_coverage_rows=list(field_coverage.values()),
+        batches=batches,
+        entries=entries,
+        audit_records=audit_records,
+        status_counts=status_counts,
+        started_at=started_at,
+        finished_at=finished_at,
+        status=status,
+        error=error,
+    )
     _write_manifest(output_dir / "manifest.yml", manifest)
     print(
         f"Wrote pit_financials patch mirror to {output_dir} "

@@ -1490,6 +1490,235 @@ def _build_field_quality_checks(
     return quality_checks
 
 
+def _build_field_coverage_rows(
+    *,
+    selected_fields: Sequence[str],
+    field_stats: Mapping[str, Mapping[str, object]],
+    sample_limit: int,
+) -> list[dict[str, object]]:
+    field_rows: list[dict[str, object]] = []
+    for field in selected_fields:
+        stats = field_stats[field]
+        denominator = int(stats["symbols_with_target_date_row"])
+        nonnull = int(stats["nonnull_on_target_date"])
+        clean_nonmissing = int(stats["clean_nonmissing_on_target_date"])
+        missing = int(stats["missing_on_target_date"])
+        missing_but_prior = int(stats["missing_but_prior_nonnull"])
+        placeholder = int(stats["placeholder_on_target_date"])
+        nonfinite = int(stats["nonfinite_on_target_date"])
+        zero = int(stats["zero_on_target_date"])
+        unusable = int(max(denominator - clean_nonmissing, 0))
+        unusable_but_prior_clean = int(stats["unusable_but_prior_clean"])
+        clean_value_counter = stats["clean_value_counter"]
+        unique_clean_values = int(len(clean_value_counter))
+        most_common_clean_value = None
+        most_common_clean_value_symbols = 0
+        if clean_value_counter:
+            most_common_clean_value, most_common_clean_value_symbols = sorted(
+                clean_value_counter.items(),
+                key=lambda item: (-int(item[1]), str(item[0])),
+            )[0]
+
+        ffill_age_records = sorted(
+            stats["ffill_age_records"],
+            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
+        )
+        ffill_ages = [int(item["age_days"]) for item in ffill_age_records]
+        provider_ffill_age_records = sorted(
+            stats["provider_ffill_age_records"],
+            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
+        )
+        provider_ffill_ages = [int(item["age_days"]) for item in provider_ffill_age_records]
+        provider_like_unusable = int(len(provider_ffill_age_records))
+        fresh_target_gap_records = sorted(
+            stats["fresh_target_gap_records"],
+            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
+        )
+        fresh_target_gap_count = int(len(fresh_target_gap_records))
+        field_rows.append(
+            {
+                "field": field,
+                "symbols_with_target_date_row": denominator,
+                "nonnull_on_target_date": nonnull,
+                "nonnull_pct_on_target_date": _round_pct(nonnull, denominator),
+                "clean_nonmissing_on_target_date": clean_nonmissing,
+                "clean_nonmissing_pct_on_target_date": _round_pct(clean_nonmissing, denominator),
+                "unusable_on_target_date": unusable,
+                "unusable_pct_on_target_date": _round_pct(unusable, denominator),
+                "missing_on_target_date": missing,
+                "missing_pct_on_target_date": _round_pct(missing, denominator),
+                "missing_but_prior_nonnull": missing_but_prior,
+                "missing_but_prior_nonnull_pct_of_missing": _round_pct(missing_but_prior, missing),
+                "missing_and_never_nonnull": int(stats["missing_and_never_nonnull"]),
+                "placeholder_on_target_date": placeholder,
+                "placeholder_pct_on_target_date": _round_pct(placeholder, denominator),
+                "nonfinite_on_target_date": nonfinite,
+                "nonfinite_pct_on_target_date": _round_pct(nonfinite, denominator),
+                "zero_on_target_date": zero,
+                "zero_pct_of_clean_nonmissing": _round_pct(zero, clean_nonmissing),
+                "unusable_but_prior_clean": unusable_but_prior_clean,
+                "unusable_but_prior_clean_pct_of_unusable": _round_pct(
+                    unusable_but_prior_clean,
+                    unusable,
+                ),
+                "provider_like_unusable_on_target_date": provider_like_unusable,
+                "provider_like_unusable_pct_of_unusable": _round_pct(
+                    provider_like_unusable,
+                    unusable,
+                ),
+                "fresh_target_gap_on_target_date": fresh_target_gap_count,
+                "fresh_target_gap_pct_of_unusable": _round_pct(fresh_target_gap_count, unusable),
+                "ffill_age_days_min": min(ffill_ages) if ffill_ages else None,
+                "ffill_age_days_p50": _quantile_or_none(ffill_ages, 0.5),
+                "ffill_age_days_p90": _quantile_or_none(ffill_ages, 0.9),
+                "ffill_age_days_max": max(ffill_ages) if ffill_ages else None,
+                "ffill_age_gt_1d_symbols": int(sum(age > 1 for age in ffill_ages)),
+                "ffill_age_gt_5d_symbols": int(sum(age > 5 for age in ffill_ages)),
+                "ffill_age_gt_10d_symbols": int(sum(age > 10 for age in ffill_ages)),
+                "provider_ffill_age_days_min": (
+                    min(provider_ffill_ages) if provider_ffill_ages else None
+                ),
+                "provider_ffill_age_days_p50": _quantile_or_none(provider_ffill_ages, 0.5),
+                "provider_ffill_age_days_p90": _quantile_or_none(provider_ffill_ages, 0.9),
+                "provider_ffill_age_days_max": (
+                    max(provider_ffill_ages) if provider_ffill_ages else None
+                ),
+                "provider_ffill_age_gt_1d_symbols": int(
+                    sum(age > 1 for age in provider_ffill_ages)
+                ),
+                "provider_ffill_age_gt_5d_symbols": int(
+                    sum(age > 5 for age in provider_ffill_ages)
+                ),
+                "provider_ffill_age_gt_10d_symbols": int(
+                    sum(age > 10 for age in provider_ffill_ages)
+                ),
+                "unique_clean_values_on_target_date": unique_clean_values,
+                "most_common_clean_value_on_target_date": most_common_clean_value,
+                "most_common_clean_value_symbols": int(most_common_clean_value_symbols),
+                "most_common_clean_value_pct_of_clean_nonmissing": _round_pct(
+                    int(most_common_clean_value_symbols),
+                    clean_nonmissing,
+                ),
+                "is_constant_across_clean_values_on_target_date": bool(
+                    clean_nonmissing > 0 and unique_clean_values == 1
+                ),
+                "sample_missing_symbols": list(stats["sample_missing_symbols"]),
+                "sample_prior_nonnull_symbols": list(stats["sample_prior_nonnull_symbols"]),
+                "sample_placeholder_symbols": list(stats["sample_placeholder_symbols"]),
+                "sample_nonfinite_symbols": list(stats["sample_nonfinite_symbols"]),
+                "sample_zero_symbols": list(stats["sample_zero_symbols"]),
+                "sample_clean_symbols": list(stats["sample_clean_symbols"]),
+                "sample_prior_clean_symbols": list(stats["sample_prior_clean_symbols"]),
+                "sample_unusable_symbols": list(stats["sample_unusable_symbols"]),
+                "sample_oldest_ffill_symbols": ffill_age_records[:sample_limit],
+                "sample_provider_like_ffill_symbols": provider_ffill_age_records[:sample_limit],
+                "sample_fresh_target_gap_symbols": fresh_target_gap_records[:sample_limit],
+            }
+        )
+    return field_rows
+
+
+def _build_asset_health_payload(
+    *,
+    asset_dir: Path,
+    dataset: str | None,
+    target_date: pd.Timestamp,
+    target_date_source: str,
+    date_column: str,
+    selection_source: str,
+    selected_fields: Sequence[str],
+    manifest: Mapping[str, object] | None,
+    manifest_path: Path,
+    daily_reference_asset_dir: Path | None,
+    symbol_filter: Mapping[str, object],
+    symbols_scanned: int,
+    all_data_files: Sequence[Path],
+    missing_asset_symbols: Sequence[str],
+    symbols_with_target_date_row: int,
+    duplicate_date_stats: Mapping[str, object],
+    latest_min: pd.Timestamp | None,
+    latest_max: pd.Timestamp | None,
+    status_counts: Counter[str],
+    audit_issue_groups: Sequence[Mapping[str, object]],
+    quality_checks: Sequence[Mapping[str, object]],
+    quality_verdict: Mapping[str, object],
+    include_history: bool,
+    history_state: Mapping[str, object] | None,
+    latest_rows: Sequence[Mapping[str, object]],
+    sample_limit: int,
+    missing_asset_file_details: Sequence[Mapping[str, object]],
+    stale_rows: Sequence[Mapping[str, object]],
+    field_rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    summary = {
+        "asset_dir": str(asset_dir),
+        "dataset": dataset,
+        "target_date": _format_date(target_date),
+        "target_date_source": target_date_source,
+        "date_column": date_column,
+        "selection_source": selection_source,
+        "selected_fields": list(selected_fields),
+        "manifest_query_date": _resolve_manifest_query_date(manifest),
+        "daily_reference_asset_dir": (
+            str(daily_reference_asset_dir) if daily_reference_asset_dir else None
+        ),
+        "symbol_filter_source": str(symbol_filter["source"]),
+        "symbols_file": symbol_filter["symbols_file"],
+        "by_date_file": symbol_filter["by_date_file"],
+        "symbols_scanned": symbols_scanned,
+        "symbols_available_in_asset_dir": len(all_data_files),
+        "symbols_missing_asset_file": len(missing_asset_symbols),
+        "symbols_with_target_date_row": symbols_with_target_date_row,
+        "symbols_without_target_date_row": int(symbols_scanned - symbols_with_target_date_row),
+        "target_date_coverage_pct": _round_pct(symbols_with_target_date_row, symbols_scanned),
+        "symbols_with_duplicate_dates": int(duplicate_date_stats["symbols"]),
+        "duplicate_date_groups": int(duplicate_date_stats["duplicate_date_groups"]),
+        "duplicate_date_rows": int(duplicate_date_stats["duplicate_rows"]),
+        "latest_date_min": _format_date(latest_min),
+        "latest_date_max": _format_date(latest_max),
+        "audit_status_counts": dict(sorted(status_counts.items())),
+        "audit_issue_group_count": len(audit_issue_groups),
+        "quality_check_issue_count": len(quality_checks),
+        "include_history": include_history,
+        "audit_file": str(asset_dir / "audit.csv") if (asset_dir / "audit.csv").exists() else None,
+        "manifest_file": str(manifest_path) if manifest_path.exists() else None,
+    }
+    history_payload = _finalize_history_payload(history_state)
+    if history_payload is not None:
+        raw_history_summary = history_payload.get("summary")
+        history_summary = raw_history_summary if isinstance(raw_history_summary, Mapping) else {}
+        summary["history_issue_count"] = int(history_summary.get("issue_count") or 0)
+        summary["history_rows_scanned"] = int(history_summary.get("rows_scanned") or 0)
+    return {
+        "summary": summary,
+        "quality_verdict": quality_verdict,
+        "latest_date_distribution": list(latest_rows),
+        "sample_missing_asset_file_symbols": list(missing_asset_symbols[:sample_limit]),
+        "sample_missing_asset_file_details": list(missing_asset_file_details),
+        "audit_issue_groups": list(audit_issue_groups),
+        "sample_stale_symbols": list(stale_rows),
+        "field_coverage": list(field_rows),
+        "quality_checks": list(quality_checks),
+        "history": history_payload,
+    }
+
+
+def _write_asset_health_output(args, payload: Mapping[str, object]) -> int:
+    output_format = str(getattr(args, "format", "text") or "text").strip().lower()
+    if output_format == "json":
+        rendered = json.dumps(payload, ensure_ascii=False, indent=2)
+    else:
+        rendered = _render_asset_health_text(payload)
+
+    out_path = _resolve_path(args.out) if getattr(args, "out", None) else None
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(rendered, encoding="utf-8")
+    else:
+        print(rendered, end="")
+    return quality_gate_exit_code(payload["quality_verdict"])
+
+
 def inspect_hk_asset_health(args) -> int:
     asset_dir = _resolve_path(args.asset_dir)
     data_dir = asset_dir / "data"
@@ -1871,109 +2100,11 @@ def inspect_hk_asset_health(args) -> int:
         if date_text
     ]
 
-    field_rows: list[dict[str, object]] = []
-    for field in selected_fields:
-        stats = field_stats[field]
-        denominator = int(stats["symbols_with_target_date_row"])
-        nonnull = int(stats["nonnull_on_target_date"])
-        clean_nonmissing = int(stats["clean_nonmissing_on_target_date"])
-        missing = int(stats["missing_on_target_date"])
-        missing_but_prior = int(stats["missing_but_prior_nonnull"])
-        placeholder = int(stats["placeholder_on_target_date"])
-        nonfinite = int(stats["nonfinite_on_target_date"])
-        zero = int(stats["zero_on_target_date"])
-        unusable = int(max(denominator - clean_nonmissing, 0))
-        unusable_but_prior_clean = int(stats["unusable_but_prior_clean"])
-        clean_value_counter = stats["clean_value_counter"]
-        unique_clean_values = int(len(clean_value_counter))
-        most_common_clean_value = None
-        most_common_clean_value_symbols = 0
-        if clean_value_counter:
-            most_common_clean_value, most_common_clean_value_symbols = sorted(
-                clean_value_counter.items(),
-                key=lambda item: (-int(item[1]), str(item[0])),
-            )[0]
-
-        ffill_age_records = sorted(
-            stats["ffill_age_records"],
-            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
-        )
-        ffill_ages = [int(item["age_days"]) for item in ffill_age_records]
-        provider_ffill_age_records = sorted(
-            stats["provider_ffill_age_records"],
-            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
-        )
-        provider_ffill_ages = [int(item["age_days"]) for item in provider_ffill_age_records]
-        provider_like_unusable = int(len(provider_ffill_age_records))
-        fresh_target_gap_records = sorted(
-            stats["fresh_target_gap_records"],
-            key=lambda item: (-int(item["age_days"]), str(item["symbol"])),
-        )
-        fresh_target_gap_count = int(len(fresh_target_gap_records))
-        field_rows.append(
-            {
-                "field": field,
-                "symbols_with_target_date_row": denominator,
-                "nonnull_on_target_date": nonnull,
-                "nonnull_pct_on_target_date": _round_pct(nonnull, denominator),
-                "clean_nonmissing_on_target_date": clean_nonmissing,
-                "clean_nonmissing_pct_on_target_date": _round_pct(clean_nonmissing, denominator),
-                "unusable_on_target_date": unusable,
-                "unusable_pct_on_target_date": _round_pct(unusable, denominator),
-                "missing_on_target_date": missing,
-                "missing_pct_on_target_date": _round_pct(missing, denominator),
-                "missing_but_prior_nonnull": missing_but_prior,
-                "missing_but_prior_nonnull_pct_of_missing": _round_pct(missing_but_prior, missing),
-                "missing_and_never_nonnull": int(stats["missing_and_never_nonnull"]),
-                "placeholder_on_target_date": placeholder,
-                "placeholder_pct_on_target_date": _round_pct(placeholder, denominator),
-                "nonfinite_on_target_date": nonfinite,
-                "nonfinite_pct_on_target_date": _round_pct(nonfinite, denominator),
-                "zero_on_target_date": zero,
-                "zero_pct_of_clean_nonmissing": _round_pct(zero, clean_nonmissing),
-                "unusable_but_prior_clean": unusable_but_prior_clean,
-                "unusable_but_prior_clean_pct_of_unusable": _round_pct(unusable_but_prior_clean, unusable),
-                "provider_like_unusable_on_target_date": provider_like_unusable,
-                "provider_like_unusable_pct_of_unusable": _round_pct(provider_like_unusable, unusable),
-                "fresh_target_gap_on_target_date": fresh_target_gap_count,
-                "fresh_target_gap_pct_of_unusable": _round_pct(fresh_target_gap_count, unusable),
-                "ffill_age_days_min": min(ffill_ages) if ffill_ages else None,
-                "ffill_age_days_p50": _quantile_or_none(ffill_ages, 0.5),
-                "ffill_age_days_p90": _quantile_or_none(ffill_ages, 0.9),
-                "ffill_age_days_max": max(ffill_ages) if ffill_ages else None,
-                "ffill_age_gt_1d_symbols": int(sum(age > 1 for age in ffill_ages)),
-                "ffill_age_gt_5d_symbols": int(sum(age > 5 for age in ffill_ages)),
-                "ffill_age_gt_10d_symbols": int(sum(age > 10 for age in ffill_ages)),
-                "provider_ffill_age_days_min": min(provider_ffill_ages) if provider_ffill_ages else None,
-                "provider_ffill_age_days_p50": _quantile_or_none(provider_ffill_ages, 0.5),
-                "provider_ffill_age_days_p90": _quantile_or_none(provider_ffill_ages, 0.9),
-                "provider_ffill_age_days_max": max(provider_ffill_ages) if provider_ffill_ages else None,
-                "provider_ffill_age_gt_1d_symbols": int(sum(age > 1 for age in provider_ffill_ages)),
-                "provider_ffill_age_gt_5d_symbols": int(sum(age > 5 for age in provider_ffill_ages)),
-                "provider_ffill_age_gt_10d_symbols": int(sum(age > 10 for age in provider_ffill_ages)),
-                "unique_clean_values_on_target_date": unique_clean_values,
-                "most_common_clean_value_on_target_date": most_common_clean_value,
-                "most_common_clean_value_symbols": int(most_common_clean_value_symbols),
-                "most_common_clean_value_pct_of_clean_nonmissing": _round_pct(
-                    int(most_common_clean_value_symbols),
-                    clean_nonmissing,
-                ),
-                "is_constant_across_clean_values_on_target_date": bool(
-                    clean_nonmissing > 0 and unique_clean_values == 1
-                ),
-                "sample_missing_symbols": list(stats["sample_missing_symbols"]),
-                "sample_prior_nonnull_symbols": list(stats["sample_prior_nonnull_symbols"]),
-                "sample_placeholder_symbols": list(stats["sample_placeholder_symbols"]),
-                "sample_nonfinite_symbols": list(stats["sample_nonfinite_symbols"]),
-                "sample_zero_symbols": list(stats["sample_zero_symbols"]),
-                "sample_clean_symbols": list(stats["sample_clean_symbols"]),
-                "sample_prior_clean_symbols": list(stats["sample_prior_clean_symbols"]),
-                "sample_unusable_symbols": list(stats["sample_unusable_symbols"]),
-                "sample_oldest_ffill_symbols": ffill_age_records[:sample_limit],
-                "sample_provider_like_ffill_symbols": provider_ffill_age_records[:sample_limit],
-                "sample_fresh_target_gap_symbols": fresh_target_gap_records[:sample_limit],
-            }
-        )
+    field_rows = _build_field_coverage_rows(
+        selected_fields=selected_fields,
+        field_stats=field_stats,
+        sample_limit=sample_limit,
+    )
 
     quality_checks = _build_field_quality_checks(
         field_rows=field_rows,
@@ -2009,65 +2140,35 @@ def inspect_hk_asset_health(args) -> int:
         fail_on_severity=getattr(args, "fail_on_severity", "none"),
     )
 
-    summary = {
-        "asset_dir": str(asset_dir),
-        "dataset": dataset,
-        "target_date": _format_date(target_date),
-        "target_date_source": target_date_source,
-        "date_column": date_column,
-        "selection_source": selection_source,
-        "selected_fields": list(selected_fields),
-        "manifest_query_date": _resolve_manifest_query_date(manifest),
-        "daily_reference_asset_dir": str(daily_reference_asset_dir) if daily_reference_asset_dir else None,
-        "symbol_filter_source": str(symbol_filter["source"]),
-        "symbols_file": symbol_filter["symbols_file"],
-        "by_date_file": symbol_filter["by_date_file"],
-        "symbols_scanned": symbols_scanned,
-        "symbols_available_in_asset_dir": len(all_data_files),
-        "symbols_missing_asset_file": len(missing_asset_symbols),
-        "symbols_with_target_date_row": symbols_with_target_date_row,
-        "symbols_without_target_date_row": int(symbols_scanned - symbols_with_target_date_row),
-        "target_date_coverage_pct": _round_pct(symbols_with_target_date_row, symbols_scanned),
-        "symbols_with_duplicate_dates": int(duplicate_date_stats["symbols"]),
-        "duplicate_date_groups": int(duplicate_date_stats["duplicate_date_groups"]),
-        "duplicate_date_rows": int(duplicate_date_stats["duplicate_rows"]),
-        "latest_date_min": _format_date(latest_min),
-        "latest_date_max": _format_date(latest_max),
-        "audit_status_counts": dict(sorted(status_counts.items())),
-        "audit_issue_group_count": len(audit_issue_groups),
-        "quality_check_issue_count": len(quality_checks),
-        "include_history": include_history,
-        "audit_file": str(asset_dir / "audit.csv") if (asset_dir / "audit.csv").exists() else None,
-        "manifest_file": str(manifest_path) if manifest_path.exists() else None,
-    }
-    history_payload = _finalize_history_payload(history_state)
-    if history_payload is not None:
-        history_summary = history_payload.get("summary") if isinstance(history_payload.get("summary"), Mapping) else {}
-        summary["history_issue_count"] = int(history_summary.get("issue_count") or 0)
-        summary["history_rows_scanned"] = int(history_summary.get("rows_scanned") or 0)
-    payload = {
-        "summary": summary,
-        "quality_verdict": quality_verdict,
-        "latest_date_distribution": latest_rows,
-        "sample_missing_asset_file_symbols": missing_asset_symbols[:sample_limit],
-        "sample_missing_asset_file_details": missing_asset_file_details,
-        "audit_issue_groups": audit_issue_groups,
-        "sample_stale_symbols": stale_rows,
-        "field_coverage": field_rows,
-        "quality_checks": quality_checks,
-        "history": history_payload,
-    }
-
-    output_format = str(getattr(args, "format", "text") or "text").strip().lower()
-    if output_format == "json":
-        rendered = json.dumps(payload, ensure_ascii=False, indent=2)
-    else:
-        rendered = _render_asset_health_text(payload)
-
-    out_path = _resolve_path(args.out) if getattr(args, "out", None) else None
-    if out_path is not None:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(rendered, encoding="utf-8")
-    else:
-        print(rendered, end="")
-    return quality_gate_exit_code(quality_verdict)
+    payload = _build_asset_health_payload(
+        asset_dir=asset_dir,
+        dataset=dataset,
+        target_date=target_date,
+        target_date_source=target_date_source,
+        date_column=date_column,
+        selection_source=selection_source,
+        selected_fields=selected_fields,
+        manifest=manifest,
+        manifest_path=manifest_path,
+        daily_reference_asset_dir=daily_reference_asset_dir,
+        symbol_filter=symbol_filter,
+        symbols_scanned=symbols_scanned,
+        all_data_files=all_data_files,
+        missing_asset_symbols=missing_asset_symbols,
+        symbols_with_target_date_row=symbols_with_target_date_row,
+        duplicate_date_stats=duplicate_date_stats,
+        latest_min=latest_min,
+        latest_max=latest_max,
+        status_counts=status_counts,
+        audit_issue_groups=audit_issue_groups,
+        quality_checks=quality_checks,
+        quality_verdict=quality_verdict,
+        include_history=include_history,
+        history_state=history_state,
+        latest_rows=latest_rows,
+        sample_limit=sample_limit,
+        missing_asset_file_details=missing_asset_file_details,
+        stale_rows=stale_rows,
+        field_rows=field_rows,
+    )
+    return _write_asset_health_output(args, payload)
