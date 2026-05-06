@@ -69,6 +69,7 @@ def test_run_tests_script_help_lists_supported_modes():
     assert "Does not include optional-extra smoke jobs" in result.stdout
     assert "Real provider integration uses CSTREE_RUN_PROVIDER_INTEGRATION=1" in result.stdout
     assert "it is not the full CI matrix" in result.stdout
+    assert "c901-debt" in result.stdout
 
 
 def test_run_tests_script_lint_ratchet_mentions_high_signal_rules():
@@ -77,6 +78,8 @@ def test_run_tests_script_lint_ratchet_mentions_high_signal_rules():
 
     assert "--select I,F401,F841,B023" in script
     assert "check_added_c901_ignores" in script
+    assert "check_c901_debt_registry" in script
+    assert "scripts/dev/check_c901_debt.py" in script
     assert "maintenance-debt-inventory.md" in script
 
 
@@ -132,3 +135,16 @@ def test_run_tests_script_rejects_unknown_mode():
 
     assert result.returncode == 2
     assert "Unknown mode: unknown-mode" in result.stderr
+
+
+def test_run_tests_script_c901_debt_mode_runs_validator():
+    repo_root = _repo_root()
+    result = subprocess.run(
+        ["bash", "scripts/dev/run_tests.sh", "c901-debt"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr

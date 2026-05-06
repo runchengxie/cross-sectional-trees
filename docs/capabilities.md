@@ -74,6 +74,18 @@
 | 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
 
+### 入口变更要求
+
+| 层级 | 变更要求 |
+| --- | --- |
+| 公开主线 CLI | 改命令、参数、默认行为、输出字段或 provider 语义时，同步更新 `docs/cli.md`、相关配置 / 输出文档和 focused tests。破坏兼容需要另开迁移说明。 |
+| 公开但非 CLI 模块工具 | 保持模块路径、参数和 release artifact contract 稳定；改动时同步 release 工具文档和打包 / 发布测试。 |
+| 研究 / 专题模块工具 | 可以按研究需要小步调整，但要保留可复现实验入口；不因低频使用直接删除，删除前先做 repo-local 引用审计。 |
+| 维护与开发辅助 | 可以服务维护效率而收口，但涉及 hooks、测试入口或维护者 wrapper 时，必须同步脚本文档和对应测试。 |
+
+内部 helper 不因为被 facade、命令 registry 或 package `__all__` 导出就自动成为稳定 API。
+如需对外暴露，应先补文档和测试；否则应留在 owning module 内测试，避免扩大兼容面。
+
 ## 主流程能力
 
 ### 数据与市场

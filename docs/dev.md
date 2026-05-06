@@ -95,6 +95,9 @@ scripts/dev/run_tests.sh coverage
 # Ruff lint、基础复杂度检查、改动 Python 文件的 import / 长行 ratchet
 scripts/dev/run_tests.sh lint
 
+# 轻量校验 C901 豁免是否登记在维护债 inventory
+scripts/dev/run_tests.sh c901-debt
+
 # 全仓库 import 排序检查；历史文件可能仍有遗留问题
 scripts/dev/run_tests.sh imports
 
@@ -173,9 +176,10 @@ PY
 * 特殊情况下可以用 `git commit --no-verify` 或 `git push --no-verify` 跳过。
 * Ruff 已启用 formatter、import 排序和基础复杂度检查。`lint` 会拦截高风险语法错误、新增高复杂函数，并检查本次改动的 Python import 排序、未使用 import、未使用变量、lambda / closure late-binding 风险和新增 Python 长行。
 * 历史 import 和 format 遗留问题可用 `imports`、`format-all` 单独盘点。
-* 已知复杂度历史债务记录在 `pyproject.toml` 的 `per-file-ignores`。完成拆分优化后，应逐个撤销豁免。
-* 触碰 Python 文件时，不要新增超过 100 字符的代码行或新的 `C901` 文件级豁免；如果豁免仍不能撤销，要在内部维护债清单里记录原因。`lint` 会在新增 `C901` ignore 但未同步维护债清单时失败。
+* 已知复杂度历史债务记录在 `pyproject.toml` 的 `per-file-ignores`，并在内部维护债清单里按 owner area、原因、验证命令和退出条件登记。完成拆分优化后，应逐个撤销豁免。
+* 触碰 Python 文件时，不要新增超过 100 字符的代码行或新的 `C901` 文件级豁免；如果豁免仍不能撤销，要在内部维护债清单里记录原因。`lint` 会在新增 `C901` ignore 但未同步维护债清单时失败，并额外校验当前豁免是否都在维护债清单登记。
 * 全仓库严格规则可用诊断命令盘点，不默认作为 gate：`.venv/bin/ruff check src tests --select E,F,W,I,B,UP,SIM,RUF --ignore E501 --statistics`。
+* 全仓库 import sorting、unused import、pyupgrade 或 `SIM/RUF` 批量清理应作为单独机械改动处理，不和行为保持 refactor 或功能改动混做。
 * `tests/test_docs_contracts.py` 只接受指向仓库内受版本控制文件的 Markdown 相对链接。引用本地 `artifacts/...` 运行产物时，用代码文本记录，不要写成可点击相对链接。
 
 ## 测试分层
@@ -416,6 +420,14 @@ scripts/dev/run_tests.sh all \
 9. `tests/test_summarize_runs.py`：验证 `summary.json` 下游汇总字段，尤其是 `backtest.active` benchmark 指标能否进入 `runs_summary.csv`。
 
 ## 修改模块与对应测试指南
+
+不确定最小验证范围时，先用 test-impact helper 按改动路径生成建议命令，再决定是否补跑
+`all`、`slow` 或 integration：
+
+```bash
+python scripts/dev/test_impact.py src/cstree/pipeline/runner.py docs/dev.md
+python scripts/dev/test_impact.py --json src/cstree/data_tools/rqdata_assets/asset_health.py
+```
 
 | 修改范围 | 提交前至少运行 | 建议补充 |
 | --- | --- | --- |

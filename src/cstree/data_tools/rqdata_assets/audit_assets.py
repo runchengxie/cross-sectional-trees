@@ -13,7 +13,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
-import yaml
 
 from ...current_assets import (
     build_hk_current_contract,
@@ -30,8 +29,7 @@ from .quality_gate import (
     quality_gate_exit_code,
     summarize_quality_checks,
 )
-from .shared import _load_manifest, _normalize_frame_columns, _path_mtime_iso
-
+from .shared import _load_manifest, _normalize_frame_columns
 
 _DEFAULT_SNAPSHOT_FAMILIES = (
     "daily",
@@ -439,6 +437,130 @@ def _is_provider_permission_error(text: object) -> bool:
     return "permission" in lowered and ("ricequant" in lowered or "instrument" in lowered or "access" in lowered)
 
 
+def _build_etf_missing_file_issues(
+    *,
+    missing_files: list[str],
+    audit_rows: Mapping[str, Mapping[str, str]],
+    sample_limit: int,
+) -> list[dict[str, Any]]:
+    provider_permission_missing = {
+        symbol
+        for symbol in missing_files
+        if _is_provider_permission_error(audit_rows.get(symbol, {}).get("error"))
+    }
+    local_missing = [
+        symbol for symbol in missing_files if symbol not in provider_permission_missing
+    ]
+    issues: list[dict[str, Any]] = []
+    if local_missing:
+        issues.append(
+            {
+                "code": "missing_symbol_files",
+                "severity": "error",
+                "classification": "local-gap",
+                "affected_symbols": len(local_missing),
+                "sample_symbols": local_missing[:sample_limit],
+            }
+        )
+    if provider_permission_missing:
+        provider_symbols = sorted(provider_permission_missing)
+        issues.append(
+            {
+                "code": "provider_permission_symbol_files",
+                "severity": "warning",
+                "classification": "provider-permission-gap",
+                "affected_symbols": len(provider_symbols),
+                "sample_symbols": provider_symbols[:sample_limit],
+            }
+        )
+    return issues
+
+
+def _scan_etf_daily_symbol_ranges(
+    *,
+    files_by_symbol: Mapping[str, Path],
+    audit_rows: Mapping[str, Mapping[str, str]],
+    target_date: str,
+    sample_limit: int,
+) -> dict[str, Any]:
+    date_min_values: list[str] = []
+    date_max_values: list[str] = []
+    local_stale_symbols: list[dict[str, Any]] = []
+    provider_boundary_stale_symbols: list[dict[str, Any]] = []
+    samples: list[dict[str, Any]] = []
+    rows_scanned = 0
+
+    for symbol, path in files_by_symbol.items():
+        min_date, max_date, row_count = _read_symbol_dates(path)
+        rows_scanned += row_count
+        if min_date:
+            date_min_values.append(_norm_date(min_date) or "")
+        if max_date:
+            max_date_norm = _norm_date(max_date) or ""
+            date_max_values.append(max_date_norm)
+            if max_date_norm < target_date:
+                row = audit_rows.get(symbol, {})
+                status = str(row.get("status") or "").strip().lower()
+                stale_item = {"symbol": symbol, "latest_date": _iso_date(max_date_norm)}
+                if status in {"linked_base", "missing_remote"}:
+                    provider_boundary_stale_symbols.append(stale_item)
+                elif _is_provider_permission_error(row.get("error")):
+                    provider_boundary_stale_symbols.append(stale_item)
+                else:
+                    local_stale_symbols.append(stale_item)
+        if len(samples) < sample_limit:
+            samples.append(
+                {
+                    "symbol": symbol,
+                    "min_date": min_date,
+                    "max_date": max_date,
+                    "rows": row_count,
+                }
+            )
+
+    return {
+        "date_min_values": date_min_values,
+        "date_max_values": date_max_values,
+        "local_stale_symbols": local_stale_symbols,
+        "provider_boundary_stale_symbols": provider_boundary_stale_symbols,
+        "samples": samples,
+        "rows_scanned": rows_scanned,
+    }
+
+
+def _etf_start_gap_issue(
+    *,
+    effective_start: str,
+    expected_start_date: str,
+    record: Mapping[str, Any] | object,
+) -> dict[str, Any] | None:
+    manifest_start = _norm_date(
+        record.get("query_start_date") if isinstance(record, Mapping) else None
+    )
+    expected_ts = pd.to_datetime(expected_start_date, errors="coerce")
+    observed_ts = pd.to_datetime(effective_start, errors="coerce")
+    within_start_tolerance = (
+        not pd.isna(expected_ts)
+        and not pd.isna(observed_ts)
+        and 0 <= int((observed_ts - expected_ts).days) <= 7
+    )
+    if manifest_start and manifest_start > expected_start_date:
+        classification = "provider-boundary"
+    elif within_start_tolerance:
+        classification = "provider-boundary"
+    else:
+        classification = "local-gap"
+    if within_start_tolerance and classification == "provider-boundary":
+        return None
+    return {
+        "code": "coverage_starts_after_expected_start",
+        "severity": "info" if classification == "provider-boundary" else "error",
+        "classification": classification,
+        "expected_start_date": _iso_date(expected_start_date),
+        "observed_start_date": _iso_date(effective_start),
+    }
+
+
 def verify_etf_daily_completeness(
     *,
     inventory: Mapping[str, Any],
@@ -471,30 +593,13 @@ def verify_etf_daily_completeness(
     files_by_symbol = {path.stem: path for path in data_files}
     audit_rows = _read_asset_audit_rows(asset_dir)
     missing_files = [symbol for symbol in expected_symbols if symbol not in files_by_symbol]
-    provider_permission_missing = [
-        symbol for symbol in missing_files if _is_provider_permission_error(audit_rows.get(symbol, {}).get("error"))
-    ]
-    local_missing = [symbol for symbol in missing_files if symbol not in set(provider_permission_missing)]
-    if local_missing:
-        issues.append(
-            {
-                "code": "missing_symbol_files",
-                "severity": "error",
-                "classification": "local-gap",
-                "affected_symbols": len(local_missing),
-                "sample_symbols": local_missing[:sample_limit],
-            }
+    issues.extend(
+        _build_etf_missing_file_issues(
+            missing_files=missing_files,
+            audit_rows=audit_rows,
+            sample_limit=sample_limit,
         )
-    if provider_permission_missing:
-        issues.append(
-            {
-                "code": "provider_permission_symbol_files",
-                "severity": "warning",
-                "classification": "provider-permission-gap",
-                "affected_symbols": len(provider_permission_missing),
-                "sample_symbols": provider_permission_missing[:sample_limit],
-            }
-        )
+    )
 
     date_min_values: list[str] = []
     date_max_values: list[str] = []
@@ -502,31 +607,18 @@ def verify_etf_daily_completeness(
     provider_boundary_stale_symbols: list[dict[str, Any]] = []
     rows_scanned = 0
     if scan_data:
-        for symbol, path in files_by_symbol.items():
-            min_date, max_date, row_count = _read_symbol_dates(path)
-            rows_scanned += row_count
-            if min_date:
-                date_min_values.append(_norm_date(min_date) or "")
-            if max_date:
-                max_date_norm = _norm_date(max_date) or ""
-                date_max_values.append(max_date_norm)
-                if max_date_norm < target_date:
-                    row = audit_rows.get(symbol, {})
-                    status = str(row.get("status") or "").strip().lower()
-                    stale_item = {"symbol": symbol, "latest_date": _iso_date(max_date_norm)}
-                    if status in {"linked_base", "missing_remote"} or _is_provider_permission_error(row.get("error")):
-                        provider_boundary_stale_symbols.append(stale_item)
-                    else:
-                        local_stale_symbols.append(stale_item)
-            if len(samples) < sample_limit:
-                samples.append(
-                    {
-                        "symbol": symbol,
-                        "min_date": min_date,
-                        "max_date": max_date,
-                        "rows": row_count,
-                    }
-                )
+        scan_result = _scan_etf_daily_symbol_ranges(
+            files_by_symbol=files_by_symbol,
+            audit_rows=audit_rows,
+            target_date=target_date,
+            sample_limit=sample_limit,
+        )
+        date_min_values = scan_result["date_min_values"]
+        date_max_values = scan_result["date_max_values"]
+        local_stale_symbols = scan_result["local_stale_symbols"]
+        provider_boundary_stale_symbols = scan_result["provider_boundary_stale_symbols"]
+        samples = scan_result["samples"]
+        rows_scanned = scan_result["rows_scanned"]
     else:
         if isinstance(record, Mapping) and record.get("query_start_date"):
             date_min_values.append(str(record["query_start_date"]))
@@ -536,30 +628,13 @@ def verify_etf_daily_completeness(
     effective_start = min(date_min_values) if date_min_values else None
     effective_end = max(date_max_values) if date_max_values else None
     if effective_start and effective_start > expected_start_date:
-        manifest_start = _norm_date(record.get("query_start_date") if isinstance(record, Mapping) else None)
-        expected_ts = pd.to_datetime(expected_start_date, errors="coerce")
-        observed_ts = pd.to_datetime(effective_start, errors="coerce")
-        within_start_tolerance = (
-            not pd.isna(expected_ts)
-            and not pd.isna(observed_ts)
-            and 0 <= int((observed_ts - expected_ts).days) <= 7
+        start_issue = _etf_start_gap_issue(
+            effective_start=effective_start,
+            expected_start_date=expected_start_date,
+            record=record,
         )
-        if manifest_start and manifest_start > expected_start_date:
-            classification = "provider-boundary"
-        elif within_start_tolerance:
-            classification = "provider-boundary"
-        else:
-            classification = "local-gap"
-        if not within_start_tolerance or classification != "provider-boundary":
-            issues.append(
-                {
-                    "code": "coverage_starts_after_expected_start",
-                    "severity": "info" if classification == "provider-boundary" else "error",
-                    "classification": classification,
-                    "expected_start_date": _iso_date(expected_start_date),
-                    "observed_start_date": _iso_date(effective_start),
-                }
-            )
+        if start_issue is not None:
+            issues.append(start_issue)
     if effective_end and effective_end < target_date:
         issues.append(
             {

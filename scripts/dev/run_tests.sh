@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|imports|format|format-all] [args...]
+Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|imports|format|format-all|c901-debt] [args...]
 
 Modes:
   all          Run the main pytest suite without coverage.
@@ -18,6 +18,7 @@ Modes:
   imports      Run Ruff import-order checks across src, tests, and scripts.
   format       Check Ruff formatting on changed Python files.
   format-all   Check Ruff formatting across src, tests, and scripts.
+  c901-debt    Validate that C901 file ignores are documented in the debt inventory.
 EOF
 }
 
@@ -120,6 +121,10 @@ check_added_c901_ignores() {
   return 1
 }
 
+check_c901_debt_registry() {
+  python scripts/dev/check_c901_debt.py --quiet
+}
+
 mode="${1:-all}"
 if [[ $# -gt 0 ]]; then
   shift
@@ -149,6 +154,7 @@ case "$mode" in
     fi
     check_added_python_long_lines
     check_added_c901_ignores
+    check_c901_debt_registry
     ;;
   imports)
     run_ruff check --select I src tests scripts "$@"
@@ -163,6 +169,9 @@ case "$mode" in
     ;;
   format-all)
     run_ruff format --check src tests scripts "$@"
+    ;;
+  c901-debt)
+    check_c901_debt_registry
     ;;
   -h | --help | help)
     usage

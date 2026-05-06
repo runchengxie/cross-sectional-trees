@@ -5,9 +5,15 @@
 ## 常用入口
 
 * `scripts/dev/run_tests.sh`：开发与 CI 的测试入口。
-  * 常用模式：`all`、`fast`、`unit`、`slow`、`integration`、`coverage`、`lint`、`imports`、`format`、`format-all`。
+  * 常用模式：`all`、`fast`、`unit`、`slow`、`integration`、`coverage`、`lint`、`imports`、`format`、`format-all`、`c901-debt`。
   * `all` 覆盖主 `pytest` 测试集，不包含可选依赖冒烟检查和显式开启的真实 provider 联调。
   * `coverage` 的范围与 `all` 一致，只是额外输出覆盖率报告；它也不是完整 CI 矩阵。
+* test-impact helper：按改动路径推荐 focused verification，适合在决定是否跑 `all` / `slow` 前先定位最小回归范围。
+
+```bash
+python scripts/dev/test_impact.py src/cstree/pipeline/runner.py docs/dev.md
+```
+
 * `scripts/dev/install_git_hooks.sh`：安装本地 `pre-commit` 和 `pre-push` hooks，提前检查文档契约、路径引用、测试入口和快回归。
 * `scripts/dev/refresh_hk_current.sh`：本地日常刷新 HK current 资产；默认使用尾部增量刷新（patch refresh）和健康检查门控（inspect gate）。
 * `scripts/dev/run_hk_data_asset_audit.sh`：生成 HK current 资产审计报告，覆盖资产清单、新鲜度、修复候选和删除预演（prune dry-run）。
@@ -28,6 +34,7 @@
 | `imports` | 全仓库 import 排序检查 |
 | `format` | 检查本次改动的 Python 文件格式 |
 | `format-all` | 检查 `src`、`tests` 和 `scripts` 下所有 Python 文件格式 |
+| `c901-debt` | 校验 `C901` 文件级豁免是否已登记在维护债 inventory |
 
 ## 维护者脚本
 
