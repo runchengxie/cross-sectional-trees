@@ -42,6 +42,8 @@ uv sync --extra dev --extra duckdb
 uv sync --extra dev --extra stats
 ```
 
+`uv sync` 会把当前环境同步到本次命令声明的 extras 集合。给已有 RQData 环境追加 Excel 导出能力时，不要只运行 `uv sync --extra liveops-hk`；日常 HK 运维建议一次性使用 `uv sync --extra dev --extra rqdata --extra liveops-hk`。
+
 ## 本地跑一次
 
 ```bash

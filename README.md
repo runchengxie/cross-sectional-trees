@@ -15,9 +15,11 @@
 
 ```bash
 uv venv --seed
-uv sync --extra dev --extra rqdata
+uv sync --extra dev --extra rqdata --extra liveops-hk
 cp .env.example .env
 ```
+
+如果只做研究回测、暂不导出 `alloc-hk` Excel 分配表，可以省略 `--extra liveops-hk`。
 
 数据鉴权配置与服务商的详细说明，请参考 `docs/providers.md` 文件。
 
@@ -43,7 +45,7 @@ CLI 入口使用 `cstree`。
 cstree run --config default
 ```
 
-内置别名 `default` 当前指向港股入门模板，默认配置为 `data.provider=rqdata`。首次运行 `default` 或 `hk` 别名前，请务必先执行 `uv sync --extra dev --extra rqdata` 安装所需的依赖。
+内置别名 `default` 当前指向港股入门模板，默认配置为 `data.provider=rqdata`。首次运行 `default` 或 `hk` 别名前，请务必先执行 `uv sync --extra dev --extra rqdata` 安装所需的依赖；若同时需要港股 Excel 分配表，请使用 `uv sync --extra dev --extra rqdata --extra liveops-hk`。
 
 ## 核心入口清单
 

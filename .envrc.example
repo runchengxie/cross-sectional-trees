@@ -25,10 +25,26 @@ has_cmd() { command -v "$1" >/dev/null 2>&1; }
 if [ -n "$NO_DEV" ] && [ -z "$UV_NO_DEV" ]; then
   export UV_NO_DEV=1
 fi
+if [ -n "$UV_NO_ALL_EXTRAS" ] && [ -z "$UV_NO_DEFAULT_EXTRAS" ]; then
+  export UV_NO_DEFAULT_EXTRAS=1
+fi
 
 SYNC_ARGS=()
-# Default to installing all extras; set UV_NO_ALL_EXTRAS=1 to disable (e.g. `export UV_NO_ALL_EXTRAS=1`)
-[ -z "$UV_NO_ALL_EXTRAS" ] && SYNC_ARGS+=(--all-extras)
+# Default to the regular HK ops stack: development tools, RQData, and alloc-hk Excel export.
+# Override with `export UV_DEFAULT_EXTRAS="dev rqdata liveops-hk duckdb"` if needed.
+# Set UV_ALL_EXTRAS=1 for every optional extra, or UV_NO_DEFAULT_EXTRAS=1 for a minimal env.
+if [ -n "$UV_ALL_EXTRAS" ]; then
+  SYNC_ARGS+=(--all-extras)
+elif [ -z "$UV_NO_DEFAULT_EXTRAS" ]; then
+  if [ -n "$UV_DEFAULT_EXTRAS" ]; then
+    for extra in $UV_DEFAULT_EXTRAS; do
+      SYNC_ARGS+=(--extra "$extra")
+    done
+  else
+    [ -z "$UV_NO_DEV" ] && SYNC_ARGS+=(--extra dev)
+    SYNC_ARGS+=(--extra rqdata --extra liveops-hk)
+  fi
+fi
 [ -f uv.lock ] && SYNC_ARGS+=(--frozen)
 [ -n "$UV_NO_DEV" ] && SYNC_ARGS+=(--no-dev)
 
