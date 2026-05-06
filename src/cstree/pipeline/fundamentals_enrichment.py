@@ -13,15 +13,19 @@ from ..data_interface import DataInterface
 from ..data_tools.symbols import (
     DEFAULT_SYMBOL_PRIORITY,
     PROVIDER_SYMBOL_PRIORITY,
+    normalize_symbol_standard_name,
 )
 from ..pit_feature_stats import (
     compute_calendar_cagr,
     compute_trailing_calendar_window_stat,
 )
-from .panel_join_support import load_panel_join_frames, merge_panel_frame
+from .panel_join_support import frame_memory_mb, load_panel_join_frames, merge_panel_frame
 from .support import _prepare_panel_join_frame
 
 logger = logging.getLogger("cstree")
+
+
+_SYMBOL_COLUMN_CANDIDATES = ("symbol", "ts_code", "stock_ticker", "order_book_id")
 
 
 def _numeric_fundamental_series(fund_df: pd.DataFrame, name: str) -> pd.Series:
@@ -198,6 +202,142 @@ def _derive_requested_fundamental_fields(
     return fund_df
 
 
+def _fundamental_source_fields(requested_feature_names: set[str]) -> set[str]:
+    fields = set(requested_feature_names)
+    for feature in list(requested_feature_names):
+        if feature.startswith("delta_"):
+            fields.add(feature.removeprefix("delta_"))
+        if feature.startswith("growth_"):
+            fields.add(feature.removeprefix("growth_"))
+
+    if _needs_fundamental_feature(
+        fields,
+        "sales",
+        "delta_sales",
+        "growth_sales",
+        "profit_margin",
+        "operating_margin",
+        "cfo_margin",
+        "sales_cagr_3y",
+        "profit_margin_std_3y",
+        "cfo_margin_avg_3y",
+    ):
+        fields.update({"revenue", "operating_revenue"})
+    if _needs_fundamental_feature(
+        fields,
+        "debt",
+        "delta_debt",
+        "growth_debt",
+        "debt_to_assets",
+        "debt_to_equity",
+        "net_debt_to_assets",
+    ):
+        fields.update({"short_term_debt", "long_term_loans"})
+    if _needs_fundamental_feature(fields, "profit_margin", "profit_margin_std_3y"):
+        fields.add("net_profit")
+    if "operating_margin" in fields:
+        fields.add("operating_profit")
+    if _needs_fundamental_feature(
+        fields,
+        "cfo_margin",
+        "cfo_to_profit",
+        "cfo_margin_avg_3y",
+        "cfo_to_profit_median_3y",
+        "positive_cfo_ratio_3y",
+        "positive_cfo_ratio_2y",
+        "positive_cfo_ratio_3y_min2",
+    ):
+        fields.add("cash_flow_from_operating_activities")
+    if _needs_fundamental_feature(fields, "cfo_to_profit", "cfo_to_profit_median_3y"):
+        fields.add("net_profit")
+    if "eps_cagr_3y" in fields:
+        fields.add("basic_earnings_per_share")
+    return fields
+
+
+def _source_column_candidates(
+    canonical_columns: set[str],
+    column_map: Mapping[str, Any] | None,
+) -> list[str]:
+    normalized_source_map: dict[str, list[str]] = {}
+    column_map = column_map if isinstance(column_map, Mapping) else {}
+    for standard, source in column_map.items():
+        canonical = normalize_symbol_standard_name(str(standard))
+        if not source:
+            continue
+        normalized_source_map.setdefault(canonical, []).append(str(source))
+
+    candidates: list[str] = ["trade_date", "date", *_SYMBOL_COLUMN_CANDIDATES]
+    for column in sorted(canonical_columns):
+        if not column:
+            continue
+        candidates.append(column)
+        candidates.extend(normalized_source_map.get(column, []))
+    return list(dict.fromkeys(candidates))
+
+
+def _string_set(value: object) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        text = value.strip()
+        return {text} if text else set()
+    try:
+        values = list(value)  # type: ignore[arg-type]
+    except TypeError:
+        text = str(value).strip()
+        return {text} if text else set()
+    return {str(item).strip() for item in values if str(item).strip()}
+
+
+def _post_map_columns(columns: set[str], column_map: Mapping[str, Any] | None) -> set[str]:
+    out = set(columns)
+    column_map = column_map if isinstance(column_map, Mapping) else {}
+    for standard, source in column_map.items():
+        if source and str(source) in columns:
+            out.add(normalize_symbol_standard_name(str(standard)))
+    return out
+
+
+def _fundamentals_file_columns(
+    *,
+    fundamentals_cfg: Mapping[str, Any],
+    requested_feature_names: set[str],
+    fundamentals_mcap_col: str,
+    fundamentals_log_mcap: bool,
+) -> list[str]:
+    configured_features = _string_set(fundamentals_cfg.get("features"))
+    configured_fields = _string_set(fundamentals_cfg.get("fields"))
+    source_fields = _fundamental_source_fields(
+        set(requested_feature_names) | configured_features | configured_fields
+    )
+    if fundamentals_log_mcap and fundamentals_mcap_col:
+        source_fields.add(fundamentals_mcap_col)
+    return _source_column_candidates(source_fields, fundamentals_cfg.get("column_map"))
+
+
+def _select_fundamentals_merge_columns(
+    fund_df: pd.DataFrame,
+    *,
+    fundamentals_cfg: Mapping[str, Any],
+    requested_feature_names: set[str],
+    fundamentals_mcap_col: str,
+    fundamentals_log_mcap: bool,
+) -> pd.DataFrame:
+    configured_features = _string_set(fundamentals_cfg.get("features"))
+    configured_fields = _post_map_columns(
+        _string_set(fundamentals_cfg.get("fields")),
+        fundamentals_cfg.get("column_map"),
+    )
+    keep = set(requested_feature_names) | configured_features | configured_fields
+    if "days_since_report" in requested_feature_names:
+        keep.add("report_trade_date")
+    if fundamentals_log_mcap and fundamentals_mcap_col:
+        keep.add(fundamentals_mcap_col)
+    keep_columns = ["trade_date", "symbol"] + sorted(column for column in keep if column in fund_df.columns)
+    return fund_df.loc[:, list(dict.fromkeys(keep_columns))].copy()
+
+
 def apply_fundamentals_enrichment(
     *,
     panel_df: pd.DataFrame,
@@ -241,6 +381,16 @@ def apply_fundamentals_enrichment(
         }
 
     requested_feature_names = set(features)
+    fundamentals_file_columns = (
+        _fundamentals_file_columns(
+            fundamentals_cfg=fundamentals_cfg,
+            requested_feature_names=requested_feature_names,
+            fundamentals_mcap_col=fundamentals_mcap_col,
+            fundamentals_log_mcap=fundamentals_log_mcap,
+        )
+        if fundamentals_source == "file"
+        else None
+    )
     fundamentals_frames, fund_cache_dir = load_panel_join_frames(
         source=fundamentals_source,
         file_path=fundamentals_file_path,
@@ -252,6 +402,7 @@ def apply_fundamentals_enrichment(
         join_cfg=fundamentals_cfg,
         market=market,
         item_label="fundamentals",
+        file_columns=fundamentals_file_columns,
     )
 
     if fundamentals_frames:
@@ -269,6 +420,13 @@ def apply_fundamentals_enrichment(
         fund_df = _derive_requested_fundamental_fields(
             fund_df, requested_feature_names
         )
+        fund_df = _select_fundamentals_merge_columns(
+            fund_df,
+            fundamentals_cfg=fundamentals_cfg,
+            requested_feature_names=requested_feature_names,
+            fundamentals_mcap_col=fundamentals_mcap_col,
+            fundamentals_log_mcap=fundamentals_log_mcap,
+        )
         df, fundamentals_cols = merge_panel_frame(
             df,
             fund_df,
@@ -277,9 +435,11 @@ def apply_fundamentals_enrichment(
             merge_label="Fundamentals",
         )
         logger.info(
-            "Merged fundamentals: %s rows, %s columns.",
+            "Merged fundamentals: %s rows, %s columns, join_frame_memory=%.2f MiB, panel_memory=%.2f MiB.",
             len(fund_df),
             len(fundamentals_cols),
+            frame_memory_mb(fund_df),
+            frame_memory_mb(df),
         )
     else:
         message = "Fundamentals enabled but no data was loaded."

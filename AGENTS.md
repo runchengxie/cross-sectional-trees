@@ -121,6 +121,18 @@ uv sync --extra dev --extra rqdata
 * 需要保留检查痕迹时，优先使用 `--format json --out artifacts/reports/<name>.json`，并额外把 stdout / stderr 重定向到日志文件，避免只在交互上下文里看结果。
 * 如果检查预计会扫描大量数据或运行很久，优先由用户本地执行命令并把 `artifacts/reports/*.json` 与对应 log 提供给代理复核；不要默认在代理会话里直接重跑整套重 I/O 检查。
 
+## 资源与长任务约定
+
+* HK PIT、full-market assets、monthly live snapshot、sweep / tune、XGBoost ranker 训练都按重任务处理；开始前先确认输入规模、输出目录、是否已有可复用 run，以及机器内存是否足够。
+* 在 8GiB 级别内存环境里，不要默认在代理会话中直接跑全量 PIT 宽表 + 完整 research pipeline。优先先做窄列投影、样本 / 日期 smoke、或让用户在本地 shell 中运行完整命令。
+* 重任务输出必须落到 `run.log`、`summary.json`、`artifacts/reports/*.json` 这类文件；不要依赖交互上下文保存唯一日志。
+* 如果 Codex / shell 会话中断、WSL 重启或命令无 traceback 消失，先取证再决定是否重跑：
+  * 查目标 run 目录是否有 `summary.json`、`positions_current*.csv`、`run.log`。
+  * 查 `tail -100 <run>/run.log`，确认最后停在哪个阶段。
+  * 查 `free -h`、`dmesg -T | tail` 或 cgroup memory 事件，判断是否可能 OOM / 被外层杀进程。
+  * 查 `ps` 确认是否仍有残留训练进程。
+* 崩溃后不要用“原命令再跑一次”作为第一反应；先降低峰值内存或缩小任务面，例如关闭不必要 artifact、减少宽列读取、复用已生成的小型报告、或拆分 asset 构建与持仓生成。
+
 ## 编辑与验证
 
 * 搜索优先用 `rg`。
