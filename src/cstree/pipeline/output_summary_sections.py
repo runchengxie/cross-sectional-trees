@@ -391,6 +391,17 @@ def build_run_summary_sections(
             "as_of": ctx["live_as_of"].strftime("%Y%m%d")
             if ctx["LIVE_ENABLED"] and ctx["live_as_of"]
             else None,
+            "signal_asof": ctx["live_signal_asof"].strftime("%Y%m%d")
+            if ctx["LIVE_ENABLED"] and ctx.get("live_signal_asof") is not None
+            else None,
+            "entry_date": ctx["live_entry_date"].strftime("%Y%m%d")
+            if ctx["LIVE_ENABLED"] and ctx.get("live_entry_date") is not None
+            else None,
+            "execution_calendar": ctx.get("live_execution_calendar")
+            if ctx["LIVE_ENABLED"]
+            else None,
+            "execution_open": ctx.get("live_execution_open") if ctx["LIVE_ENABLED"] else None,
+            "execution_status": ctx.get("live_execution_status") if ctx["LIVE_ENABLED"] else None,
             "train_mode": ctx["LIVE_TRAIN_MODE"] if ctx["LIVE_ENABLED"] else None,
             "positions_file": str(art["live_positions_file"])
             if art["live_positions_file"]

@@ -110,6 +110,9 @@ SUMMARY_EXPORT_ORDER: list[str] = [
     "total_capital",
     "allocation_method",
     "require_stock_connect",
+    "execution_calendar",
+    "execution_check_date",
+    "execution_open",
     "total_est_value",
     "total_gap",
     "cash_used_ratio",
@@ -134,6 +137,9 @@ SUMMARY_EXPORT_RENAME: dict[str, str] = {
     "total_capital": "总资金",
     "allocation_method": "分配方式",
     "require_stock_connect": "要求港股通",
+    "execution_calendar": "执行日历",
+    "execution_check_date": "执行日历检查日",
+    "execution_open": "执行日历开放",
     "total_est_value": "预计总金额",
     "total_gap": "总差额",
     "cash_used_ratio": "资金使用率",
@@ -269,6 +275,8 @@ def prepare_summary_export_df(
         out["secondary_fill_enabled"] = out["secondary_fill_enabled"].map(to_yes_no_fn)
     if "require_stock_connect" in out.columns:
         out["require_stock_connect"] = out["require_stock_connect"].map(to_yes_no_fn)
+    if "execution_open" in out.columns:
+        out["execution_open"] = out["execution_open"].map(to_yes_no_fn)
     if "allocation_method" in out.columns:
         out["allocation_method"] = out["allocation_method"].map(localize_allocation_method_fn)
 
@@ -403,6 +411,7 @@ def render_text(
         f"总资金: {base_alloc._money(float(payload['cash']))}",
         f"分配方式: {payload['allocation_method']}",
         f"港股通约束: {to_yes_no_fn(payload['require_stock_connect'])}",
+        f"执行日历: {payload['execution_calendar']}",
         f"价格来源: {localize_price_source_fn(summary['pricing_source'])}",
         f"预计持仓金额: {base_alloc._money(float(summary['total_est_value']))}",
         f"目标缺口合计: {base_alloc._money(float(summary['total_gap']))}",
@@ -534,6 +543,8 @@ def build_payload(
         "cash": float(settings.cash),
         "allocation_method": settings.method,
         "require_stock_connect": bool(settings.require_stock_connect),
+        "execution_calendar": settings.execution_calendar,
+        "allow_connect_closed": bool(settings.allow_connect_closed),
         "pricing_source": summary["pricing_source"],
         "pricing_source_detail": summary["pricing_source_detail"],
         "estimated_value": float(summary["total_est_value"]),

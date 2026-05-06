@@ -10,6 +10,8 @@ class HkAllocSettings:
     cash: float = 1_000_000.0
     method: str = "equal"
     require_stock_connect: bool = True
+    execution_calendar: str = "hk_connect"
+    allow_connect_closed: bool = False
     history_years: int = 3
     roll_window: int = 252
     sell_quantile: float = 0.95

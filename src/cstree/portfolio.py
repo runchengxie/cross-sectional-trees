@@ -7,6 +7,7 @@ import pandas as pd
 
 from .data_tools.symbols import canonicalize_symbol_columns
 from .execution import ExecutionModel, SelectionConstraints
+from .execution_calendar import build_execution_date_map
 
 
 def normalize_weighting_mode(weighting: str | None) -> str:
@@ -127,10 +128,12 @@ def select_holdings(
     buffer_entry: int,
     group_col: Optional[str] = None,
     max_names_per_group: Optional[int] = None,
+    entry_lookup_date: pd.Timestamp | None = None,
 ) -> tuple[list[str], pd.Series]:
     if day.empty or k <= 0:
         return [], pd.Series(dtype=float)
-    if entry_date not in price_table.index:
+    lookup_date = entry_lookup_date or entry_date
+    if lookup_date not in price_table.index:
         return [], pd.Series(dtype=float)
     constraints = constraints or SelectionConstraints()
 
@@ -152,17 +155,17 @@ def select_holdings(
     ):
         group_map = day.set_index("symbol")[group_col].to_dict()
 
-    entry_prices = price_table.loc[entry_date]
+    entry_prices = price_table.loc[lookup_date]
     amount_values = None
     if constraints.min_amount is not None:
-        if amount_table is None or entry_date not in amount_table.index:
+        if amount_table is None or lookup_date not in amount_table.index:
             return [], pd.Series(dtype=float)
-        amount_values = amount_table.loc[entry_date]
+        amount_values = amount_table.loc[lookup_date]
     tradable_flags = None
     if tradable_table is not None:
-        if entry_date not in tradable_table.index:
+        if lookup_date not in tradable_table.index:
             return [], pd.Series(dtype=float)
-        tradable_flags = tradable_table.loc[entry_date]
+        tradable_flags = tradable_table.loc[lookup_date]
 
     holdings: list[str] = []
     group_counts: dict[object, int] = {}
@@ -210,9 +213,12 @@ def build_positions_by_rebalance(
     group_col: Optional[str] = None,
     max_names_per_group: Optional[int] = None,
     execution: Optional[ExecutionModel] = None,
+    entry_dates_by_rebalance: Optional[dict[pd.Timestamp, pd.Timestamp]] = None,
 ) -> pd.DataFrame:
     if data is not None and not data.empty:
         data = canonicalize_symbol_columns(data, context="Portfolio data")
+        data = data.copy()
+        data["trade_date"] = pd.to_datetime(data["trade_date"]).dt.normalize()
     weighting_mode = normalize_weighting_mode(weighting)
     entry_price_col = execution.entry_policy.price_col if execution is not None else price_col
     selection_constraints = (
@@ -233,8 +239,8 @@ def build_positions_by_rebalance(
     if entry_price_col not in data.columns:
         raise ValueError(f"Portfolio entry price column not found: {entry_price_col}")
 
-    trade_dates = sorted(data["trade_date"].unique())
-    if len(trade_dates) < 2:
+    trade_dates = [pd.Timestamp(date).normalize() for date in sorted(data["trade_date"].unique())]
+    if len(trade_dates) < 2 and not entry_dates_by_rebalance:
         return pd.DataFrame(
             columns=[
                 "rebalance_date",
@@ -249,6 +255,20 @@ def build_positions_by_rebalance(
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
     price_table = data.pivot(index="trade_date", columns="symbol", values=entry_price_col)
     day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
+    explicit_entry_dates = {
+        pd.Timestamp(key).normalize(): pd.Timestamp(value).normalize()
+        for key, value in (entry_dates_by_rebalance or {}).items()
+    }
+    calendar_entry_dates = {}
+    if not explicit_entry_dates and execution is not None:
+        calendar_entry_dates = build_execution_date_map(
+            rebalance_dates,
+            shift_days,
+            trade_dates,
+            calendar=execution.calendar,
+            open_dates=execution.calendar_open_dates,
+            closed_dates=execution.calendar_closed_dates,
+        )
 
     tradable_table = None
     if tradable_col and tradable_col in data.columns:
@@ -266,12 +286,19 @@ def build_positions_by_rebalance(
     prev_short_holdings: Optional[set[str]] = None
 
     for reb_date in rebalance_dates:
+        reb_date = pd.Timestamp(reb_date).normalize()
         if reb_date not in date_to_idx:
             continue
-        entry_idx = date_to_idx[reb_date] + shift_days
-        if entry_idx >= len(trade_dates):
-            continue
-        entry_date = trade_dates[entry_idx]
+        entry_date = explicit_entry_dates.get(reb_date) or calendar_entry_dates.get(reb_date)
+        entry_lookup_date = None
+        if entry_date is None:
+            entry_idx = date_to_idx[reb_date] + shift_days
+            if entry_idx >= len(trade_dates):
+                continue
+            entry_date = trade_dates[entry_idx]
+        entry_date = pd.Timestamp(entry_date).normalize()
+        if entry_date not in date_to_idx:
+            entry_lookup_date = reb_date
         day = day_groups.get(reb_date)
         if day is None or day.empty:
             continue
@@ -296,6 +323,7 @@ def build_positions_by_rebalance(
                 buffer_entry=buffer_entry,
                 group_col=group_col,
                 max_names_per_group=max_names_per_group,
+                entry_lookup_date=entry_lookup_date,
             )
             if not holdings:
                 continue
@@ -346,6 +374,7 @@ def build_positions_by_rebalance(
             buffer_entry=buffer_entry,
             group_col=group_col,
             max_names_per_group=max_names_per_group,
+            entry_lookup_date=entry_lookup_date,
         )
         short_holdings, _ = select_holdings(
             day,
@@ -362,6 +391,7 @@ def build_positions_by_rebalance(
             buffer_entry=buffer_entry,
             group_col=group_col,
             max_names_per_group=max_names_per_group,
+            entry_lookup_date=entry_lookup_date,
         )
         if not long_holdings or not short_holdings:
             continue

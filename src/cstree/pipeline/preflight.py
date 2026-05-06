@@ -75,6 +75,7 @@ def prepare_pipeline_setup(
     industry_cfg = config.get("industry") or {}
     runtime_settings = resolve_runtime_settings(
         data_cfg=data_cfg,
+        execution_cfg=config.get("execution"),
         features_cfg=features_cfg,
         fundamentals_cfg=fundamentals_cfg,
         industry_cfg=industry_cfg,

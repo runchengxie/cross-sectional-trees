@@ -7,6 +7,12 @@ from typing import Literal, Mapping, Optional, Protocol
 import numpy as np
 import pandas as pd
 
+from .execution_calendar import (
+    MARKET_CALENDAR,
+    coerce_date_set,
+    normalize_execution_calendar,
+)
+
 ExitPricePolicy = Literal["strict", "ffill", "delay"]
 ExitFallbackPolicy = Literal["ffill", "none"]
 
@@ -319,6 +325,9 @@ class ExecutionModel:
     exit_policy: ExitPolicy
     entry_policy: EntryPolicy
     selection_constraints: SelectionConstraints
+    calendar: str = MARKET_CALENDAR
+    calendar_open_dates: tuple[pd.Timestamp, ...] = ()
+    calendar_closed_dates: tuple[pd.Timestamp, ...] = ()
 
 
 def _coerce_non_negative_float(value: object, *, label: str) -> float:
@@ -527,12 +536,26 @@ def build_execution_model(
     slippage_cfg = None
     entry_cfg = None
     constraints_cfg = None
+    calendar = MARKET_CALENDAR
+    calendar_open_dates: tuple[pd.Timestamp, ...] = ()
+    calendar_closed_dates: tuple[pd.Timestamp, ...] = ()
     if isinstance(execution_cfg, Mapping):
         cost_cfg = execution_cfg.get("cost_model") or execution_cfg.get("cost")
         slippage_cfg = execution_cfg.get("slippage_model") or execution_cfg.get("slippage")
         exit_cfg = execution_cfg.get("exit_policy") or execution_cfg.get("exit")
         entry_cfg = execution_cfg.get("entry_policy") or execution_cfg.get("entry")
         constraints_cfg = execution_cfg.get("constraints") or execution_cfg.get("selection")
+        calendar = normalize_execution_calendar(execution_cfg.get("calendar"))
+        calendar_open_dates = coerce_date_set(
+            execution_cfg.get("open_dates")
+            or execution_cfg.get("calendar_open_dates")
+            or execution_cfg.get("stock_connect_open_dates")
+        )
+        calendar_closed_dates = coerce_date_set(
+            execution_cfg.get("closed_dates")
+            or execution_cfg.get("calendar_closed_dates")
+            or execution_cfg.get("stock_connect_closed_dates")
+        )
     entry_policy = build_entry_policy(
         entry_cfg,
         default_price_col=default_entry_price_col or default_price_col,
@@ -552,6 +575,9 @@ def build_execution_model(
         exit_policy=exit_policy,
         entry_policy=entry_policy,
         selection_constraints=selection_constraints,
+        calendar=calendar,
+        calendar_open_dates=calendar_open_dates,
+        calendar_closed_dates=calendar_closed_dates,
     )
 
 
@@ -628,6 +654,9 @@ def required_pricing_columns(model: ExecutionModel) -> set[str]:
 
 def describe_execution_model(model: ExecutionModel) -> dict:
     return {
+        "calendar": model.calendar,
+        "calendar_open_dates": [date.strftime("%Y%m%d") for date in model.calendar_open_dates],
+        "calendar_closed_dates": [date.strftime("%Y%m%d") for date in model.calendar_closed_dates],
         "cost_model": describe_cost_model(model.cost_model),
         "slippage_model": describe_slippage_model(model.slippage_model),
         "entry_policy": {

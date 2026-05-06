@@ -61,7 +61,8 @@ configs/
 | `model` | 配置算法模型及超参数 | `type`, `params` |
 | `eval` | 设置模型评估与收益统计参数 | `top_k`, `transaction_cost_bps`, `save_artifacts`, `save_scored_artifact` |
 | `backtest` | 配置历史回测参数 | `enabled`, `rebalance_frequency`, `top_k`, `weighting` |
-| `live` | 配置实盘快照与执行前分析 | `enabled`, `as_of` |
+| `execution` | 配置可复用执行日历，供 live 与回测执行层使用 | `calendar`, `closed_dates` |
+| `live` | 配置实盘快照与执行前分析 | `enabled`, `as_of`, `signal_asof`, `entry_date` |
 | `logging` | 控制日志输出级别与落盘路径 | `level`, `file` |
 
 ## 关键配置详解
@@ -203,10 +204,14 @@ backtest:
 
 ```yaml
 live:
+  signal_asof: 2026-05-05      # 可选。信号 / 特征数据截止日；不填时沿用 live.as_of
+  entry_date: 2026-05-06       # 可选。正式入场日；不填时按执行日历和 shift_days 推导
   alloc_hk:
     cash: 1000000
     method: custom                  # 分配逻辑：equal / custom
     require_stock_connect: true
+    execution_calendar: hk_connect  # require_stock_connect=true 时默认就是 hk_connect
+    allow_connect_closed: false      # 仅研究 / 报告场景才建议显式打开
     scenarios:
       capitals: [1000000, 500000]   # 可选。不配置时默认只运行单一资金场景
       top_ns: [20, 10]              # 可选。不配置时默认沿用 CLI 提供的 --top-n 参数
@@ -233,6 +238,8 @@ live:
 
 * 若 `live.alloc_hk.scenarios.capitals` 与 `top_ns` 矩阵同时存在，程序会自动按“资金规模 × TopN”生成组合情景矩阵。
 * 在命令行中显式提供 `--scenario-capital` 或 `--scenario-top-n` 参数时，将无条件覆盖上述配置。
+* 港股通执行模式下，`signal_asof` 与 `entry_date` 可以分开：例如 `signal_asof=2026-05-05`、`entry_date=2026-05-06` 表示用 5 月 5 日收盘后已知数据，在 5 月 6 日南向恢复交易时生成可执行持仓。
+* `require_stock_connect=true` 且 `execution_calendar=hk_connect` 时，`alloc-hk` 会检查执行日南向交易日历；若当天港股通关闭，默认阻断正式分配。`allow_connect_closed=true` 只应用于研究 / 报告输出。
 
 ### 质量闸门配置 (`quality`)
 
@@ -436,6 +443,8 @@ backtest:
 | `slippage_model.name` | 滑点成本模型 | `none` / `bps` / `participation` |
 | `constraints.min_price` | 买入标的的价格下限保护 | 任意非负数 |
 | `constraints.min_amount` | 买入标的日成交额下限保护 | 任意非负实数 |
+| `calendar` | 信号日到入场日的执行日历 | `market` / `hk_connect` |
+| `closed_dates` | 额外关闭日期，覆盖执行日历 | `["20260504", "20260505"]` |
 
 补充说明：
 
@@ -445,6 +454,7 @@ backtest:
 * `constraints.min_amount` 与 `slippage_model.amount_col` 需要使用系统归一化后的标准列名。例如原始字段是 `total_turnover` 时，应写转换后的 `amount` 字段名。
 * 若要避免 `open` 入场价直接关联当日成交额带来的轻微未来数据（look-ahead）风险，可将 `amount_col` 替换为历史平滑的流动性指标列，例如 `adv20_amount` 或 `medadv20_amount`。它们排除了交易当日数据，并分别计算过去 20 个交易日的平均或中位数成交金额。
 * `summary.json -> backtest -> execution_source` 会记录本轮回测使用的是简单的 `default_flat_cost` 模式，还是显式的 `explicit_execution_config` 执行配置。
+* `execution.calendar=hk_connect` 时，`shift_days` 按港股通执行日历解释；例如信号日后普通港股开市但南向关闭，会顺延到下一次港股通可交易日。也可以把 `execution.calendar` 放在顶层，作为 live 与 `backtest.execution` 共享默认值；`backtest.execution` 内的同名键优先级更高。
 * 仓库已内置多套港股月频执行层配置示例，详情参见：
   [hk_selected__execution_stress_local.yml](../configs/experiments/variants/hk_selected__execution_stress_local.yml)、
   [hk_selected__execution_balanced_local.yml](../configs/experiments/variants/hk_selected__execution_balanced_local.yml)、

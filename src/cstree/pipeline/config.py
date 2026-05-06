@@ -259,6 +259,7 @@ def normalize_universe_filters(
 def resolve_runtime_settings(
     *,
     data_cfg: Mapping[str, Any] | None,
+    execution_cfg: Mapping[str, Any] | None,
     features_cfg: Mapping[str, Any] | None,
     fundamentals_cfg: Mapping[str, Any] | None,
     industry_cfg: Mapping[str, Any] | None,
@@ -281,6 +282,7 @@ def resolve_runtime_settings(
     wf_feature_top_k: int,
 ) -> dict[str, Any]:
     data_cfg = data_cfg if isinstance(data_cfg, Mapping) else {}
+    execution_cfg = execution_cfg if isinstance(execution_cfg, Mapping) else {}
     features_cfg = features_cfg if isinstance(features_cfg, Mapping) else {}
     fundamentals_cfg = fundamentals_cfg if isinstance(fundamentals_cfg, Mapping) else {}
     industry_cfg = industry_cfg if isinstance(industry_cfg, Mapping) else {}
@@ -553,14 +555,26 @@ def resolve_runtime_settings(
     )
     if backtest_exit_fallback_policy not in {"ffill", "none"}:
         raise SystemExit("backtest.exit_fallback_policy must be one of: ffill, none.")
-    execution_cfg = backtest_cfg.get("execution") if isinstance(backtest_cfg, Mapping) else None
+    backtest_execution_cfg = backtest_cfg.get("execution") if isinstance(backtest_cfg, Mapping) else None
+    if isinstance(backtest_execution_cfg, Mapping):
+        merged_execution_cfg = dict(execution_cfg)
+        for key, value in backtest_execution_cfg.items():
+            if isinstance(value, Mapping) and isinstance(merged_execution_cfg.get(key), Mapping):
+                nested = dict(merged_execution_cfg[key])
+                nested.update(value)
+                merged_execution_cfg[key] = nested
+            else:
+                merged_execution_cfg[key] = value
+        execution_cfg_resolved = merged_execution_cfg
+    else:
+        execution_cfg_resolved = execution_cfg
     backtest_execution_source = (
         "explicit_execution_config"
-        if isinstance(execution_cfg, Mapping) and bool(execution_cfg)
+        if isinstance(execution_cfg_resolved, Mapping) and bool(execution_cfg_resolved)
         else "default_flat_cost"
     )
     execution_model = build_execution_model(
-        execution_cfg,
+        execution_cfg_resolved,
         default_cost_bps=backtest_cost_bps,
         default_exit_price_policy=backtest_exit_price_policy,
         default_exit_fallback_policy=backtest_exit_fallback_policy,
@@ -610,6 +624,8 @@ def resolve_runtime_settings(
 
     live_enabled = bool(live_cfg.get("enabled", False))
     live_as_of = live_cfg.get("as_of", "t-1")
+    live_signal_asof = live_cfg.get("signal_asof")
+    live_entry_date = live_cfg.get("entry_date")
     live_train_mode = str(live_cfg.get("train_mode", "full")).strip().lower()
     if live_train_mode not in {"full", "train"}:
         raise SystemExit("live.train_mode must be one of: full, train.")
@@ -689,6 +705,8 @@ def resolve_runtime_settings(
         "BACKTEST_TRADABLE_COL": backtest_tradable_col,
         "LIVE_ENABLED": live_enabled,
         "LIVE_AS_OF": live_as_of,
+        "LIVE_SIGNAL_ASOF": live_signal_asof,
+        "LIVE_ENTRY_DATE": live_entry_date,
         "LIVE_TRAIN_MODE": live_train_mode,
         "WF_FEATURE_TOP_K": wf_feature_top_k,
     }

@@ -370,6 +370,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 1. 这里记录的是“实际生效值”，优先级高于你对默认行为的记忆。
 1. `summary.json -> backtest -> execution_source` 会标记这次 run 是沿用 `default_flat_cost`，还是显式启用了 `backtest.execution` 的 `explicit_execution_config`。
+1. 若配置了 `execution.calendar` 或 `backtest.execution.calendar`，`summary.json -> backtest -> execution_model -> calendar` 会记录实际执行日历；`hk_connect` 表示 `shift_days` 按港股通南向执行日历解释。
 1. `backtest.stats.avg_cost_drag` 现在表示总 execution drag；若需要拆分，查看同层 `avg_fee_drag` 与 `avg_slippage_drag`。
 1. 若启用了 `backtest.execution_sim`，`summary.json -> backtest -> execution_sim` 会记录订单级容量模拟的参数、成交率、未成交金额、延迟卖出数量，以及 `execution_sim_orders.csv` / `execution_sim_fills.csv` 路径。
 1. `summary.json -> backtest -> report_file` 指向主回测报表 `backtest_report*.csv`；它会把策略收益、策略净值、benchmark 净值、相对净值，以及策略 rolling 1Y/3Y/5Y CAGR / max drawdown 放到一张表里。
@@ -644,7 +645,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | 列名 | 说明 |
 | --- | --- |
 | `rebalance_date` | 信号计算日（`YYYYMMDD`） |
-| `signal_asof` | 同 `rebalance_date`，用于快照展示 |
+| `signal_asof` | 默认同 `rebalance_date`；live 显式拆分信号日与入场日时用于展示数据截止日 |
 | `entry_date` | 实际入场日（考虑 `shift_days`） |
 | `next_entry_date` | 下一次入场日（最后一期为空） |
 | `holding_window` | `entry_date -> next_entry_date`（最后一期为 `entry_date`） |
@@ -661,6 +662,10 @@ best-effort（可能为空、缺失或未产出文件）：
 ### `positions_current.csv` / `positions_current_live.csv`
 
 只保留最新 `entry_date` 的那一组持仓，列结构与 `positions_by_rebalance` 一致。
+
+补充：
+
+1. live 模式下，`summary.json -> live` 会额外记录 `signal_asof`、`entry_date`、`execution_calendar`、`execution_open` 和 `execution_status`，用于区分数据截止日、正式执行日和执行通道开闭状态。
 
 兼容说明：
 
@@ -1057,6 +1062,7 @@ artifacts/sweeps/<tag>/
 * `source`、`side`、`market`
 * `requested_top_n`、`selected_n`
 * `cash`、`allocation_method`、`require_stock_connect`
+* `execution_calendar`、`allow_connect_closed`
 * `pricing_source`、`pricing_source_detail`
 * `estimated_value`、`cash_left`、`total_gap_to_target`
 * `summary`

@@ -130,6 +130,8 @@ def _train_eval_request_from_kwargs(kwargs: dict[str, Any]) -> TrainEvalRequest:
         live=TrainEvalLiveSettings(
             live_enabled=get("live_enabled"),
             live_as_of=get("live_as_of"),
+            live_signal_asof=get("live_signal_asof"),
+            live_entry_date=get("live_entry_date"),
             market=get("market"),
             provider=get("provider"),
             live_train_mode=get("live_train_mode"),
@@ -370,6 +372,8 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
 
     live_enabled = live_settings.live_enabled
     live_as_of = live_settings.live_as_of
+    live_signal_asof = live_settings.live_signal_asof
+    live_entry_date = live_settings.live_entry_date
     market = live_settings.market
     provider = live_settings.provider
     live_train_mode = live_settings.live_train_mode
@@ -506,6 +510,8 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
         context={
             "live_enabled": live_enabled,
             "live_as_of_token": live_as_of,
+            "live_signal_asof_token": live_signal_asof,
+            "live_entry_date_token": live_entry_date,
             "market": market,
             "provider": provider,
             "target": target,
@@ -811,6 +817,11 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
         "train_pearson_ic_series": train_pearson_ic_series,
         "train_pearson_ic_stats": train_pearson_ic_stats,
         "live_as_of": live_state["live_as_of"],
+        "live_signal_asof": live_state["live_signal_asof"],
+        "live_entry_date": live_state["live_entry_date"],
+        "live_execution_calendar": live_state["live_execution_calendar"],
+        "live_execution_open": live_state["live_execution_open"],
+        "live_execution_status": live_state["live_execution_status"],
         "positions_by_rebalance_live": positions_by_rebalance_live,
         "live_positions_ready": live_positions_ready,
         "backtest_signal_direction": backtest_signal_direction,

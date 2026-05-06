@@ -337,6 +337,7 @@ cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --method cust
 cstree alloc-hk --config path/to/live.yml --source live --scenario-capital 1000000,500000 --scenario-top-n 20,10 --method custom --format xlsx --out artifacts/exports/alloc_hk_grid.xlsx
 cstree alloc-hk --run-dir artifacts/runs/<run_dir> --fail-on-quality warning --format json
 cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --method custom --artifacts-root /data/cstree-artifacts
+cstree alloc-hk --config path/to/live.yml --source live --execution-calendar hk_connect
 ```
 
 说明：
@@ -344,6 +345,7 @@ cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --method cust
 - 在单场景分析中，`csv` 格式将继续输出逐笔标的的分配明细表。
 - 在多场景分析中，`csv` 会退化为场景总览表；如需查看完整明细，请改用 `json` 或 `xlsx` 格式。
 - `--fail-on-quality` 参数的优先级高于配置文件中的 `quality.fail_on_severity`。若 run summary 已经记录了 preflight 检查结论，`alloc-hk` 会直接读取复用，免去重复运行的开销。
+- `--execution-calendar hk_connect` 会按港股通南向执行日历做 live gate；当 `--require-stock-connect` 生效且执行日南向关闭时，默认阻断正式分配。`--allow-connect-closed` 仅用于研究或报告输出，不应作为正式下单口径。
 
 ## 数据管理命令
 

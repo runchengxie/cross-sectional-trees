@@ -10,6 +10,7 @@ from typing import Any, Sequence
 import pandas as pd
 
 from ..pipeline.quality import enforce_liveops_quality_gate
+from ..execution_calendar import HK_CONNECT_CALENDAR, is_execution_open
 from . import alloc as base_alloc
 from . import alloc_hk_reporting as reporting
 from .alloc_hk_common import (
@@ -287,6 +288,31 @@ def _build_payload(
     )
 
 
+def _enforce_stock_connect_execution_gate(
+    *,
+    settings: HkAllocSettings,
+    as_of: pd.Timestamp,
+    entry_date: pd.Timestamp,
+    rqdatac_module: Any,
+    market: str,
+) -> tuple[pd.Timestamp, bool | None]:
+    if not settings.require_stock_connect or settings.execution_calendar != HK_CONNECT_CALENDAR:
+        return pd.Timestamp(as_of).normalize(), None
+    check_date = max(pd.Timestamp(as_of).normalize(), pd.Timestamp(entry_date).normalize())
+    is_open = is_execution_open(
+        check_date,
+        calendar=settings.execution_calendar,
+        rqdatac_module=rqdatac_module,
+        market=market,
+    )
+    if not is_open and not settings.allow_connect_closed:
+        raise SystemExit(
+            "alloc-hk blocked: Stock Connect southbound execution calendar is closed on "
+            f"{check_date.strftime('%Y-%m-%d')}. Use --allow-connect-closed only for research/report-only output."
+        )
+    return check_date, bool(is_open)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     cfg, settings = _resolve_settings(args)
@@ -312,6 +338,13 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(f"alloc-hk currently only supports HK holdings. Resolved market={market!r}.")
 
     rqdatac = base_alloc._init_rqdatac(args.config, args.username, args.password)
+    execution_check_date, execution_open = _enforce_stock_connect_execution_gate(
+        settings=settings,
+        as_of=as_of,
+        entry_date=entry_date,
+        rqdatac_module=rqdatac,
+        market=market,
+    )
     market_data = prefetch_market_data(
         rqdatac,
         tickers=tickers,
@@ -343,6 +376,9 @@ def main(argv: list[str] | None = None) -> None:
             summary_df["scenario_id"] = scenario_id
             summary_df["scenario_capital"] = float(capital)
             summary_df["scenario_top_n"] = int(top_n)
+            summary_df["execution_calendar"] = settings.execution_calendar
+            summary_df["execution_check_date"] = execution_check_date.strftime("%Y-%m-%d")
+            summary_df["execution_open"] = execution_open
 
             scenario_reports.append(
                 ScenarioReport(

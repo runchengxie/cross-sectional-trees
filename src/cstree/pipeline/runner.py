@@ -362,6 +362,8 @@ def prepare_research_context(
         live=TrainEvalLiveSettings(
             live_enabled=runtime_settings["LIVE_ENABLED"],
             live_as_of=runtime_settings["LIVE_AS_OF"],
+            live_signal_asof=runtime_settings["LIVE_SIGNAL_ASOF"],
+            live_entry_date=runtime_settings["LIVE_ENTRY_DATE"],
             market=market,
             provider=provider,
             live_train_mode=runtime_settings["LIVE_TRAIN_MODE"],
@@ -619,6 +621,8 @@ def _run_legacy(
     BACKTEST_TRADABLE_COL = runtime_settings["BACKTEST_TRADABLE_COL"]
     LIVE_ENABLED = runtime_settings["LIVE_ENABLED"]
     LIVE_AS_OF = runtime_settings["LIVE_AS_OF"]
+    LIVE_SIGNAL_ASOF = runtime_settings["LIVE_SIGNAL_ASOF"]
+    LIVE_ENTRY_DATE = runtime_settings["LIVE_ENTRY_DATE"]
     LIVE_TRAIN_MODE = runtime_settings["LIVE_TRAIN_MODE"]
     fundamentals_file_path = data_inputs["fundamentals_file_path"]
     industry_file_path = data_inputs["industry_file_path"]
@@ -842,6 +846,8 @@ def _run_legacy(
         live=TrainEvalLiveSettings(
             live_enabled=LIVE_ENABLED,
             live_as_of=LIVE_AS_OF,
+            live_signal_asof=LIVE_SIGNAL_ASOF,
+            live_entry_date=LIVE_ENTRY_DATE,
             market=MARKET,
             provider=provider,
             live_train_mode=LIVE_TRAIN_MODE,

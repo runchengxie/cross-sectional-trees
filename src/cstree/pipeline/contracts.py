@@ -74,6 +74,8 @@ class TrainEvalLiveSettings:
     provider: str
     live_train_mode: str
     min_symbols_per_date: int
+    live_signal_asof: str | None = None
+    live_entry_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -199,6 +201,8 @@ class TrainEvalRequest:
             "report_train_ic": signal.report_train_ic,
             "live_enabled": live.live_enabled,
             "live_as_of": live.live_as_of,
+            "live_signal_asof": live.live_signal_asof,
+            "live_entry_date": live.live_entry_date,
             "market": live.market,
             "provider": live.provider,
             "live_train_mode": live.live_train_mode,

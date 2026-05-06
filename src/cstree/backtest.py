@@ -21,6 +21,7 @@ from .execution import (
     ParticipationSlippageModel,
     SelectionConstraints,
 )
+from .execution_calendar import resolve_execution_date
 
 
 def _drawdown_timing(nav: pd.Series) -> dict[str, float]:
@@ -300,8 +301,12 @@ def backtest_topk(
 ):
     if data is not None and not data.empty:
         data = canonicalize_symbol_columns(data, context="Backtest data")
+        data = data.copy()
+        data["trade_date"] = pd.to_datetime(data["trade_date"]).dt.normalize()
     if pricing_data is not None and not pricing_data.empty:
         pricing_data = canonicalize_symbol_columns(pricing_data, context="Backtest pricing data")
+        pricing_data = pricing_data.copy()
+        pricing_data["trade_date"] = pd.to_datetime(pricing_data["trade_date"]).dt.normalize()
     if execution is None:
         if exit_price_policy not in {"strict", "ffill", "delay"}:
             raise ValueError("exit_price_policy must be one of: strict, ffill, delay.")
@@ -312,12 +317,18 @@ def backtest_topk(
         slippage_model = NoSlippageModel()
         entry_policy = EntryPolicy(price_col)
         selection_constraints = SelectionConstraints()
+        execution_calendar = "market"
+        execution_open_dates = ()
+        execution_closed_dates = ()
     else:
         exit_policy = execution.exit_policy
         cost_model = execution.cost_model
         slippage_model = execution.slippage_model
         entry_policy = execution.entry_policy
         selection_constraints = execution.selection_constraints
+        execution_calendar = execution.calendar
+        execution_open_dates = execution.calendar_open_dates
+        execution_closed_dates = execution.calendar_closed_dates
     weighting_mode = normalize_weighting_mode(weighting)
     pricing_source = pricing_data if pricing_data is not None else data
     if pricing_source.empty:
@@ -338,7 +349,7 @@ def backtest_topk(
             + ", ".join(missing_pricing_cols)
         )
     pricing_source = pricing_source.drop_duplicates(subset=["trade_date", "symbol"]).copy()
-    trade_dates = sorted(pricing_source["trade_date"].unique())
+    trade_dates = [pd.Timestamp(date).normalize() for date in sorted(pricing_source["trade_date"].unique())]
     if len(trade_dates) < 2:
         return None
     date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
@@ -395,20 +406,53 @@ def backtest_topk(
         )
 
     for i, reb_date in enumerate(rebalance_dates):
+        reb_date = pd.Timestamp(reb_date).normalize()
         if reb_date not in date_to_idx:
             continue
         if exit_mode == "rebalance":
             if i >= len(rebalance_dates) - 1:
                 break
-            next_reb = rebalance_dates[i + 1]
+            next_reb = pd.Timestamp(rebalance_dates[i + 1]).normalize()
             if next_reb not in date_to_idx:
                 continue
-            entry_idx = date_to_idx[reb_date] + shift_days
-            exit_idx = date_to_idx[next_reb] + shift_days
+            entry_date_resolved = resolve_execution_date(
+                reb_date,
+                shift_days,
+                trade_dates,
+                calendar=execution_calendar,
+                open_dates=execution_open_dates,
+                closed_dates=execution_closed_dates,
+            )
+            exit_date_resolved = resolve_execution_date(
+                next_reb,
+                shift_days,
+                trade_dates,
+                calendar=execution_calendar,
+                open_dates=execution_open_dates,
+                closed_dates=execution_closed_dates,
+            )
+            if entry_date_resolved is None or exit_date_resolved is None:
+                continue
+            entry_idx = date_to_idx.get(entry_date_resolved)
+            exit_idx = date_to_idx.get(exit_date_resolved)
+            if entry_idx is None or exit_idx is None:
+                continue
         else:
             if exit_horizon_days is None:
                 raise ValueError("exit_horizon_days is required for exit_mode='label_horizon'.")
-            entry_idx = date_to_idx[reb_date] + shift_days
+            entry_date_resolved = resolve_execution_date(
+                reb_date,
+                shift_days,
+                trade_dates,
+                calendar=execution_calendar,
+                open_dates=execution_open_dates,
+                closed_dates=execution_closed_dates,
+            )
+            if entry_date_resolved is None:
+                continue
+            entry_idx = date_to_idx.get(entry_date_resolved)
+            if entry_idx is None:
+                continue
             exit_idx = entry_idx + exit_horizon_days
             if prev_exit_idx is not None and entry_idx < prev_exit_idx:
                 raise ValueError(

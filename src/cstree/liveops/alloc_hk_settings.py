@@ -5,6 +5,7 @@ from typing import Any, Sequence
 
 from . import alloc as base_alloc
 from .alloc_hk_types import HkAllocSettings
+from ..execution_calendar import normalize_execution_calendar
 
 
 def parse_bool(value: Any, default: bool) -> bool:
@@ -65,16 +66,32 @@ def dedupe_preserve_order(values: Sequence[Any]) -> list[Any]:
 def resolve_settings(args: argparse.Namespace) -> tuple[dict[str, Any], HkAllocSettings]:
     cfg = base_alloc._load_config(getattr(args, "config", None))
     hk_cfg = nested_mapping(cfg, "live", "alloc_hk")
+    root_execution_cfg = nested_mapping(cfg, "execution")
+    alloc_execution_cfg = hk_cfg.get("execution") if isinstance(hk_cfg.get("execution"), dict) else {}
     valuation_cfg = hk_cfg.get("valuation") if isinstance(hk_cfg.get("valuation"), dict) else {}
     fill_cfg = hk_cfg.get("secondary_fill") if isinstance(hk_cfg.get("secondary_fill"), dict) else {}
+    require_stock_connect = (
+        parse_bool(args.require_stock_connect, True)
+        if args.require_stock_connect is not None
+        else parse_bool(hk_cfg.get("require_stock_connect"), True)
+    )
+    execution_calendar_raw = (
+        args.execution_calendar
+        or hk_cfg.get("execution_calendar")
+        or alloc_execution_cfg.get("calendar")
+        or root_execution_cfg.get("calendar")
+        or ("hk_connect" if require_stock_connect else "market")
+    )
 
     settings = HkAllocSettings(
         cash=float(args.cash) if args.cash is not None else float(hk_cfg.get("cash", 1_000_000.0)),
         method=str(args.method or hk_cfg.get("method", "equal")).strip().lower(),
-        require_stock_connect=(
-            parse_bool(args.require_stock_connect, True)
-            if args.require_stock_connect is not None
-            else parse_bool(hk_cfg.get("require_stock_connect"), True)
+        require_stock_connect=require_stock_connect,
+        execution_calendar=normalize_execution_calendar(execution_calendar_raw),
+        allow_connect_closed=(
+            parse_bool(args.allow_connect_closed, False)
+            if args.allow_connect_closed is not None
+            else parse_bool(hk_cfg.get("allow_connect_closed"), False)
         ),
         history_years=(
             int(args.history_years)
@@ -304,6 +321,18 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         dest="require_stock_connect",
         action="store_false",
         help="Allow non-stock-connect names to remain tradable.",
+    )
+    parser.add_argument(
+        "--execution-calendar",
+        choices=["market", "hk_market", "hk_connect", "stock_connect", "southbound"],
+        help="Execution calendar used by the live gate. Default: hk_connect when stock-connect is required.",
+    )
+    parser.add_argument(
+        "--allow-connect-closed",
+        dest="allow_connect_closed",
+        action="store_true",
+        default=None,
+        help="Allow allocation output even when the Stock Connect execution calendar is closed.",
     )
     parser.add_argument("--history-years", type=int, help="Lookback years for valuation history.")
     parser.add_argument("--roll-window", type=int, help="Rolling window used for valuation thresholds.")

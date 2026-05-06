@@ -89,6 +89,12 @@ def handle_alloc_hk(args) -> int:
         true_flag="--require-stock-connect",
         false_flag="--allow-non-stock-connect",
     )
+    append_arg(argv, "--execution-calendar", getattr(args, "execution_calendar", None))
+    append_bool_switch(
+        argv,
+        getattr(args, "allow_connect_closed", None),
+        true_flag="--allow-connect-closed",
+    )
     append_arg(argv, "--history-years", getattr(args, "history_years", None), formatter=str)
     append_arg(argv, "--roll-window", getattr(args, "roll_window", None), formatter=str)
     append_arg(argv, "--sell-quantile", getattr(args, "sell_quantile", None), formatter=str)
@@ -397,6 +403,18 @@ def _register_alloc_hk_command(subparsers) -> None:
         dest="require_stock_connect",
         action="store_false",
         help="Allow non-stock-connect names to remain tradable.",
+    )
+    alloc_hk.add_argument(
+        "--execution-calendar",
+        choices=["market", "hk_market", "hk_connect", "stock_connect", "southbound"],
+        help="Execution calendar used by the live gate. Default: hk_connect when stock-connect is required.",
+    )
+    alloc_hk.add_argument(
+        "--allow-connect-closed",
+        dest="allow_connect_closed",
+        action="store_true",
+        default=None,
+        help="Allow allocation output even when the Stock Connect execution calendar is closed.",
     )
     alloc_hk.add_argument(
         "--history-years",
