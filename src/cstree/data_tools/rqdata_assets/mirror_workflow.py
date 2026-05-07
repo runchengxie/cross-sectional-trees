@@ -60,6 +60,13 @@ _resolve_fields = _package_attr("_resolve_fields")
 
 
 @dataclass(frozen=True)
+class _MirrorFetchPolicy:
+    max_attempts: int
+    backoff_seconds: float
+    max_backoff_seconds: float
+
+
+@dataclass(frozen=True)
 class _DatedMirrorContext:
     symbols: list[str]
     symbol_metadata: dict[str, object]
@@ -273,6 +280,57 @@ def _run_partitioned_mirror_batches(
         on_finalize()
 
 
+def _retry_mirror_fetch(
+    label: str,
+    fetch_callable: Callable[[], object],
+    *,
+    policy: _MirrorFetchPolicy,
+):
+    return _retry_fetch(
+        label,
+        fetch_callable,
+        max_attempts=policy.max_attempts,
+        backoff_seconds=policy.backoff_seconds,
+        max_backoff_seconds=policy.max_backoff_seconds,
+    )
+
+
+def _fetch_with_field_fallback(
+    *,
+    dataset_name: str,
+    request_label: str,
+    fields: Sequence[str],
+    fetch_payload: Callable[[list[str]], object],
+    prepare_payload: Callable[[object], pd.DataFrame],
+    policy: _MirrorFetchPolicy,
+) -> tuple[pd.DataFrame, int, list[str]]:
+    active_fields = list(fields)
+    dropped_fields: list[str] = []
+    total_attempts = 0
+    while True:
+        label = f"{dataset_name} fetch failed for {request_label}"
+        try:
+            payload, attempts = _retry_mirror_fetch(
+                label,
+                partial(fetch_payload, list(active_fields)),
+                policy=policy,
+            )
+        except MirrorQuotaError as exc:
+            raise MirrorQuotaError(str(exc), attempts=total_attempts + exc.attempts) from exc
+        except MirrorFetchError as exc:
+            invalid_field = _extract_invalid_field_name(str(exc))
+            total_attempts += exc.attempts
+            if invalid_field and invalid_field in active_fields and len(active_fields) > 1:
+                active_fields = [field for field in active_fields if field != invalid_field]
+                dropped_fields.append(invalid_field)
+                continue
+            raise MirrorFetchError(str(exc), attempts=total_attempts) from exc
+
+        total_attempts += attempts
+        prepared = _ensure_requested_fields(prepare_payload(payload), fields)
+        return prepared, total_attempts, dropped_fields
+
+
 def _mirror_dated_dataset(
     *,
     args,
@@ -319,11 +377,24 @@ def _mirror_dated_dataset(
     error: str | None = None
     result_code = 0
     quota_blocked = False
+    fetch_policy = _MirrorFetchPolicy(
+        max_attempts=max_attempts,
+        backoff_seconds=backoff_seconds,
+        max_backoff_seconds=max_backoff_seconds,
+    )
 
     def _payload_to_frame(payload):
         if normalize_payload is None:
             return payload
         return normalize_payload(payload, request_id_metadata=request_id_metadata)
+
+    def _prepare_batch_payload(payload) -> pd.DataFrame:
+        return _prepare_dated_asset_frame(
+            _payload_to_frame(payload),
+            symbol_map=symbol_map,
+            date_column=date_column,
+            sort_columns=sort_columns,
+        )
 
     def _record_entry(
         *,
@@ -382,45 +453,20 @@ def _mirror_dated_dataset(
     def _fetch_single_symbol_with_field_fallback(
         request_ids: Sequence[str],
     ) -> tuple[pd.DataFrame, int, list[str]]:
-        active_fields = list(fields)
-        dropped_fields: list[str] = []
-        total_attempts = 0
         request_ids = [str(item).strip() for item in request_ids if str(item).strip()]
-        while True:
-            label = f"{dataset_name} fetch failed for {', '.join(request_ids)}"
-            try:
-                payload, attempts = _retry_fetch(
-                    label,
-                    partial(
-                        fetch_batch,
-                        list(request_ids),
-                        list(active_fields),
-                        start_date,
-                        end_date,
-                    ),
-                    max_attempts=max_attempts,
-                    backoff_seconds=backoff_seconds,
-                    max_backoff_seconds=max_backoff_seconds,
-                )
-            except MirrorQuotaError as exc:
-                raise MirrorQuotaError(str(exc), attempts=total_attempts + exc.attempts) from exc
-            except MirrorFetchError as exc:
-                invalid_field = _extract_invalid_field_name(str(exc))
-                total_attempts += exc.attempts
-                if invalid_field and invalid_field in active_fields and len(active_fields) > 1:
-                    active_fields = [field for field in active_fields if field != invalid_field]
-                    dropped_fields.append(invalid_field)
-                    continue
-                raise MirrorFetchError(str(exc), attempts=total_attempts) from exc
-            total_attempts += attempts
-            prepared = _prepare_dated_asset_frame(
-                _payload_to_frame(payload),
-                symbol_map=symbol_map,
-                date_column=date_column,
-                sort_columns=sort_columns,
-            )
-            prepared = _ensure_requested_fields(prepared, fields)
-            return prepared, total_attempts, dropped_fields
+        return _fetch_with_field_fallback(
+            dataset_name=dataset_name,
+            request_label=", ".join(request_ids),
+            fields=fields,
+            fetch_payload=lambda active_fields: fetch_batch(
+                list(request_ids),
+                list(active_fields),
+                start_date,
+                end_date,
+            ),
+            prepare_payload=_prepare_batch_payload,
+            policy=fetch_policy,
+        )
 
     def _process_batch(batch_symbols: list[str]) -> None:
         nonlocal status, error, result_code, quota_blocked, columns
@@ -438,18 +484,17 @@ def _mirror_dated_dataset(
         dropped_fields: list[str] = []
         try:
             if len(batch_symbols) == 1:
-                payload, attempts, dropped_fields = _fetch_single_symbol_with_field_fallback(
+                prepared, attempts, dropped_fields = _fetch_single_symbol_with_field_fallback(
                     batch_request_ids
                 )
             else:
                 label = f"{dataset_name} fetch failed for {', '.join(batch_symbols)}"
-                payload, attempts = _retry_fetch(
+                payload, attempts = _retry_mirror_fetch(
                     label,
                     lambda: fetch_batch(batch_request_ids, fields, start_date, end_date),
-                    max_attempts=max_attempts,
-                    backoff_seconds=backoff_seconds,
-                    max_backoff_seconds=max_backoff_seconds,
+                    policy=fetch_policy,
                 )
+                prepared = _ensure_requested_fields(_prepare_batch_payload(payload), fields)
         except MirrorQuotaError as exc:
             batch_finished_at = _timestamp_now()
             quota_blocked = True
@@ -531,13 +576,6 @@ def _mirror_dated_dataset(
             return
 
         batch_finished_at = _timestamp_now()
-        prepared = _prepare_dated_asset_frame(
-            _payload_to_frame(payload),
-            symbol_map=symbol_map,
-            date_column=date_column,
-            sort_columns=sort_columns,
-        )
-        prepared = _ensure_requested_fields(prepared, fields)
         if prepared.empty:
             for symbol in batch_symbols:
                 _record_non_entry(
@@ -761,6 +799,14 @@ def _mirror_dataset(
     error: str | None = None
     result_code = 0
     quota_blocked = False
+    fetch_policy = _MirrorFetchPolicy(
+        max_attempts=max_attempts,
+        backoff_seconds=backoff_seconds,
+        max_backoff_seconds=max_backoff_seconds,
+    )
+
+    def _prepare_batch_payload(payload) -> pd.DataFrame:
+        return _prepare_asset_frame(payload, symbol_map=symbol_map)
 
     def _record_entry(
         *,
@@ -819,41 +865,21 @@ def _mirror_dataset(
     def _fetch_single_symbol_with_field_fallback(
         order_book_id: str,
     ) -> tuple[pd.DataFrame, int, list[str]]:
-        active_fields = list(fields)
-        dropped_fields: list[str] = []
-        total_attempts = 0
-        while True:
-            label = f"{dataset_name} fetch failed for {order_book_id}"
-            try:
-                payload, attempts = _retry_fetch(
-                    label,
-                    partial(
-                        fetch_batch,
-                        [order_book_id],
-                        list(active_fields),
-                        args.start_quarter,
-                        args.end_quarter,
-                        date=getattr(args, "date", None),
-                        statements=args.statements,
-                    ),
-                    max_attempts=max_attempts,
-                    backoff_seconds=backoff_seconds,
-                    max_backoff_seconds=max_backoff_seconds,
-                )
-            except MirrorQuotaError as exc:
-                raise MirrorQuotaError(str(exc), attempts=total_attempts + exc.attempts) from exc
-            except MirrorFetchError as exc:
-                invalid_field = _extract_invalid_field_name(str(exc))
-                total_attempts += exc.attempts
-                if invalid_field and invalid_field in active_fields and len(active_fields) > 1:
-                    active_fields = [field for field in active_fields if field != invalid_field]
-                    dropped_fields.append(invalid_field)
-                    continue
-                raise MirrorFetchError(str(exc), attempts=total_attempts) from exc
-            total_attempts += attempts
-            prepared = _prepare_asset_frame(payload, symbol_map=symbol_map)
-            prepared = _ensure_requested_fields(prepared, fields)
-            return prepared, total_attempts, dropped_fields
+        return _fetch_with_field_fallback(
+            dataset_name=dataset_name,
+            request_label=order_book_id,
+            fields=fields,
+            fetch_payload=lambda active_fields: fetch_batch(
+                [order_book_id],
+                list(active_fields),
+                args.start_quarter,
+                args.end_quarter,
+                date=getattr(args, "date", None),
+                statements=args.statements,
+            ),
+            prepare_payload=_prepare_batch_payload,
+            policy=fetch_policy,
+        )
 
     def _process_batch(batch_order_book_ids: list[str]) -> None:
         nonlocal status, error, result_code, quota_blocked, columns
@@ -863,12 +889,12 @@ def _mirror_dataset(
         dropped_fields: list[str] = []
         try:
             if len(batch_order_book_ids) == 1:
-                payload, attempts, dropped_fields = _fetch_single_symbol_with_field_fallback(
+                prepared, attempts, dropped_fields = _fetch_single_symbol_with_field_fallback(
                     batch_order_book_ids[0]
                 )
             else:
                 label = f"{dataset_name} fetch failed for {', '.join(batch_order_book_ids)}"
-                payload, attempts = _retry_fetch(
+                payload, attempts = _retry_mirror_fetch(
                     label,
                     lambda: fetch_batch(
                         batch_order_book_ids,
@@ -878,10 +904,9 @@ def _mirror_dataset(
                         date=getattr(args, "date", None),
                         statements=args.statements,
                     ),
-                    max_attempts=max_attempts,
-                    backoff_seconds=backoff_seconds,
-                    max_backoff_seconds=max_backoff_seconds,
+                    policy=fetch_policy,
                 )
+                prepared = _ensure_requested_fields(_prepare_batch_payload(payload), fields)
         except MirrorQuotaError as exc:
             batch_finished_at = _timestamp_now()
             quota_blocked = True
@@ -965,8 +990,6 @@ def _mirror_dataset(
             return
 
         batch_finished_at = _timestamp_now()
-        prepared = _prepare_asset_frame(payload, symbol_map=symbol_map)
-        prepared = _ensure_requested_fields(prepared, fields)
         if prepared.empty:
             for order_book_id in batch_order_book_ids:
                 symbol = symbol_map[order_book_id]

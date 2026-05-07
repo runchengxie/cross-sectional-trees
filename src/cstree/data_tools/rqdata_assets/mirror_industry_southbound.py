@@ -70,6 +70,14 @@ class _SouthboundMirrorContext:
     requested_batch_keys: list[tuple[str, str]]
 
 
+@dataclass
+class _SouthboundResumeState:
+    existing_status: str
+    resume_from_partial: bool
+    batches: list[dict[str, object]]
+    completed_batch_keys: set[tuple[str, str]]
+
+
 def _prepare_southbound_mirror_context(args, rqdatac) -> _SouthboundMirrorContext:
     symbols, symbol_metadata = _resolve_symbols(args)
     start_date = _normalize_absolute_date(args.start_date, label="--start-date")
@@ -140,10 +148,216 @@ def _prepare_southbound_mirror_context(args, rqdatac) -> _SouthboundMirrorContex
     )
 
 
+def _load_southbound_resume_state(
+    *,
+    manifest_path: Path,
+    resume: bool,
+) -> _SouthboundResumeState:
+    existing_manifest = _load_manifest(manifest_path) if resume and manifest_path.exists() else {}
+    existing_status = (
+        str(existing_manifest.get("status") or "").strip()
+        if isinstance(existing_manifest, Mapping)
+        else ""
+    )
+    batches: list[dict[str, object]] = []
+    completed_batch_keys: set[tuple[str, str]] = set()
+    if isinstance(existing_manifest, Mapping):
+        existing_batches = existing_manifest.get("batches")
+        if isinstance(existing_batches, Sequence) and not isinstance(
+            existing_batches,
+            (str, bytes),
+        ):
+            for row in existing_batches:
+                if not isinstance(row, Mapping):
+                    continue
+                batch = dict(row)
+                batches.append(batch)
+                if batch.get("status") != "completed":
+                    continue
+                batch_date = str(batch.get("date") or "").strip()
+                batch_type = str(batch.get("trading_type") or "").strip()
+                if batch_date and batch_type:
+                    completed_batch_keys.add((batch_date, batch_type))
+
+    return _SouthboundResumeState(
+        existing_status=existing_status,
+        resume_from_partial=resume and existing_status not in {"", "completed"},
+        batches=batches,
+        completed_batch_keys=completed_batch_keys,
+    )
+
+
+def _southbound_pending_batch_count(
+    *,
+    context: _SouthboundMirrorContext,
+    completed_batch_keys: set[tuple[str, str]],
+) -> int:
+    return max(0, len(context.requested_batch_keys) - len(completed_batch_keys))
+
+
+def _annotate_southbound_manifest(
+    manifest: dict[str, object],
+    *,
+    context: _SouthboundMirrorContext,
+    completed_batch_keys: set[tuple[str, str]],
+    symbols_with_persisted_data: int,
+) -> dict[str, object]:
+    manifest_query = manifest.get("query", {})
+    if isinstance(manifest_query, dict):
+        manifest_query["rebalance_frequency"] = context.snapshot_metadata.get(
+            "rebalance_frequency"
+        )
+        manifest_query["dates_count"] = len(context.snapshot_dates)
+        manifest_query["dates_file"] = str(context.output_dir / "dates.txt")
+        manifest_query["trading_types"] = list(context.trading_types)
+        manifest_query["trading_types_file"] = str(context.output_dir / "trading_types.txt")
+    manifest["date_source"] = context.snapshot_metadata
+    manifest["checkpoint"] = {
+        "completed_batches": len(completed_batch_keys),
+        "total_batches": len(context.requested_batch_keys),
+        "pending_batches": _southbound_pending_batch_count(
+            context=context,
+            completed_batch_keys=completed_batch_keys,
+        ),
+        "symbols_with_persisted_data": symbols_with_persisted_data,
+    }
+    return manifest
+
+
+def _build_southbound_manifest(
+    *,
+    context: _SouthboundMirrorContext,
+    entries: Sequence[DatedMirrorEntry],
+    missing_symbols: Sequence[str],
+    batches: Sequence[Mapping[str, object]],
+    columns: Sequence[str],
+    audit_records: Sequence[DatedMirrorAuditRecord],
+    field_coverage: Sequence[Mapping[str, object]],
+    started_at: str,
+    finished_at: str,
+    status: str,
+    error: str | None,
+    config_ref: object,
+    completed_batch_keys: set[tuple[str, str]],
+    symbols_with_persisted_data: int,
+) -> dict[str, object]:
+    manifest = _build_dated_manifest(
+        dataset_name="southbound",
+        api_name="rqdatac.hk.get_southbound_eligible_secs",
+        output_dir=context.output_dir,
+        fields=context.fields,
+        field_metadata=context.field_metadata,
+        symbol_metadata=context.symbol_metadata,
+        symbols_requested=context.symbols,
+        entries=entries,
+        missing_symbols=missing_symbols,
+        start_date=context.start_date,
+        end_date=context.end_date,
+        date_column="date",
+        batches=batches,
+        columns=columns,
+        audit_file=context.audit_path,
+        audit_records=audit_records,
+        field_coverage=field_coverage,
+        started_at=started_at,
+        finished_at=finished_at,
+        status=status,
+        error=error,
+        config_ref=config_ref,
+    )
+    return _annotate_southbound_manifest(
+        manifest,
+        context=context,
+        completed_batch_keys=completed_batch_keys,
+        symbols_with_persisted_data=symbols_with_persisted_data,
+    )
+
+
+def _southbound_batch_record(
+    *,
+    query_date: str,
+    trading_type: str,
+    rows: int,
+    symbols: int,
+    status: str,
+    attempts: int,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    error: str | None = None,
+) -> dict[str, object]:
+    record: dict[str, object] = {
+        "date": query_date,
+        "trading_type": trading_type,
+        "rows": int(rows),
+        "symbols": int(symbols),
+        "status": status,
+        "attempts": int(attempts),
+    }
+    if started_at is not None:
+        record["started_at"] = started_at
+    if finished_at is not None:
+        record["finished_at"] = finished_at
+    if error is not None:
+        record["error"] = error
+    return record
+
+
+def _fetch_southbound_batch(
+    *,
+    rqdatac,
+    context: _SouthboundMirrorContext,
+    query_date: str,
+    trading_type: str,
+):
+    return _retry_fetch(
+        f"southbound fetch failed for {trading_type} @ {query_date}",
+        lambda: rqdatac.hk.get_southbound_eligible_secs(
+            trading_type=trading_type,
+            date=query_date,
+        ),
+        max_attempts=context.max_attempts,
+        backoff_seconds=context.backoff_seconds,
+        max_backoff_seconds=context.max_backoff_seconds,
+    )
+
+
+def _prepare_southbound_batch_frame(
+    *,
+    payload,
+    context: _SouthboundMirrorContext,
+    query_date: str,
+    trading_type: str,
+    pending_symbol_set: set[str],
+) -> pd.DataFrame:
+    rows = []
+    for order_book_id in list(payload or []):
+        symbol = _normalize_hk_symbol(order_book_id)
+        if not symbol or symbol not in pending_symbol_set:
+            continue
+        rows.append(
+            {
+                "date": query_date,
+                "symbol": symbol,
+                "order_book_id": context.order_book_id_by_symbol[symbol],
+                "trading_type": trading_type,
+                "eligible": 1,
+            }
+        )
+    prepared = _prepare_dated_asset_frame(
+        pd.DataFrame(
+            rows,
+            columns=["date", "symbol", "order_book_id", "trading_type", "eligible"],
+        ),
+        symbol_map=context.symbol_map,
+        date_column="date",
+        sort_columns=("trading_type",),
+    )
+    return _ensure_requested_fields(prepared, context.fields)
+
+
 def mirror_hk_southbound(args, rqdatac) -> int:
     context = _prepare_southbound_mirror_context(args, rqdatac)
     symbols = context.symbols
-    symbol_metadata = context.symbol_metadata
     start_date = context.start_date
     end_date = context.end_date
     trading_types = context.trading_types
@@ -151,50 +365,29 @@ def mirror_hk_southbound(args, rqdatac) -> int:
     snapshot_metadata = context.snapshot_metadata
     resume = context.resume
     skip_existing = context.skip_existing
-    max_attempts = context.max_attempts
-    backoff_seconds = context.backoff_seconds
-    max_backoff_seconds = context.max_backoff_seconds
     output_dir = context.output_dir
     data_dir = context.data_dir
     audit_path = context.audit_path
     manifest_path = context.manifest_path
     fields = context.fields
-    field_metadata = context.field_metadata
     order_book_id_by_symbol = context.order_book_id_by_symbol
-    symbol_map = context.symbol_map
-    requested_batch_keys = context.requested_batch_keys
     entries_by_symbol: dict[str, DatedMirrorEntry] = {}
     audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
     frames_by_symbol: dict[str, pd.DataFrame] = {}
-    batches: list[dict[str, object]] = []
     columns: list[str] = []
     started_at = _timestamp_now()
     status = "completed"
     error: str | None = None
     result_code = 0
     quota_blocked = False
-    existing_manifest = _load_manifest(manifest_path) if resume and manifest_path.exists() else {}
-    existing_status = (
-        str(existing_manifest.get("status") or "").strip()
-        if isinstance(existing_manifest, Mapping)
-        else ""
+    resume_state = _load_southbound_resume_state(
+        manifest_path=manifest_path,
+        resume=resume,
     )
-    resume_from_partial = resume and existing_status not in {"", "completed"}
-    completed_batch_keys: set[tuple[str, str]] = set()
-
-    if isinstance(existing_manifest, Mapping):
-        existing_batches = existing_manifest.get("batches")
-        if isinstance(existing_batches, Sequence) and not isinstance(existing_batches, (str, bytes)):
-            for row in existing_batches:
-                if not isinstance(row, Mapping):
-                    continue
-                batch = dict(row)
-                batches.append(batch)
-                if batch.get("status") == "completed":
-                    batch_date = str(batch.get("date") or "").strip()
-                    batch_type = str(batch.get("trading_type") or "").strip()
-                    if batch_date and batch_type:
-                        completed_batch_keys.add((batch_date, batch_type))
+    existing_status = resume_state.existing_status
+    resume_from_partial = resume_state.resume_from_partial
+    batches = resume_state.batches
+    completed_batch_keys = resume_state.completed_batch_keys
 
     def _record_entry(
         *,
@@ -245,53 +438,42 @@ def mirror_hk_southbound(args, rqdatac) -> int:
         )
 
     def _current_pending_batches() -> int:
-        return max(0, len(requested_batch_keys) - len(completed_batch_keys))
+        return _southbound_pending_batch_count(
+            context=context,
+            completed_batch_keys=completed_batch_keys,
+        )
 
     def _write_checkpoint_manifest(*, checkpoint_status: str, checkpoint_error: str | None) -> None:
         effective_status = checkpoint_status
         if _current_pending_batches() > 0 and effective_status == "completed":
             effective_status = "running"
         checkpoint_finished_at = _timestamp_now()
-        checkpoint_manifest = _build_dated_manifest(
-            dataset_name="southbound",
-            api_name="rqdatac.hk.get_southbound_eligible_secs",
-            output_dir=output_dir,
-            fields=fields,
-            field_metadata=field_metadata,
-            symbol_metadata=symbol_metadata,
-            symbols_requested=symbols,
-            entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
+        checkpoint_manifest = _build_southbound_manifest(
+            context=context,
+            entries=[
+                entries_by_symbol[symbol]
+                for symbol in symbols
+                if symbol in entries_by_symbol
+            ],
             missing_symbols=[],
-            start_date=start_date,
-            end_date=end_date,
-            date_column="date",
             batches=batches,
             columns=columns,
-            audit_file=audit_path,
-            audit_records=[audit_by_symbol[symbol] for symbol in symbols if symbol in audit_by_symbol],
+            audit_records=[
+                audit_by_symbol[symbol]
+                for symbol in symbols
+                if symbol in audit_by_symbol
+            ],
             field_coverage=[],
             started_at=started_at,
             finished_at=checkpoint_finished_at,
             status=effective_status,
             error=checkpoint_error,
             config_ref=getattr(args, "config", None),
-        )
-        checkpoint_query = checkpoint_manifest.get("query", {})
-        if isinstance(checkpoint_query, dict):
-            checkpoint_query["rebalance_frequency"] = snapshot_metadata.get("rebalance_frequency")
-            checkpoint_query["dates_count"] = len(snapshot_dates)
-            checkpoint_query["dates_file"] = str(output_dir / "dates.txt")
-            checkpoint_query["trading_types"] = list(trading_types)
-            checkpoint_query["trading_types_file"] = str(output_dir / "trading_types.txt")
-        checkpoint_manifest["date_source"] = snapshot_metadata
-        checkpoint_manifest["checkpoint"] = {
-            "completed_batches": len(completed_batch_keys),
-            "total_batches": len(requested_batch_keys),
-            "pending_batches": _current_pending_batches(),
-            "symbols_with_persisted_data": sum(
+            symbols_with_persisted_data=sum(
                 1 for symbol in symbols if (data_dir / f"{symbol}.parquet").exists()
             ),
-        }
+            completed_batch_keys=completed_batch_keys,
+        )
         _write_manifest(manifest_path, checkpoint_manifest)
 
     def _write_symbol_history(symbol: str, symbol_frame: pd.DataFrame) -> None:
@@ -405,17 +587,11 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                     continue
                 batch_started_at = _timestamp_now()
                 try:
-                    payload, attempts = _retry_fetch(
-                        f"southbound fetch failed for {trading_type} @ {query_date}",
-                        lambda trading_type=trading_type, query_date=query_date: (
-                            rqdatac.hk.get_southbound_eligible_secs(
-                                trading_type=trading_type,
-                                date=query_date,
-                            )
-                        ),
-                        max_attempts=max_attempts,
-                        backoff_seconds=backoff_seconds,
-                        max_backoff_seconds=max_backoff_seconds,
+                    payload, attempts = _fetch_southbound_batch(
+                        rqdatac=rqdatac,
+                        context=context,
+                        query_date=query_date,
+                        trading_type=trading_type,
                     )
                 except MirrorQuotaError as exc:
                     quota_blocked = True
@@ -423,29 +599,29 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                     error = str(exc)
                     result_code = max(result_code, 2)
                     batches.append(
-                        {
-                            "date": query_date,
-                            "trading_type": trading_type,
-                            "rows": 0,
-                            "symbols": 0,
-                            "status": "quota_blocked",
-                            "attempts": exc.attempts,
-                            "error": str(exc),
-                        }
+                        _southbound_batch_record(
+                            query_date=query_date,
+                            trading_type=trading_type,
+                            rows=0,
+                            symbols=0,
+                            status="quota_blocked",
+                            attempts=exc.attempts,
+                            error=str(exc),
+                        )
                     )
                     _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
                     break
                 except MirrorFetchError as exc:
                     batches.append(
-                        {
-                            "date": query_date,
-                            "trading_type": trading_type,
-                            "rows": 0,
-                            "symbols": 0,
-                            "status": "failed",
-                            "attempts": exc.attempts,
-                            "error": str(exc),
-                        }
+                        _southbound_batch_record(
+                            query_date=query_date,
+                            trading_type=trading_type,
+                            rows=0,
+                            symbols=0,
+                            status="failed",
+                            attempts=exc.attempts,
+                            error=str(exc),
+                        )
                     )
                     if status == "completed":
                         status = "completed_with_failures"
@@ -453,42 +629,25 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                     _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
                     continue
 
-                rows = []
-                for order_book_id in list(payload or []):
-                    symbol = _normalize_hk_symbol(order_book_id)
-                    if not symbol or symbol not in pending_symbol_set:
-                        continue
-                    rows.append(
-                        {
-                            "date": query_date,
-                            "symbol": symbol,
-                            "order_book_id": order_book_id_by_symbol[symbol],
-                            "trading_type": trading_type,
-                            "eligible": 1,
-                        }
-                    )
-                prepared = _prepare_dated_asset_frame(
-                    pd.DataFrame(
-                        rows,
-                        columns=["date", "symbol", "order_book_id", "trading_type", "eligible"],
-                    ),
-                    symbol_map=symbol_map,
-                    date_column="date",
-                    sort_columns=("trading_type",),
+                prepared = _prepare_southbound_batch_frame(
+                    payload=payload,
+                    context=context,
+                    query_date=query_date,
+                    trading_type=trading_type,
+                    pending_symbol_set=pending_symbol_set,
                 )
-                prepared = _ensure_requested_fields(prepared, fields)
                 batches.append(
-                        {
-                            "date": query_date,
-                            "trading_type": trading_type,
-                            "rows": int(len(prepared)),
-                            "symbols": int(prepared["symbol"].nunique()) if not prepared.empty else 0,
-                        "status": "completed",
-                        "attempts": attempts,
-                        "started_at": batch_started_at,
-                            "finished_at": _timestamp_now(),
-                        }
+                    _southbound_batch_record(
+                        query_date=query_date,
+                        trading_type=trading_type,
+                        rows=int(len(prepared)),
+                        symbols=int(prepared["symbol"].nunique()) if not prepared.empty else 0,
+                        status="completed",
+                        attempts=attempts,
+                        started_at=batch_started_at,
+                        finished_at=_timestamp_now(),
                     )
+                )
                 completed_batch_keys.add(batch_key)
                 if prepared.empty:
                     _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
@@ -565,22 +724,16 @@ def mirror_hk_southbound(args, rqdatac) -> int:
 
         audit_records = [final_audit_by_symbol[symbol] for symbol in symbols]
         _write_dated_audit_csv(audit_path, audit_records)
-        manifest = _build_dated_manifest(
-            dataset_name="southbound",
-            api_name="rqdatac.hk.get_southbound_eligible_secs",
-            output_dir=output_dir,
-            fields=fields,
-            field_metadata=field_metadata,
-            symbol_metadata=symbol_metadata,
-            symbols_requested=symbols,
-            entries=[final_entries_by_symbol[symbol] for symbol in symbols if symbol in final_entries_by_symbol],
+        manifest = _build_southbound_manifest(
+            context=context,
+            entries=[
+                final_entries_by_symbol[symbol]
+                for symbol in symbols
+                if symbol in final_entries_by_symbol
+            ],
             missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
-            start_date=start_date,
-            end_date=end_date,
-            date_column="date",
             batches=batches,
             columns=final_columns,
-            audit_file=audit_path,
             audit_records=audit_records,
             field_coverage=list(final_field_coverage.values()),
             started_at=started_at,
@@ -588,21 +741,9 @@ def mirror_hk_southbound(args, rqdatac) -> int:
             status=status,
             error=error,
             config_ref=getattr(args, "config", None),
+            completed_batch_keys=completed_batch_keys,
+            symbols_with_persisted_data=len(final_entries_by_symbol),
         )
-        manifest_query = manifest.get("query", {})
-        if isinstance(manifest_query, dict):
-            manifest_query["rebalance_frequency"] = snapshot_metadata.get("rebalance_frequency")
-            manifest_query["dates_count"] = len(snapshot_dates)
-            manifest_query["dates_file"] = str(output_dir / "dates.txt")
-            manifest_query["trading_types"] = list(trading_types)
-            manifest_query["trading_types_file"] = str(output_dir / "trading_types.txt")
-        manifest["date_source"] = snapshot_metadata
-        manifest["checkpoint"] = {
-            "completed_batches": len(completed_batch_keys),
-            "total_batches": len(requested_batch_keys),
-            "pending_batches": _current_pending_batches(),
-            "symbols_with_persisted_data": len(final_entries_by_symbol),
-        }
         _write_manifest(manifest_path, manifest)
 
     totals = {

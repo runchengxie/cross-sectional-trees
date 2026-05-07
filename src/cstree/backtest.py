@@ -301,6 +301,35 @@ class _BacktestPricingContext:
     amount_tables: dict[str, pd.DataFrame]
 
 
+@dataclass(frozen=True)
+class _BacktestPositionState:
+    holdings: set[str] | None = None
+    weights: pd.Series | None = None
+    entry_date: pd.Timestamp | None = None
+    entry_prices: pd.Series | None = None
+
+
+@dataclass(frozen=True)
+class _BacktestLegResult:
+    holdings: list[str]
+    weights: pd.Series
+    entry_prices: pd.Series
+    exit_idx: int
+    exit_date: pd.Timestamp
+    gross: float
+    turnover: float
+    fee_cost: float
+    slippage_cost: float
+
+
+@dataclass(frozen=True)
+class _BacktestPeriodPlan:
+    entry_idx: int
+    planned_exit_idx: int
+    entry_date: pd.Timestamp
+    planned_exit_date: pd.Timestamp
+
+
 def _normalize_backtest_frame(
     frame: pd.DataFrame | None,
     *,
@@ -425,6 +454,211 @@ def _prepare_backtest_pricing_context(
     )
 
 
+def _slippage_pricing_row(
+    *,
+    slippage_model: SlippageModel,
+    amount_tables: dict[str, pd.DataFrame],
+    entry_date: pd.Timestamp,
+) -> pd.Series | None:
+    if not isinstance(slippage_model, ParticipationSlippageModel):
+        return None
+    return amount_tables[slippage_model.amount_col].loc[entry_date]
+
+
+def _evaluate_backtest_leg(
+    *,
+    day: pd.DataFrame,
+    entry_date: pd.Timestamp,
+    entry_idx: int,
+    planned_exit_idx: int,
+    trade_dates: list[pd.Timestamp],
+    pred_col: str,
+    side: Literal["long", "short"],
+    count: int,
+    ascending: bool,
+    weighting_mode: str,
+    entry_price_table: pd.DataFrame,
+    tradable_table: pd.DataFrame | None,
+    amount_tables: dict[str, pd.DataFrame],
+    selection_constraints: SelectionConstraints,
+    previous: _BacktestPositionState,
+    buffer_exit: int,
+    buffer_entry: int,
+    group_col: str | None,
+    max_names_per_group: int | None,
+    cost_model: CostModel,
+    slippage_model: SlippageModel,
+    resolve_exit_prices,
+) -> _BacktestLegResult | None:
+    if count <= 0:
+        return None
+
+    holdings, entry_prices = select_holdings(
+        day,
+        entry_date,
+        count,
+        pred_col,
+        ascending=ascending,
+        price_table=entry_price_table,
+        tradable_table=tradable_table,
+        amount_table=amount_tables.get(selection_constraints.amount_col),
+        constraints=selection_constraints,
+        prev_holdings=previous.holdings,
+        buffer_exit=buffer_exit,
+        buffer_entry=buffer_entry,
+        group_col=group_col,
+        max_names_per_group=max_names_per_group,
+    )
+    if not holdings:
+        return None
+
+    weights = build_position_weights(
+        day,
+        holdings,
+        pred_col,
+        side=side,
+        weighting=weighting_mode,
+    )
+    exit_prices, period_exit_idx = resolve_exit_prices(holdings, planned_exit_idx)
+    if exit_prices.empty:
+        return None
+
+    entry_prices = entry_prices.reindex(exit_prices.index)
+    weights = normalize_position_weights(weights.reindex(exit_prices.index))
+    holdings = list(weights.index)
+    if not holdings:
+        return None
+
+    entry_prices = entry_prices.reindex(holdings)
+    exit_prices = exit_prices.reindex(holdings)
+    period_returns = (exit_prices / entry_prices) - 1.0
+    gross = float((period_returns * weights.reindex(period_returns.index)).sum())
+    if side == "short":
+        gross = -gross
+
+    turnover, entry_turnover, exit_turnover, trade_weights = _compute_trade_summary(
+        previous.weights,
+        previous.entry_prices,
+        previous.entry_date,
+        weights,
+        entry_date,
+        price_table=entry_price_table,
+    )
+    fee_cost = cost_model.cost(
+        turnover,
+        is_initial=previous.weights is None,
+        side=side,
+        entry_turnover=entry_turnover,
+        exit_turnover=exit_turnover,
+        holding_days=int(period_exit_idx - entry_idx),
+        gross_exposure=float(weights.abs().sum()),
+    )
+    slippage_cost = slippage_model.cost(
+        trade_weights,
+        pricing_row=_slippage_pricing_row(
+            slippage_model=slippage_model,
+            amount_tables=amount_tables,
+            entry_date=entry_date,
+        ),
+        is_initial=previous.weights is None,
+        side=side,
+    )
+    return _BacktestLegResult(
+        holdings=holdings,
+        weights=weights,
+        entry_prices=entry_prices,
+        exit_idx=period_exit_idx,
+        exit_date=trade_dates[period_exit_idx],
+        gross=gross,
+        turnover=turnover,
+        fee_cost=fee_cost,
+        slippage_cost=slippage_cost,
+    )
+
+
+def _resolve_backtest_period_plan(
+    *,
+    rebalance_dates: list[pd.Timestamp],
+    rebalance_index: int,
+    rebalance_date: pd.Timestamp,
+    exit_mode: Literal["rebalance", "label_horizon"],
+    exit_horizon_days: int | None,
+    shift_days: int,
+    prev_exit_idx: int | None,
+    trade_dates: list[pd.Timestamp],
+    date_to_idx: dict[pd.Timestamp, int],
+    execution_calendar: str,
+    execution_open_dates: tuple,
+    execution_closed_dates: tuple,
+) -> _BacktestPeriodPlan | None:
+    if rebalance_date not in date_to_idx:
+        return None
+
+    entry_date = resolve_execution_date(
+        rebalance_date,
+        shift_days,
+        trade_dates,
+        calendar=execution_calendar,
+        open_dates=execution_open_dates,
+        closed_dates=execution_closed_dates,
+    )
+    if entry_date is None:
+        return None
+    entry_idx = date_to_idx.get(entry_date)
+    if entry_idx is None:
+        return None
+
+    if exit_mode == "rebalance":
+        if rebalance_index >= len(rebalance_dates) - 1:
+            return None
+        next_rebalance = pd.Timestamp(rebalance_dates[rebalance_index + 1]).normalize()
+        if next_rebalance not in date_to_idx:
+            return None
+        planned_exit_date = resolve_execution_date(
+            next_rebalance,
+            shift_days,
+            trade_dates,
+            calendar=execution_calendar,
+            open_dates=execution_open_dates,
+            closed_dates=execution_closed_dates,
+        )
+        if planned_exit_date is None:
+            return None
+        planned_exit_idx = date_to_idx.get(planned_exit_date)
+        if planned_exit_idx is None:
+            return None
+    else:
+        if exit_horizon_days is None:
+            raise ValueError("exit_horizon_days is required for exit_mode='label_horizon'.")
+        planned_exit_idx = entry_idx + exit_horizon_days
+        planned_exit_date = (
+            trade_dates[planned_exit_idx]
+            if 0 <= planned_exit_idx < len(trade_dates)
+            else pd.NaT
+        )
+        if prev_exit_idx is not None and entry_idx < prev_exit_idx:
+            raise ValueError(
+                "exit_mode='label_horizon' overlaps with rebalance_dates. "
+                "Increase rebalance_frequency or use exit_mode='rebalance'."
+            )
+
+    if prev_exit_idx is not None and entry_idx < prev_exit_idx:
+        return None
+    if (
+        entry_idx >= len(trade_dates)
+        or planned_exit_idx >= len(trade_dates)
+        or entry_idx >= planned_exit_idx
+    ):
+        return None
+
+    return _BacktestPeriodPlan(
+        entry_idx=entry_idx,
+        planned_exit_idx=planned_exit_idx,
+        entry_date=trade_dates[entry_idx],
+        planned_exit_date=trade_dates[planned_exit_idx],
+    )
+
+
 def backtest_topk(
     data: pd.DataFrame,
     pred_col: str,
@@ -493,14 +727,8 @@ def backtest_topk(
     fee_costs = []
     slippage_costs = []
     period_info = []
-    prev_holdings = None
-    prev_weights = None
-    prev_entry_date = None
-    prev_entry_prices = None
-    prev_short_holdings = None
-    prev_short_weights = None
-    prev_short_entry_date = None
-    prev_short_entry_prices = None
+    long_state = _BacktestPositionState()
+    short_state = _BacktestPositionState()
     prev_exit_idx = None
 
     def _resolve_exit_prices(
@@ -518,68 +746,28 @@ def backtest_topk(
 
     for i, reb_date in enumerate(rebalance_dates):
         reb_date = pd.Timestamp(reb_date).normalize()
-        if reb_date not in date_to_idx:
-            continue
-        if exit_mode == "rebalance":
-            if i >= len(rebalance_dates) - 1:
-                break
-            next_reb = pd.Timestamp(rebalance_dates[i + 1]).normalize()
-            if next_reb not in date_to_idx:
-                continue
-            entry_date_resolved = resolve_execution_date(
-                reb_date,
-                shift_days,
-                trade_dates,
-                calendar=execution_calendar,
-                open_dates=execution_open_dates,
-                closed_dates=execution_closed_dates,
-            )
-            exit_date_resolved = resolve_execution_date(
-                next_reb,
-                shift_days,
-                trade_dates,
-                calendar=execution_calendar,
-                open_dates=execution_open_dates,
-                closed_dates=execution_closed_dates,
-            )
-            if entry_date_resolved is None or exit_date_resolved is None:
-                continue
-            entry_idx = date_to_idx.get(entry_date_resolved)
-            exit_idx = date_to_idx.get(exit_date_resolved)
-            if entry_idx is None or exit_idx is None:
-                continue
-        else:
-            if exit_horizon_days is None:
-                raise ValueError("exit_horizon_days is required for exit_mode='label_horizon'.")
-            entry_date_resolved = resolve_execution_date(
-                reb_date,
-                shift_days,
-                trade_dates,
-                calendar=execution_calendar,
-                open_dates=execution_open_dates,
-                closed_dates=execution_closed_dates,
-            )
-            if entry_date_resolved is None:
-                continue
-            entry_idx = date_to_idx.get(entry_date_resolved)
-            if entry_idx is None:
-                continue
-            exit_idx = entry_idx + exit_horizon_days
-            if prev_exit_idx is not None and entry_idx < prev_exit_idx:
-                raise ValueError(
-                    "exit_mode='label_horizon' overlaps with rebalance_dates. "
-                    "Increase rebalance_frequency or use exit_mode='rebalance'."
-                )
-
-        if prev_exit_idx is not None and entry_idx < prev_exit_idx:
+        period_plan = _resolve_backtest_period_plan(
+            rebalance_dates=rebalance_dates,
+            rebalance_index=i,
+            rebalance_date=reb_date,
+            exit_mode=exit_mode,
+            exit_horizon_days=exit_horizon_days,
+            shift_days=shift_days,
+            prev_exit_idx=prev_exit_idx,
+            trade_dates=trade_dates,
+            date_to_idx=date_to_idx,
+            execution_calendar=execution_calendar,
+            execution_open_dates=execution_open_dates,
+            execution_closed_dates=execution_closed_dates,
+        )
+        if period_plan is None:
             continue
 
-        if entry_idx >= len(trade_dates) or exit_idx >= len(trade_dates) or entry_idx >= exit_idx:
-            continue
-
-        entry_date = trade_dates[entry_idx]
-        planned_exit_idx = exit_idx
-        planned_exit_date = trade_dates[planned_exit_idx]
+        entry_idx = period_plan.entry_idx
+        planned_exit_idx = period_plan.planned_exit_idx
+        exit_idx = planned_exit_idx
+        entry_date = period_plan.entry_date
+        planned_exit_date = period_plan.planned_exit_date
         day = day_groups.get(reb_date)
         if day is None or day.empty:
             continue
@@ -589,225 +777,125 @@ def backtest_topk(
             continue
 
         if long_only:
-            holdings, entry_prices = select_holdings(
-                day,
-                entry_date,
-                k,
-                pred_col,
+            long_leg = _evaluate_backtest_leg(
+                day=day,
+                entry_date=entry_date,
+                entry_idx=entry_idx,
+                planned_exit_idx=planned_exit_idx,
+                trade_dates=trade_dates,
+                pred_col=pred_col,
+                side="long",
+                count=k,
                 ascending=False,
-                price_table=entry_price_table,
+                weighting_mode=weighting_mode,
+                entry_price_table=entry_price_table,
                 tradable_table=tradable_table,
-                amount_table=amount_tables.get(selection_constraints.amount_col),
-                constraints=selection_constraints,
-                prev_holdings=prev_holdings,
+                amount_tables=amount_tables,
+                selection_constraints=selection_constraints,
+                previous=long_state,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
                 group_col=group_col,
                 max_names_per_group=max_names_per_group,
+                cost_model=cost_model,
+                slippage_model=slippage_model,
+                resolve_exit_prices=_resolve_exit_prices,
             )
-            if not holdings:
+            if long_leg is None:
                 continue
-            target_weights = build_position_weights(
-                day,
-                holdings,
-                pred_col,
-                side="long",
-                weighting=weighting_mode,
-            )
-            exit_prices, period_exit_idx = _resolve_exit_prices(holdings, exit_idx)
-            if exit_prices.empty:
-                continue
-            entry_prices = entry_prices.reindex(exit_prices.index)
-            target_weights = normalize_position_weights(target_weights.reindex(exit_prices.index))
-            holdings = list(target_weights.index)
-            k = len(holdings)
-            if k == 0:
-                continue
-            exit_idx = period_exit_idx
-            exit_date = trade_dates[exit_idx]
-            entry_prices = entry_prices.reindex(holdings)
-            exit_prices = exit_prices.reindex(holdings)
-            period_returns = (exit_prices / entry_prices) - 1.0
-            gross = float((period_returns * target_weights.reindex(period_returns.index)).sum())
-            turnover, entry_turnover, exit_turnover, trade_weights = _compute_trade_summary(
-                prev_weights,
-                prev_entry_prices,
-                prev_entry_date,
-                target_weights,
-                entry_date,
-                price_table=entry_price_table,
-            )
-            fee_cost = cost_model.cost(
-                turnover,
-                is_initial=prev_weights is None,
-                side="long",
-                entry_turnover=entry_turnover,
-                exit_turnover=exit_turnover,
-                holding_days=int(period_exit_idx - entry_idx),
-                gross_exposure=float(target_weights.abs().sum()),
-            )
-            slippage_cost = slippage_model.cost(
-                trade_weights,
-                pricing_row=(
-                    amount_tables[slippage_model.amount_col].loc[entry_date]
-                    if isinstance(slippage_model, ParticipationSlippageModel)
-                    else None
-                ),
-                is_initial=prev_weights is None,
-                side="long",
-            )
+
+            gross = long_leg.gross
+            turnover = long_leg.turnover
+            fee_cost = long_leg.fee_cost
+            slippage_cost = long_leg.slippage_cost
             total_cost = fee_cost + slippage_cost
             net = gross - total_cost
-
-            prev_holdings = set(holdings)
-            prev_weights = target_weights
-            prev_entry_date = entry_date
-            prev_entry_prices = entry_prices
+            exit_idx = long_leg.exit_idx
+            exit_date = long_leg.exit_date
+            long_state = _BacktestPositionState(
+                holdings=set(long_leg.holdings),
+                weights=long_leg.weights,
+                entry_date=entry_date,
+                entry_prices=long_leg.entry_prices,
+            )
         else:
             short_k_final = short_k if short_k is not None else k
             short_k_final = min(int(short_k_final), len(day) - k)
             if short_k_final <= 0:
                 continue
 
-            long_holdings, long_entry = select_holdings(
-                day,
-                entry_date,
-                k,
-                pred_col,
+            long_leg = _evaluate_backtest_leg(
+                day=day,
+                entry_date=entry_date,
+                entry_idx=entry_idx,
+                planned_exit_idx=planned_exit_idx,
+                trade_dates=trade_dates,
+                pred_col=pred_col,
+                side="long",
+                count=k,
                 ascending=False,
-                price_table=entry_price_table,
+                weighting_mode=weighting_mode,
+                entry_price_table=entry_price_table,
                 tradable_table=tradable_table,
-                amount_table=amount_tables.get(selection_constraints.amount_col),
-                constraints=selection_constraints,
-                prev_holdings=prev_holdings,
+                amount_tables=amount_tables,
+                selection_constraints=selection_constraints,
+                previous=long_state,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
                 group_col=group_col,
                 max_names_per_group=max_names_per_group,
+                cost_model=cost_model,
+                slippage_model=slippage_model,
+                resolve_exit_prices=_resolve_exit_prices,
             )
-            short_holdings, short_entry = select_holdings(
-                day,
-                entry_date,
-                short_k_final,
-                pred_col,
+            short_leg = _evaluate_backtest_leg(
+                day=day,
+                entry_date=entry_date,
+                entry_idx=entry_idx,
+                planned_exit_idx=planned_exit_idx,
+                trade_dates=trade_dates,
+                pred_col=pred_col,
+                side="short",
+                count=short_k_final,
                 ascending=True,
-                price_table=entry_price_table,
+                weighting_mode=weighting_mode,
+                entry_price_table=entry_price_table,
                 tradable_table=tradable_table,
-                amount_table=amount_tables.get(selection_constraints.amount_col),
-                constraints=selection_constraints,
-                prev_holdings=prev_short_holdings,
+                amount_tables=amount_tables,
+                selection_constraints=selection_constraints,
+                previous=short_state,
                 buffer_exit=buffer_exit,
                 buffer_entry=buffer_entry,
                 group_col=group_col,
                 max_names_per_group=max_names_per_group,
+                cost_model=cost_model,
+                slippage_model=slippage_model,
+                resolve_exit_prices=_resolve_exit_prices,
             )
-            if not long_holdings or not short_holdings:
+            if long_leg is None or short_leg is None:
                 continue
-            long_weights = build_position_weights(
-                day,
-                long_holdings,
-                pred_col,
-                side="long",
-                weighting=weighting_mode,
-            )
-            short_weights = build_position_weights(
-                day,
-                short_holdings,
-                pred_col,
-                side="short",
-                weighting=weighting_mode,
-            )
 
-            long_exit, period_exit_idx_long = _resolve_exit_prices(long_holdings, exit_idx)
-            short_exit, period_exit_idx_short = _resolve_exit_prices(short_holdings, exit_idx)
-            if long_exit.empty or short_exit.empty:
-                continue
-            long_entry = long_entry.reindex(long_exit.index)
-            short_entry = short_entry.reindex(short_exit.index)
-            long_weights = normalize_position_weights(long_weights.reindex(long_exit.index))
-            short_weights = normalize_position_weights(short_weights.reindex(short_exit.index))
-            long_holdings = list(long_weights.index)
-            short_holdings = list(short_weights.index)
-            if not long_holdings or not short_holdings:
-                continue
-            exit_idx = max(exit_idx, period_exit_idx_long, period_exit_idx_short)
+            exit_idx = max(exit_idx, long_leg.exit_idx, short_leg.exit_idx)
             exit_date = trade_dates[exit_idx]
-            long_entry = long_entry.reindex(long_holdings)
-            short_entry = short_entry.reindex(short_holdings)
-            long_exit = long_exit.reindex(long_holdings)
-            short_exit = short_exit.reindex(short_holdings)
-
-            long_returns = (long_exit / long_entry) - 1.0
-            short_returns = (short_exit / short_entry) - 1.0
-            long_gross = float((long_returns * long_weights.reindex(long_returns.index)).sum())
-            short_gross = -float((short_returns * short_weights.reindex(short_returns.index)).sum())
-            gross = long_gross + short_gross
-
-            turnover_long, long_entry_turnover, long_exit_turnover, long_trade_weights = _compute_trade_summary(
-                prev_weights,
-                prev_entry_prices,
-                prev_entry_date,
-                long_weights,
-                entry_date,
-                price_table=entry_price_table,
-            )
-            turnover_short, short_entry_turnover, short_exit_turnover, short_trade_weights = _compute_trade_summary(
-                prev_short_weights,
-                prev_short_entry_prices,
-                prev_short_entry_date,
-                short_weights,
-                entry_date,
-                price_table=entry_price_table,
-            )
-            fee_cost_long = cost_model.cost(
-                turnover_long,
-                is_initial=prev_weights is None,
-                side="long",
-                entry_turnover=long_entry_turnover,
-                exit_turnover=long_exit_turnover,
-                holding_days=int(period_exit_idx_long - entry_idx),
-                gross_exposure=float(long_weights.abs().sum()),
-            )
-            fee_cost_short = cost_model.cost(
-                turnover_short,
-                is_initial=prev_short_weights is None,
-                side="short",
-                entry_turnover=short_entry_turnover,
-                exit_turnover=short_exit_turnover,
-                holding_days=int(period_exit_idx_short - entry_idx),
-                gross_exposure=float(short_weights.abs().sum()),
-            )
-            pricing_row = (
-                amount_tables[slippage_model.amount_col].loc[entry_date]
-                if isinstance(slippage_model, ParticipationSlippageModel)
-                else None
-            )
-            slippage_cost_long = slippage_model.cost(
-                long_trade_weights,
-                pricing_row=pricing_row,
-                is_initial=prev_weights is None,
-                side="long",
-            )
-            slippage_cost_short = slippage_model.cost(
-                short_trade_weights,
-                pricing_row=pricing_row,
-                is_initial=prev_short_weights is None,
-                side="short",
-            )
-            fee_cost = fee_cost_long + fee_cost_short
-            slippage_cost = slippage_cost_long + slippage_cost_short
+            gross = long_leg.gross + short_leg.gross
+            fee_cost = long_leg.fee_cost + short_leg.fee_cost
+            slippage_cost = long_leg.slippage_cost + short_leg.slippage_cost
             total_cost = fee_cost + slippage_cost
             net = gross - total_cost
-            turnover = turnover_long + turnover_short
+            turnover = long_leg.turnover + short_leg.turnover
 
-            prev_holdings = set(long_holdings)
-            prev_weights = long_weights
-            prev_entry_date = entry_date
-            prev_entry_prices = long_entry
-            prev_short_holdings = set(short_holdings)
-            prev_short_weights = short_weights
-            prev_short_entry_date = entry_date
-            prev_short_entry_prices = short_entry
+            long_state = _BacktestPositionState(
+                holdings=set(long_leg.holdings),
+                weights=long_leg.weights,
+                entry_date=entry_date,
+                entry_prices=long_leg.entry_prices,
+            )
+            short_state = _BacktestPositionState(
+                holdings=set(short_leg.holdings),
+                weights=short_leg.weights,
+                entry_date=entry_date,
+                entry_prices=short_leg.entry_prices,
+            )
 
         gross_returns.append(gross)
         net_returns.append(net)

@@ -1915,6 +1915,195 @@ def _update_asset_health_symbol_history_state(
         )
 
 
+def _record_asset_health_missing_target_field(
+    *,
+    stats: dict[str, object],
+    symbol: str,
+    sample_limit: int,
+) -> None:
+    stats["missing_on_target_date"] = int(stats["missing_on_target_date"]) + 1
+    stats["missing_and_never_nonnull"] = int(stats["missing_and_never_nonnull"]) + 1
+    _append_sample(stats["sample_missing_symbols"], symbol, limit=sample_limit)
+    _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
+
+
+def _record_asset_health_target_assessment(
+    *,
+    stats: dict[str, object],
+    symbol: str,
+    prior_series: pd.Series,
+    assessment: Mapping[str, object],
+    sample_limit: int,
+) -> bool:
+    if assessment["has_raw_nonnull"]:
+        stats["nonnull_on_target_date"] = int(stats["nonnull_on_target_date"]) + 1
+    else:
+        stats["missing_on_target_date"] = int(stats["missing_on_target_date"]) + 1
+        _append_sample(stats["sample_missing_symbols"], symbol, limit=sample_limit)
+        _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
+        if prior_series.notna().any():
+            stats["missing_but_prior_nonnull"] = int(stats["missing_but_prior_nonnull"]) + 1
+            _append_sample(stats["sample_prior_nonnull_symbols"], symbol, limit=sample_limit)
+        else:
+            stats["missing_and_never_nonnull"] = int(stats["missing_and_never_nonnull"]) + 1
+
+    if assessment["has_placeholder"]:
+        stats["placeholder_on_target_date"] = int(stats["placeholder_on_target_date"]) + 1
+        _append_sample(stats["sample_placeholder_symbols"], symbol, limit=sample_limit)
+        _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
+
+    if assessment["has_nonfinite"]:
+        stats["nonfinite_on_target_date"] = int(stats["nonfinite_on_target_date"]) + 1
+        _append_sample(stats["sample_nonfinite_symbols"], symbol, limit=sample_limit)
+        _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
+
+    if not assessment["has_clean"]:
+        return False
+
+    stats["clean_nonmissing_on_target_date"] = (
+        int(stats["clean_nonmissing_on_target_date"]) + 1
+    )
+    _append_sample(stats["sample_clean_symbols"], symbol, limit=sample_limit)
+    clean_value = assessment["representative_clean_value"]
+    if clean_value is not None:
+        stats["clean_value_counter"][clean_value] += 1
+    if assessment["has_zero"]:
+        stats["zero_on_target_date"] = int(stats["zero_on_target_date"]) + 1
+        _append_sample(stats["sample_zero_symbols"], symbol, limit=sample_limit)
+    return True
+
+
+def _record_asset_health_prior_clean_gap(
+    *,
+    stats: dict[str, object],
+    symbol: str,
+    field: str,
+    work: pd.DataFrame,
+    prior_frame: pd.DataFrame,
+    prior_series: pd.Series,
+    target_frame: pd.DataFrame,
+    date_column: str,
+    target_date: pd.Timestamp,
+    dataset: str | None,
+    sample_limit: int,
+    daily_reference: pd.DataFrame | None,
+    ex_factor_reference: pd.DataFrame | None,
+    shares_reference: pd.DataFrame | None,
+    instrument_reference: pd.DataFrame | None,
+) -> None:
+    prior_placeholder_mask = _placeholder_mask(prior_series)
+    prior_numeric = pd.to_numeric(prior_series, errors="coerce")
+    prior_nonfinite_mask = (
+        prior_series.notna()
+        & prior_numeric.notna()
+        & ~np.isfinite(prior_numeric.to_numpy(dtype="float64"))
+    )
+    prior_clean_mask = prior_series.notna() & ~prior_placeholder_mask & ~prior_nonfinite_mask
+    if not bool(prior_clean_mask.any()):
+        return
+
+    last_nonnull_date = (
+        pd.to_datetime(prior_frame.loc[prior_clean_mask, date_column]).max().normalize()
+    )
+    age_days = int((target_date - last_nonnull_date).days)
+    stats["unusable_but_prior_clean"] = int(stats["unusable_but_prior_clean"]) + 1
+    _append_sample(stats["sample_prior_clean_symbols"], symbol, limit=sample_limit)
+    ffill_record = {
+        "symbol": symbol,
+        "last_nonnull_date": _format_date(last_nonnull_date),
+        "age_days": age_days,
+    }
+    if dataset != "valuation":
+        stats["ffill_age_records"].append(ffill_record)
+        return
+
+    fresh_gap = _classify_valuation_fresh_target_gap(
+        field=field,
+        work=work,
+        target_frame=target_frame,
+        date_column=date_column,
+        start_date=last_nonnull_date,
+        end_date=target_date,
+    )
+    if fresh_gap["fresh_gap"]:
+        ffill_record["reference_context"] = fresh_gap["reason"]
+        stats["fresh_target_gap_records"].append(ffill_record)
+        return
+
+    context = _classify_valuation_reference_window(
+        start_date=last_nonnull_date,
+        end_date=target_date,
+        daily_reference=daily_reference,
+        ex_factor_reference=ex_factor_reference,
+        shares_reference=shares_reference,
+        instrument_reference=instrument_reference,
+    )
+    ffill_record["reference_context"] = context["reason"]
+    if context["provider_like"]:
+        stats["provider_ffill_age_records"].append(ffill_record)
+    else:
+        stats["ffill_age_records"].append(ffill_record)
+
+
+def _update_asset_health_target_field_stats(
+    *,
+    field_stats: dict[str, dict[str, object]],
+    selected_fields: Sequence[str],
+    symbol: str,
+    work: pd.DataFrame,
+    target_frame: pd.DataFrame,
+    prior_frame: pd.DataFrame,
+    date_column: str,
+    target_date: pd.Timestamp,
+    dataset: str | None,
+    sample_limit: int,
+    daily_reference: pd.DataFrame | None,
+    ex_factor_reference: pd.DataFrame | None,
+    shares_reference: pd.DataFrame | None,
+    instrument_reference: pd.DataFrame | None,
+) -> None:
+    for field in selected_fields:
+        stats = field_stats[field]
+        stats["symbols_with_target_date_row"] = int(stats["symbols_with_target_date_row"]) + 1
+        if field not in work.columns:
+            _record_asset_health_missing_target_field(
+                stats=stats,
+                symbol=symbol,
+                sample_limit=sample_limit,
+            )
+            continue
+
+        target_series = target_frame[field]
+        prior_series = prior_frame[field]
+        assessment = _assess_target_series(target_series)
+        if _record_asset_health_target_assessment(
+            stats=stats,
+            symbol=symbol,
+            prior_series=prior_series,
+            assessment=assessment,
+            sample_limit=sample_limit,
+        ):
+            continue
+
+        _record_asset_health_prior_clean_gap(
+            stats=stats,
+            symbol=symbol,
+            field=field,
+            work=work,
+            prior_frame=prior_frame,
+            prior_series=prior_series,
+            target_frame=target_frame,
+            date_column=date_column,
+            target_date=target_date,
+            dataset=dataset,
+            sample_limit=sample_limit,
+            daily_reference=daily_reference,
+            ex_factor_reference=ex_factor_reference,
+            shares_reference=shares_reference,
+            instrument_reference=instrument_reference,
+        )
+
+
 def inspect_hk_asset_health(args) -> int:
     asset_dir = _resolve_path(args.asset_dir)
     data_dir = asset_dir / "data"
@@ -2097,97 +2286,22 @@ def inspect_hk_asset_health(args) -> int:
                 sample_limit=sample_limit,
             )
 
-        for field in selected_fields:
-            stats = field_stats[field]
-            stats["symbols_with_target_date_row"] = int(stats["symbols_with_target_date_row"]) + 1
-            if field not in work.columns:
-                stats["missing_on_target_date"] = int(stats["missing_on_target_date"]) + 1
-                stats["missing_and_never_nonnull"] = int(stats["missing_and_never_nonnull"]) + 1
-                _append_sample(stats["sample_missing_symbols"], symbol, limit=sample_limit)
-                _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
-                continue
-
-            target_series = target_frame[field]
-            prior_series = prior_frame[field]
-            assessment = _assess_target_series(target_series)
-
-            if assessment["has_raw_nonnull"]:
-                stats["nonnull_on_target_date"] = int(stats["nonnull_on_target_date"]) + 1
-            else:
-                stats["missing_on_target_date"] = int(stats["missing_on_target_date"]) + 1
-                _append_sample(stats["sample_missing_symbols"], symbol, limit=sample_limit)
-                _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
-                if prior_series.notna().any():
-                    stats["missing_but_prior_nonnull"] = int(stats["missing_but_prior_nonnull"]) + 1
-                    _append_sample(stats["sample_prior_nonnull_symbols"], symbol, limit=sample_limit)
-                else:
-                    stats["missing_and_never_nonnull"] = int(stats["missing_and_never_nonnull"]) + 1
-
-            if assessment["has_placeholder"]:
-                stats["placeholder_on_target_date"] = int(stats["placeholder_on_target_date"]) + 1
-                _append_sample(stats["sample_placeholder_symbols"], symbol, limit=sample_limit)
-                _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
-
-            if assessment["has_nonfinite"]:
-                stats["nonfinite_on_target_date"] = int(stats["nonfinite_on_target_date"]) + 1
-                _append_sample(stats["sample_nonfinite_symbols"], symbol, limit=sample_limit)
-                _append_sample(stats["sample_unusable_symbols"], symbol, limit=sample_limit)
-
-            if assessment["has_clean"]:
-                stats["clean_nonmissing_on_target_date"] = int(stats["clean_nonmissing_on_target_date"]) + 1
-                _append_sample(stats["sample_clean_symbols"], symbol, limit=sample_limit)
-                clean_value = assessment["representative_clean_value"]
-                if clean_value is not None:
-                    stats["clean_value_counter"][clean_value] += 1
-                if assessment["has_zero"]:
-                    stats["zero_on_target_date"] = int(stats["zero_on_target_date"]) + 1
-                    _append_sample(stats["sample_zero_symbols"], symbol, limit=sample_limit)
-                continue
-
-            prior_placeholder_mask = _placeholder_mask(prior_series)
-            prior_numeric = pd.to_numeric(prior_series, errors="coerce")
-            prior_nonfinite_mask = prior_series.notna() & prior_numeric.notna() & ~np.isfinite(
-                prior_numeric.to_numpy(dtype="float64")
-            )
-            prior_clean_mask = prior_series.notna() & ~prior_placeholder_mask & ~prior_nonfinite_mask
-            if bool(prior_clean_mask.any()):
-                last_nonnull_date = pd.to_datetime(prior_frame.loc[prior_clean_mask, date_column]).max().normalize()
-                age_days = int((target_date - last_nonnull_date).days)
-                stats["unusable_but_prior_clean"] = int(stats["unusable_but_prior_clean"]) + 1
-                _append_sample(stats["sample_prior_clean_symbols"], symbol, limit=sample_limit)
-                ffill_record = {
-                    "symbol": symbol,
-                    "last_nonnull_date": _format_date(last_nonnull_date),
-                    "age_days": age_days,
-                }
-                if dataset == "valuation":
-                    fresh_gap = _classify_valuation_fresh_target_gap(
-                        field=field,
-                        work=work,
-                        target_frame=target_frame,
-                        date_column=date_column,
-                        start_date=last_nonnull_date,
-                        end_date=target_date,
-                    )
-                    if fresh_gap["fresh_gap"]:
-                        ffill_record["reference_context"] = fresh_gap["reason"]
-                        stats["fresh_target_gap_records"].append(ffill_record)
-                        continue
-                    context = _classify_valuation_reference_window(
-                        start_date=last_nonnull_date,
-                        end_date=target_date,
-                        daily_reference=daily_reference,
-                        ex_factor_reference=ex_factor_reference,
-                        shares_reference=shares_reference,
-                        instrument_reference=instrument_reference,
-                    )
-                    ffill_record["reference_context"] = context["reason"]
-                    if context["provider_like"]:
-                        stats["provider_ffill_age_records"].append(ffill_record)
-                    else:
-                        stats["ffill_age_records"].append(ffill_record)
-                else:
-                    stats["ffill_age_records"].append(ffill_record)
+        _update_asset_health_target_field_stats(
+            field_stats=field_stats,
+            selected_fields=selected_fields,
+            symbol=symbol,
+            work=work,
+            target_frame=target_frame,
+            prior_frame=prior_frame,
+            date_column=date_column,
+            target_date=target_date,
+            dataset=dataset,
+            sample_limit=sample_limit,
+            daily_reference=daily_reference,
+            ex_factor_reference=ex_factor_reference,
+            shares_reference=shares_reference,
+            instrument_reference=instrument_reference,
+        )
 
     symbols_scanned = len(candidate_symbols)
     latest_rows = [
