@@ -479,6 +479,63 @@ def _build_walk_forward_context(
     }
 
 
+def _run_walk_forward_evaluation(
+    request: TrainEvalRequest,
+    *,
+    updated_signal_direction: float,
+) -> tuple[list[dict], pd.DataFrame, pd.DataFrame]:
+    walk_forward_settings = request.walk_forward
+    walk_forward_results: list[dict] = []
+    walk_forward_importance_rows: list[dict[str, Any]] = []
+    if walk_forward_settings.wf_enabled:
+        walk_forward_context = _build_walk_forward_context(
+            request,
+            updated_signal_direction=updated_signal_direction,
+        )
+        try:
+            walk_forward_test_size = float(walk_forward_settings.wf_test_size)
+        except (TypeError, ValueError):
+            walk_forward_test_size = None
+        windows = build_walk_forward_windows(
+            request.data.all_dates,
+            walk_forward_test_size,
+            walk_forward_settings.wf_n_windows,
+            walk_forward_settings.wf_step_size,
+            walk_forward_settings.effective_gap_steps,
+            walk_forward_settings.wf_anchor_end,
+        )
+        if not windows:
+            logger.info("Walk-forward evaluation skipped: insufficient windows.")
+        else:
+            if len(windows) < walk_forward_settings.wf_n_windows:
+                logger.warning(
+                    "Walk-forward requested %s windows but only %s fit "
+                    "(test_size=%s, step_size=%s, anchor_end=%s). "
+                    "Reduce eval.test_size / eval.walk_forward.test_size, "
+                    "set a smaller eval.walk_forward.step_size, or lower n_windows.",
+                    walk_forward_settings.wf_n_windows,
+                    len(windows),
+                    walk_forward_test_size,
+                    walk_forward_settings.wf_step_size,
+                    walk_forward_settings.wf_anchor_end,
+                )
+            logger.info("Walk-forward evaluation: %s windows.", len(windows))
+            for window_meta in windows:
+                window_result, window_importance_rows = _evaluate_walk_forward_window(
+                    window_meta,
+                    context=walk_forward_context,
+                )
+                walk_forward_results.append(window_result)
+                walk_forward_importance_rows.extend(window_importance_rows)
+
+    walk_forward_importance_df = pd.DataFrame(walk_forward_importance_rows)
+    walk_forward_feature_stability_df = _summarize_walk_forward_feature_stability(
+        walk_forward_importance_df,
+        walk_forward_settings.wf_feature_top_k,
+    )
+    return walk_forward_results, walk_forward_importance_df, walk_forward_feature_stability_df
+
+
 def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
     data = request.data
     feature_target = request.feature_target
@@ -487,14 +544,12 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
     live_settings = request.live
     backtest_settings = request.backtest
     period_settings = request.period
-    walk_forward_settings = request.walk_forward
 
     train_df = data.train_df
     test_df = data.test_df
     test_dates = data.test_dates
     df_features = data.df_features
     df_full = data.df_full
-    all_dates = data.all_dates
 
     features = feature_target.features
     target = feature_target.target
@@ -547,17 +602,7 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
 
     rolling_windows_months = period_settings.rolling_windows_months
 
-    wf_enabled = walk_forward_settings.wf_enabled
-    wf_n_windows = walk_forward_settings.wf_n_windows
-    wf_test_size = walk_forward_settings.wf_test_size
-    wf_step_size = walk_forward_settings.wf_step_size
-    effective_gap_steps = walk_forward_settings.effective_gap_steps
-    wf_anchor_end = walk_forward_settings.wf_anchor_end
-    wf_feature_top_k = walk_forward_settings.wf_feature_top_k
-
     logger.info("Time-series cross-validation (IC) ...")
-
-    walk_forward_importance_rows: list[dict[str, Any]] = []
 
     cv_scores_raw = time_series_cv_ic(
         train_df,
@@ -742,51 +787,13 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
             "scores": [float(score) for score in cv_scores_adj],
         }
 
-    walk_forward_results: list[dict] = []
-    if wf_enabled:
-        walk_forward_context = _build_walk_forward_context(
-            request,
-            updated_signal_direction=updated_signal_direction,
-        )
-        try:
-            walk_forward_test_size = float(wf_test_size)
-        except (TypeError, ValueError):
-            walk_forward_test_size = None
-        windows = build_walk_forward_windows(
-            all_dates,
-            walk_forward_test_size,
-            wf_n_windows,
-            wf_step_size,
-            effective_gap_steps,
-            wf_anchor_end,
-        )
-        if not windows:
-            logger.info("Walk-forward evaluation skipped: insufficient windows.")
-        else:
-            if len(windows) < wf_n_windows:
-                logger.warning(
-                    "Walk-forward requested %s windows but only %s fit "
-                    "(test_size=%s, step_size=%s, anchor_end=%s). "
-                    "Reduce eval.test_size / eval.walk_forward.test_size, "
-                    "set a smaller eval.walk_forward.step_size, or lower n_windows.",
-                    wf_n_windows,
-                    len(windows),
-                    walk_forward_test_size,
-                    wf_step_size,
-                    wf_anchor_end,
-                )
-            logger.info("Walk-forward evaluation: %s windows.", len(windows))
-            for window_meta in windows:
-                window_result, window_importance_rows = _evaluate_walk_forward_window(
-                    window_meta,
-                    context=walk_forward_context,
-                )
-                walk_forward_results.append(window_result)
-                walk_forward_importance_rows.extend(window_importance_rows)
-    walk_forward_importance_df = pd.DataFrame(walk_forward_importance_rows)
-    walk_forward_feature_stability_df = _summarize_walk_forward_feature_stability(
+    (
+        walk_forward_results,
         walk_forward_importance_df,
-        wf_feature_top_k,
+        walk_forward_feature_stability_df,
+    ) = _run_walk_forward_evaluation(
+        request,
+        updated_signal_direction=updated_signal_direction,
     )
 
     logger.info("Feature importance:")

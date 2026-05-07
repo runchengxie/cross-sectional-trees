@@ -163,4 +163,4 @@ def test_run_tests_script_maintainability_mode_outputs_metrics():
     )
 
     assert result.returncode == 0, result.stderr
-    assert '"c901_file_ignores": 35' in result.stdout
+    assert '"c901_file_ignores": 34' in result.stdout

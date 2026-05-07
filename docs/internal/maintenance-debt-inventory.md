@@ -40,12 +40,12 @@ ratchet、在触碰 RQData asset 模块时收窄 public facade。兼容层删除
 | 指标 | 当前值 | 说明 |
 | --- | ---: | --- |
 | Python 文件数 | 263 | 包括源码、脚本和测试 |
-| Python 总行数 | 97,785 | 仅静态行数，用作趋势参考 |
+| Python 总行数 | 97,792 | 仅静态行数，用作趋势参考 |
 | 超过 100 字符的行 | 1,217 | Markdown 不计入 |
 | 超过 100 行的函数 | 189 | 包含测试函数 |
 | 超过 250 行的函数 | 31 | 优先关注实现代码 |
 | 超过 500 行的函数 | 0 | 需要单独跟踪的超大函数 |
-| `C901` 文件级豁免 | 35 | 见 `pyproject.toml` |
+| `C901` 文件级豁免 | 34 | 见 `pyproject.toml` |
 | `rqdata public_api.__all__` | 49 | 稳定 facade 导出名数量 |
 
 当前已经没有超过 500 行的 Python 函数。最大函数仍集中在 legacy runner、RQData
@@ -80,6 +80,7 @@ provider 语义：
 | generic mirror workflow context | 为 dated mirror 和 quarter mirror 分别新增 typed context helper，拆出参数、目录、request group、symbol map 和 retry active-field binding | `uv run pytest tests/rqdata_assets/test_mirror_daily.py tests/rqdata_assets/test_mirror_financial.py -q` |
 | backtest setup context | 将 `backtest_topk` 的执行模型解析和 pricing table 准备抽为 helper，主函数只保留 rebalance loop 和 long/short accounting | `uv run pytest tests/test_backtest.py tests/test_execution_calendar.py -q` |
 | asset health symbol scan state | 将 symbol parquet 读取、duplicate-date state updater、history state updater 抽出主检查循环；`inspect_hk_asset_health` 从 418 行降到 356 行 | `uv run pytest tests/rqdata_assets/test_asset_health_quality.py tests/rqdata_assets/test_asset_health_current.py tests/rqdata_assets/test_asset_health_history.py -q` |
+| C901 removal pilot | 将 `train_eval_stage.py` 的 walk-forward evaluation 抽成 helper，isolated C901 清零并撤销该文件的 `C901` per-file ignore | `uv run pytest tests/test_pipeline_train_eval_contracts.py tests/test_modeling.py tests/test_split.py tests/test_pipeline_runtime.py tests/test_pipeline_filters_core.py -q` |
 
 剩余 deferred decisions：
 
@@ -102,7 +103,7 @@ provider 语义：
 
 ## C901 Debt Registry
 
-本表是 `pyproject.toml` 里当前 35 个文件级 `C901` 豁免的审计口径。owner area
+本表是 `pyproject.toml` 里当前 34 个文件级 `C901` 豁免的审计口径。owner area
 表示责任域，不表示个人 owner。新增、删除或保留豁免时，必须同步更新本表；本地
 轻量校验可运行：
 
@@ -141,7 +142,6 @@ scripts/dev/run_tests.sh c901-debt
 | `src/cstree/pipeline/output_artifacts.py` | pipeline outputs | artifact 路径、CSV/JSON 写入和 summary 附件集中 | `uv run pytest tests/test_artifacts.py tests/test_pipeline_runtime.py -q` | 拆出 path plan、writer、summary attachment 后撤销 |
 | `src/cstree/pipeline/panel_loader.py` | pipeline data load | provider/file、本地资产和日期窗口加载集中 | `uv run pytest tests/test_pipeline_runtime.py tests/test_pipeline_filters_core.py -q` | 拆出 source resolver、date window、panel reader 后撤销 |
 | `src/cstree/pipeline/preflight.py` | pipeline validation | 运行前检查、provider 可用性和配置提示集中 | `uv run pytest tests/test_pipeline_validation.py tests/test_cli_core.py -q` | 拆出 config checks、provider checks、message builder 后撤销 |
-| `src/cstree/pipeline/train_eval_stage.py` | pipeline train/eval | train/eval 请求已收口，但 period、fit 和 walk-forward 仍集中 | `uv run pytest tests/test_pipeline_train_eval_contracts.py tests/test_modeling.py tests/test_split.py -q` | 拆出 period context、fit/eval runner、walk-forward 后撤销 |
 | `src/cstree/portfolio.py` | portfolio | 组合构造、权重和输出字段规则集中 | `uv run pytest tests/test_backtest.py tests/test_pipeline_e2e.py -q` | 拆出 weighting、turnover accounting、position rows 后撤销 |
 | `src/cstree/release_tools/hk_asset_workflow.py` | release workflow | refresh/inspect/package/release 编排和 report 收集集中 | `uv run pytest tests/test_hk_asset_workflow.py tests/test_run_release_scripts.py -q` | 拆出 stage planning、command construction、report collection 后撤销 |
 | `src/cstree/release_tools/package_assets.py` | release packaging | asset part spec、manifest 和 tarball 生成集中 | `uv run pytest tests/test_asset_release_scripts.py tests/test_run_release_scripts.py -q` | 拆出 part spec construction 和 manifest writer 后撤销 |
@@ -365,7 +365,7 @@ entrypoint 函数，而不是再抽常量。
 | 425 | `build_run_summary_sections` | `src/cstree/pipeline/output_summary_sections.py` | 后续拆 summary section builders |
 | 422 | `patch_hk_pit_financials` | `src/cstree/data_tools/rqdata_assets/mirror_financial.py` | 已抽 request context、resume 校验和 manifest/totals；后续继续拆 batch error handling |
 | 415 | `mirror_hk_daily` | `src/cstree/data_tools/rqdata_assets/mirror_daily.py` | 第二批，先抽 fetch policy / writer |
-| 399 | `_run_train_eval_stage_impl` | `src/cstree/pipeline/train_eval_stage.py` | 已抽 period/walk-forward context；后续继续拆 fit/eval runner |
+| 349 | `_run_train_eval_stage_impl` | `src/cstree/pipeline/train_eval_stage.py` | 已抽 period/walk-forward evaluation 并撤销 C901 豁免；后续继续拆 fit/eval runner |
 | 356 | `inspect_hk_asset_health` | `src/cstree/data_tools/rqdata_assets/asset_health.py` | 已抽 symbol read / duplicate / history state；后续继续拆 target-date field stats update |
 
 ## 首批候选

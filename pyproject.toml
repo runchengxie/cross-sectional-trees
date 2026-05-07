@@ -107,7 +107,6 @@ combine-as-imports = true
 "src/cstree/pipeline/output_artifacts.py" = ["C901"]
 "src/cstree/pipeline/panel_loader.py" = ["C901"]
 "src/cstree/pipeline/preflight.py" = ["C901"]
-"src/cstree/pipeline/train_eval_stage.py" = ["C901"]
 "src/cstree/portfolio.py" = ["C901"]
 "src/cstree/release_tools/hk_asset_workflow.py" = ["C901"]
 "src/cstree/release_tools/package_assets.py" = ["C901"]
