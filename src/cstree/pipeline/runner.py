@@ -938,42 +938,46 @@ def _run_legacy(
         period_eval_context=period_eval_context,
         rolling_windows_months=ROLLING_WINDOWS_MONTHS,
     )
-    resolved_benchmark_compare_specs = _attach_benchmark_compare_frames(
-        benchmark_compare_specs,
-        benchmark_compare_dfs,
-    )
-    persist_pipeline_outputs(
-        loaded=loaded,
-        universe_inputs=universe_inputs,
-        date_label_settings=date_label_settings,
-        eval_settings=eval_settings,
-        universe_filters=universe_filters,
-        runtime_settings=runtime_settings,
-        run_artifacts=run_artifacts,
-        panel_state=panel_state,
-        dataset_state=dataset_state,
-        split_state=split_state,
-        market=MARKET,
-        artifacts_root=ARTIFACTS_ROOT,
-        cache_dir=CACHE_DIR,
-        provider=provider,
-        quality_summary=quality_summary,
-        benchmark_symbol=benchmark_symbol,
-        benchmark_returns_file_path=benchmark_returns_file_path,
-        benchmark_compare_specs=resolved_benchmark_compare_specs,
-        label_horizon_mode=LABEL_HORIZON_MODE,
-        final_oos_enabled=FINAL_OOS_ENABLED,
-        final_oos_size_raw=FINAL_OOS_SIZE_RAW,
-        purge_steps=PURGE_STEPS,
-        embargo_steps=EMBARGO_STEPS,
-        effective_gap_steps=EFFECTIVE_GAP_STEPS,
-        backtest_group_col=BACKTEST_GROUP_COL,
-        train_eval_state=train_eval_state,
-        final_oos_state=final_oos_state,
-    )
+    _persist_legacy_pipeline_outputs(locals())
 
     # Optional: save the model
     # from joblib import dump; dump(model, "xgb_factor_model.joblib")
+
+
+def _persist_legacy_pipeline_outputs(state: dict[str, Any]) -> None:
+    resolved_benchmark_compare_specs = _attach_benchmark_compare_frames(
+        state["benchmark_compare_specs"],
+        state["benchmark_compare_dfs"],
+    )
+    persist_pipeline_outputs(
+        loaded=state["loaded"],
+        universe_inputs=state["universe_inputs"],
+        date_label_settings=state["date_label_settings"],
+        eval_settings=state["eval_settings"],
+        universe_filters=state["universe_filters"],
+        runtime_settings=state["runtime_settings"],
+        run_artifacts=state["run_artifacts"],
+        panel_state=state["panel_state"],
+        dataset_state=state["dataset_state"],
+        split_state=state["split_state"],
+        market=state["MARKET"],
+        artifacts_root=state["ARTIFACTS_ROOT"],
+        cache_dir=state["CACHE_DIR"],
+        provider=state["provider"],
+        quality_summary=state["quality_summary"],
+        benchmark_symbol=state["benchmark_symbol"],
+        benchmark_returns_file_path=state["benchmark_returns_file_path"],
+        benchmark_compare_specs=resolved_benchmark_compare_specs,
+        label_horizon_mode=state["LABEL_HORIZON_MODE"],
+        final_oos_enabled=state["FINAL_OOS_ENABLED"],
+        final_oos_size_raw=state["FINAL_OOS_SIZE_RAW"],
+        purge_steps=state["PURGE_STEPS"],
+        embargo_steps=state["EMBARGO_STEPS"],
+        effective_gap_steps=state["EFFECTIVE_GAP_STEPS"],
+        backtest_group_col=state["BACKTEST_GROUP_COL"],
+        train_eval_state=state["train_eval_state"],
+        final_oos_state=state["final_oos_state"],
+    )
 
 
 def run(

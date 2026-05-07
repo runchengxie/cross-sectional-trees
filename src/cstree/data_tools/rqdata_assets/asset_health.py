@@ -1719,6 +1719,74 @@ def _write_asset_health_output(args, payload: Mapping[str, object]) -> int:
     return quality_gate_exit_code(payload["quality_verdict"])
 
 
+def _resolve_asset_health_reference_assets(
+    args,
+    *,
+    dataset: str | None,
+    asset_dir: Path,
+) -> tuple[Path | None, Path | None, Path | None, dict[str, pd.DataFrame]]:
+    daily_reference_asset_dir: Path | None = None
+    if getattr(args, "daily_asset_dir", None):
+        daily_reference_asset_dir = _resolve_path(args.daily_asset_dir)
+        if not daily_reference_asset_dir.exists():
+            raise SystemExit(
+                f"Daily reference asset directory not found: {daily_reference_asset_dir}"
+            )
+        if not (daily_reference_asset_dir / "data").exists():
+            raise SystemExit(
+                f"Daily reference asset directory is missing data/: {daily_reference_asset_dir}"
+            )
+
+    ex_factor_reference_asset_dir: Path | None = None
+    shares_reference_asset_dir: Path | None = None
+    instrument_reference_by_symbol: dict[str, pd.DataFrame] = {}
+    if dataset == "valuation":
+        ex_factor_reference_asset_dir = _resolve_default_hk_ex_factor_asset_dir(asset_dir)
+        shares_reference_asset_dir = _resolve_default_hk_shares_asset_dir(asset_dir)
+        instrument_reference_by_symbol = _load_hk_instrument_reference_map(
+            _resolve_default_hk_instruments_path(asset_dir)
+        )
+    return (
+        daily_reference_asset_dir,
+        ex_factor_reference_asset_dir,
+        shares_reference_asset_dir,
+        instrument_reference_by_symbol,
+    )
+
+
+def _init_asset_health_field_stats(
+    selected_fields: Sequence[str],
+) -> dict[str, dict[str, object]]:
+    return {
+        field: {
+            "field": field,
+            "symbols_with_target_date_row": 0,
+            "nonnull_on_target_date": 0,
+            "clean_nonmissing_on_target_date": 0,
+            "missing_on_target_date": 0,
+            "missing_but_prior_nonnull": 0,
+            "missing_and_never_nonnull": 0,
+            "placeholder_on_target_date": 0,
+            "nonfinite_on_target_date": 0,
+            "zero_on_target_date": 0,
+            "unusable_but_prior_clean": 0,
+            "sample_missing_symbols": [],
+            "sample_prior_nonnull_symbols": [],
+            "sample_placeholder_symbols": [],
+            "sample_nonfinite_symbols": [],
+            "sample_zero_symbols": [],
+            "sample_clean_symbols": [],
+            "sample_prior_clean_symbols": [],
+            "sample_unusable_symbols": [],
+            "clean_value_counter": Counter(),
+            "ffill_age_records": [],
+            "provider_ffill_age_records": [],
+            "fresh_target_gap_records": [],
+        }
+        for field in selected_fields
+    }
+
+
 def inspect_hk_asset_health(args) -> int:
     asset_dir = _resolve_path(args.asset_dir)
     data_dir = asset_dir / "data"
@@ -1767,53 +1835,18 @@ def inspect_hk_asset_health(args) -> int:
     )
     include_history = bool(getattr(args, "include_history", False))
     history_state = _init_history_state(dataset=dataset) if include_history else None
-    daily_reference_asset_dir: Path | None = None
-    ex_factor_reference_asset_dir: Path | None = None
-    shares_reference_asset_dir: Path | None = None
-    instrument_reference_by_symbol: dict[str, pd.DataFrame] = {}
-    if getattr(args, "daily_asset_dir", None):
-        daily_reference_asset_dir = _resolve_path(args.daily_asset_dir)
-        if not daily_reference_asset_dir.exists():
-            raise SystemExit(f"Daily reference asset directory not found: {daily_reference_asset_dir}")
-        if not (daily_reference_asset_dir / "data").exists():
-            raise SystemExit(
-                f"Daily reference asset directory is missing data/: {daily_reference_asset_dir}"
-            )
-    if dataset == "valuation":
-        ex_factor_reference_asset_dir = _resolve_default_hk_ex_factor_asset_dir(asset_dir)
-        shares_reference_asset_dir = _resolve_default_hk_shares_asset_dir(asset_dir)
-        instrument_reference_by_symbol = _load_hk_instrument_reference_map(
-            _resolve_default_hk_instruments_path(asset_dir)
-        )
+    (
+        daily_reference_asset_dir,
+        ex_factor_reference_asset_dir,
+        shares_reference_asset_dir,
+        instrument_reference_by_symbol,
+    ) = _resolve_asset_health_reference_assets(
+        args,
+        dataset=dataset,
+        asset_dir=asset_dir,
+    )
 
-    field_stats: dict[str, dict[str, object]] = {
-        field: {
-            "field": field,
-            "symbols_with_target_date_row": 0,
-            "nonnull_on_target_date": 0,
-            "clean_nonmissing_on_target_date": 0,
-            "missing_on_target_date": 0,
-            "missing_but_prior_nonnull": 0,
-            "missing_and_never_nonnull": 0,
-            "placeholder_on_target_date": 0,
-            "nonfinite_on_target_date": 0,
-            "zero_on_target_date": 0,
-            "unusable_but_prior_clean": 0,
-            "sample_missing_symbols": [],
-            "sample_prior_nonnull_symbols": [],
-            "sample_placeholder_symbols": [],
-            "sample_nonfinite_symbols": [],
-            "sample_zero_symbols": [],
-            "sample_clean_symbols": [],
-            "sample_prior_clean_symbols": [],
-            "sample_unusable_symbols": [],
-            "clean_value_counter": Counter(),
-            "ffill_age_records": [],
-            "provider_ffill_age_records": [],
-            "fresh_target_gap_records": [],
-        }
-        for field in selected_fields
-    }
+    field_stats = _init_asset_health_field_stats(selected_fields)
     daily_rule_stats = _init_daily_rule_stats()
     duplicate_date_stats = {
         "symbols": 0,

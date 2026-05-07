@@ -312,6 +312,173 @@ def _fit_model_and_score_train(
     )
 
 
+def _build_period_eval_context(
+    request: TrainEvalRequest,
+    *,
+    live_state: dict[str, Any],
+    updated_signal_direction: float,
+    backtest_signal_direction: float,
+) -> dict[str, Any]:
+    data = request.data
+    feature_target = request.feature_target
+    model_settings = request.model
+    signal_settings = request.signal
+    live_settings = request.live
+    backtest_settings = request.backtest
+    period_settings = request.period
+    services = request.services
+
+    return {
+        "features": feature_target.features,
+        "target": feature_target.target,
+        "signal_direction": updated_signal_direction,
+        "backtest_signal_direction": backtest_signal_direction,
+        "sample_on_rebalance_dates": period_settings.sample_on_rebalance_dates,
+        "score_postprocess_method": signal_settings.score_postprocess_method,
+        "score_postprocess_columns": signal_settings.score_postprocess_columns,
+        "score_postprocess_strength": signal_settings.score_postprocess_strength,
+        "score_postprocess_min_obs": signal_settings.score_postprocess_min_obs,
+        "rebalance_frequency": period_settings.rebalance_frequency,
+        "valid_dates_set": data.valid_dates_set,
+        "perm_test_runs": period_settings.perm_test_runs,
+        "perm_test_seed": period_settings.perm_test_seed,
+        "model_type": model_settings.model_type,
+        "model_params": model_settings.model_params,
+        "train_target": feature_target.train_target,
+        "sample_weight_mode": model_settings.sample_weight_mode,
+        "sample_weight_params": model_settings.sample_weight_params,
+        "label_horizon_mode": period_settings.label_horizon_mode,
+        "label_horizon_effective": period_settings.label_horizon_effective,
+        "n_quantiles": period_settings.n_quantiles,
+        "top_k": period_settings.top_k,
+        "eval_buffer_exit": period_settings.eval_buffer_exit,
+        "eval_buffer_entry": period_settings.eval_buffer_entry,
+        "transaction_cost_bps": period_settings.transaction_cost_bps,
+        "bucket_ic_enabled": period_settings.bucket_ic_enabled,
+        "bucket_ic_schemes": period_settings.bucket_ic_schemes,
+        "bucket_ic_method": period_settings.bucket_ic_method,
+        "bucket_ic_min_count": period_settings.bucket_ic_min_count,
+        "backtest_rebalance_frequency": backtest_settings.backtest_rebalance_frequency,
+        "backtest_enabled": backtest_settings.backtest_enabled,
+        "live_enabled": live_settings.live_enabled,
+        "backtest_top_k": backtest_settings.backtest_top_k,
+        "label_shift_days": backtest_settings.label_shift_days,
+        "backtest_weighting": backtest_settings.backtest_weighting,
+        "backtest_buffer_exit": backtest_settings.backtest_buffer_exit,
+        "backtest_buffer_entry": backtest_settings.backtest_buffer_entry,
+        "backtest_long_only": backtest_settings.backtest_long_only,
+        "backtest_short_k": backtest_settings.backtest_short_k,
+        "backtest_tradable_col": backtest_settings.backtest_tradable_col,
+        "backtest_group_col": backtest_settings.backtest_group_col,
+        "backtest_max_names_per_group": backtest_settings.backtest_max_names_per_group,
+        "execution_model": backtest_settings.execution_model,
+        "execution_sim_config": backtest_settings.execution_sim_config,
+        "positions_by_rebalance_live": live_state["positions_by_rebalance_live"],
+        "backtest_cost_bps_effective": backtest_settings.backtest_cost_bps_effective,
+        "backtest_trading_days_per_year": backtest_settings.backtest_trading_days_per_year,
+        "backtest_exit_mode": backtest_settings.backtest_exit_mode,
+        "backtest_exit_horizon_days": backtest_settings.backtest_exit_horizon_days,
+        "backtest_pricing_df": data.backtest_pricing_df,
+        "backtest_exit_price_policy": backtest_settings.backtest_exit_price_policy,
+        "backtest_exit_fallback_policy": backtest_settings.backtest_exit_fallback_policy,
+        "benchmark_df": data.benchmark_df,
+        "benchmark_return_series": data.benchmark_return_series,
+        "exposure_source_df": data.df_full,
+        "industry_source_df": data.industry_source_df,
+        "fundamentals_mcap_col": feature_target.fundamentals_mcap_col,
+        "industry_columns": list(
+            dict.fromkeys(data.passthrough_cols + data.industry_keep_columns)
+        ),
+        "price_col": feature_target.price_col,
+        "price_passthrough_cols": data.price_passthrough_cols,
+        "passthrough_cols": data.passthrough_cols,
+        "bucket_cols": data.bucket_cols,
+        "backtest_topk_fn": services.backtest_topk_fn,
+        "bucket_ic_summary_fn": services.bucket_ic_summary_fn,
+    }
+
+
+def _build_walk_forward_context(
+    request: TrainEvalRequest,
+    *,
+    updated_signal_direction: float,
+) -> dict[str, Any]:
+    data = request.data
+    feature_target = request.feature_target
+    model_settings = request.model
+    signal_settings = request.signal
+    backtest_settings = request.backtest
+    period_settings = request.period
+    walk_forward_settings = request.walk_forward
+    services = request.services
+
+    return {
+        "df_model_sorted": data.df_model_sorted,
+        "all_date_start_rows": data.all_date_start_rows,
+        "all_date_end_rows": data.all_date_end_rows,
+        "all_date_to_pos": data.all_date_to_pos,
+        "train_window_mode": model_settings.train_window_mode,
+        "train_window_size": model_settings.train_window_size,
+        "train_window_unit": model_settings.train_window_unit,
+        "signal_direction": updated_signal_direction,
+        "signal_direction_mode": signal_settings.signal_direction_mode,
+        "features": feature_target.features,
+        "target": feature_target.target,
+        "n_splits": model_settings.n_splits,
+        "embargo_steps": model_settings.embargo_steps,
+        "purge_steps": model_settings.purge_steps,
+        "model_cfg": model_settings.model_cfg,
+        "min_abs_ic_to_flip": signal_settings.min_abs_ic_to_flip,
+        "sample_weight_mode": model_settings.sample_weight_mode,
+        "sample_weight_params": model_settings.sample_weight_params,
+        "train_target": feature_target.train_target,
+        "model_type": model_settings.model_type,
+        "model_params": model_settings.model_params,
+        "report_train_ic": signal_settings.report_train_ic,
+        "sample_on_rebalance_dates": period_settings.sample_on_rebalance_dates,
+        "score_postprocess_method": signal_settings.score_postprocess_method,
+        "score_postprocess_columns": signal_settings.score_postprocess_columns,
+        "score_postprocess_strength": signal_settings.score_postprocess_strength,
+        "score_postprocess_min_obs": signal_settings.score_postprocess_min_obs,
+        "rebalance_frequency": period_settings.rebalance_frequency,
+        "valid_dates_set": data.valid_dates_set,
+        "wf_perm_test_enabled": walk_forward_settings.wf_perm_test_enabled,
+        "wf_perm_test_runs": walk_forward_settings.wf_perm_test_runs,
+        "wf_perm_test_seed": walk_forward_settings.wf_perm_test_seed,
+        "n_quantiles": period_settings.n_quantiles,
+        "top_k": period_settings.top_k,
+        "eval_buffer_exit": period_settings.eval_buffer_exit,
+        "eval_buffer_entry": period_settings.eval_buffer_entry,
+        "wf_backtest_enabled": walk_forward_settings.wf_backtest_enabled,
+        "backtest_signal_direction_raw": backtest_settings.backtest_signal_direction_raw,
+        "df_full": data.df_full,
+        "price_col": feature_target.price_col,
+        "backtest_rebalance_frequency": backtest_settings.backtest_rebalance_frequency,
+        "label_shift_days": backtest_settings.label_shift_days,
+        "backtest_cost_bps_effective": backtest_settings.backtest_cost_bps_effective,
+        "backtest_trading_days_per_year": backtest_settings.backtest_trading_days_per_year,
+        "backtest_exit_mode": backtest_settings.backtest_exit_mode,
+        "backtest_exit_horizon_days": backtest_settings.backtest_exit_horizon_days,
+        "backtest_long_only": backtest_settings.backtest_long_only,
+        "backtest_short_k": backtest_settings.backtest_short_k,
+        "backtest_buffer_exit": backtest_settings.backtest_buffer_exit,
+        "backtest_buffer_entry": backtest_settings.backtest_buffer_entry,
+        "backtest_group_col": backtest_settings.backtest_group_col,
+        "backtest_max_names_per_group": backtest_settings.backtest_max_names_per_group,
+        "backtest_tradable_col": backtest_settings.backtest_tradable_col,
+        "backtest_exit_price_policy": backtest_settings.backtest_exit_price_policy,
+        "backtest_exit_fallback_policy": backtest_settings.backtest_exit_fallback_policy,
+        "execution_model": backtest_settings.execution_model,
+        "execution_sim_config": backtest_settings.execution_sim_config,
+        "backtest_pricing_df": data.backtest_pricing_df,
+        "benchmark_df": data.benchmark_df,
+        "benchmark_return_series": data.benchmark_return_series,
+        "backtest_top_k": backtest_settings.backtest_top_k,
+        "wf_feature_top_k": walk_forward_settings.wf_feature_top_k,
+        "backtest_topk_fn": services.backtest_topk_fn,
+    }
+
+
 def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
     data = request.data
     feature_target = request.feature_target
@@ -321,33 +488,18 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
     backtest_settings = request.backtest
     period_settings = request.period
     walk_forward_settings = request.walk_forward
-    services = request.services
 
     train_df = data.train_df
     test_df = data.test_df
     test_dates = data.test_dates
     df_features = data.df_features
     df_full = data.df_full
-    df_model_sorted = data.df_model_sorted
     all_dates = data.all_dates
-    all_date_start_rows = data.all_date_start_rows
-    all_date_end_rows = data.all_date_end_rows
-    all_date_to_pos = data.all_date_to_pos
-    valid_dates_set = data.valid_dates_set
-    backtest_pricing_df = data.backtest_pricing_df
-    benchmark_df = data.benchmark_df
-    benchmark_return_series = data.benchmark_return_series
-    industry_source_df = data.industry_source_df
-    passthrough_cols = data.passthrough_cols
-    industry_keep_columns = data.industry_keep_columns
-    price_passthrough_cols = data.price_passthrough_cols
-    bucket_cols = data.bucket_cols
 
     features = feature_target.features
     target = feature_target.target
     train_target = feature_target.train_target
     price_col = feature_target.price_col
-    fundamentals_mcap_col = feature_target.fundamentals_mcap_col
 
     model_type = model_settings.model_type
     model_params = model_settings.model_params
@@ -368,7 +520,6 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
     score_postprocess_columns = signal_settings.score_postprocess_columns
     score_postprocess_strength = signal_settings.score_postprocess_strength
     score_postprocess_min_obs = signal_settings.score_postprocess_min_obs
-    report_train_ic = signal_settings.report_train_ic
 
     live_enabled = live_settings.live_enabled
     live_as_of = live_settings.live_as_of
@@ -390,32 +541,10 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
     backtest_group_col = backtest_settings.backtest_group_col
     backtest_max_names_per_group = backtest_settings.backtest_max_names_per_group
     execution_model = backtest_settings.execution_model
-    execution_sim_config = backtest_settings.execution_sim_config
     backtest_rebalance_frequency = backtest_settings.backtest_rebalance_frequency
     backtest_enabled = backtest_settings.backtest_enabled
     backtest_signal_direction_raw = backtest_settings.backtest_signal_direction_raw
-    backtest_cost_bps_effective = backtest_settings.backtest_cost_bps_effective
-    backtest_trading_days_per_year = backtest_settings.backtest_trading_days_per_year
-    backtest_exit_mode = backtest_settings.backtest_exit_mode
-    backtest_exit_horizon_days = backtest_settings.backtest_exit_horizon_days
-    backtest_exit_price_policy = backtest_settings.backtest_exit_price_policy
-    backtest_exit_fallback_policy = backtest_settings.backtest_exit_fallback_policy
 
-    rebalance_frequency = period_settings.rebalance_frequency
-    sample_on_rebalance_dates = period_settings.sample_on_rebalance_dates
-    perm_test_runs = period_settings.perm_test_runs
-    perm_test_seed = period_settings.perm_test_seed
-    label_horizon_mode = period_settings.label_horizon_mode
-    label_horizon_effective = period_settings.label_horizon_effective
-    n_quantiles = period_settings.n_quantiles
-    top_k = period_settings.top_k
-    eval_buffer_exit = period_settings.eval_buffer_exit
-    eval_buffer_entry = period_settings.eval_buffer_entry
-    transaction_cost_bps = period_settings.transaction_cost_bps
-    bucket_ic_enabled = period_settings.bucket_ic_enabled
-    bucket_ic_schemes = period_settings.bucket_ic_schemes
-    bucket_ic_method = period_settings.bucket_ic_method
-    bucket_ic_min_count = period_settings.bucket_ic_min_count
     rolling_windows_months = period_settings.rolling_windows_months
 
     wf_enabled = walk_forward_settings.wf_enabled
@@ -425,13 +554,6 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
     effective_gap_steps = walk_forward_settings.effective_gap_steps
     wf_anchor_end = walk_forward_settings.wf_anchor_end
     wf_feature_top_k = walk_forward_settings.wf_feature_top_k
-    wf_backtest_enabled = walk_forward_settings.wf_backtest_enabled
-    wf_perm_test_enabled = walk_forward_settings.wf_perm_test_enabled
-    wf_perm_test_runs = walk_forward_settings.wf_perm_test_runs
-    wf_perm_test_seed = walk_forward_settings.wf_perm_test_seed
-
-    backtest_topk_fn = services.backtest_topk_fn
-    bucket_ic_summary_fn = services.bucket_ic_summary_fn
 
     logger.info("Time-series cross-validation (IC) ...")
 
@@ -559,72 +681,12 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
         else backtest_signal_direction_raw
     )
 
-    period_eval_context = {
-        "features": features,
-        "target": target,
-        "signal_direction": updated_signal_direction,
-        "backtest_signal_direction": backtest_signal_direction,
-        "sample_on_rebalance_dates": sample_on_rebalance_dates,
-        "score_postprocess_method": score_postprocess_method,
-        "score_postprocess_columns": score_postprocess_columns,
-        "score_postprocess_strength": score_postprocess_strength,
-        "score_postprocess_min_obs": score_postprocess_min_obs,
-        "rebalance_frequency": rebalance_frequency,
-        "valid_dates_set": valid_dates_set,
-        "perm_test_runs": perm_test_runs,
-        "perm_test_seed": perm_test_seed,
-        "model_type": model_type,
-        "model_params": model_params,
-        "train_target": train_target,
-        "sample_weight_mode": sample_weight_mode,
-        "sample_weight_params": sample_weight_params,
-        "label_horizon_mode": label_horizon_mode,
-        "label_horizon_effective": label_horizon_effective,
-        "n_quantiles": n_quantiles,
-        "top_k": top_k,
-        "eval_buffer_exit": eval_buffer_exit,
-        "eval_buffer_entry": eval_buffer_entry,
-        "transaction_cost_bps": transaction_cost_bps,
-        "bucket_ic_enabled": bucket_ic_enabled,
-        "bucket_ic_schemes": bucket_ic_schemes,
-        "bucket_ic_method": bucket_ic_method,
-        "bucket_ic_min_count": bucket_ic_min_count,
-        "backtest_rebalance_frequency": backtest_rebalance_frequency,
-        "backtest_enabled": backtest_enabled,
-        "live_enabled": live_enabled,
-        "backtest_top_k": backtest_top_k,
-        "label_shift_days": label_shift_days,
-        "backtest_weighting": backtest_weighting,
-        "backtest_buffer_exit": backtest_buffer_exit,
-        "backtest_buffer_entry": backtest_buffer_entry,
-        "backtest_long_only": backtest_long_only,
-        "backtest_short_k": backtest_short_k,
-        "backtest_tradable_col": backtest_tradable_col,
-        "backtest_group_col": backtest_group_col,
-        "backtest_max_names_per_group": backtest_max_names_per_group,
-        "execution_model": execution_model,
-        "execution_sim_config": execution_sim_config,
-        "positions_by_rebalance_live": live_state["positions_by_rebalance_live"],
-        "backtest_cost_bps_effective": backtest_cost_bps_effective,
-        "backtest_trading_days_per_year": backtest_trading_days_per_year,
-        "backtest_exit_mode": backtest_exit_mode,
-        "backtest_exit_horizon_days": backtest_exit_horizon_days,
-        "backtest_pricing_df": backtest_pricing_df,
-        "backtest_exit_price_policy": backtest_exit_price_policy,
-        "backtest_exit_fallback_policy": backtest_exit_fallback_policy,
-        "benchmark_df": benchmark_df,
-        "benchmark_return_series": benchmark_return_series,
-        "exposure_source_df": df_full,
-        "industry_source_df": industry_source_df,
-        "fundamentals_mcap_col": fundamentals_mcap_col,
-        "industry_columns": list(dict.fromkeys(passthrough_cols + industry_keep_columns)),
-        "price_col": price_col,
-        "price_passthrough_cols": price_passthrough_cols,
-        "passthrough_cols": passthrough_cols,
-        "bucket_cols": bucket_cols,
-        "backtest_topk_fn": backtest_topk_fn,
-        "bucket_ic_summary_fn": bucket_ic_summary_fn,
-    }
+    period_eval_context = _build_period_eval_context(
+        request,
+        live_state=live_state,
+        updated_signal_direction=updated_signal_direction,
+        backtest_signal_direction=backtest_signal_direction,
+    )
 
     eval_main = _evaluate_period(
         "Test",
@@ -682,71 +744,10 @@ def _run_train_eval_stage_impl(request: TrainEvalRequest) -> dict[str, Any]:
 
     walk_forward_results: list[dict] = []
     if wf_enabled:
-        walk_forward_context = {
-            "df_model_sorted": df_model_sorted,
-            "all_date_start_rows": all_date_start_rows,
-            "all_date_end_rows": all_date_end_rows,
-            "all_date_to_pos": all_date_to_pos,
-            "train_window_mode": train_window_mode,
-            "train_window_size": train_window_size,
-            "train_window_unit": train_window_unit,
-            "signal_direction": updated_signal_direction,
-            "signal_direction_mode": signal_direction_mode,
-            "features": features,
-            "target": target,
-            "n_splits": n_splits,
-            "embargo_steps": embargo_steps,
-            "purge_steps": purge_steps,
-            "model_cfg": model_cfg,
-            "min_abs_ic_to_flip": min_abs_ic_to_flip,
-            "sample_weight_mode": sample_weight_mode,
-            "sample_weight_params": sample_weight_params,
-            "train_target": train_target,
-            "model_type": model_type,
-            "model_params": model_params,
-            "report_train_ic": report_train_ic,
-            "sample_on_rebalance_dates": sample_on_rebalance_dates,
-            "score_postprocess_method": score_postprocess_method,
-            "score_postprocess_columns": score_postprocess_columns,
-            "score_postprocess_strength": score_postprocess_strength,
-            "score_postprocess_min_obs": score_postprocess_min_obs,
-            "rebalance_frequency": rebalance_frequency,
-            "valid_dates_set": valid_dates_set,
-            "wf_perm_test_enabled": wf_perm_test_enabled,
-            "wf_perm_test_runs": wf_perm_test_runs,
-            "wf_perm_test_seed": wf_perm_test_seed,
-            "n_quantiles": n_quantiles,
-            "top_k": top_k,
-            "eval_buffer_exit": eval_buffer_exit,
-            "eval_buffer_entry": eval_buffer_entry,
-            "wf_backtest_enabled": wf_backtest_enabled,
-            "backtest_signal_direction_raw": backtest_signal_direction_raw,
-            "df_full": df_full,
-            "price_col": price_col,
-            "backtest_rebalance_frequency": backtest_rebalance_frequency,
-            "label_shift_days": label_shift_days,
-            "backtest_cost_bps_effective": backtest_cost_bps_effective,
-            "backtest_trading_days_per_year": backtest_trading_days_per_year,
-            "backtest_exit_mode": backtest_exit_mode,
-            "backtest_exit_horizon_days": backtest_exit_horizon_days,
-            "backtest_long_only": backtest_long_only,
-            "backtest_short_k": backtest_short_k,
-            "backtest_buffer_exit": backtest_buffer_exit,
-            "backtest_buffer_entry": backtest_buffer_entry,
-            "backtest_group_col": backtest_group_col,
-            "backtest_max_names_per_group": backtest_max_names_per_group,
-            "backtest_tradable_col": backtest_tradable_col,
-            "backtest_exit_price_policy": backtest_exit_price_policy,
-            "backtest_exit_fallback_policy": backtest_exit_fallback_policy,
-            "execution_model": execution_model,
-            "execution_sim_config": execution_sim_config,
-            "backtest_pricing_df": backtest_pricing_df,
-            "benchmark_df": benchmark_df,
-            "benchmark_return_series": benchmark_return_series,
-            "backtest_top_k": backtest_top_k,
-            "wf_feature_top_k": wf_feature_top_k,
-            "backtest_topk_fn": backtest_topk_fn,
-        }
+        walk_forward_context = _build_walk_forward_context(
+            request,
+            updated_signal_direction=updated_signal_direction,
+        )
         try:
             walk_forward_test_size = float(wf_test_size)
         except (TypeError, ValueError):

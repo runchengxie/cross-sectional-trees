@@ -5,6 +5,7 @@ import re
 import shutil
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -871,9 +872,31 @@ def _build_pit_patch_manifest(
     }
 
 
-def patch_hk_pit_financials(args, rqdatac) -> int:
-    _ensure_rqdatac_hk_plugin()
+@dataclass(frozen=True)
+class _PitPatchContext:
+    base_dir: Path
+    base_manifest: Mapping[str, object]
+    fields: list[str]
+    base_data_dir: Path
+    target_date: str
+    patch_start_quarter: str
+    patch_end_quarter: str
+    patch_start_key: tuple[int, int]
+    patch_end_key: tuple[int, int]
+    statements: str
+    symbols: list[str]
+    symbol_metadata: dict[str, object]
+    symbol_map: dict[str, str]
+    order_book_ids: list[str]
+    base_query: Mapping[str, object]
+    query_start_quarter: str
+    query_end_quarter: str
+    output_dir: Path
+    data_dir: Path
+    audit_path: Path
 
+
+def _prepare_pit_patch_context(args) -> _PitPatchContext:
     base_dir = _resolve_path(args.base_asset_dir)
     base_manifest, fields, base_symbols = _load_base_pit_asset(base_dir)
     base_data_dir = base_dir / "data"
@@ -909,7 +932,6 @@ def patch_hk_pit_financials(args, rqdatac) -> int:
     query_end_quarter = _quarter_text(max(base_end_key, patch_end_key))
 
     resume = bool(getattr(args, "resume", False))
-    skip_existing = bool(getattr(args, "skip_existing", False) or resume)
     output_name = getattr(args, "name", None) or _default_pit_patch_name(
         base_dir=base_dir,
         target_date=target_date,
@@ -927,7 +949,56 @@ def patch_hk_pit_financials(args, rqdatac) -> int:
     )
     data_dir = output_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
-    audit_path = output_dir / "audit.csv"
+    return _PitPatchContext(
+        base_dir=base_dir,
+        base_manifest=base_manifest,
+        fields=fields,
+        base_data_dir=base_data_dir,
+        target_date=target_date,
+        patch_start_quarter=patch_start_quarter,
+        patch_end_quarter=patch_end_quarter,
+        patch_start_key=patch_start_key,
+        patch_end_key=patch_end_key,
+        statements=statements,
+        symbols=symbols,
+        symbol_metadata=symbol_metadata,
+        symbol_map=symbol_map,
+        order_book_ids=order_book_ids,
+        base_query=base_query,
+        query_start_quarter=query_start_quarter,
+        query_end_quarter=query_end_quarter,
+        output_dir=output_dir,
+        data_dir=data_dir,
+        audit_path=output_dir / "audit.csv",
+    )
+
+
+def patch_hk_pit_financials(args, rqdatac) -> int:
+    _ensure_rqdatac_hk_plugin()
+
+    context = _prepare_pit_patch_context(args)
+    base_dir = context.base_dir
+    base_manifest = context.base_manifest
+    fields = context.fields
+    base_data_dir = context.base_data_dir
+    target_date = context.target_date
+    patch_start_quarter = context.patch_start_quarter
+    patch_end_quarter = context.patch_end_quarter
+    patch_start_key = context.patch_start_key
+    patch_end_key = context.patch_end_key
+    statements = context.statements
+    symbols = context.symbols
+    symbol_metadata = context.symbol_metadata
+    symbol_map = context.symbol_map
+    order_book_ids = context.order_book_ids
+    base_query = context.base_query
+    query_start_quarter = context.query_start_quarter
+    query_end_quarter = context.query_end_quarter
+    resume = bool(getattr(args, "resume", False))
+    skip_existing = bool(getattr(args, "skip_existing", False) or resume)
+    output_dir = context.output_dir
+    data_dir = context.data_dir
+    audit_path = context.audit_path
 
     existing_manifest = _load_manifest(output_dir / "manifest.yml") if resume else None
     _validate_pit_patch_resume_manifest(
