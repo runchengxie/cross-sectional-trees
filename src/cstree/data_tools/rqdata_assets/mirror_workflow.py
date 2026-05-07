@@ -331,6 +331,287 @@ def _fetch_with_field_fallback(
         return prepared, total_attempts, dropped_fields
 
 
+def _write_dated_prepared_batch_symbols(
+    *,
+    prepared: pd.DataFrame,
+    batch_symbols: Sequence[str],
+    batch_request_ids: Sequence[str],
+    data_dir: Path,
+    date_column: str,
+    primary_order_book_id_by_symbol: Mapping[str, str],
+    attempts: int,
+    batch_started_at: str,
+    batch_finished_at: str,
+    dropped_fields: Sequence[str],
+    record_entry: Callable[..., None],
+    record_non_entry: Callable[..., None],
+) -> dict[str, object]:
+    if prepared.empty:
+        for symbol in batch_symbols:
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=primary_order_book_id_by_symbol[symbol],
+                record_status="missing_remote",
+                attempts=attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                dropped_fields=dropped_fields,
+            )
+        return {
+            "order_book_ids": len(batch_request_ids),
+            "rows": 0,
+            "symbols_written": 0,
+            "symbols_missing_remote": len(batch_symbols),
+            "status": "empty",
+            "attempts": attempts,
+            "dropped_fields": list(dropped_fields),
+        }
+
+    batch_symbols_written = 0
+    batch_symbols_missing = 0
+    for symbol in batch_symbols:
+        symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
+        if symbol_frame.empty:
+            batch_symbols_missing += 1
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=primary_order_book_id_by_symbol[symbol],
+                record_status="missing_remote",
+                attempts=attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                dropped_fields=dropped_fields,
+            )
+            continue
+        entry = _write_dated_symbol_frame(data_dir, symbol_frame, date_column=date_column)
+        record_entry(
+            symbol=symbol,
+            entry=entry,
+            symbol_frame=symbol_frame,
+            record_status="written",
+            attempts=attempts,
+            started_at_value=batch_started_at,
+            finished_at_value=batch_finished_at,
+            dropped_fields=dropped_fields,
+        )
+        batch_symbols_written += 1
+
+    return {
+        "order_book_ids": len(batch_request_ids),
+        "rows": int(len(prepared)),
+        "symbols_written": batch_symbols_written,
+        "symbols_missing_remote": batch_symbols_missing,
+        "status": "completed",
+        "attempts": attempts,
+        "dropped_fields": list(dropped_fields),
+    }
+
+
+def _write_prepared_batch_order_book_ids(
+    *,
+    prepared: pd.DataFrame,
+    batch_order_book_ids: Sequence[str],
+    data_dir: Path,
+    symbol_map: Mapping[str, str],
+    attempts: int,
+    batch_started_at: str,
+    batch_finished_at: str,
+    dropped_fields: Sequence[str],
+    record_entry: Callable[..., None],
+    record_non_entry: Callable[..., None],
+) -> dict[str, object]:
+    if prepared.empty:
+        for order_book_id in batch_order_book_ids:
+            symbol = symbol_map[order_book_id]
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=order_book_id,
+                record_status="missing_remote",
+                attempts=attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                dropped_fields=dropped_fields,
+            )
+        return {
+            "order_book_ids": len(batch_order_book_ids),
+            "rows": 0,
+            "symbols_written": 0,
+            "symbols_missing_remote": len(batch_order_book_ids),
+            "status": "empty",
+            "attempts": attempts,
+            "dropped_fields": list(dropped_fields),
+        }
+
+    batch_symbols_written = 0
+    batch_symbols_missing = 0
+    for order_book_id in batch_order_book_ids:
+        symbol = symbol_map[order_book_id]
+        symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
+        if symbol_frame.empty:
+            batch_symbols_missing += 1
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=order_book_id,
+                record_status="missing_remote",
+                attempts=attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                dropped_fields=dropped_fields,
+            )
+            continue
+        entry = _write_symbol_frame(data_dir, symbol_frame)
+        record_entry(
+            symbol=symbol,
+            entry=entry,
+            symbol_frame=symbol_frame,
+            record_status="written",
+            attempts=attempts,
+            started_at_value=batch_started_at,
+            finished_at_value=batch_finished_at,
+            dropped_fields=dropped_fields,
+        )
+        batch_symbols_written += 1
+
+    return {
+        "order_book_ids": len(batch_order_book_ids),
+        "rows": int(len(prepared)),
+        "symbols_written": batch_symbols_written,
+        "symbols_missing_remote": batch_symbols_missing,
+        "status": "completed",
+        "attempts": attempts,
+        "dropped_fields": list(dropped_fields),
+    }
+
+
+def _finalize_dated_mirror_outputs(
+    *,
+    context: _DatedMirrorContext,
+    dataset_name: str,
+    api_name: str,
+    date_column: str,
+    fields: Sequence[str],
+    field_metadata: Mapping[str, object],
+    entries_by_symbol: Mapping[str, DatedMirrorEntry],
+    audit_by_symbol: Mapping[str, DatedMirrorAuditRecord],
+    batches: Sequence[Mapping[str, object]],
+    columns: Sequence[str],
+    field_coverage: Mapping[str, Mapping[str, object]],
+    started_at: str,
+    status: str,
+    error: str | None,
+    config_ref: object,
+    record_non_entry: Callable[..., None],
+) -> None:
+    finished_at = _timestamp_now()
+    for symbol in context.symbols:
+        if symbol in audit_by_symbol:
+            continue
+        record_non_entry(
+            symbol=symbol,
+            order_book_id=context.primary_order_book_id_by_symbol[symbol],
+            record_status="failed",
+            attempts=0,
+            started_at_value=None,
+            finished_at_value=finished_at,
+            error_text=error or "missing audit status",
+        )
+    audit_records = [audit_by_symbol[symbol] for symbol in context.symbols]
+    _write_dated_audit_csv(context.audit_path, audit_records)
+    manifest = _build_dated_manifest(
+        dataset_name=dataset_name,
+        api_name=api_name,
+        output_dir=context.output_dir,
+        fields=fields,
+        field_metadata=field_metadata,
+        symbol_metadata=context.symbol_metadata,
+        symbols_requested=context.symbols,
+        entries=[
+            entries_by_symbol[symbol]
+            for symbol in context.symbols
+            if symbol in entries_by_symbol
+        ],
+        missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
+        start_date=context.start_date,
+        end_date=context.end_date,
+        date_column=date_column,
+        batches=batches,
+        columns=columns,
+        audit_file=context.audit_path,
+        audit_records=audit_records,
+        field_coverage=list(field_coverage.values()),
+        started_at=started_at,
+        finished_at=finished_at,
+        status=status,
+        error=error,
+        config_ref=config_ref,
+    )
+    _write_manifest(context.output_dir / "manifest.yml", manifest)
+
+
+def _finalize_mirror_outputs(
+    *,
+    context: _MirrorContext,
+    args,
+    dataset_name: str,
+    api_name: str,
+    entries_by_symbol: Mapping[str, MirrorEntry],
+    audit_by_symbol: Mapping[str, MirrorAuditRecord],
+    batches: Sequence[Mapping[str, object]],
+    columns: Sequence[str],
+    field_coverage: Mapping[str, Mapping[str, object]],
+    started_at: str,
+    status: str,
+    error: str | None,
+    record_non_entry: Callable[..., None],
+) -> None:
+    finished_at = _timestamp_now()
+    for order_book_id in context.order_book_ids:
+        symbol = context.symbol_map[order_book_id]
+        if symbol in audit_by_symbol:
+            continue
+        record_non_entry(
+            symbol=symbol,
+            order_book_id=order_book_id,
+            record_status="failed",
+            attempts=0,
+            started_at_value=None,
+            finished_at_value=finished_at,
+            error_text=error or "missing audit status",
+        )
+    audit_records = [audit_by_symbol[symbol] for symbol in context.symbols]
+    _write_audit_csv(context.audit_path, audit_records)
+    manifest = _build_manifest(
+        dataset_name=dataset_name,
+        api_name=api_name,
+        output_dir=context.output_dir,
+        fields=context.fields,
+        field_metadata=context.field_metadata,
+        symbol_metadata=context.symbol_metadata,
+        symbols_requested=context.symbols,
+        entries=[
+            entries_by_symbol[symbol]
+            for symbol in context.symbols
+            if symbol in entries_by_symbol
+        ],
+        missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
+        query_date=getattr(args, "date", None),
+        start_quarter=args.start_quarter,
+        end_quarter=args.end_quarter,
+        statements=args.statements,
+        batches=batches,
+        columns=columns,
+        audit_file=context.audit_path,
+        audit_records=audit_records,
+        field_coverage=list(field_coverage.values()),
+        started_at=started_at,
+        finished_at=finished_at,
+        status=status,
+        error=error,
+        config_ref=getattr(args, "config", None),
+    )
+    _write_manifest(context.output_dir / "manifest.yml", manifest)
+
+
 def _mirror_dated_dataset(
     *,
     args,
@@ -351,7 +632,6 @@ def _mirror_dated_dataset(
         resolve_request_groups=resolve_request_groups,
     )
     symbols = context.symbols
-    symbol_metadata = context.symbol_metadata
     start_date = context.start_date
     end_date = context.end_date
     resume = context.resume
@@ -361,7 +641,6 @@ def _mirror_dated_dataset(
     max_backoff_seconds = context.max_backoff_seconds
     output_dir = context.output_dir
     data_dir = context.data_dir
-    audit_path = context.audit_path
     request_id_metadata = context.request_id_metadata
     request_ids_by_symbol = context.request_ids_by_symbol
     primary_order_book_id_by_symbol = context.primary_order_book_id_by_symbol
@@ -576,73 +855,23 @@ def _mirror_dated_dataset(
             return
 
         batch_finished_at = _timestamp_now()
-        if prepared.empty:
-            for symbol in batch_symbols:
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=primary_order_book_id_by_symbol[symbol],
-                    record_status="missing_remote",
-                    attempts=attempts,
-                    started_at_value=batch_started_at,
-                    finished_at_value=batch_finished_at,
-                    dropped_fields=dropped_fields,
-                )
-            batches.append(
-                {
-                    "order_book_ids": len(batch_request_ids),
-                    "rows": 0,
-                    "symbols_written": 0,
-                    "symbols_missing_remote": len(batch_symbols),
-                    "status": "empty",
-                    "attempts": attempts,
-                    "dropped_fields": list(dropped_fields),
-                }
-            )
-            return
-
-        if not columns:
+        if not prepared.empty and not columns:
             columns = prepared.columns.tolist()
-
-        batch_rows = int(len(prepared))
-        batch_symbols_written = 0
-        batch_symbols_missing = 0
-        for symbol in batch_symbols:
-            symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
-            if symbol_frame.empty:
-                batch_symbols_missing += 1
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=primary_order_book_id_by_symbol[symbol],
-                    record_status="missing_remote",
-                    attempts=attempts,
-                    started_at_value=batch_started_at,
-                    finished_at_value=batch_finished_at,
-                    dropped_fields=dropped_fields,
-                )
-                continue
-            entry = _write_dated_symbol_frame(data_dir, symbol_frame, date_column=date_column)
-            _record_entry(
-                symbol=symbol,
-                entry=entry,
-                symbol_frame=symbol_frame,
-                record_status="written",
-                attempts=attempts,
-                started_at_value=batch_started_at,
-                finished_at_value=batch_finished_at,
-                dropped_fields=dropped_fields,
-            )
-            batch_symbols_written += 1
-
         batches.append(
-            {
-                "order_book_ids": len(batch_request_ids),
-                "rows": batch_rows,
-                "symbols_written": batch_symbols_written,
-                "symbols_missing_remote": batch_symbols_missing,
-                "status": "completed",
-                "attempts": attempts,
-                "dropped_fields": list(dropped_fields),
-            }
+            _write_dated_prepared_batch_symbols(
+                prepared=prepared,
+                batch_symbols=batch_symbols,
+                batch_request_ids=batch_request_ids,
+                data_dir=data_dir,
+                date_column=date_column,
+                primary_order_book_id_by_symbol=primary_order_book_id_by_symbol,
+                attempts=attempts,
+                batch_started_at=batch_started_at,
+                batch_finished_at=batch_finished_at,
+                dropped_fields=dropped_fields,
+                record_entry=_record_entry,
+                record_non_entry=_record_non_entry,
+            )
         )
 
     if resume:
@@ -701,46 +930,24 @@ def _mirror_dated_dataset(
         result_code = max(result_code, 1)
 
     def _on_finalize() -> None:
-        finished_at = _timestamp_now()
-        for symbol in symbols:
-            if symbol in audit_by_symbol:
-                continue
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=primary_order_book_id_by_symbol[symbol],
-                record_status="failed",
-                attempts=0,
-                started_at_value=None,
-                finished_at_value=finished_at,
-                error_text=error or "missing audit status",
-            )
-        audit_records = [audit_by_symbol[symbol] for symbol in symbols]
-        _write_dated_audit_csv(audit_path, audit_records)
-        manifest = _build_dated_manifest(
+        _finalize_dated_mirror_outputs(
+            context=context,
             dataset_name=dataset_name,
             api_name=api_name,
-            output_dir=output_dir,
+            date_column=date_column,
             fields=fields,
             field_metadata=field_metadata,
-            symbol_metadata=symbol_metadata,
-            symbols_requested=symbols,
-            entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
-            missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
-            start_date=start_date,
-            end_date=end_date,
-            date_column=date_column,
+            entries_by_symbol=entries_by_symbol,
+            audit_by_symbol=audit_by_symbol,
             batches=batches,
             columns=columns,
-            audit_file=audit_path,
-            audit_records=audit_records,
-            field_coverage=list(field_coverage.values()),
+            field_coverage=field_coverage,
             started_at=started_at,
-            finished_at=finished_at,
             status=status,
             error=error,
             config_ref=getattr(args, "config", None),
+            record_non_entry=_record_non_entry,
         )
-        _write_manifest(output_dir / "manifest.yml", manifest)
 
     _run_partitioned_mirror_batches(
         pending_items=pending_symbols,
@@ -776,9 +983,7 @@ def _mirror_dataset(
 ) -> int:
     context = _prepare_mirror_context(args=args, dataset_name=dataset_name)
     fields = context.fields
-    field_metadata = context.field_metadata
     symbols = context.symbols
-    symbol_metadata = context.symbol_metadata
     resume = context.resume
     skip_existing = context.skip_existing
     max_attempts = context.max_attempts
@@ -786,7 +991,6 @@ def _mirror_dataset(
     max_backoff_seconds = context.max_backoff_seconds
     output_dir = context.output_dir
     data_dir = context.data_dir
-    audit_path = context.audit_path
     symbol_map = context.symbol_map
     order_book_ids = context.order_book_ids
     entries_by_symbol: dict[str, MirrorEntry] = {}
@@ -990,75 +1194,21 @@ def _mirror_dataset(
             return
 
         batch_finished_at = _timestamp_now()
-        if prepared.empty:
-            for order_book_id in batch_order_book_ids:
-                symbol = symbol_map[order_book_id]
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=order_book_id,
-                    record_status="missing_remote",
-                    attempts=attempts,
-                    started_at_value=batch_started_at,
-                    finished_at_value=batch_finished_at,
-                    dropped_fields=dropped_fields,
-                )
-            batches.append(
-                {
-                    "order_book_ids": len(batch_order_book_ids),
-                    "rows": 0,
-                    "symbols_written": 0,
-                    "symbols_missing_remote": len(batch_order_book_ids),
-                    "status": "empty",
-                    "attempts": attempts,
-                    "dropped_fields": list(dropped_fields),
-                }
-            )
-            return
-
-        if not columns:
+        if not prepared.empty and not columns:
             columns = prepared.columns.tolist()
-
-        batch_rows = int(len(prepared))
-        batch_symbols_written = 0
-        batch_symbols_missing = 0
-        for order_book_id in batch_order_book_ids:
-            symbol = symbol_map[order_book_id]
-            symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
-            if symbol_frame.empty:
-                batch_symbols_missing += 1
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=order_book_id,
-                    record_status="missing_remote",
-                    attempts=attempts,
-                    started_at_value=batch_started_at,
-                    finished_at_value=batch_finished_at,
-                    dropped_fields=dropped_fields,
-                )
-                continue
-            entry = _write_symbol_frame(data_dir, symbol_frame)
-            _record_entry(
-                symbol=symbol,
-                entry=entry,
-                symbol_frame=symbol_frame,
-                record_status="written",
-                attempts=attempts,
-                started_at_value=batch_started_at,
-                finished_at_value=batch_finished_at,
-                dropped_fields=dropped_fields,
-            )
-            batch_symbols_written += 1
-
         batches.append(
-            {
-                "order_book_ids": len(batch_order_book_ids),
-                "rows": batch_rows,
-                "symbols_written": batch_symbols_written,
-                "symbols_missing_remote": batch_symbols_missing,
-                "status": "completed",
-                "attempts": attempts,
-                "dropped_fields": list(dropped_fields),
-            }
+            _write_prepared_batch_order_book_ids(
+                prepared=prepared,
+                batch_order_book_ids=batch_order_book_ids,
+                data_dir=data_dir,
+                symbol_map=symbol_map,
+                attempts=attempts,
+                batch_started_at=batch_started_at,
+                batch_finished_at=batch_finished_at,
+                dropped_fields=dropped_fields,
+                record_entry=_record_entry,
+                record_non_entry=_record_non_entry,
+            )
         )
 
     if resume:
@@ -1116,48 +1266,21 @@ def _mirror_dataset(
         result_code = max(result_code, 1)
 
     def _on_finalize() -> None:
-        finished_at = _timestamp_now()
-        for order_book_id in order_book_ids:
-            symbol = symbol_map[order_book_id]
-            if symbol in audit_by_symbol:
-                continue
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                record_status="failed",
-                attempts=0,
-                started_at_value=None,
-                finished_at_value=finished_at,
-                error_text=error or "missing audit status",
-            )
-        audit_records = [audit_by_symbol[symbol] for symbol in symbols]
-        _write_audit_csv(audit_path, audit_records)
-        manifest = _build_manifest(
+        _finalize_mirror_outputs(
+            context=context,
+            args=args,
             dataset_name=dataset_name,
             api_name=api_name,
-            output_dir=output_dir,
-            fields=fields,
-            field_metadata=field_metadata,
-            symbol_metadata=symbol_metadata,
-            symbols_requested=symbols,
-            entries=[entries_by_symbol[symbol] for symbol in symbols if symbol in entries_by_symbol],
-            missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
-            query_date=getattr(args, "date", None),
-            start_quarter=args.start_quarter,
-            end_quarter=args.end_quarter,
-            statements=args.statements,
+            entries_by_symbol=entries_by_symbol,
+            audit_by_symbol=audit_by_symbol,
             batches=batches,
             columns=columns,
-            audit_file=audit_path,
-            audit_records=audit_records,
-            field_coverage=list(field_coverage.values()),
+            field_coverage=field_coverage,
             started_at=started_at,
-            finished_at=finished_at,
             status=status,
             error=error,
-            config_ref=getattr(args, "config", None),
+            record_non_entry=_record_non_entry,
         )
-        _write_manifest(output_dir / "manifest.yml", manifest)
 
     _run_partitioned_mirror_batches(
         pending_items=pending_order_book_ids,

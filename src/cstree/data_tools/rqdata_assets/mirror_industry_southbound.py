@@ -355,6 +355,141 @@ def _prepare_southbound_batch_frame(
     return _ensure_requested_fields(prepared, context.fields)
 
 
+def _write_southbound_symbol_history(
+    *,
+    symbol: str,
+    symbol_frame: pd.DataFrame,
+    context: _SouthboundMirrorContext,
+    frames_by_symbol: dict[str, pd.DataFrame],
+    started_at: str,
+    record_entry,
+) -> None:
+    current = frames_by_symbol.get(symbol)
+    if current is None:
+        out_path = context.data_dir / f"{symbol}.parquet"
+        if out_path.exists():
+            _, current = _load_existing_dated_entry(
+                out_path,
+                date_column="date",
+                fields=context.fields,
+            )
+    if current is not None and not current.empty:
+        combined = pd.concat([current, symbol_frame], ignore_index=True)
+    else:
+        combined = symbol_frame.copy()
+    combined = combined.drop_duplicates(subset=["date", "trading_type"], keep="last")
+    combined = combined.sort_values(["date", "trading_type"]).reset_index(drop=True)
+    frames_by_symbol[symbol] = combined
+    entry = _write_dated_symbol_frame(context.data_dir, combined, date_column="date")
+    record_entry(
+        symbol=symbol,
+        entry=entry,
+        symbol_frame=combined,
+        record_status="written",
+        attempts=0,
+        started_at_value=started_at,
+        finished_at_value=_path_mtime_iso(entry.path),
+    )
+
+
+def _finalize_southbound_outputs(
+    *,
+    context: _SouthboundMirrorContext,
+    audit_by_symbol: Mapping[str, DatedMirrorAuditRecord],
+    batches: Sequence[Mapping[str, object]],
+    columns: Sequence[str],
+    started_at: str,
+    status: str,
+    error: str | None,
+    quota_blocked: bool,
+    resume: bool,
+    existing_status: str,
+    completed_batch_keys: set[tuple[str, str]],
+    config_ref: object,
+) -> dict[str, DatedMirrorEntry]:
+    finished_at = _timestamp_now()
+    final_entries_by_symbol: dict[str, DatedMirrorEntry] = {}
+    final_audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
+    final_columns: list[str] = list(columns)
+    final_field_coverage = _field_coverage_template(context.fields)
+    completed_noop_resume = (
+        resume
+        and existing_status == "completed"
+        and _southbound_pending_batch_count(
+            context=context,
+            completed_batch_keys=completed_batch_keys,
+        )
+        == 0
+    )
+    for symbol in context.symbols:
+        out_path = context.data_dir / f"{symbol}.parquet"
+        if out_path.exists():
+            entry, symbol_frame = _load_existing_dated_entry(
+                out_path,
+                date_column="date",
+                fields=context.fields,
+            )
+            final_entries_by_symbol[symbol] = entry
+            if not final_columns and not symbol_frame.empty:
+                final_columns = symbol_frame.columns.tolist()
+            _update_field_coverage(final_field_coverage, symbol_frame, fields=context.fields)
+            prior_record = audit_by_symbol.get(symbol)
+            record_status = (
+                "skipped_existing"
+                if completed_noop_resume
+                or (prior_record and prior_record.status == "skipped_existing")
+                else "written"
+            )
+            final_audit_by_symbol[symbol] = _dated_audit_record(
+                symbol=symbol,
+                order_book_id=entry.order_book_id,
+                status=record_status,
+                attempts=prior_record.attempts if prior_record else 0,
+                started_at=prior_record.started_at if prior_record else started_at,
+                finished_at=finished_at,
+                file_mtime=_path_mtime_iso(entry.path),
+                error=error if quota_blocked and record_status == "written" else None,
+                entry=entry,
+            )
+            continue
+        final_audit_by_symbol[symbol] = _dated_audit_record(
+            symbol=symbol,
+            order_book_id=context.order_book_id_by_symbol[symbol],
+            status="quota_blocked" if quota_blocked else "missing_remote",
+            attempts=0,
+            started_at=None,
+            finished_at=finished_at,
+            file_mtime=None,
+            error=error if quota_blocked else None,
+            entry=None,
+        )
+
+    audit_records = [final_audit_by_symbol[symbol] for symbol in context.symbols]
+    _write_dated_audit_csv(context.audit_path, audit_records)
+    manifest = _build_southbound_manifest(
+        context=context,
+        entries=[
+            final_entries_by_symbol[symbol]
+            for symbol in context.symbols
+            if symbol in final_entries_by_symbol
+        ],
+        missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
+        batches=batches,
+        columns=final_columns,
+        audit_records=audit_records,
+        field_coverage=list(final_field_coverage.values()),
+        started_at=started_at,
+        finished_at=finished_at,
+        status=status,
+        error=error,
+        config_ref=config_ref,
+        completed_batch_keys=completed_batch_keys,
+        symbols_with_persisted_data=len(final_entries_by_symbol),
+    )
+    _write_manifest(context.manifest_path, manifest)
+    return final_entries_by_symbol
+
+
 def mirror_hk_southbound(args, rqdatac) -> int:
     context = _prepare_southbound_mirror_context(args, rqdatac)
     symbols = context.symbols
@@ -367,7 +502,6 @@ def mirror_hk_southbound(args, rqdatac) -> int:
     skip_existing = context.skip_existing
     output_dir = context.output_dir
     data_dir = context.data_dir
-    audit_path = context.audit_path
     manifest_path = context.manifest_path
     fields = context.fields
     order_book_id_by_symbol = context.order_book_id_by_symbol
@@ -388,6 +522,7 @@ def mirror_hk_southbound(args, rqdatac) -> int:
     resume_from_partial = resume_state.resume_from_partial
     batches = resume_state.batches
     completed_batch_keys = resume_state.completed_batch_keys
+    final_entries_by_symbol: dict[str, DatedMirrorEntry] = {}
 
     def _record_entry(
         *,
@@ -475,34 +610,6 @@ def mirror_hk_southbound(args, rqdatac) -> int:
             completed_batch_keys=completed_batch_keys,
         )
         _write_manifest(manifest_path, checkpoint_manifest)
-
-    def _write_symbol_history(symbol: str, symbol_frame: pd.DataFrame) -> None:
-        current = frames_by_symbol.get(symbol)
-        if current is None:
-            out_path = data_dir / f"{symbol}.parquet"
-            if out_path.exists():
-                _, current = _load_existing_dated_entry(
-                    out_path,
-                    date_column="date",
-                    fields=fields,
-                )
-        if current is not None and not current.empty:
-            combined = pd.concat([current, symbol_frame], ignore_index=True)
-        else:
-            combined = symbol_frame.copy()
-        combined = combined.drop_duplicates(subset=["date", "trading_type"], keep="last")
-        combined = combined.sort_values(["date", "trading_type"]).reset_index(drop=True)
-        frames_by_symbol[symbol] = combined
-        entry = _write_dated_symbol_frame(data_dir, combined, date_column="date")
-        _record_entry(
-            symbol=symbol,
-            entry=entry,
-            symbol_frame=combined,
-            record_status="written",
-            attempts=0,
-            started_at_value=started_at,
-            finished_at_value=_path_mtime_iso(entry.path),
-        )
 
     try:
         if resume:
@@ -656,7 +763,14 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                     symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
                     if symbol_frame.empty:
                         continue
-                    _write_symbol_history(symbol, symbol_frame)
+                    _write_southbound_symbol_history(
+                        symbol=symbol,
+                        symbol_frame=symbol_frame,
+                        context=context,
+                        frames_by_symbol=frames_by_symbol,
+                        started_at=started_at,
+                        record_entry=_record_entry,
+                    )
                 _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
 
         if result_code == 1 and status == "completed":
@@ -674,77 +788,20 @@ def mirror_hk_southbound(args, rqdatac) -> int:
         _write_checkpoint_manifest(checkpoint_status=status, checkpoint_error=error)
         raise
     finally:
-        finished_at = _timestamp_now()
-        final_entries_by_symbol: dict[str, DatedMirrorEntry] = {}
-        final_audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
-        final_columns: list[str] = list(columns)
-        final_field_coverage = _field_coverage_template(fields)
-        completed_noop_resume = resume and existing_status == "completed" and _current_pending_batches() == 0
-        for symbol in symbols:
-            out_path = data_dir / f"{symbol}.parquet"
-            if out_path.exists():
-                entry, symbol_frame = _load_existing_dated_entry(
-                    out_path,
-                    date_column="date",
-                    fields=fields,
-                )
-                final_entries_by_symbol[symbol] = entry
-                if not final_columns and not symbol_frame.empty:
-                    final_columns = symbol_frame.columns.tolist()
-                _update_field_coverage(final_field_coverage, symbol_frame, fields=fields)
-                prior_record = audit_by_symbol.get(symbol)
-                record_status = (
-                    "skipped_existing"
-                    if completed_noop_resume or (prior_record and prior_record.status == "skipped_existing")
-                    else "written"
-                )
-                final_audit_by_symbol[symbol] = _dated_audit_record(
-                    symbol=symbol,
-                    order_book_id=entry.order_book_id,
-                    status=record_status,
-                    attempts=prior_record.attempts if prior_record else 0,
-                    started_at=prior_record.started_at if prior_record else started_at,
-                    finished_at=finished_at,
-                    file_mtime=_path_mtime_iso(entry.path),
-                    error=error if quota_blocked and record_status == "written" else None,
-                    entry=entry,
-                )
-                continue
-            final_audit_by_symbol[symbol] = _dated_audit_record(
-                symbol=symbol,
-                order_book_id=order_book_id_by_symbol[symbol],
-                status="quota_blocked" if quota_blocked else "missing_remote",
-                attempts=0,
-                started_at=None,
-                finished_at=finished_at,
-                file_mtime=None,
-                error=error if quota_blocked else None,
-                entry=None,
-            )
-
-        audit_records = [final_audit_by_symbol[symbol] for symbol in symbols]
-        _write_dated_audit_csv(audit_path, audit_records)
-        manifest = _build_southbound_manifest(
+        final_entries_by_symbol = _finalize_southbound_outputs(
             context=context,
-            entries=[
-                final_entries_by_symbol[symbol]
-                for symbol in symbols
-                if symbol in final_entries_by_symbol
-            ],
-            missing_symbols=[item.symbol for item in audit_records if item.status == "missing_remote"],
+            audit_by_symbol=audit_by_symbol,
             batches=batches,
-            columns=final_columns,
-            audit_records=audit_records,
-            field_coverage=list(final_field_coverage.values()),
+            columns=columns,
             started_at=started_at,
-            finished_at=finished_at,
             status=status,
             error=error,
-            config_ref=getattr(args, "config", None),
+            quota_blocked=quota_blocked,
+            resume=resume,
+            existing_status=existing_status,
             completed_batch_keys=completed_batch_keys,
-            symbols_with_persisted_data=len(final_entries_by_symbol),
+            config_ref=getattr(args, "config", None),
         )
-        _write_manifest(manifest_path, manifest)
 
     totals = {
         "files": len(final_entries_by_symbol),

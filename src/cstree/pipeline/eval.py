@@ -588,6 +588,115 @@ def _record_exposure_outputs(
     result["bt_active_exposure_summary"] = exposure["active_summary"]
 
 
+def _evaluate_walk_forward_backtest(
+    window_meta: Mapping[str, Any],
+    *,
+    model_w: Any,
+    direction: float,
+    context: Mapping[str, Any],
+    valid_dates_set: set[pd.Timestamp],
+    backtest_topk_fn,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    if not context["wf_backtest_enabled"]:
+        return None, None, None
+
+    bt_direction = (
+        direction
+        if context["backtest_signal_direction_raw"] is None
+        else context["backtest_signal_direction_raw"]
+    )
+    bt_pred_col = "pred"
+    test_start = pd.to_datetime(window_meta["test_start"])
+    test_end = pd.to_datetime(window_meta["test_end"])
+    df_full = context["df_full"]
+    test_full_w = df_full[
+        (df_full["trade_date"] >= test_start) & (df_full["trade_date"] <= test_end)
+    ].copy()
+    if test_full_w.empty:
+        return None, None, None
+
+    features = context["features"]
+    test_full_w["pred"] = model_w.predict(test_full_w[features])
+    _postprocess_pred_column(
+        test_full_w,
+        "pred",
+        method=context["score_postprocess_method"],
+        columns=context["score_postprocess_columns"],
+        strength=context["score_postprocess_strength"],
+        min_obs=context["score_postprocess_min_obs"],
+    )
+    if bt_direction != 1.0:
+        test_full_w["signal_bt"] = test_full_w["pred"] * bt_direction
+        bt_pred_col = "signal_bt"
+
+    bt_rebalance = get_rebalance_dates(
+        sorted(test_full_w["trade_date"].unique()),
+        context["backtest_rebalance_frequency"],
+    )
+    if valid_dates_set:
+        bt_rebalance = [date for date in bt_rebalance if date in valid_dates_set]
+
+    backtest_pricing_df = context["backtest_pricing_df"]
+    backtest_tradable_col = context["backtest_tradable_col"]
+    try:
+        bt_result_w = backtest_topk_fn(
+            test_full_w,
+            pred_col=bt_pred_col,
+            price_col=context["price_col"],
+            rebalance_dates=bt_rebalance,
+            top_k=context["backtest_top_k"],
+            shift_days=context["label_shift_days"],
+            cost_bps=context["backtest_cost_bps_effective"],
+            trading_days_per_year=context["backtest_trading_days_per_year"],
+            exit_mode=context["backtest_exit_mode"],
+            exit_horizon_days=context["backtest_exit_horizon_days"],
+            long_only=context["backtest_long_only"],
+            short_k=context["backtest_short_k"],
+            buffer_exit=context["backtest_buffer_exit"],
+            buffer_entry=context["backtest_buffer_entry"],
+            group_col=(
+                context["backtest_group_col"]
+                if context["backtest_group_col"] in test_full_w.columns
+                else None
+            ),
+            max_names_per_group=context["backtest_max_names_per_group"],
+            tradable_col=(
+                backtest_tradable_col
+                if backtest_tradable_col in backtest_pricing_df.columns
+                else None
+            ),
+            exit_price_policy=context["backtest_exit_price_policy"],
+            exit_fallback_policy=context["backtest_exit_fallback_policy"],
+            execution=context["execution_model"],
+            pricing_data=backtest_pricing_df,
+        )
+    except ValueError:
+        return None, None, None
+    if bt_result_w is None:
+        return None, None, None
+
+    bt_stats_w, bt_net_w, _, _, bt_periods_w = bt_result_w
+    execution_model = context["execution_model"]
+    bench_series_w, bench_periods_w = build_benchmark_series(
+        context["benchmark_df"],
+        execution_model.entry_policy.price_col,
+        execution_model.exit_policy.price_col,
+        bt_periods_w,
+        benchmark_return_series=context["benchmark_return_series"],
+    )
+    if bench_series_w.empty:
+        return bt_stats_w, None, None
+
+    bt_benchmark_stats_w = summarize_period_returns(
+        bench_series_w,
+        bench_periods_w,
+        context["backtest_trading_days_per_year"],
+    )
+    periods_per_year = bt_stats_w.get("periods_per_year", np.nan)
+    bt_active_stats_w, _ = summarize_active_returns(bt_net_w, bench_series_w, periods_per_year)
+    return bt_stats_w, bt_benchmark_stats_w, bt_active_stats_w
+
+
 def _evaluate_walk_forward_window(
     window_meta: dict,
     *,
@@ -630,29 +739,6 @@ def _evaluate_walk_forward_window(
     eval_buffer_exit = context["eval_buffer_exit"]
     eval_buffer_entry = context["eval_buffer_entry"]
     wf_backtest_enabled = context["wf_backtest_enabled"]
-    backtest_signal_direction_raw = context["backtest_signal_direction_raw"]
-    df_full = context["df_full"]
-    price_col = context["price_col"]
-    backtest_rebalance_frequency = context["backtest_rebalance_frequency"]
-    label_shift_days = context["label_shift_days"]
-    backtest_cost_bps_effective = context["backtest_cost_bps_effective"]
-    backtest_trading_days_per_year = context["backtest_trading_days_per_year"]
-    backtest_exit_mode = context["backtest_exit_mode"]
-    backtest_exit_horizon_days = context["backtest_exit_horizon_days"]
-    backtest_long_only = context["backtest_long_only"]
-    backtest_short_k = context["backtest_short_k"]
-    backtest_buffer_exit = context["backtest_buffer_exit"]
-    backtest_buffer_entry = context["backtest_buffer_entry"]
-    backtest_group_col = context["backtest_group_col"]
-    backtest_max_names_per_group = context["backtest_max_names_per_group"]
-    backtest_tradable_col = context["backtest_tradable_col"]
-    backtest_exit_price_policy = context["backtest_exit_price_policy"]
-    backtest_exit_fallback_policy = context["backtest_exit_fallback_policy"]
-    execution_model = context["execution_model"]
-    backtest_pricing_df = context["backtest_pricing_df"]
-    benchmark_df = context["benchmark_df"]
-    benchmark_return_series = context["benchmark_return_series"]
-    backtest_top_k = context["backtest_top_k"]
     wf_feature_top_k = context["wf_feature_top_k"]
     backtest_topk_fn = context.get("backtest_topk_fn", backtest_topk)
 
@@ -865,86 +951,14 @@ def _evaluate_walk_forward_window(
 
     topk_positive_w = topk_positive_ratio(eval_df_w, signal_col_w, target, k_w)
 
-    bt_stats_w = None
-    bt_benchmark_stats_w = None
-    bt_active_stats_w = None
-    if wf_backtest_enabled:
-        bt_direction = (
-            direction if backtest_signal_direction_raw is None else backtest_signal_direction_raw
-        )
-        bt_pred_col = "pred"
-        test_start = pd.to_datetime(window_meta["test_start"])
-        test_end = pd.to_datetime(window_meta["test_end"])
-        test_full_w = df_full[
-            (df_full["trade_date"] >= test_start) & (df_full["trade_date"] <= test_end)
-        ].copy()
-        if test_full_w.empty:
-            bt_result_w = None
-        else:
-            test_full_w["pred"] = model_w.predict(test_full_w[features])
-            _postprocess_pred_column(
-                test_full_w,
-                "pred",
-                method=score_postprocess_method,
-                columns=score_postprocess_columns,
-                strength=score_postprocess_strength,
-                min_obs=score_postprocess_min_obs,
-            )
-            if bt_direction != 1.0:
-                test_full_w["signal_bt"] = test_full_w["pred"] * bt_direction
-                bt_pred_col = "signal_bt"
-            bt_rebalance = get_rebalance_dates(
-                sorted(test_full_w["trade_date"].unique()), backtest_rebalance_frequency
-            )
-            if valid_dates_set:
-                bt_rebalance = [d for d in bt_rebalance if d in valid_dates_set]
-            try:
-                bt_result_w = backtest_topk_fn(
-                    test_full_w,
-                    pred_col=bt_pred_col,
-                    price_col=price_col,
-                    rebalance_dates=bt_rebalance,
-                    top_k=backtest_top_k,
-                    shift_days=label_shift_days,
-                    cost_bps=backtest_cost_bps_effective,
-                    trading_days_per_year=backtest_trading_days_per_year,
-                    exit_mode=backtest_exit_mode,
-                    exit_horizon_days=backtest_exit_horizon_days,
-                    long_only=backtest_long_only,
-                    short_k=backtest_short_k,
-                    buffer_exit=backtest_buffer_exit,
-                    buffer_entry=backtest_buffer_entry,
-                    group_col=backtest_group_col if backtest_group_col in test_full_w.columns else None,
-                    max_names_per_group=backtest_max_names_per_group,
-                    tradable_col=backtest_tradable_col
-                    if backtest_tradable_col in backtest_pricing_df.columns
-                    else None,
-                    exit_price_policy=backtest_exit_price_policy,
-                    exit_fallback_policy=backtest_exit_fallback_policy,
-                    execution=execution_model,
-                    pricing_data=backtest_pricing_df,
-                )
-            except ValueError:
-                bt_result_w = None
-        if bt_result_w is not None:
-            bt_stats_w, bt_net_w, _, _, bt_periods_w = bt_result_w
-            bench_series_w, bench_periods_w = build_benchmark_series(
-                benchmark_df,
-                execution_model.entry_policy.price_col,
-                execution_model.exit_policy.price_col,
-                bt_periods_w,
-                benchmark_return_series=benchmark_return_series,
-            )
-            if not bench_series_w.empty:
-                bt_benchmark_stats_w = summarize_period_returns(
-                    bench_series_w,
-                    bench_periods_w,
-                    backtest_trading_days_per_year,
-                )
-                periods_per_year = bt_stats_w.get("periods_per_year", np.nan)
-                bt_active_stats_w, _ = summarize_active_returns(
-                    bt_net_w, bench_series_w, periods_per_year
-                )
+    bt_stats_w, bt_benchmark_stats_w, bt_active_stats_w = _evaluate_walk_forward_backtest(
+        window_meta,
+        model_w=model_w,
+        direction=direction,
+        context=context,
+        valid_dates_set=valid_dates_set,
+        backtest_topk_fn=backtest_topk_fn,
+    )
 
     result.update(
         {
