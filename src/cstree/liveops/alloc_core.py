@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import math
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -15,6 +16,7 @@ from ..rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
 )
+from . import holdings
 from .alloc_market_data import (
     extract_price_wide_frame as _extract_price_wide_frame_impl,
     fetch_latest_price_map as _fetch_latest_price_map_impl,
@@ -34,7 +36,17 @@ from .alloc_selection import (
     prepare_selection as _prepare_selection_impl,
     select_from_positions_file as _select_from_positions_file_impl,
 )
-from . import holdings
+
+
+@dataclass(frozen=True)
+class _AllocationSelection:
+    selection: pd.DataFrame
+    entry_date: pd.Timestamp
+    as_of: pd.Timestamp
+    source: str
+    payload_market: str | None
+    run_dir: Path | None
+    positions_path: Path | None
 
 
 def _load_config(path: str | None) -> dict:
@@ -235,7 +247,7 @@ def _render_text(payload: dict, alloc_df: pd.DataFrame) -> str:
     return _render_text_impl(payload, alloc_df)
 
 
-def main(argv: list[str] | None = None) -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Size equal-weight holdings into shares/lots using rqdata prices and round_lot."
     )
@@ -328,8 +340,10 @@ def main(argv: list[str] | None = None) -> None:
         "--out",
         help="Optional output path (default: stdout).",
     )
-    args = parser.parse_args(argv)
+    return parser
 
+
+def _validate_args(args: argparse.Namespace) -> None:
     if args.top_n <= 0:
         raise SystemExit("--top-n must be a positive integer.")
     if args.cash <= 0:
@@ -339,67 +353,129 @@ def main(argv: list[str] | None = None) -> None:
     if args.price_lookback_days <= 0:
         raise SystemExit("--price-lookback-days must be a positive integer.")
 
+
+def _load_selection_from_positions_file(
+    args: argparse.Namespace,
+    *,
+    cfg_market: str | None,
+    cfg_provider: str | None,
+) -> _AllocationSelection:
+    as_of = holdings._resolve_as_of(
+        args.as_of,
+        market=cfg_market,
+        provider=cfg_provider,
+    )
+    positions_path = Path(args.positions_file).expanduser()
+    if not positions_path.is_absolute():
+        positions_path = (Path.cwd() / positions_path).resolve()
+    selection, entry_date = _select_from_positions_file(positions_path, as_of)
+    return _AllocationSelection(
+        selection=selection,
+        entry_date=entry_date,
+        as_of=as_of,
+        source="positions_file",
+        payload_market=None,
+        run_dir=None,
+        positions_path=positions_path,
+    )
+
+
+def _load_selection_from_holdings_payload(
+    args: argparse.Namespace,
+    *,
+    cfg_market: str | None,
+    cfg_provider: str | None,
+) -> _AllocationSelection:
+    payload = _load_holdings_payload(args)
+    rows = payload.get("holdings")
+    if not isinstance(rows, list):
+        raise SystemExit("Invalid holdings payload: missing holdings list.")
+    selection = pd.DataFrame(rows)
+    if selection.empty:
+        raise SystemExit("Holdings payload is empty.")
+    entry_date = pd.to_datetime(payload.get("entry_date"), errors="coerce")
+    if pd.isna(entry_date) and "entry_date" in selection.columns:
+        parsed_entries = holdings._parse_date_column(selection["entry_date"])
+        if parsed_entries.notna().any():
+            entry_date = parsed_entries.max()
+    if pd.isna(entry_date):
+        raise SystemExit("Failed to parse entry_date from holdings payload.")
+    entry_date = pd.Timestamp(entry_date).normalize()
+    run_value = payload.get("run_dir")
+    positions_value = payload.get("positions_file")
+    payload_market = holdings._normalize_market(payload.get("market"))
+    payload_provider = holdings._normalize_provider(payload.get("data_provider"))
+    as_of_payload = pd.to_datetime(payload.get("as_of"), errors="coerce")
+    if pd.notna(as_of_payload):
+        as_of = pd.Timestamp(as_of_payload).normalize()
+    else:
+        as_of = holdings._resolve_as_of(
+            args.as_of,
+            market=payload_market or cfg_market,
+            provider=payload_provider or cfg_provider,
+        )
+    return _AllocationSelection(
+        selection=selection,
+        entry_date=entry_date,
+        as_of=as_of,
+        source=str(payload.get("source") or args.source),
+        payload_market=payload_market,
+        run_dir=Path(str(run_value)) if run_value else None,
+        positions_path=Path(str(positions_value)) if positions_value else None,
+    )
+
+
+def _load_allocation_selection(
+    args: argparse.Namespace,
+    *,
+    cfg_market: str | None,
+    cfg_provider: str | None,
+) -> _AllocationSelection:
+    if args.positions_file:
+        return _load_selection_from_positions_file(
+            args,
+            cfg_market=cfg_market,
+            cfg_provider=cfg_provider,
+        )
+    return _load_selection_from_holdings_payload(
+        args,
+        cfg_market=cfg_market,
+        cfg_provider=cfg_provider,
+    )
+
+
+def _write_allocation_output(args: argparse.Namespace, content: str) -> None:
+    if not args.out:
+        print(content)
+        return
+    out_path = Path(args.out).expanduser()
+    if not out_path.is_absolute():
+        out_path = (Path.cwd() / out_path).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(content, encoding="utf-8")
+    print(f"Wrote {out_path}")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    _validate_args(args)
+
     cfg = _load_config(args.config)
     cfg_provider = _resolve_provider(cfg)
     cfg_market = _resolve_market(cfg, [])
+    selection_state = _load_allocation_selection(
+        args,
+        cfg_market=cfg_market,
+        cfg_provider=cfg_provider,
+    )
 
-    run_dir: Path | None = None
-    positions_path: Path | None = None
-
-    if args.positions_file:
-        as_of = holdings._resolve_as_of(
-            args.as_of,
-            market=cfg_market,
-            provider=cfg_provider,
-        )
-        positions_path = Path(args.positions_file).expanduser()
-        if not positions_path.is_absolute():
-            positions_path = (Path.cwd() / positions_path).resolve()
-        selection, entry_date = _select_from_positions_file(positions_path, as_of)
-        source = "positions_file"
-        payload_market = None
-    else:
-        payload = _load_holdings_payload(args)
-        rows = payload.get("holdings")
-        if not isinstance(rows, list):
-            raise SystemExit("Invalid holdings payload: missing holdings list.")
-        selection = pd.DataFrame(rows)
-        if selection.empty:
-            raise SystemExit("Holdings payload is empty.")
-        entry_date = pd.to_datetime(payload.get("entry_date"), errors="coerce")
-        if pd.isna(entry_date):
-            if "entry_date" in selection.columns:
-                parsed_entries = holdings._parse_date_column(selection["entry_date"])
-                if parsed_entries.notna().any():
-                    entry_date = parsed_entries.max()
-        if pd.isna(entry_date):
-            raise SystemExit("Failed to parse entry_date from holdings payload.")
-        entry_date = pd.Timestamp(entry_date).normalize()
-        run_value = payload.get("run_dir")
-        if run_value:
-            run_dir = Path(str(run_value))
-        positions_value = payload.get("positions_file")
-        if positions_value:
-            positions_path = Path(str(positions_value))
-        source = str(payload.get("source") or args.source)
-        payload_market = holdings._normalize_market(payload.get("market"))
-        payload_provider = holdings._normalize_provider(payload.get("data_provider"))
-        as_of_payload = pd.to_datetime(payload.get("as_of"), errors="coerce")
-        if pd.notna(as_of_payload):
-            as_of = pd.Timestamp(as_of_payload).normalize()
-        else:
-            as_of = holdings._resolve_as_of(
-                args.as_of,
-                market=payload_market or cfg_market,
-                provider=payload_provider or cfg_provider,
-            )
-
-    prepared = _prepare_selection(selection, side=args.side, top_n=args.top_n)
+    prepared = _prepare_selection(selection_state.selection, side=args.side, top_n=args.top_n)
     symbols = [str(value) for value in prepared["symbol"].tolist()]
-    market = _resolve_market(cfg, symbols) or payload_market
+    market = _resolve_market(cfg, symbols) or selection_state.payload_market
 
     rqdatac = _init_rqdatac(args.config, args.username, args.password)
-    price_date = _resolve_price_date(rqdatac, as_of, market)
+    price_date = _resolve_price_date(rqdatac, selection_state.as_of, market)
     start_date = (price_date - pd.Timedelta(days=int(args.price_lookback_days))).strftime(
         "%Y%m%d"
     )
@@ -434,13 +510,17 @@ def main(argv: list[str] | None = None) -> None:
     total_gap_to_target = float(alloc_df["gap_to_target"].sum())
 
     payload = {
-        "as_of": as_of.strftime("%Y-%m-%d"),
-        "entry_date": entry_date.strftime("%Y-%m-%d"),
+        "as_of": selection_state.as_of.strftime("%Y-%m-%d"),
+        "entry_date": selection_state.entry_date.strftime("%Y-%m-%d"),
         "price_date": price_date.strftime("%Y-%m-%d"),
-        "source": source,
+        "source": selection_state.source,
         "side": args.side,
-        "run_dir": str(run_dir) if run_dir is not None else None,
-        "positions_file": str(positions_path) if positions_path is not None else None,
+        "run_dir": str(selection_state.run_dir) if selection_state.run_dir is not None else None,
+        "positions_file": (
+            str(selection_state.positions_path)
+            if selection_state.positions_path is not None
+            else None
+        ),
         "market": market,
         "requested_top_n": int(args.top_n),
         "selected_n": int(len(alloc_df)),
@@ -462,15 +542,7 @@ def main(argv: list[str] | None = None) -> None:
     else:
         content = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
 
-    if args.out:
-        out_path = Path(args.out).expanduser()
-        if not out_path.is_absolute():
-            out_path = (Path.cwd() / out_path).resolve()
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(content, encoding="utf-8")
-        print(f"Wrote {out_path}")
-    else:
-        print(content)
+    _write_allocation_output(args, content)
 
 
 if __name__ == "__main__":

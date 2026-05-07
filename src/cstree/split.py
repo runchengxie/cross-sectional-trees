@@ -11,6 +11,70 @@ from .modeling import build_model, fit_model, resolve_model_spec
 from .transform import apply_score_postprocess
 
 
+def _coerce_sample_weight_min(value: object) -> float:
+    try:
+        min_weight = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("sample_weight_params.min_weight must be a number.") from exc
+    if min_weight < 0:
+        raise ValueError("sample_weight_params.min_weight must be >= 0.")
+    return min_weight
+
+
+def _time_decay_weights(
+    data: pd.DataFrame,
+    *,
+    date_col: str,
+    params: Mapping[str, object] | None,
+) -> np.ndarray | None:
+    if params is not None and not isinstance(params, Mapping):
+        raise ValueError("sample_weight_params must be a mapping.")
+    params_map = dict(params or {})
+    halflife_raw = params_map.get("halflife", params_map.get("half_life"))
+    decay_rate_raw = params_map.get("decay_rate", params_map.get("rate"))
+    min_weight = _coerce_sample_weight_min(params_map.get("min_weight", 0.0))
+
+    if halflife_raw is not None:
+        decay_base = 0.5
+        try:
+            decay_scale = float(halflife_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("sample_weight_params.halflife must be a number.") from exc
+        if not np.isfinite(decay_scale) or decay_scale <= 0:
+            raise ValueError("sample_weight_params.halflife must be > 0.")
+    elif decay_rate_raw is not None:
+        try:
+            decay_base = float(decay_rate_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("sample_weight_params.decay_rate must be a number.") from exc
+        if not np.isfinite(decay_base) or decay_base <= 0 or decay_base > 1:
+            raise ValueError("sample_weight_params.decay_rate must be in (0, 1].")
+        decay_scale = 1.0
+    else:
+        raise ValueError(
+            "exp_decay/time_decay sample_weight_mode requires either "
+            "sample_weight_params.halflife or sample_weight_params.decay_rate."
+        )
+
+    date_values = pd.to_datetime(data[date_col], errors="coerce")
+    if date_values.isna().any():
+        raise ValueError(f"sample weights require valid dates in column: {date_col}")
+    unique_dates = pd.Index(date_values.unique()).sort_values()
+    if unique_dates.empty:
+        return None
+    unique_ages = float(len(unique_dates) - 1) - np.arange(len(unique_dates), dtype=float)
+    unique_date_weights = np.power(decay_base, unique_ages / decay_scale)
+    if min_weight > 0:
+        unique_date_weights = np.maximum(unique_date_weights, min_weight)
+    mean_weight = float(np.nanmean(unique_date_weights))
+    if np.isfinite(mean_weight) and mean_weight > 0:
+        unique_date_weights = unique_date_weights / mean_weight
+    date_weight_map = pd.Series(unique_date_weights, index=unique_dates, dtype=float)
+    date_weights = date_values.map(date_weight_map).to_numpy(dtype=float)
+    counts = data.groupby(date_col, sort=False)[date_col].transform("count").to_numpy(dtype=float)
+    return date_weights / counts
+
+
 def build_sample_weight(
     data: pd.DataFrame,
     mode: str | None,
@@ -27,64 +91,7 @@ def build_sample_weight(
         counts = data.groupby(date_col, sort=False)[date_col].transform("count")
         return (1.0 / counts).to_numpy()
     if mode_text in {"time_decay", "exp_decay", "exp"}:
-        if params is not None and not isinstance(params, Mapping):
-            raise ValueError("sample_weight_params must be a mapping.")
-        params_map = dict(params or {})
-        halflife_raw = params_map.get("halflife", params_map.get("half_life"))
-        decay_rate_raw = params_map.get("decay_rate", params_map.get("rate"))
-        min_weight_raw = params_map.get("min_weight", 0.0)
-        try:
-            min_weight = float(min_weight_raw)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("sample_weight_params.min_weight must be a number.") from exc
-        if min_weight < 0:
-            raise ValueError("sample_weight_params.min_weight must be >= 0.")
-
-        if halflife_raw is not None:
-            try:
-                halflife = float(halflife_raw)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("sample_weight_params.halflife must be a number.") from exc
-            if not np.isfinite(halflife) or halflife <= 0:
-                raise ValueError("sample_weight_params.halflife must be > 0.")
-
-            def _decay(age: np.ndarray) -> np.ndarray:
-                return np.power(0.5, age / halflife)
-
-        elif decay_rate_raw is not None:
-            try:
-                decay_rate = float(decay_rate_raw)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("sample_weight_params.decay_rate must be a number.") from exc
-            if not np.isfinite(decay_rate) or decay_rate <= 0 or decay_rate > 1:
-                raise ValueError("sample_weight_params.decay_rate must be in (0, 1].")
-
-            def _decay(age: np.ndarray) -> np.ndarray:
-                return np.power(decay_rate, age)
-
-        else:
-            raise ValueError(
-                "exp_decay/time_decay sample_weight_mode requires either "
-                "sample_weight_params.halflife or sample_weight_params.decay_rate."
-            )
-
-        date_values = pd.to_datetime(data[date_col], errors="coerce")
-        if date_values.isna().any():
-            raise ValueError(f"sample weights require valid dates in column: {date_col}")
-        unique_dates = pd.Index(date_values.unique()).sort_values()
-        if unique_dates.empty:
-            return None
-        unique_ages = float(len(unique_dates) - 1) - np.arange(len(unique_dates), dtype=float)
-        unique_date_weights = _decay(unique_ages)
-        if min_weight > 0:
-            unique_date_weights = np.maximum(unique_date_weights, min_weight)
-        mean_weight = float(np.nanmean(unique_date_weights))
-        if np.isfinite(mean_weight) and mean_weight > 0:
-            unique_date_weights = unique_date_weights / mean_weight
-        date_weight_map = pd.Series(unique_date_weights, index=unique_dates, dtype=float)
-        date_weights = date_values.map(date_weight_map).to_numpy(dtype=float)
-        counts = data.groupby(date_col, sort=False)[date_col].transform("count").to_numpy(dtype=float)
-        return date_weights / counts
+        return _time_decay_weights(data, date_col=date_col, params=params)
     raise ValueError(f"Unsupported sample_weight_mode: {mode}")
 
 

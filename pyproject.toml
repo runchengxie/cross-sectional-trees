@@ -97,7 +97,6 @@ combine-as-imports = true
 "src/cstree/data_tools/rqdata_assets/mirror_industry_southbound.py" = ["C901"]
 "src/cstree/data_tools/rqdata_assets/mirror_instrument_industry.py" = ["C901"]
 "src/cstree/data_tools/rqdata_assets/mirror_workflow.py" = ["C901"]
-"src/cstree/liveops/alloc_core.py" = ["C901"]
 "src/cstree/liveops/alloc_hk_allocation.py" = ["C901"]
 "src/cstree/liveops/holdings.py" = ["C901"]
 "src/cstree/pipeline/config.py" = ["C901"]
@@ -109,9 +108,6 @@ combine-as-imports = true
 "src/cstree/pipeline/preflight.py" = ["C901"]
 "src/cstree/portfolio.py" = ["C901"]
 "src/cstree/release_tools/hk_asset_workflow.py" = ["C901"]
-"src/cstree/release_tools/package_assets.py" = ["C901"]
-"src/cstree/release_tools/release_assets.py" = ["C901"]
-"src/cstree/split.py" = ["C901"]
 
 [tool.uv]
 # `rqsdk` still imports `pkg_resources` from its sdist build step.

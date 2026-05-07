@@ -40,12 +40,12 @@ ratchet、在触碰 RQData asset 模块时收窄 public facade。兼容层删除
 | 指标 | 当前值 | 说明 |
 | --- | ---: | --- |
 | Python 文件数 | 263 | 包括源码、脚本和测试 |
-| Python 总行数 | 97,792 | 仅静态行数，用作趋势参考 |
-| 超过 100 字符的行 | 1,217 | Markdown 不计入 |
-| 超过 100 行的函数 | 189 | 包含测试函数 |
+| Python 总行数 | 97,977 | 仅静态行数，用作趋势参考 |
+| 超过 100 字符的行 | 1,215 | Markdown 不计入 |
+| 超过 100 行的函数 | 187 | 包含测试函数 |
 | 超过 250 行的函数 | 31 | 优先关注实现代码 |
 | 超过 500 行的函数 | 0 | 需要单独跟踪的超大函数 |
-| `C901` 文件级豁免 | 34 | 见 `pyproject.toml` |
+| `C901` 文件级豁免 | 30 | 见 `pyproject.toml` |
 | `rqdata public_api.__all__` | 49 | 稳定 facade 导出名数量 |
 
 当前已经没有超过 500 行的 Python 函数。最大函数仍集中在 legacy runner、RQData
@@ -81,6 +81,7 @@ provider 语义：
 | backtest setup context | 将 `backtest_topk` 的执行模型解析和 pricing table 准备抽为 helper，主函数只保留 rebalance loop 和 long/short accounting | `uv run pytest tests/test_backtest.py tests/test_execution_calendar.py -q` |
 | asset health symbol scan state | 将 symbol parquet 读取、duplicate-date state updater、history state updater 抽出主检查循环；`inspect_hk_asset_health` 从 418 行降到 356 行 | `uv run pytest tests/rqdata_assets/test_asset_health_quality.py tests/rqdata_assets/test_asset_health_current.py tests/rqdata_assets/test_asset_health_history.py -q` |
 | C901 removal pilot | 将 `train_eval_stage.py` 的 walk-forward evaluation 抽成 helper，isolated C901 清零并撤销该文件的 `C901` per-file ignore | `uv run pytest tests/test_pipeline_train_eval_contracts.py tests/test_modeling.py tests/test_split.py tests/test_pipeline_runtime.py tests/test_pipeline_filters_core.py -q` |
+| thin C901 removal batch | 清理 `split.py`、`alloc_core.py`、`package_assets.py`、`release_assets.py` 的单命中 C901；当前文件级豁免从 34 降到 30 | `uv run pytest tests/test_split.py tests/test_asset_release_scripts.py tests/test_alloc.py tests/test_cli_liveops.py -q` |
 
 剩余 deferred decisions：
 
@@ -103,7 +104,7 @@ provider 语义：
 
 ## C901 Debt Registry
 
-本表是 `pyproject.toml` 里当前 34 个文件级 `C901` 豁免的审计口径。owner area
+本表是 `pyproject.toml` 里当前 30 个文件级 `C901` 豁免的审计口径。owner area
 表示责任域，不表示个人 owner。新增、删除或保留豁免时，必须同步更新本表；本地
 轻量校验可运行：
 
@@ -132,7 +133,6 @@ scripts/dev/run_tests.sh c901-debt
 | `src/cstree/data_tools/rqdata_assets/mirror_industry_southbound.py` | RQData mirror | southbound request context 已抽出，fetch / merge / report 流程仍集中 | `uv run pytest tests/rqdata_assets/ -q` | 继续拆出 fetch batch 和 writer 后撤销 |
 | `src/cstree/data_tools/rqdata_assets/mirror_instrument_industry.py` | RQData mirror | instrument industry mirror 的历史兼容和输出集中 | `uv run pytest tests/rqdata_assets/ -q` | 拆出 normalization 和 dated writer 后撤销 |
 | `src/cstree/data_tools/rqdata_assets/mirror_workflow.py` | RQData mirror | 通用 mirror context 已抽出，fetch fallback、resume state 和写入收尾仍集中 | `uv run pytest tests/rqdata_assets/ -q` | 继续拆出 fetch policy、resume state、writer 后撤销 |
-| `src/cstree/liveops/alloc_core.py` | liveops | 执行前分配的现金、lot、权重和异常处理集中 | `uv run pytest tests/test_alloc.py tests/test_cli_liveops.py -q` | 拆出 lot sizing、cash allocation、rendering 后撤销 |
 | `src/cstree/liveops/alloc_hk_allocation.py` | liveops HK | 港股执行分析含估值分层、二次补仓和 xlsx 输出 | `uv run pytest tests/test_alloc_hk.py tests/test_cli_liveops.py -q` | 拆出 scenario builder、allocation engine、xlsx writer 后撤销 |
 | `src/cstree/liveops/holdings.py` | liveops | 持仓读取、格式兼容和输出渲染集中 | `uv run pytest tests/test_holdings_live.py tests/test_cli_liveops.py -q` | 拆出 reader、normalizer、renderer 后撤销 |
 | `src/cstree/pipeline/config.py` | pipeline config | 配置解析、legacy 兼容和运行时默认值集中 | `uv run pytest tests/test_config_utils.py tests/test_pipeline_validation.py -q` | schema / normalizer 集中后拆出 runtime settings 并撤销 |
@@ -144,9 +144,6 @@ scripts/dev/run_tests.sh c901-debt
 | `src/cstree/pipeline/preflight.py` | pipeline validation | 运行前检查、provider 可用性和配置提示集中 | `uv run pytest tests/test_pipeline_validation.py tests/test_cli_core.py -q` | 拆出 config checks、provider checks、message builder 后撤销 |
 | `src/cstree/portfolio.py` | portfolio | 组合构造、权重和输出字段规则集中 | `uv run pytest tests/test_backtest.py tests/test_pipeline_e2e.py -q` | 拆出 weighting、turnover accounting、position rows 后撤销 |
 | `src/cstree/release_tools/hk_asset_workflow.py` | release workflow | refresh/inspect/package/release 编排和 report 收集集中 | `uv run pytest tests/test_hk_asset_workflow.py tests/test_run_release_scripts.py -q` | 拆出 stage planning、command construction、report collection 后撤销 |
-| `src/cstree/release_tools/package_assets.py` | release packaging | asset part spec、manifest 和 tarball 生成集中 | `uv run pytest tests/test_asset_release_scripts.py tests/test_run_release_scripts.py -q` | 拆出 part spec construction 和 manifest writer 后撤销 |
-| `src/cstree/release_tools/release_assets.py` | release publishing | release 查找、上传和 dry-run 规则集中 | `uv run pytest tests/test_asset_release_scripts.py tests/test_run_release_scripts.py -q` | 拆出 release client boundary 和 upload planner 后撤销 |
-| `src/cstree/split.py` | split / CV | 时间切分、CPCV 和兼容参数集中 | `uv run pytest tests/test_split.py tests/test_pipeline_train_eval_contracts.py -q` | 拆出 split plan 和 CPCV helpers 后撤销 |
 
 ## Orchestration Refactor Contract
 

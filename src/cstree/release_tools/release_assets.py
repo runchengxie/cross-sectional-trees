@@ -191,7 +191,7 @@ def _build_tars(
     return tar_paths
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Stage HK asset parts and upload multiple tarballs into one GitHub Release.",
     )
@@ -230,77 +230,93 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="Only upload selected part(s). Repeatable.",
     )
-    args, package_args = parser.parse_known_args(argv)
+    return parser
 
+
+def _resolve_staged_root(args: argparse.Namespace, package_args: list[str]) -> Path | None:
     if args.staged_root and package_args:
         print("Warning: package args ignored because --staged-root is set.", file=sys.stderr)
 
-    staged_root: Path
     if args.staged_root:
         staged_root = _resolve_path(args.staged_root)
         if not staged_root.exists():
             raise SystemExit(f"Staged root not found: {staged_root}")
-    else:
-        if args.skip_package:
-            raise SystemExit("No staged root provided and --skip-package was set.")
-        package_cmd = [sys.executable, "-m", PACKAGE_MODULE, *package_args]
-        for part_name in args.part:
-            package_cmd.extend(["--part", part_name])
-        if args.dry_run:
-            package_cmd.append("--dry-run")
-        result = _run(package_cmd, dry_run=False, capture=True)
-        if result.returncode != 0:
-            sys.stderr.write(result.stderr or "")
-            raise SystemExit(result.returncode)
-        sys.stdout.write(result.stdout or "")
-        if args.dry_run:
-            print("Dry run complete.")
-            return 0
-        staged_root = _parse_staged_root(result.stdout or "")
-        if staged_root is None:
-            raise SystemExit("Could not detect staged root from package_assets output.")
+        return staged_root
 
-    manifest = _load_manifest(staged_root)
-    selected_parts = _selected_parts(manifest, args.part)
+    if args.skip_package:
+        raise SystemExit("No staged root provided and --skip-package was set.")
+    package_cmd = [sys.executable, "-m", PACKAGE_MODULE, *package_args]
+    for part_name in args.part:
+        package_cmd.extend(["--part", part_name])
+    if args.dry_run:
+        package_cmd.append("--dry-run")
+    result = _run(package_cmd, dry_run=False, capture=True)
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr or "")
+        raise SystemExit(result.returncode)
+    sys.stdout.write(result.stdout or "")
+    if args.dry_run:
+        print("Dry run complete.")
+        return None
+    staged_root = _parse_staged_root(result.stdout or "")
+    if staged_root is None:
+        raise SystemExit("Could not detect staged root from package_assets output.")
+    return staged_root
 
-    if not args.no_readme and not args.dry_run:
-        readme_path = staged_root / "README.md"
-        readme_path.write_text(_format_readme(manifest, selected_parts), encoding="utf-8")
 
-    tar_dir = (
-        _resolve_path(args.tar_dir)
-        if args.tar_dir
-        else staged_root.parent / f"{staged_root.name}_tarballs"
-    )
+def _write_release_readme(
+    *,
+    staged_root: Path,
+    manifest: dict,
+    selected_parts: list[str],
+    args: argparse.Namespace,
+) -> None:
+    if args.no_readme or args.dry_run:
+        return
+    readme_path = staged_root / "README.md"
+    readme_path.write_text(_format_readme(manifest, selected_parts), encoding="utf-8")
+
+
+def _prepare_release_notes_file(
+    *,
+    args: argparse.Namespace,
+    manifest: dict,
+    selected_parts: list[str],
+    tar_paths: list[Path],
+    tar_dir: Path,
+    tag: str,
+) -> str:
+    notes_file = args.notes_file
+    if notes_file:
+        return str(notes_file)
+    notes_path = tar_dir / f"{tag}.release_notes.txt"
     if not args.dry_run:
-        tar_dir.mkdir(parents=True, exist_ok=True)
-    tar_paths = _build_tars(
-        staged_root=staged_root,
-        manifest=manifest,
-        selected_parts=selected_parts,
-        tar_dir=tar_dir,
-        dry_run=args.dry_run,
-    )
+        notes_path.write_text(
+            _format_release_notes(manifest, selected_parts, tar_paths),
+            encoding="utf-8",
+        )
+    return str(notes_path)
 
-    if args.skip_upload:
-        print(f"Staged root: {staged_root}")
-        for tar_path in tar_paths:
-            print(f"Tarball: {tar_path}")
-        return 0
 
+def _publish_release_assets(
+    *,
+    args: argparse.Namespace,
+    manifest: dict,
+    selected_parts: list[str],
+    tar_paths: list[Path],
+    tar_dir: Path,
+) -> int:
     _ensure_gh()
     tag = args.tag or _default_tag(manifest)
     title = args.title or _default_title(manifest)
-    notes_file = args.notes_file
-    if not notes_file:
-        notes_path = tar_dir / f"{tag}.release_notes.txt"
-        if not args.dry_run:
-            notes_path.write_text(
-                _format_release_notes(manifest, selected_parts, tar_paths),
-                encoding="utf-8",
-            )
-        notes_file = str(notes_path)
-
+    notes_file = _prepare_release_notes_file(
+        args=args,
+        manifest=manifest,
+        selected_parts=selected_parts,
+        tar_paths=tar_paths,
+        tar_dir=tar_dir,
+        tag=tag,
+    )
     repo_args: list[str] = ["--repo", args.repo] if args.repo else []
 
     view_cmd = ["gh", "release", "view", tag, *repo_args]
@@ -333,6 +349,51 @@ def main(argv: list[str] | None = None) -> int:
         create_cmd.append("--latest")
     _run(create_cmd, dry_run=args.dry_run)
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args, package_args = parser.parse_known_args(argv)
+    staged_root = _resolve_staged_root(args, package_args)
+    if staged_root is None:
+        return 0
+    manifest = _load_manifest(staged_root)
+    selected_parts = _selected_parts(manifest, args.part)
+    _write_release_readme(
+        staged_root=staged_root,
+        manifest=manifest,
+        selected_parts=selected_parts,
+        args=args,
+    )
+
+    tar_dir = (
+        _resolve_path(args.tar_dir)
+        if args.tar_dir
+        else staged_root.parent / f"{staged_root.name}_tarballs"
+    )
+    if not args.dry_run:
+        tar_dir.mkdir(parents=True, exist_ok=True)
+    tar_paths = _build_tars(
+        staged_root=staged_root,
+        manifest=manifest,
+        selected_parts=selected_parts,
+        tar_dir=tar_dir,
+        dry_run=args.dry_run,
+    )
+
+    if args.skip_upload:
+        print(f"Staged root: {staged_root}")
+        for tar_path in tar_paths:
+            print(f"Tarball: {tar_path}")
+        return 0
+
+    return _publish_release_assets(
+        args=args,
+        manifest=manifest,
+        selected_parts=selected_parts,
+        tar_paths=tar_paths,
+        tar_dir=tar_dir,
+    )
 
 
 if __name__ == "__main__":

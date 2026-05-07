@@ -10,7 +10,11 @@ from pathlib import Path
 
 import yaml
 
-from cstree.current_assets import current_contract_entry, default_hk_current_contract_path, load_current_contract
+from cstree.current_assets import (
+    current_contract_entry,
+    default_hk_current_contract_path,
+    load_current_contract,
+)
 from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 REPO_ROOT = find_repo_root(__file__)
@@ -255,6 +259,60 @@ def _hk_current_contract_overrides(args: argparse.Namespace) -> tuple[dict[str, 
     return overrides, contract_path
 
 
+def _validate_resolved_asset_paths(
+    *,
+    daily_dir: Path,
+    intraday_dir: Path | None,
+    etf_daily_dir: Path | None,
+    etf_instruments_path: Path | None,
+    valuation_dir: Path | None,
+    instruments_path: Path,
+    pit_dir: Path | None,
+    ex_factors_dir: Path | None,
+    dividends_dir: Path | None,
+    shares_dir: Path | None,
+    exchange_rate_dir: Path | None,
+    southbound_dir: Path | None,
+    financial_details_dir: Path | None,
+    announcement_dir: Path | None,
+    industry_changes_dir: Path | None,
+    universe_by_date_path: Path | None,
+    universe_symbols_path: Path | None,
+) -> None:
+    ensure_exists(daily_dir, "Daily snapshot directory")
+    if intraday_dir:
+        ensure_exists(intraday_dir, "Intraday snapshot directory")
+    if etf_daily_dir:
+        ensure_exists(etf_daily_dir, "ETF daily snapshot directory")
+    if etf_instruments_path:
+        ensure_exists(etf_instruments_path, "ETF instruments file")
+    if valuation_dir:
+        ensure_exists(valuation_dir, "Valuation snapshot directory")
+    ensure_exists(instruments_path, "Instruments file")
+    if pit_dir:
+        ensure_exists(pit_dir, "PIT snapshot directory")
+    if ex_factors_dir:
+        ensure_exists(ex_factors_dir, "Ex-factors snapshot directory")
+    if dividends_dir:
+        ensure_exists(dividends_dir, "Dividends snapshot directory")
+    if shares_dir:
+        ensure_exists(shares_dir, "Shares snapshot directory")
+    if exchange_rate_dir:
+        ensure_exists(exchange_rate_dir, "Exchange-rate snapshot directory")
+    if southbound_dir:
+        ensure_exists(southbound_dir, "Southbound snapshot directory")
+    if financial_details_dir:
+        ensure_exists(financial_details_dir, "Financial-details snapshot directory")
+    if announcement_dir:
+        ensure_exists(announcement_dir, "Announcement snapshot directory")
+    if industry_changes_dir:
+        ensure_exists(industry_changes_dir, "Industry changes snapshot directory")
+    if universe_by_date_path:
+        ensure_exists(universe_by_date_path, "Universe by-date file")
+    if universe_symbols_path:
+        ensure_exists(universe_symbols_path, "Universe symbols file")
+
+
 def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
     preset = PRESETS[args.preset]
     current_overrides, current_contract_path = _hk_current_contract_overrides(args)
@@ -470,38 +528,25 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
             "Provide both, or leave both unset."
         )
 
-    ensure_exists(daily_dir, "Daily snapshot directory")
-    if intraday_dir:
-        ensure_exists(intraday_dir, "Intraday snapshot directory")
-    if etf_daily_dir:
-        ensure_exists(etf_daily_dir, "ETF daily snapshot directory")
-    if etf_instruments_path:
-        ensure_exists(etf_instruments_path, "ETF instruments file")
-    if valuation_dir:
-        ensure_exists(valuation_dir, "Valuation snapshot directory")
-    ensure_exists(instruments_path, "Instruments file")
-    if pit_dir:
-        ensure_exists(pit_dir, "PIT snapshot directory")
-    if ex_factors_dir:
-        ensure_exists(ex_factors_dir, "Ex-factors snapshot directory")
-    if dividends_dir:
-        ensure_exists(dividends_dir, "Dividends snapshot directory")
-    if shares_dir:
-        ensure_exists(shares_dir, "Shares snapshot directory")
-    if exchange_rate_dir:
-        ensure_exists(exchange_rate_dir, "Exchange-rate snapshot directory")
-    if southbound_dir:
-        ensure_exists(southbound_dir, "Southbound snapshot directory")
-    if financial_details_dir:
-        ensure_exists(financial_details_dir, "Financial-details snapshot directory")
-    if announcement_dir:
-        ensure_exists(announcement_dir, "Announcement snapshot directory")
-    if industry_changes_dir:
-        ensure_exists(industry_changes_dir, "Industry changes snapshot directory")
-    if universe_by_date_path:
-        ensure_exists(universe_by_date_path, "Universe by-date file")
-    if universe_symbols_path:
-        ensure_exists(universe_symbols_path, "Universe symbols file")
+    _validate_resolved_asset_paths(
+        daily_dir=daily_dir,
+        intraday_dir=intraday_dir,
+        etf_daily_dir=etf_daily_dir,
+        etf_instruments_path=etf_instruments_path,
+        valuation_dir=valuation_dir,
+        instruments_path=instruments_path,
+        pit_dir=pit_dir,
+        ex_factors_dir=ex_factors_dir,
+        dividends_dir=dividends_dir,
+        shares_dir=shares_dir,
+        exchange_rate_dir=exchange_rate_dir,
+        southbound_dir=southbound_dir,
+        financial_details_dir=financial_details_dir,
+        announcement_dir=announcement_dir,
+        industry_changes_dir=industry_changes_dir,
+        universe_by_date_path=universe_by_date_path,
+        universe_symbols_path=universe_symbols_path,
+    )
     if universe_meta_path and not universe_meta_path.exists():
         universe_meta_path = None
 
