@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 
@@ -37,14 +39,38 @@ from .shared import (
     _write_text_list,
 )
 
-
 DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
 DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
 DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
 
 
-def mirror_hk_southbound(args, rqdatac) -> int:
+@dataclass(frozen=True)
+class _SouthboundMirrorContext:
+    symbols: list[str]
+    symbol_metadata: dict[str, object]
+    start_date: str
+    end_date: str
+    trading_types: list[str]
+    snapshot_dates: list[str]
+    snapshot_metadata: dict[str, object]
+    resume: bool
+    skip_existing: bool
+    max_attempts: int
+    backoff_seconds: float
+    max_backoff_seconds: float
+    output_dir: Path
+    data_dir: Path
+    audit_path: Path
+    manifest_path: Path
+    fields: list[str]
+    field_metadata: dict[str, object]
+    order_book_id_by_symbol: dict[str, str]
+    symbol_map: dict[str, str]
+    requested_batch_keys: list[tuple[str, str]]
+
+
+def _prepare_southbound_mirror_context(args, rqdatac) -> _SouthboundMirrorContext:
     symbols, symbol_metadata = _resolve_symbols(args)
     start_date = _normalize_absolute_date(args.start_date, label="--start-date")
     end_date = _normalize_absolute_date(args.end_date, label="--end-date")
@@ -59,12 +85,6 @@ def mirror_hk_southbound(args, rqdatac) -> int:
         end_date=end_date,
     )
     resume = bool(getattr(args, "resume", False))
-    skip_existing = bool(getattr(args, "skip_existing", False) or resume)
-    max_attempts = max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
-    backoff_seconds = float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS))
-    max_backoff_seconds = float(
-        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
-    )
     output_dir = _prepare_daily_output_dir(
         out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
         dataset_name="southbound",
@@ -75,16 +95,74 @@ def mirror_hk_southbound(args, rqdatac) -> int:
     )
     data_dir = output_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
-    audit_path = output_dir / "audit.csv"
-    manifest_path = output_dir / "manifest.yml"
 
     fields = ["trading_type", "eligible"]
-    field_metadata = {
-        "count": len(fields),
-        "fields_file": [],
-        "source": "southbound_membership",
-        "base_fields": list(fields),
-    }
+    order_book_id_by_symbol = {symbol: _to_rqdata_symbol("hk", symbol) for symbol in symbols}
+    return _SouthboundMirrorContext(
+        symbols=symbols,
+        symbol_metadata=symbol_metadata,
+        start_date=start_date,
+        end_date=end_date,
+        trading_types=trading_types,
+        snapshot_dates=snapshot_dates,
+        snapshot_metadata=snapshot_metadata,
+        resume=resume,
+        skip_existing=bool(getattr(args, "skip_existing", False) or resume),
+        max_attempts=max(
+            1,
+            int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1),
+        ),
+        backoff_seconds=float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS)),
+        max_backoff_seconds=float(
+            getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+        ),
+        output_dir=output_dir,
+        data_dir=data_dir,
+        audit_path=output_dir / "audit.csv",
+        manifest_path=output_dir / "manifest.yml",
+        fields=fields,
+        field_metadata={
+            "count": len(fields),
+            "fields_file": [],
+            "source": "southbound_membership",
+            "base_fields": list(fields),
+        },
+        order_book_id_by_symbol=order_book_id_by_symbol,
+        symbol_map={
+            order_book_id: symbol
+            for symbol, order_book_id in order_book_id_by_symbol.items()
+        },
+        requested_batch_keys=[
+            (query_date, trading_type)
+            for query_date in snapshot_dates
+            for trading_type in trading_types
+        ],
+    )
+
+
+def mirror_hk_southbound(args, rqdatac) -> int:
+    context = _prepare_southbound_mirror_context(args, rqdatac)
+    symbols = context.symbols
+    symbol_metadata = context.symbol_metadata
+    start_date = context.start_date
+    end_date = context.end_date
+    trading_types = context.trading_types
+    snapshot_dates = context.snapshot_dates
+    snapshot_metadata = context.snapshot_metadata
+    resume = context.resume
+    skip_existing = context.skip_existing
+    max_attempts = context.max_attempts
+    backoff_seconds = context.backoff_seconds
+    max_backoff_seconds = context.max_backoff_seconds
+    output_dir = context.output_dir
+    data_dir = context.data_dir
+    audit_path = context.audit_path
+    manifest_path = context.manifest_path
+    fields = context.fields
+    field_metadata = context.field_metadata
+    order_book_id_by_symbol = context.order_book_id_by_symbol
+    symbol_map = context.symbol_map
+    requested_batch_keys = context.requested_batch_keys
     entries_by_symbol: dict[str, DatedMirrorEntry] = {}
     audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
     frames_by_symbol: dict[str, pd.DataFrame] = {}
@@ -95,8 +173,6 @@ def mirror_hk_southbound(args, rqdatac) -> int:
     error: str | None = None
     result_code = 0
     quota_blocked = False
-    order_book_id_by_symbol = {symbol: _to_rqdata_symbol("hk", symbol) for symbol in symbols}
-    symbol_map = {order_book_id: symbol for symbol, order_book_id in order_book_id_by_symbol.items()}
     existing_manifest = _load_manifest(manifest_path) if resume and manifest_path.exists() else {}
     existing_status = (
         str(existing_manifest.get("status") or "").strip()
@@ -104,7 +180,6 @@ def mirror_hk_southbound(args, rqdatac) -> int:
         else ""
     )
     resume_from_partial = resume and existing_status not in {"", "completed"}
-    requested_batch_keys = [(query_date, trading_type) for query_date in snapshot_dates for trading_type in trading_types]
     completed_batch_keys: set[tuple[str, str]] = set()
 
     if isinstance(existing_manifest, Mapping):
@@ -332,9 +407,11 @@ def mirror_hk_southbound(args, rqdatac) -> int:
                 try:
                     payload, attempts = _retry_fetch(
                         f"southbound fetch failed for {trading_type} @ {query_date}",
-                        lambda: rqdatac.hk.get_southbound_eligible_secs(
-                            trading_type=trading_type,
-                            date=query_date,
+                        lambda trading_type=trading_type, query_date=query_date: (
+                            rqdatac.hk.get_southbound_eligible_secs(
+                                trading_type=trading_type,
+                                date=query_date,
+                            )
                         ),
                         max_attempts=max_attempts,
                         backoff_seconds=backoff_seconds,

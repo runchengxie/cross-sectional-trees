@@ -1787,6 +1787,134 @@ def _init_asset_health_field_stats(
     }
 
 
+def _read_asset_health_symbol_work_frame(
+    *,
+    path: Path,
+    date_column: str,
+    selected_fields: Sequence[str],
+    dataset: str | None,
+) -> pd.DataFrame:
+    read_columns = _dedupe_preserve_order(
+        [
+            date_column,
+            *selected_fields,
+            *(
+                ["hk_total_market_val"]
+                if dataset == "valuation" and "hk_total_market_val" not in selected_fields
+                else []
+            ),
+            *_duplicate_key_read_columns(dataset=dataset),
+        ],
+        strip=True,
+    )
+    try:
+        frame = pd.read_parquet(path, columns=read_columns)
+    except Exception:
+        frame = pd.read_parquet(path)
+    frame = _normalize_frame_columns(frame)
+    if date_column not in frame.columns:
+        raise SystemExit(f"Date column {date_column} not found in {path}")
+
+    work = frame.copy()
+    parsed_dates = pd.to_datetime(work[date_column], errors="coerce").dt.normalize()
+    valid = parsed_dates.notna()
+    work = work.loc[valid].copy()
+    work[date_column] = parsed_dates.loc[valid]
+    return work
+
+
+def _deduplicate_asset_health_symbol_work_frame(
+    *,
+    work: pd.DataFrame,
+    symbol: str,
+    dataset: str | None,
+    date_column: str,
+    duplicate_date_stats: dict[str, object],
+    sample_limit: int,
+) -> pd.DataFrame:
+    duplicate_key_columns = _duplicate_key_columns(
+        dataset=dataset,
+        date_column=date_column,
+        columns=work.columns,
+    )
+    duplicate_counts = work.value_counts(subset=duplicate_key_columns)
+    duplicate_date_count = int((duplicate_counts > 1).sum())
+    if duplicate_date_count <= 0:
+        return work
+
+    duplicate_date_stats["symbols"] = int(duplicate_date_stats["symbols"]) + 1
+    duplicate_date_stats["duplicate_date_groups"] = (
+        int(duplicate_date_stats["duplicate_date_groups"]) + duplicate_date_count
+    )
+    duplicate_date_stats["duplicate_rows"] = int(duplicate_date_stats["duplicate_rows"]) + int(
+        duplicate_counts.loc[duplicate_counts > 1].sum()
+    )
+    _append_sample(
+        duplicate_date_stats["sample_symbols"],
+        symbol,
+        limit=sample_limit,
+    )
+    # Prefer the last observed row per logical key so downstream health checks stay stable.
+    return (
+        work.drop_duplicates(subset=duplicate_key_columns, keep="last")
+        .sort_values(date_column)
+        .reset_index(drop=True)
+    )
+
+
+def _update_asset_health_symbol_history_state(
+    *,
+    work: pd.DataFrame,
+    symbol: str,
+    date_column: str,
+    dataset: str | None,
+    selected_fields: Sequence[str],
+    history_state: dict[str, object] | None,
+    sample_limit: int,
+    daily_reference: pd.DataFrame | None,
+    ex_factor_reference: pd.DataFrame | None,
+    shares_reference: pd.DataFrame | None,
+    instrument_reference: pd.DataFrame | None,
+) -> None:
+    if history_state is None:
+        return
+
+    history_state["rows_scanned"] = int(history_state["rows_scanned"]) + int(len(work))
+    history_date_min = work[date_column].min()
+    history_date_max = work[date_column].max()
+    history_state["date_min"] = (
+        history_date_min
+        if history_state["date_min"] is None or history_date_min < history_state["date_min"]
+        else history_state["date_min"]
+    )
+    history_state["date_max"] = (
+        history_date_max
+        if history_state["date_max"] is None or history_date_max > history_state["date_max"]
+        else history_state["date_max"]
+    )
+    if dataset == "daily":
+        _update_daily_history_state(
+            work=work,
+            symbol=symbol,
+            date_column=date_column,
+            history_state=history_state,
+            sample_limit=sample_limit,
+        )
+    elif dataset == "valuation":
+        _update_valuation_history_state(
+            work=work,
+            symbol=symbol,
+            date_column=date_column,
+            fields=selected_fields,
+            history_state=history_state,
+            sample_limit=sample_limit,
+            daily_reference=daily_reference,
+            ex_factor_reference=ex_factor_reference,
+            shares_reference=shares_reference,
+            instrument_reference=instrument_reference,
+        )
+
+
 def inspect_hk_asset_health(args) -> int:
     asset_dir = _resolve_path(args.asset_dir)
     data_dir = asset_dir / "data"
@@ -1899,32 +2027,12 @@ def inspect_hk_asset_health(args) -> int:
         if path is None:
             continue
 
-        read_columns = _dedupe_preserve_order(
-            [
-                date_column,
-                *selected_fields,
-                *(
-                    ["hk_total_market_val"]
-                    if dataset == "valuation" and "hk_total_market_val" not in selected_fields
-                    else []
-                ),
-                *_duplicate_key_read_columns(dataset=dataset),
-            ],
-            strip=True,
+        work = _read_asset_health_symbol_work_frame(
+            path=path,
+            date_column=date_column,
+            selected_fields=selected_fields,
+            dataset=dataset,
         )
-        try:
-            frame = pd.read_parquet(path, columns=read_columns)
-        except Exception:
-            frame = pd.read_parquet(path)
-        frame = _normalize_frame_columns(frame)
-        if date_column not in frame.columns:
-            raise SystemExit(f"Date column {date_column} not found in {path}")
-
-        work = frame.copy()
-        parsed_dates = pd.to_datetime(work[date_column], errors="coerce").dt.normalize()
-        valid = parsed_dates.notna()
-        work = work.loc[valid].copy()
-        work[date_column] = parsed_dates.loc[valid]
         if history_state is not None:
             history_state["symbols_scanned"] = int(history_state["symbols_scanned"]) + 1
         if work.empty:
@@ -1938,69 +2046,27 @@ def inspect_hk_asset_health(args) -> int:
                 )
             continue
 
-        duplicate_key_columns = _duplicate_key_columns(
+        work = _deduplicate_asset_health_symbol_work_frame(
+            work=work,
+            symbol=symbol,
             dataset=dataset,
             date_column=date_column,
-            columns=work.columns,
+            duplicate_date_stats=duplicate_date_stats,
+            sample_limit=sample_limit,
         )
-        duplicate_counts = work.value_counts(subset=duplicate_key_columns)
-        duplicate_date_count = int((duplicate_counts > 1).sum())
-        if duplicate_date_count > 0:
-            duplicate_date_stats["symbols"] = int(duplicate_date_stats["symbols"]) + 1
-            duplicate_date_stats["duplicate_date_groups"] = (
-                int(duplicate_date_stats["duplicate_date_groups"]) + duplicate_date_count
-            )
-            duplicate_date_stats["duplicate_rows"] = (
-                int(duplicate_date_stats["duplicate_rows"])
-                + int(duplicate_counts.loc[duplicate_counts > 1].sum())
-            )
-            _append_sample(
-                duplicate_date_stats["sample_symbols"],
-                symbol,
-                limit=sample_limit,
-            )
-            # Prefer the last observed row per logical key so downstream health checks stay stable.
-            work = (
-                work.drop_duplicates(subset=duplicate_key_columns, keep="last")
-                .sort_values(date_column)
-                .reset_index(drop=True)
-            )
-
-        if history_state is not None:
-            history_state["rows_scanned"] = int(history_state["rows_scanned"]) + int(len(work))
-            history_date_min = work[date_column].min()
-            history_date_max = work[date_column].max()
-            history_state["date_min"] = (
-                history_date_min
-                if history_state["date_min"] is None or history_date_min < history_state["date_min"]
-                else history_state["date_min"]
-            )
-            history_state["date_max"] = (
-                history_date_max
-                if history_state["date_max"] is None or history_date_max > history_state["date_max"]
-                else history_state["date_max"]
-            )
-            if dataset == "daily":
-                _update_daily_history_state(
-                    work=work,
-                    symbol=symbol,
-                    date_column=date_column,
-                    history_state=history_state,
-                    sample_limit=history_sample_limit,
-                )
-            elif dataset == "valuation":
-                _update_valuation_history_state(
-                    work=work,
-                    symbol=symbol,
-                    date_column=date_column,
-                    fields=selected_fields,
-                    history_state=history_state,
-                    sample_limit=history_sample_limit,
-                    daily_reference=daily_reference,
-                    ex_factor_reference=ex_factor_reference,
-                    shares_reference=shares_reference,
-                    instrument_reference=instrument_reference,
-                )
+        _update_asset_health_symbol_history_state(
+            work=work,
+            symbol=symbol,
+            date_column=date_column,
+            dataset=dataset,
+            selected_fields=selected_fields,
+            history_state=history_state,
+            sample_limit=history_sample_limit,
+            daily_reference=daily_reference,
+            ex_factor_reference=ex_factor_reference,
+            shares_reference=shares_reference,
+            instrument_reference=instrument_reference,
+        )
 
         latest_ts = work[date_column].max()
         latest_min = latest_ts if latest_min is None or latest_ts < latest_min else latest_min

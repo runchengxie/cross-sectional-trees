@@ -1,27 +1,30 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
 
 from .data_tools.symbols import canonicalize_symbol_columns
-from .portfolio import (
-    build_position_weights,
-    normalize_position_weights,
-    normalize_weighting_mode,
-    select_holdings,
-)
 from .execution import (
     BpsCostModel,
+    CostModel,
     EntryPolicy,
     ExecutionModel,
     ExitPolicy,
     NoSlippageModel,
     ParticipationSlippageModel,
     SelectionConstraints,
+    SlippageModel,
 )
 from .execution_calendar import resolve_execution_date
+from .portfolio import (
+    build_position_weights,
+    normalize_position_weights,
+    normalize_weighting_mode,
+    select_holdings,
+)
 
 
 def _drawdown_timing(nav: pd.Series) -> dict[str, float]:
@@ -275,6 +278,153 @@ def _compute_trade_summary(
     return turnover, entry_turnover, exit_turnover, trade_weights
 
 
+@dataclass(frozen=True)
+class _BacktestExecutionContext:
+    exit_policy: ExitPolicy
+    cost_model: CostModel
+    slippage_model: SlippageModel
+    entry_policy: EntryPolicy
+    selection_constraints: SelectionConstraints
+    calendar: str
+    open_dates: tuple
+    closed_dates: tuple
+
+
+@dataclass(frozen=True)
+class _BacktestPricingContext:
+    trade_dates: list[pd.Timestamp]
+    date_to_idx: dict[pd.Timestamp, int]
+    entry_price_table: pd.DataFrame
+    exit_price_table: pd.DataFrame
+    day_groups: dict[pd.Timestamp, pd.DataFrame]
+    tradable_table: pd.DataFrame | None
+    amount_tables: dict[str, pd.DataFrame]
+
+
+def _normalize_backtest_frame(
+    frame: pd.DataFrame | None,
+    *,
+    context: str,
+) -> pd.DataFrame | None:
+    if frame is None or frame.empty:
+        return frame
+    normalized = canonicalize_symbol_columns(frame, context=context)
+    normalized = normalized.copy()
+    normalized["trade_date"] = pd.to_datetime(normalized["trade_date"]).dt.normalize()
+    return normalized
+
+
+def _resolve_backtest_execution_context(
+    *,
+    execution: ExecutionModel | None,
+    exit_price_policy: Literal["strict", "ffill", "delay"],
+    exit_fallback_policy: Literal["ffill", "none"],
+    price_col: str,
+    cost_bps: float,
+) -> _BacktestExecutionContext:
+    if execution is not None:
+        return _BacktestExecutionContext(
+            exit_policy=execution.exit_policy,
+            cost_model=execution.cost_model,
+            slippage_model=execution.slippage_model,
+            entry_policy=execution.entry_policy,
+            selection_constraints=execution.selection_constraints,
+            calendar=execution.calendar,
+            open_dates=execution.calendar_open_dates,
+            closed_dates=execution.calendar_closed_dates,
+        )
+
+    if exit_price_policy not in {"strict", "ffill", "delay"}:
+        raise ValueError("exit_price_policy must be one of: strict, ffill, delay.")
+    if exit_fallback_policy not in {"ffill", "none"}:
+        raise ValueError("exit_fallback_policy must be one of: ffill, none.")
+    return _BacktestExecutionContext(
+        exit_policy=ExitPolicy(exit_price_policy, exit_fallback_policy, price_col),
+        cost_model=BpsCostModel(cost_bps),
+        slippage_model=NoSlippageModel(),
+        entry_policy=EntryPolicy(price_col),
+        selection_constraints=SelectionConstraints(),
+        calendar="market",
+        open_dates=(),
+        closed_dates=(),
+    )
+
+
+def _prepare_backtest_pricing_context(
+    *,
+    data: pd.DataFrame | None,
+    pricing_data: pd.DataFrame | None,
+    entry_policy: EntryPolicy,
+    exit_policy: ExitPolicy,
+    selection_constraints: SelectionConstraints,
+    slippage_model: SlippageModel,
+    tradable_col: str | None,
+) -> _BacktestPricingContext | None:
+    pricing_source = pricing_data if pricing_data is not None else data
+    if pricing_source is None or pricing_source.empty:
+        return None
+
+    entry_price_col = entry_policy.price_col
+    exit_price_col = exit_policy.price_col
+    required_pricing_cols = {entry_price_col, exit_price_col}
+    if selection_constraints.min_amount is not None:
+        required_pricing_cols.add(selection_constraints.amount_col)
+    if isinstance(slippage_model, ParticipationSlippageModel):
+        required_pricing_cols.add(slippage_model.amount_col)
+    missing_pricing_cols = [
+        col for col in sorted(required_pricing_cols) if col not in pricing_source.columns
+    ]
+    if missing_pricing_cols:
+        raise ValueError(
+            "Backtest pricing data is missing required columns: "
+            + ", ".join(missing_pricing_cols)
+        )
+
+    pricing_source = pricing_source.drop_duplicates(subset=["trade_date", "symbol"]).copy()
+    trade_dates = [
+        pd.Timestamp(date).normalize()
+        for date in sorted(pricing_source["trade_date"].unique())
+    ]
+    if len(trade_dates) < 2:
+        return None
+    date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
+    entry_price_table = pricing_source.pivot(
+        index="trade_date", columns="symbol", values=entry_price_col
+    )
+    exit_price_table = pricing_source.pivot(
+        index="trade_date", columns="symbol", values=exit_price_col
+    )
+    day_groups = (
+        {date: group for date, group in data.groupby("trade_date", sort=False)}
+        if data is not None
+        else {}
+    )
+    tradable_table = None
+    if tradable_col and tradable_col in pricing_source.columns:
+        tradable_table = pricing_source.pivot(
+            index="trade_date", columns="symbol", values=tradable_col
+        )
+        tradable_table = tradable_table.fillna(False).astype(bool)
+    amount_tables: dict[str, pd.DataFrame] = {}
+    for amount_col in sorted(required_pricing_cols):
+        if amount_col in {entry_price_col, exit_price_col}:
+            continue
+        if amount_col in pricing_source.columns:
+            amount_tables[amount_col] = pricing_source.pivot(
+                index="trade_date", columns="symbol", values=amount_col
+            )
+
+    return _BacktestPricingContext(
+        trade_dates=trade_dates,
+        date_to_idx=date_to_idx,
+        entry_price_table=entry_price_table,
+        exit_price_table=exit_price_table,
+        day_groups=day_groups,
+        tradable_table=tradable_table,
+        amount_tables=amount_tables,
+    )
+
+
 def backtest_topk(
     data: pd.DataFrame,
     pred_col: str,
@@ -299,81 +449,42 @@ def backtest_topk(
     execution: Optional[ExecutionModel] = None,
     pricing_data: Optional[pd.DataFrame] = None,
 ):
-    if data is not None and not data.empty:
-        data = canonicalize_symbol_columns(data, context="Backtest data")
-        data = data.copy()
-        data["trade_date"] = pd.to_datetime(data["trade_date"]).dt.normalize()
-    if pricing_data is not None and not pricing_data.empty:
-        pricing_data = canonicalize_symbol_columns(pricing_data, context="Backtest pricing data")
-        pricing_data = pricing_data.copy()
-        pricing_data["trade_date"] = pd.to_datetime(pricing_data["trade_date"]).dt.normalize()
-    if execution is None:
-        if exit_price_policy not in {"strict", "ffill", "delay"}:
-            raise ValueError("exit_price_policy must be one of: strict, ffill, delay.")
-        if exit_fallback_policy not in {"ffill", "none"}:
-            raise ValueError("exit_fallback_policy must be one of: ffill, none.")
-        exit_policy = ExitPolicy(exit_price_policy, exit_fallback_policy, price_col)
-        cost_model = BpsCostModel(cost_bps)
-        slippage_model = NoSlippageModel()
-        entry_policy = EntryPolicy(price_col)
-        selection_constraints = SelectionConstraints()
-        execution_calendar = "market"
-        execution_open_dates = ()
-        execution_closed_dates = ()
-    else:
-        exit_policy = execution.exit_policy
-        cost_model = execution.cost_model
-        slippage_model = execution.slippage_model
-        entry_policy = execution.entry_policy
-        selection_constraints = execution.selection_constraints
-        execution_calendar = execution.calendar
-        execution_open_dates = execution.calendar_open_dates
-        execution_closed_dates = execution.calendar_closed_dates
+    data = _normalize_backtest_frame(data, context="Backtest data")
+    pricing_data = _normalize_backtest_frame(pricing_data, context="Backtest pricing data")
+    execution_context = _resolve_backtest_execution_context(
+        execution=execution,
+        exit_price_policy=exit_price_policy,
+        exit_fallback_policy=exit_fallback_policy,
+        price_col=price_col,
+        cost_bps=cost_bps,
+    )
+    exit_policy = execution_context.exit_policy
+    cost_model = execution_context.cost_model
+    slippage_model = execution_context.slippage_model
+    entry_policy = execution_context.entry_policy
+    selection_constraints = execution_context.selection_constraints
+    execution_calendar = execution_context.calendar
+    execution_open_dates = execution_context.open_dates
+    execution_closed_dates = execution_context.closed_dates
     weighting_mode = normalize_weighting_mode(weighting)
-    pricing_source = pricing_data if pricing_data is not None else data
-    if pricing_source.empty:
-        return None
-    entry_price_col = entry_policy.price_col
-    exit_price_col = exit_policy.price_col
-    required_pricing_cols = {entry_price_col, exit_price_col}
-    if selection_constraints.min_amount is not None:
-        required_pricing_cols.add(selection_constraints.amount_col)
-    if isinstance(slippage_model, ParticipationSlippageModel):
-        required_pricing_cols.add(slippage_model.amount_col)
-    missing_pricing_cols = [
-        col for col in sorted(required_pricing_cols) if col not in pricing_source.columns
-    ]
-    if missing_pricing_cols:
-        raise ValueError(
-            "Backtest pricing data is missing required columns: "
-            + ", ".join(missing_pricing_cols)
-        )
-    pricing_source = pricing_source.drop_duplicates(subset=["trade_date", "symbol"]).copy()
-    trade_dates = [pd.Timestamp(date).normalize() for date in sorted(pricing_source["trade_date"].unique())]
-    if len(trade_dates) < 2:
-        return None
-    date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
-    entry_price_table = pricing_source.pivot(
-        index="trade_date", columns="symbol", values=entry_price_col
+    pricing_context = _prepare_backtest_pricing_context(
+        data=data,
+        pricing_data=pricing_data,
+        entry_policy=entry_policy,
+        exit_policy=exit_policy,
+        selection_constraints=selection_constraints,
+        slippage_model=slippage_model,
+        tradable_col=tradable_col,
     )
-    exit_price_table = pricing_source.pivot(
-        index="trade_date", columns="symbol", values=exit_price_col
-    )
-    day_groups = {date: group for date, group in data.groupby("trade_date", sort=False)}
-    tradable_table = None
-    if tradable_col and tradable_col in pricing_source.columns:
-        tradable_table = pricing_source.pivot(
-            index="trade_date", columns="symbol", values=tradable_col
-        )
-        tradable_table = tradable_table.fillna(False).astype(bool)
-    amount_tables: dict[str, pd.DataFrame] = {}
-    for amount_col in sorted(required_pricing_cols):
-        if amount_col in {entry_price_col, exit_price_col}:
-            continue
-        if amount_col in pricing_source.columns:
-            amount_tables[amount_col] = pricing_source.pivot(
-                index="trade_date", columns="symbol", values=amount_col
-            )
+    if pricing_context is None:
+        return None
+    trade_dates = pricing_context.trade_dates
+    date_to_idx = pricing_context.date_to_idx
+    entry_price_table = pricing_context.entry_price_table
+    exit_price_table = pricing_context.exit_price_table
+    day_groups = pricing_context.day_groups
+    tradable_table = pricing_context.tradable_table
+    amount_tables = pricing_context.amount_tables
 
     net_returns = []
     gross_returns = []

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -45,10 +47,9 @@ from .shared import (
     _prepare_daily_output_dir,
     _prepare_output_dir,
     _timestamp_now,
-    _write_text_list,
     _write_manifest,
+    _write_text_list,
 )
-
 
 DEFAULT_BATCH_SIZE = _package_attr("DEFAULT_BATCH_SIZE")
 DEFAULT_MIRROR_MAX_ATTEMPTS = _package_attr("DEFAULT_MIRROR_MAX_ATTEMPTS")
@@ -56,6 +57,160 @@ DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
 DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
 _resolve_fields = _package_attr("_resolve_fields")
+
+
+@dataclass(frozen=True)
+class _DatedMirrorContext:
+    symbols: list[str]
+    symbol_metadata: dict[str, object]
+    start_date: str
+    end_date: str
+    resume: bool
+    skip_existing: bool
+    max_attempts: int
+    backoff_seconds: float
+    max_backoff_seconds: float
+    output_dir: Path
+    data_dir: Path
+    audit_path: Path
+    request_id_metadata: dict[str, dict[str, str | None]]
+    request_ids_by_symbol: dict[str, list[str]]
+    primary_order_book_id_by_symbol: dict[str, str]
+    symbol_map: dict[str, str]
+
+
+@dataclass(frozen=True)
+class _MirrorContext:
+    fields: Sequence[str]
+    field_metadata: Mapping[str, object]
+    symbols: list[str]
+    symbol_metadata: dict[str, object]
+    resume: bool
+    skip_existing: bool
+    max_attempts: int
+    backoff_seconds: float
+    max_backoff_seconds: float
+    output_dir: Path
+    data_dir: Path
+    audit_path: Path
+    symbol_map: dict[str, str]
+    order_book_ids: list[str]
+
+
+def _prepare_mirror_context(*, args, dataset_name: str) -> _MirrorContext:
+    fields, field_metadata = _resolve_fields(args)
+    symbols, symbol_metadata = _resolve_symbols(args)
+    resume = bool(getattr(args, "resume", False))
+    output_dir = _prepare_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        dataset_name=dataset_name,
+        start_quarter=args.start_quarter,
+        end_quarter=args.end_quarter,
+        statements=args.statements,
+        name=getattr(args, "name", None),
+        resume=resume,
+    )
+    data_dir = output_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    symbol_map = {_to_rqdata_symbol("hk", symbol): symbol for symbol in symbols}
+    return _MirrorContext(
+        fields=fields,
+        field_metadata=field_metadata,
+        symbols=symbols,
+        symbol_metadata=symbol_metadata,
+        resume=resume,
+        skip_existing=bool(getattr(args, "skip_existing", False) or resume),
+        max_attempts=max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1)),
+        backoff_seconds=float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS)),
+        max_backoff_seconds=float(
+            getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+        ),
+        output_dir=output_dir,
+        data_dir=data_dir,
+        audit_path=output_dir / "audit.csv",
+        symbol_map=symbol_map,
+        order_book_ids=list(symbol_map.keys()),
+    )
+
+
+def _prepare_dated_mirror_context(
+    *,
+    args,
+    dataset_name: str,
+    resolve_request_groups,
+) -> _DatedMirrorContext:
+    symbols, symbol_metadata = _resolve_symbols(args)
+    start_date = _normalize_absolute_date(args.start_date, label="--start-date")
+    end_date = _normalize_absolute_date(args.end_date, label="--end-date")
+    if start_date > end_date:
+        raise SystemExit("--start-date must be <= --end-date.")
+
+    resume = bool(getattr(args, "resume", False))
+    output_dir = _prepare_daily_output_dir(
+        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+        dataset_name=dataset_name,
+        start_date=start_date,
+        end_date=end_date,
+        name=getattr(args, "name", None),
+        resume=resume,
+    )
+    data_dir = output_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    if resolve_request_groups is not None:
+        request_groups, request_id_metadata, request_group_metadata = resolve_request_groups(
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+            args=args,
+        )
+    else:
+        (
+            request_groups,
+            request_id_metadata,
+            request_group_metadata,
+        ) = _build_default_dated_request_groups(symbols)
+    if request_group_metadata:
+        symbol_metadata = dict(symbol_metadata)
+        symbol_metadata["request_groups"] = dict(request_group_metadata)
+
+    request_ids_by_symbol = {group.symbol: list(group.request_ids) for group in request_groups}
+    primary_order_book_id_by_symbol = {
+        group.symbol: (
+            next((item for item in group.order_book_ids if str(item).strip()), None)
+            or next((item for item in group.request_ids if str(item).strip()), None)
+            or _to_rqdata_symbol("hk", group.symbol)
+        )
+        for group in request_groups
+    }
+    symbol_map: dict[str, str] = {}
+    for group in request_groups:
+        for request_id in (*group.request_ids, *group.order_book_ids):
+            text = str(request_id or "").strip()
+            if text:
+                symbol_map[text] = group.symbol
+
+    return _DatedMirrorContext(
+        symbols=symbols,
+        symbol_metadata=symbol_metadata,
+        start_date=start_date,
+        end_date=end_date,
+        resume=resume,
+        skip_existing=bool(getattr(args, "skip_existing", False) or resume),
+        max_attempts=max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1)),
+        backoff_seconds=float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS)),
+        max_backoff_seconds=float(
+            getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
+        ),
+        output_dir=output_dir,
+        data_dir=data_dir,
+        audit_path=output_dir / "audit.csv",
+        request_id_metadata=request_id_metadata,
+        request_ids_by_symbol=request_ids_by_symbol,
+        primary_order_book_id_by_symbol=primary_order_book_id_by_symbol,
+        symbol_map=symbol_map,
+    )
 
 
 def _collect_pending_mirror_items(
@@ -132,59 +287,27 @@ def _mirror_dated_dataset(
     resolve_request_groups=None,
     normalize_payload=None,
 ) -> int:
-    symbols, symbol_metadata = _resolve_symbols(args)
-    start_date = _normalize_absolute_date(args.start_date, label="--start-date")
-    end_date = _normalize_absolute_date(args.end_date, label="--end-date")
-    if start_date > end_date:
-        raise SystemExit("--start-date must be <= --end-date.")
-
-    resume = bool(getattr(args, "resume", False))
-    skip_existing = bool(getattr(args, "skip_existing", False) or resume)
-    max_attempts = max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
-    backoff_seconds = float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS))
-    max_backoff_seconds = float(
-        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
-    )
-    output_dir = _prepare_daily_output_dir(
-        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
+    context = _prepare_dated_mirror_context(
+        args=args,
         dataset_name=dataset_name,
-        start_date=start_date,
-        end_date=end_date,
-        name=getattr(args, "name", None),
-        resume=resume,
+        resolve_request_groups=resolve_request_groups,
     )
-    data_dir = output_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    audit_path = output_dir / "audit.csv"
-
-    if resolve_request_groups is not None:
-        request_groups, request_id_metadata, request_group_metadata = resolve_request_groups(
-            symbols=symbols,
-            start_date=start_date,
-            end_date=end_date,
-            args=args,
-        )
-    else:
-        request_groups, request_id_metadata, request_group_metadata = _build_default_dated_request_groups(symbols)
-    if request_group_metadata:
-        symbol_metadata = dict(symbol_metadata)
-        symbol_metadata["request_groups"] = dict(request_group_metadata)
-
-    request_ids_by_symbol = {group.symbol: list(group.request_ids) for group in request_groups}
-    primary_order_book_id_by_symbol = {
-        group.symbol: (
-            next((item for item in group.order_book_ids if str(item).strip()), None)
-            or next((item for item in group.request_ids if str(item).strip()), None)
-            or _to_rqdata_symbol("hk", group.symbol)
-        )
-        for group in request_groups
-    }
-    symbol_map: dict[str, str] = {}
-    for group in request_groups:
-        for request_id in (*group.request_ids, *group.order_book_ids):
-            text = str(request_id or "").strip()
-            if text:
-                symbol_map[text] = group.symbol
+    symbols = context.symbols
+    symbol_metadata = context.symbol_metadata
+    start_date = context.start_date
+    end_date = context.end_date
+    resume = context.resume
+    skip_existing = context.skip_existing
+    max_attempts = context.max_attempts
+    backoff_seconds = context.backoff_seconds
+    max_backoff_seconds = context.max_backoff_seconds
+    output_dir = context.output_dir
+    data_dir = context.data_dir
+    audit_path = context.audit_path
+    request_id_metadata = context.request_id_metadata
+    request_ids_by_symbol = context.request_ids_by_symbol
+    primary_order_book_id_by_symbol = context.primary_order_book_id_by_symbol
+    symbol_map = context.symbol_map
 
     entries_by_symbol: dict[str, DatedMirrorEntry] = {}
     audit_by_symbol: dict[str, DatedMirrorAuditRecord] = {}
@@ -268,7 +391,13 @@ def _mirror_dated_dataset(
             try:
                 payload, attempts = _retry_fetch(
                     label,
-                    lambda: fetch_batch(request_ids, active_fields, start_date, end_date),
+                    partial(
+                        fetch_batch,
+                        list(request_ids),
+                        list(active_fields),
+                        start_date,
+                        end_date,
+                    ),
                     max_attempts=max_attempts,
                     backoff_seconds=backoff_seconds,
                     max_backoff_seconds=max_backoff_seconds,
@@ -607,30 +736,21 @@ def _mirror_dataset(
     api_name: str,
     fetch_batch,
 ) -> int:
-    fields, field_metadata = _resolve_fields(args)
-    symbols, symbol_metadata = _resolve_symbols(args)
-    resume = bool(getattr(args, "resume", False))
-    skip_existing = bool(getattr(args, "skip_existing", False) or resume)
-    max_attempts = max(1, int(getattr(args, "max_attempts", DEFAULT_MIRROR_MAX_ATTEMPTS) or 1))
-    backoff_seconds = float(getattr(args, "backoff_seconds", DEFAULT_MIRROR_BACKOFF_SECONDS))
-    max_backoff_seconds = float(
-        getattr(args, "max_backoff_seconds", DEFAULT_MIRROR_MAX_BACKOFF_SECONDS)
-    )
-    output_dir = _prepare_output_dir(
-        out_root=getattr(args, "out_root", DEFAULT_OUT_ROOT),
-        dataset_name=dataset_name,
-        start_quarter=args.start_quarter,
-        end_quarter=args.end_quarter,
-        statements=args.statements,
-        name=getattr(args, "name", None),
-        resume=resume,
-    )
-    data_dir = output_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    audit_path = output_dir / "audit.csv"
-
-    symbol_map = {_to_rqdata_symbol("hk", symbol): symbol for symbol in symbols}
-    order_book_ids = list(symbol_map.keys())
+    context = _prepare_mirror_context(args=args, dataset_name=dataset_name)
+    fields = context.fields
+    field_metadata = context.field_metadata
+    symbols = context.symbols
+    symbol_metadata = context.symbol_metadata
+    resume = context.resume
+    skip_existing = context.skip_existing
+    max_attempts = context.max_attempts
+    backoff_seconds = context.backoff_seconds
+    max_backoff_seconds = context.max_backoff_seconds
+    output_dir = context.output_dir
+    data_dir = context.data_dir
+    audit_path = context.audit_path
+    symbol_map = context.symbol_map
+    order_book_ids = context.order_book_ids
     entries_by_symbol: dict[str, MirrorEntry] = {}
     audit_by_symbol: dict[str, MirrorAuditRecord] = {}
     batches: list[dict[str, object]] = []
@@ -707,9 +827,10 @@ def _mirror_dataset(
             try:
                 payload, attempts = _retry_fetch(
                     label,
-                    lambda: fetch_batch(
+                    partial(
+                        fetch_batch,
                         [order_book_id],
-                        active_fields,
+                        list(active_fields),
                         args.start_quarter,
                         args.end_quarter,
                         date=getattr(args, "date", None),
