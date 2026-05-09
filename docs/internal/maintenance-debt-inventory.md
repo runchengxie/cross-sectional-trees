@@ -8,7 +8,7 @@
 
 页面性质：`internal-inventory`\
 当前状态：`active-maintenance-inventory`\
-最后核对时间：`2026-05-07`
+最后核对时间：`2026-05-09`
 
 ## 当前状态摘要
 
@@ -33,23 +33,23 @@ ratchet、在触碰 RQData asset 模块时收窄 public facade。兼容层删除
 
 ## 当前静态快照
 
-生成时间：2026-05-08。统计命令：
-`python scripts/dev/maintainability_metrics.py --json --limit 8`。统计范围为 `src/`、`scripts/`、
+生成时间：2026-05-09。统计命令：
+`python scripts/dev/maintainability_metrics.py --json --limit 10`。统计范围为 `src/`、`scripts/`、
 `tests/` 下排除 `__pycache__` 的 Python 文件；此快照只用于趋势判断，不代表实时仪表盘。
 
 | 指标 | 当前值 | 说明 |
 | --- | ---: | --- |
 | Python 文件数 | 264 | 包括源码、脚本和测试 |
-| Python 总行数 | 98,192 | 仅静态行数，用作趋势参考 |
-| 超过 100 字符的行 | 1,196 | Markdown 不计入 |
-| 超过 100 行的函数 | 187 | 包含测试函数 |
-| 超过 250 行的函数 | 30 | 优先关注实现代码 |
+| Python 总行数 | 99,177 | 仅静态行数，用作趋势参考 |
+| 超过 100 字符的行 | 1,203 | Markdown 不计入 |
+| 超过 100 行的函数 | 186 | 包含测试函数 |
+| 超过 250 行的函数 | 29 | 优先关注实现代码 |
 | 超过 500 行的函数 | 0 | 需要单独跟踪的超大函数 |
 | `C901` 文件级豁免 | 27 | 见 `pyproject.toml` |
 | `rqdata public_api.__all__` | 49 | 稳定 facade 导出名数量 |
 
 当前已经没有超过 500 行的 Python 函数。最大函数仍集中在 RQData mirror、通用
-mirror workflow、config、summary builder 和 release / output 编排；
+mirror workflow、config 和 release / output 编排；
 下一轮应继续按职责拆分，不把 import sorting、unused import 或 pyupgrade 清理混进行为保持重构。
 
 ### 2026-05-06 maintainability governance apply
@@ -87,6 +87,16 @@ provider 语义：
 | pipeline runner legacy removal | 删除未被 repo-local 调用的 `runner.py` private `_run_legacy` 路径和专用 locals handoff；当前 pipeline 只保留 `prepare_research_context()` + `run()` 主路径，`>250` 函数从 31 降到 30 | `python -m compileall -q src/cstree/pipeline/runner.py`; `scripts/dev/run_tests.sh lint`; `UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/test_pipeline_runtime.py tests/test_pipeline_filters_core.py tests/test_pipeline_train_eval_contracts.py -q` |
 | output context dataclass boundary | 将输出持久化入口的 flat dict handoff 收口为 `OutputContext` dataclass；保持 Mapping 兼容，先锁住 source 顺序和 override 语义 | `UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/test_output_context.py tests/test_pipeline_runtime.py tests/test_pipeline_filters_core.py tests/test_pipeline_train_eval_contracts.py -q`; `scripts/dev/run_tests.sh lint` |
 
+### 2026-05-09 summary section extraction
+
+本轮按 summary section 职责拆 `build_run_summary_sections`，保持 `summary.json` schema、
+artifact 路径和字段命名不变。主入口现在只编排 section builder，`>250` 行函数从 30
+降到 29；最大函数列表不再包含 `pipeline/output_summary_sections.py`。
+
+| 范围 | 结果 | 验证 |
+| --- | --- | --- |
+| summary section builders | 将 run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/quality/fundamentals/industry/walk_forward 拆为私有 builder | `python -m py_compile src/cstree/pipeline/output_summary_sections.py`; `.venv/bin/ruff check src/cstree/pipeline/output_summary_sections.py`; `.venv/bin/python scripts/dev/maintainability_metrics.py --json --limit 10` |
+
 剩余 deferred decisions：
 
 * `mirror_financial.py` 的 PIT patch mirror 仍是复杂入口；manifest builder 和 request
@@ -99,7 +109,7 @@ provider 语义：
 
 | 优先级 | 事项 | 当前建议 |
 | --- | --- | --- |
-| P1 | 继续拆大函数 / 大模块 | 当前先巩固 `>500` 清零结果；下一步优先 `pipeline/config.py` runtime settings、`pipeline/output_summary_sections.py` section builders、`pipeline/output_artifacts.py` artifact writer、`mirror_workflow.py` resume state |
+| P1 | 继续拆大函数 / 大模块 | 当前先巩固 `>500` 清零结果；下一步优先 `pipeline/config.py` runtime settings、`pipeline/output_artifacts.py` artifact writer、`mirror_financial.py` batch error/audit state、`mirror_workflow.py` resume state |
 | P2 | 静态质量 ratchet | 优先单独处理 import sorting；`F401`、`UP` 等继续走 touched-file gate，不和行为重构混做 |
 | P3 | `public_api.py` facade 收口 | 随 RQData asset 模块改动逐步判断 private helper 应留在模块内测试还是提升为稳定 public API |
 | P4 | compatibility shim 删除 | `cstree.pipeline.data` 等只在 breaking release 或外部风险确认后处理 |
@@ -172,8 +182,8 @@ scripts/dev/run_tests.sh c901-debt
 | `src/cstree/data_tools/rqdata_assets/mirror_industry_southbound.py` | resume validation、pending collection、batch error handlers | `uv run pytest tests/rqdata_assets/ -q` |
 | `src/cstree/data_tools/rqdata_assets/mirror_workflow.py` | resume state、batch error handlers | `uv run pytest tests/rqdata_assets/ -q` |
 | `src/cstree/pipeline/config.py` | runtime settings、legacy key migration、typed normalization | `uv run pytest tests/test_config_utils.py tests/test_pipeline_validation.py -q` |
+| `src/cstree/pipeline/output_artifacts.py` | artifact path plan、writer groups、summary attachment | `uv run pytest tests/test_pipeline_runtime.py tests/test_pipeline_e2e.py -q` |
 | `src/cstree/data_tools/rqdata_assets/mirror_financial.py` | PIT patch batch error handling、audit/write state | `uv run pytest tests/rqdata_assets/test_mirror_financial.py -q` |
-| `src/cstree/pipeline/output_summary_sections.py` | section builders、risk/backtest subsections | `uv run pytest tests/test_pipeline_runtime.py tests/test_pipeline_e2e.py -q` |
 
 ### Heavy Data Verification Rule
 
@@ -354,19 +364,19 @@ entrypoint 函数，而不是再抽常量。
 | 行数 | 函数 | 文件 | 初步处理 |
 | ---: | --- | --- | --- |
 | 454 | `resolve_runtime_settings` | `src/cstree/pipeline/config.py` | 和 config compatibility 一起小步处理 |
-| 425 | `build_run_summary_sections` | `src/cstree/pipeline/output_summary_sections.py` | 后续拆 summary section builders |
 | 422 | `patch_hk_pit_financials` | `src/cstree/data_tools/rqdata_assets/mirror_financial.py` | 已抽 request context、resume 校验和 manifest/totals；后续继续拆 batch error handling |
 | 415 | `mirror_hk_daily` | `src/cstree/data_tools/rqdata_assets/mirror_daily.py` | 第二批，先抽 fetch policy / writer |
-| 385 | `inspect_hk_intraday_health` | `src/cstree/data_tools/rqdata_assets/intraday_health.py` | 后续拆 scanner、summary、rendering |
+| 410 | `inspect_hk_intraday_health` | `src/cstree/data_tools/rqdata_assets/intraday_health.py` | 后续拆 scanner、summary、rendering |
 | 382 | `write_run_artifacts` | `src/cstree/pipeline/output_artifacts.py` | 后续拆 path plan、writer、summary attachment |
 | 359 | `_mirror_dated_dataset` | `src/cstree/data_tools/rqdata_assets/mirror_workflow.py` | 已抽 dated context、fetch policy、writer/finalize；后续拆 resume state / batch errors |
+| 357 | `_build_part_specs` | `src/cstree/release_tools/package_assets.py` | 后续拆 part planning 和 manifest rows |
 | 349 | `mirror_hk_instrument_industry` | `src/cstree/data_tools/rqdata_assets/mirror_instrument_industry.py` | 后续拆 normalization 和 dated writer |
 | 349 | `_run_train_eval_stage_impl` | `src/cstree/pipeline/train_eval_stage.py` | 已抽 period/walk-forward evaluation 并撤销 C901 豁免；后续继续拆 fit/eval runner |
 | 347 | `mirror_hk_industry_changes` | `src/cstree/data_tools/rqdata_assets/mirror_industry_changes.py` | 后续拆 dated fetch 和 writer |
-| 347 | `_build_part_specs` | `src/cstree/release_tools/package_assets.py` | 后续拆 part planning 和 manifest rows |
 | 342 | `main` | `src/cstree/commands/run_grid.py` | 后续拆 input loading、scenario builder、writer |
 | 331 | `_mirror_dataset` | `src/cstree/data_tools/rqdata_assets/mirror_workflow.py` | 已抽 quarter context、fetch policy、writer/finalize；后续拆 resume state / batch errors |
 | 324 | `mirror_hk_southbound` | `src/cstree/data_tools/rqdata_assets/mirror_industry_southbound.py` | 已抽 request/resume/checkpoint/fetch batch/writer/finalize；后续拆 resume validation / pending collection |
+| 322 | `_evaluate_period` | `src/cstree/pipeline/eval.py` | 后续拆 period scoring / backtest attachment |
 
 ## 首批候选
 
