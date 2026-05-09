@@ -119,7 +119,7 @@ PRESETS = {
         ),
         "daily_snapshot": "hk_all_daily_clean_latest",
         "intraday_snapshot": "hk_intraday_latest",
-        "etf_daily_snapshot": "hk_etf_daily_latest",
+        "etf_daily_snapshot": "hk_etf_daily_clean_latest",
         "etf_instruments_file": "hk_etf_instruments_latest.parquet",
         "valuation_snapshot": "hk_all_valuation_latest",
         "instruments_file": "hk_all_instruments_latest.parquet",
@@ -127,7 +127,7 @@ PRESETS = {
         "ex_factors_snapshot": "hk_all_ex_factors_latest",
         "dividends_snapshot": "hk_all_dividends_latest",
         "shares_snapshot": "hk_all_shares_latest",
-        "exchange_rate_snapshot": "hk_all_2000_20260319_exchange_rate_latest",
+        "exchange_rate_snapshot": "hk_exchange_rate_latest",
         "southbound_snapshot": "hk_connect_southbound_latest",
         "financial_details_snapshot": "hk_financial_details_latest",
         "announcement_snapshot": None,
@@ -226,36 +226,38 @@ def _hk_current_contract_overrides(args: argparse.Namespace) -> tuple[dict[str, 
     if not isinstance(contract, dict):
         return {}, None
     mapping = {
-        "daily_snapshot": "daily_clean",
-        "intraday_snapshot": "intraday",
-        "etf_daily_snapshot": "etf_daily",
-        "etf_instruments_file": "etf_instruments",
-        "valuation_snapshot": "valuation",
-        "instruments_file": "instruments",
-        "pit_snapshot": "pit",
-        "ex_factors_snapshot": "ex_factors",
-        "dividends_snapshot": "dividends",
-        "shares_snapshot": "shares",
-        "exchange_rate_snapshot": "exchange_rate",
-        "southbound_snapshot": "southbound",
-        "financial_details_snapshot": "financial_details",
-        "industry_changes_snapshot": "industry_changes",
-        "universe_by_date": "universe_by_date",
-        "universe_symbols": "universe_symbols",
-        "universe_meta": "universe_meta",
+        "daily_snapshot": ("daily_clean",),
+        "intraday_snapshot": ("intraday",),
+        "etf_daily_snapshot": ("etf_daily_clean", "etf_daily"),
+        "etf_instruments_file": ("etf_instruments",),
+        "valuation_snapshot": ("valuation",),
+        "instruments_file": ("instruments",),
+        "pit_snapshot": ("pit",),
+        "ex_factors_snapshot": ("ex_factors",),
+        "dividends_snapshot": ("dividends",),
+        "shares_snapshot": ("shares",),
+        "exchange_rate_snapshot": ("exchange_rate",),
+        "southbound_snapshot": ("southbound",),
+        "financial_details_snapshot": ("financial_details",),
+        "industry_changes_snapshot": ("industry_changes",),
+        "universe_by_date": ("universe_by_date",),
+        "universe_symbols": ("universe_symbols",),
+        "universe_meta": ("universe_meta",),
     }
     overrides: dict[str, str] = {}
-    for arg_name, asset_key in mapping.items():
+    for arg_name, asset_keys in mapping.items():
         if getattr(args, arg_name, None) is not None:
             continue
-        entry = current_contract_entry(contract, asset_key)
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("exists") is not True:
-            continue
-        resolved_path = str(entry.get("resolved_path") or "").strip()
-        if resolved_path:
-            overrides[arg_name] = resolved_path
+        for asset_key in asset_keys:
+            entry = current_contract_entry(contract, asset_key)
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("exists") is not True:
+                continue
+            resolved_path = str(entry.get("resolved_path") or "").strip()
+            if resolved_path:
+                overrides[arg_name] = resolved_path
+                break
     return overrides, contract_path
 
 
@@ -327,6 +329,13 @@ def _resolve_assets(args: argparse.Namespace) -> dict[str, object]:
         if args.no_etf
         else (args.etf_daily_snapshot or current_overrides.get("etf_daily_snapshot") or preset.get("etf_daily_snapshot"))
     )
+    if (
+        etf_daily_snapshot == "hk_etf_daily_clean_latest"
+        and not args.etf_daily_snapshot
+        and not resolve_snapshot_path(ASSETS_ROOT / "rqdata" / "hk" / "daily", etf_daily_snapshot).exists()
+        and resolve_snapshot_path(ASSETS_ROOT / "rqdata" / "hk" / "daily", "hk_etf_daily_latest").exists()
+    ):
+        etf_daily_snapshot = "hk_etf_daily_latest"
     etf_instruments_file = (
         None
         if args.no_etf
@@ -645,6 +654,16 @@ def _build_part_specs(resolved: dict[str, object]) -> dict[str, dict]:
                 ),
             ],
             "latest_links": [
+                *(
+                    [
+                        _latest_link(
+                            "rqdata/hk/daily/hk_etf_daily_clean_latest",
+                            f"rqdata/hk/daily/{etf_daily_dir.name}",
+                        )
+                    ]
+                    if "clean" in etf_daily_dir.name
+                    else []
+                ),
                 _latest_link(
                     "rqdata/hk/daily/hk_etf_daily_latest",
                     f"rqdata/hk/daily/{etf_daily_dir.name}",

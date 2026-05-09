@@ -57,6 +57,14 @@ CURRENT_HEALTH_POLICY: dict[str, dict[str, Any]] = {
         "allowed_statuses": {"completed", "completed_with_failures"},
         "require_manifest": True,
     },
+    "etf_daily_clean": {
+        "required": False,
+        "stale_severity": "warning",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
+        "allowed_statuses": {"completed"},
+        "require_manifest": True,
+    },
     "etf_instruments": {
         "required": False,
         "stale_severity": "warning",

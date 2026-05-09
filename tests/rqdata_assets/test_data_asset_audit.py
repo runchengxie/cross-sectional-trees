@@ -12,7 +12,11 @@ from cstree.current_assets import (
     hk_current_candidate_paths,
     write_current_contract,
 )
-from cstree.data_tools.rqdata_assets.audit_assets import build_hk_data_asset_audit_report
+from cstree.data_tools.rqdata_assets.audit_assets import (
+    aggregate_health_reports,
+    build_hk_data_asset_audit_report,
+    build_repair_candidates,
+)
 
 
 def _symlink(target, link) -> None:
@@ -199,6 +203,95 @@ def test_hk_data_asset_audit_classifies_etf_provider_permission_gap(tmp_path, mo
     assert provider_candidates
     assert all(item["action"] == "provider-boundary" for item in provider_candidates)
     assert all(item["command"] is None for item in provider_candidates)
+
+
+def test_aggregate_health_reports_classifies_explicit_pit_report_as_pit_coverage(tmp_path):
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    pit_report = reports_dir / "hk_pit_health_20260430_codex_current_live.json"
+    pit_report.write_text(
+        json.dumps(
+            {
+                "quality_verdict": {"overall_severity": "warning", "issue_count": 1},
+                "quality_checks": [{"check": "pit_fill_dependence_high", "severity": "warning"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    health = aggregate_health_reports(
+        reports_dir=reports_dir,
+        target_date="20260508",
+        extra_reports=[pit_report],
+        expected_report_kinds=("pit_coverage",),
+    )
+
+    assert not any(
+        item["source"] == "pit_coverage" and item["check"] == "expected_report_missing"
+        for item in health["merged_issues"]
+    )
+    assert any(
+        item["source"] == "pit_coverage" and item["check"] == "pit_fill_dependence_high"
+        for item in health["merged_issues"]
+    )
+
+
+def test_aggregate_health_reports_deduplicates_explicit_default_report(tmp_path):
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    intraday_report = reports_dir / "hk_intraday_health_20260508_codex.json"
+    intraday_report.write_text(
+        json.dumps(
+            {
+                "quality_verdict": {"overall_severity": "warning", "issue_count": 1},
+                "quality_checks": [{"check": "daily_active_but_intraday_missing", "severity": "warning"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    health = aggregate_health_reports(
+        reports_dir=reports_dir,
+        target_date="20260508",
+        extra_reports=[intraday_report],
+        expected_report_kinds=("intraday_health",),
+    )
+
+    assert [
+        item["check"]
+        for item in health["merged_issues"]
+        if item.get("check") == "daily_active_but_intraday_missing"
+    ] == ["daily_active_but_intraday_missing"]
+
+
+def test_repair_candidates_map_legacy_intraday_reconcile_checks_to_assets():
+    candidates = build_repair_candidates(
+        freshness={},
+        inventory={"records": []},
+        health={
+            "merged_issues": [
+                {
+                    "source": "intraday_health",
+                    "check": "intraday_after_daily_end_with_trading",
+                    "severity": "warning",
+                },
+                {
+                    "source": "intraday_health",
+                    "check": "daily_active_but_intraday_missing",
+                    "severity": "warning",
+                },
+            ]
+        },
+        target_date="20260508",
+    )
+
+    assert [
+        (item["asset_key"], item["action"])
+        for item in candidates
+    ] == [
+        ("daily_clean", "patch-refresh"),
+        ("intraday", "targeted-rebuild"),
+    ]
 
 
 def test_hk_data_asset_audit_intraday_repair_command_uses_stale_range(tmp_path, monkeypatch):

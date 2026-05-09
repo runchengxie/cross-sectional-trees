@@ -978,6 +978,7 @@ def inspect_hk_intraday_health(args) -> int:
             quality_checks.append(
                 {
                     "check": "intraday_daily_rows_missing_from_asset",
+                    "asset_key": "daily_clean",
                     "severity": "warning",
                     "affected_items": int(reconciliation_summary.get("missing_daily_symbol_days") or 0),
                     "affected_pct": _round_pct(
@@ -1010,6 +1011,7 @@ def inspect_hk_intraday_health(args) -> int:
             quality_checks.append(
                 {
                     "check": "intraday_after_daily_end_with_trading",
+                    "asset_key": "daily_clean",
                     "severity": "warning",
                     "affected_items": trading_after_end_count,
                     "affected_pct": _round_pct(trading_after_end_count, symbol_days_scanned),
@@ -1025,6 +1027,7 @@ def inspect_hk_intraday_health(args) -> int:
             quality_checks.append(
                 {
                     "check": "daily_active_but_intraday_missing",
+                    "asset_key": "intraday",
                     "severity": "warning",
                     "affected_items": daily_active_missing_intraday_count,
                     "affected_pct": _round_pct(daily_active_missing_intraday_count, symbol_days_scanned),

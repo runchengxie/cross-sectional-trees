@@ -16,6 +16,7 @@ HK_CURRENT_PATH_SPECS = {
     "daily_clean": ("assets", "rqdata", "hk", "daily", "hk_all_daily_clean_latest"),
     "intraday": ("assets", "rqdata", "hk", "intraday", "hk_intraday_latest"),
     "etf_daily": ("assets", "rqdata", "hk", "daily", "hk_etf_daily_latest"),
+    "etf_daily_clean": ("assets", "rqdata", "hk", "daily", "hk_etf_daily_clean_latest"),
     "etf_instruments": ("assets", "rqdata", "hk", "instruments", "hk_etf_instruments_latest.parquet"),
     "valuation": ("assets", "rqdata", "hk", "valuation", "hk_all_valuation_latest"),
     "instruments": ("assets", "rqdata", "hk", "instruments", "hk_all_instruments_latest.parquet"),
@@ -23,7 +24,7 @@ HK_CURRENT_PATH_SPECS = {
     "ex_factors": ("assets", "rqdata", "hk", "ex_factors", "hk_all_ex_factors_latest"),
     "dividends": ("assets", "rqdata", "hk", "dividends", "hk_all_dividends_latest"),
     "shares": ("assets", "rqdata", "hk", "shares", "hk_all_shares_latest"),
-    "exchange_rate": ("assets", "rqdata", "hk", "exchange_rate", "hk_all_2000_20260319_exchange_rate_latest"),
+    "exchange_rate": ("assets", "rqdata", "hk", "exchange_rate", "hk_exchange_rate_latest"),
     "southbound": ("assets", "rqdata", "hk", "southbound", "hk_connect_southbound_latest"),
     "financial_details": (
         "assets",

@@ -84,7 +84,7 @@ def current_snapshot_bundle(*, assets_root: Path = ASSETS_ROOT) -> SnapshotBundl
         / "rqdata"
         / "hk"
         / "exchange_rate"
-        / "hk_all_2000_20260319_exchange_rate_latest",
+        / "hk_exchange_rate_latest",
         financial_details_dir=None,
         universe_by_date=universe_root / "hk_all_full_by_date.csv",
         universe_symbols=universe_root / "hk_all_full_symbols.txt",
@@ -153,7 +153,7 @@ def refreshed_snapshot_bundle(
         / "rqdata"
         / "hk"
         / "exchange_rate"
-        / "hk_all_2000_20260319_exchange_rate_latest",
+        / "hk_exchange_rate_latest",
         financial_details_dir=None,
         universe_by_date=universe_root / "hk_all_full_by_date.csv",
         universe_symbols=universe_root / "hk_all_full_symbols.txt",

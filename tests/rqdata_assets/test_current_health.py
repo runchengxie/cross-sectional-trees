@@ -180,6 +180,48 @@ def test_inspect_hk_current_health_falls_back_when_contract_is_missing(tmp_path)
     assert payload["assets"]["daily_clean"]["effective_as_of"] == "20260409"
 
 
+def test_inspect_hk_current_health_accepts_etf_daily_clean_current_key(tmp_path):
+    artifacts_root = tmp_path / "artifacts"
+    candidate_paths = hk_current_candidate_paths(artifacts_root)
+
+    etf_clean_snapshot = (
+        artifacts_root
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / "hk_etf_2000_20260409_daily_clean_latest"
+    )
+    _write_manifest(etf_clean_snapshot, dataset="daily", end_date="20260409")
+    (etf_clean_snapshot / "data" / "02800.HK.parquet").write_text("etf-clean", encoding="utf-8")
+    _symlink(etf_clean_snapshot, candidate_paths["etf_daily_clean"])
+
+    contract = build_hk_current_contract(
+        artifacts_root,
+        generated_by="test_current_health",
+        target_date="20260409",
+    )
+    write_current_contract(default_hk_current_contract_path(artifacts_root), contract)
+
+    out_path = tmp_path / "hk_current_health_etf_clean.json"
+    args = SimpleNamespace(
+        artifacts_root=str(artifacts_root),
+        current_contract=None,
+        asset=["etf_daily_clean"],
+        target_date="20260409",
+        format="json",
+        out=str(out_path),
+        fail_on_severity="warning",
+    )
+
+    exit_code = inspect_hk_current_health(args)
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert payload["assets"]["etf_daily_clean"]["effective_as_of"] == "20260409"
+    assert payload["quality_checks"] == []
+
+
 def test_inspect_hk_current_health_uses_asset_freshness_tolerance(tmp_path):
     artifacts_root = tmp_path / "artifacts"
     candidate_paths = hk_current_candidate_paths(artifacts_root)

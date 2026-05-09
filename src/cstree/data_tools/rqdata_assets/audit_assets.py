@@ -57,6 +57,14 @@ _EXPECTED_REPORT_KINDS = (
     "asset_refresh",
 )
 _SEVERITY_RANK = {"none": -1, "info": 0, "warning": 1, "error": 2}
+_REPORT_KIND_FILENAME_PREFIXES = {
+    "current_health": ("hk_current_health_",),
+    "daily_clean_health": ("hk_daily_clean_health_",),
+    "valuation_health": ("hk_valuation_health_",),
+    "pit_coverage": ("hk_pit",),
+    "intraday_health": ("hk_intraday_health_",),
+    "asset_refresh": ("hk_asset_refresh_",),
+}
 
 
 def _now_iso() -> str:
@@ -831,7 +839,7 @@ def _default_health_report_paths(*, reports_dir: Path, target_date: str) -> dict
 
 
 def _latest_report_only(paths: Sequence[Path]) -> list[Path]:
-    existing = [path for path in paths if path.exists()]
+    existing = _dedupe_paths(path for path in paths if path.exists())
     if not existing:
         return []
 
@@ -845,26 +853,59 @@ def _latest_report_only(paths: Sequence[Path]) -> list[Path]:
     return [max(existing, key=sort_key)]
 
 
+def _path_identity(path: Path) -> str:
+    return str(path.expanduser().resolve(strict=False))
+
+
+def _dedupe_paths(paths: Iterable[Path]) -> list[Path]:
+    seen: set[str] = set()
+    deduped: list[Path] = []
+    for path in paths:
+        key = _path_identity(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return deduped
+
+
+def _infer_health_report_kind(path: Path) -> str:
+    name = path.name.lower()
+    for kind, prefixes in _REPORT_KIND_FILENAME_PREFIXES.items():
+        if any(name.startswith(prefix) for prefix in prefixes):
+            return kind
+    return "explicit"
+
+
 def aggregate_health_reports(
     *,
     reports_dir: Path,
     target_date: str,
     extra_reports: Sequence[Path] | None = None,
+    expected_report_kinds: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     grouped = _default_health_report_paths(reports_dir=reports_dir, target_date=target_date)
     if extra_reports:
-        grouped.setdefault("explicit", []).extend(extra_reports)
+        for report in extra_reports:
+            grouped.setdefault(_infer_health_report_kind(report), []).append(report)
+    expected_kinds = tuple(_EXPECTED_REPORT_KINDS if expected_report_kinds is None else expected_report_kinds)
+    ordered_kinds = tuple(dict.fromkeys((*expected_kinds, *grouped.keys(), "explicit")))
     sources: list[dict[str, Any]] = []
     merged_issues: list[dict[str, Any]] = []
-    for kind in (*_EXPECTED_REPORT_KINDS, "explicit"):
-        paths = grouped.get(kind) or []
+    processed_paths: set[str] = set()
+    for kind in ordered_kinds:
+        paths = _dedupe_paths(grouped.get(kind) or [])
         if kind != "explicit":
             paths = _latest_report_only(paths)
-        if not paths and kind in _EXPECTED_REPORT_KINDS:
+        if not paths and kind in expected_kinds:
             sources.append({"kind": kind, "status": "missing", "paths": [], "overall_severity": "warning", "issue_count": 1})
             merged_issues.append({"source": kind, "check": "expected_report_missing", "severity": "warning"})
             continue
         for path in paths:
+            path_key = _path_identity(path)
+            if path_key in processed_paths:
+                continue
+            processed_paths.add(path_key)
             payload = _safe_read_json(path)
             if payload is None:
                 sources.append({"kind": kind, "status": "unavailable", "path": str(path), "overall_severity": "warning", "issue_count": 1})
@@ -922,6 +963,8 @@ def _candidate_action_for_issue(issue: Mapping[str, Any], *, asset_key: str) -> 
     code = str(issue.get("code") or issue.get("check") or "").strip()
     if classification.startswith("provider") or "provider" in code:
         return "provider-boundary"
+    if code in {"intraday_daily_rows_missing_from_asset", "intraday_after_daily_end_with_trading"}:
+        return "patch-refresh"
     if asset_key == "intraday" and ("stale" in code or "missing" in code):
         return "targeted-rebuild"
     if "missing" in code and asset_key not in {"daily", "daily_clean", "etf_daily", "valuation"}:
@@ -929,6 +972,18 @@ def _candidate_action_for_issue(issue: Mapping[str, Any], *, asset_key: str) -> 
     if "stale" in code or "gap" in code or "missing" in code:
         return "patch-refresh"
     return "manual-review"
+
+
+def _asset_key_for_health_issue(issue: Mapping[str, Any], *, source: str) -> str:
+    explicit = str(issue.get("asset_key") or "").strip()
+    if explicit:
+        return explicit
+    code = str(issue.get("code") or issue.get("check") or "").strip()
+    if code in {"intraday_daily_rows_missing_from_asset", "intraday_after_daily_end_with_trading"}:
+        return "daily_clean"
+    if code == "daily_active_but_intraday_missing":
+        return "intraday"
+    return source
 
 
 def _next_business_date(value: object) -> str | None:
@@ -1035,10 +1090,11 @@ def build_repair_candidates(
         if severity not in {"warning", "error"}:
             continue
         source = str(issue.get("source") or "")
+        asset_key = _asset_key_for_health_issue(issue, source=source)
         candidates.append(
             {
-                "asset_key": source,
-                "action": _candidate_action_for_issue(issue, asset_key=source),
+                "asset_key": asset_key,
+                "action": _candidate_action_for_issue(issue, asset_key=asset_key),
                 "severity": severity,
                 "target_date": _iso_date(target_date),
                 "checked_path": issue.get("source_path"),
@@ -1527,7 +1583,18 @@ def build_hk_data_asset_audit_report(args: Any) -> dict[str, Any]:
         resolve_repo_path(path, repo_root=repo_root)
         for path in (getattr(args, "health_report", []) or [])
     ]
-    health = aggregate_health_reports(reports_dir=reports_dir, target_date=target_date, extra_reports=extra_reports)
+    intraday_mode = str(getattr(args, "intraday_mode", "metadata") or "metadata")
+    expected_report_kinds = [
+        kind
+        for kind in _EXPECTED_REPORT_KINDS
+        if kind != "intraday_health" or intraday_mode == "health"
+    ]
+    health = aggregate_health_reports(
+        reports_dir=reports_dir,
+        target_date=target_date,
+        extra_reports=extra_reports,
+        expected_report_kinds=expected_report_kinds,
+    )
     freshness = {
         **final_freshness,
         "refresh": {

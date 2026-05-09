@@ -70,6 +70,7 @@ def _prepare_demo_assets(repo_root: Path) -> None:
     exchange_rate_current = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "exchange_rate" / "hk_all_2000_20260319_exchange_rate_latest"
     (exchange_rate_current / "data").mkdir(parents=True, exist_ok=True)
     (exchange_rate_current / "data" / "exchange_rate.parquet").write_text("exchange-rate-current", encoding="utf-8")
+    _symlink(exchange_rate_current, exchange_rate_current.parent / "hk_exchange_rate_latest")
 
     southbound_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "southbound" / "southbound_demo"
     (southbound_dir / "data").mkdir(parents=True, exist_ok=True)

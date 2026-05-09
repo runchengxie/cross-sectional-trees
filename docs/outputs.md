@@ -130,6 +130,8 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 这类目录按整个时间窗保存汇率结果，写入单个 `data/exchange_rate.parquet`，不再按 symbol 拆文件。
 
+当前汇率入口约定为 `artifacts/assets/rqdata/hk/exchange_rate/hk_exchange_rate_latest`。该别名可以指向短窗 probe 或未来合并后的长窗快照；是否为完整历史窗口需要以对应 `manifest.yml` 的查询范围为准。
+
 字段约定：
 
 * `daily` 保留 `rqdatac.get_price` 返回的日频字段名，并额外写入 `trade_date`、`symbol` 和 `order_book_id`。
