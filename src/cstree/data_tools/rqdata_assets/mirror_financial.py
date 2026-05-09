@@ -973,6 +973,276 @@ def _prepare_pit_patch_context(args) -> _PitPatchContext:
     )
 
 
+def _pit_patch_quota_batch_summary(
+    *,
+    order_book_ids: int,
+    attempts: int,
+    error: str,
+) -> dict[str, object]:
+    return {
+        "order_book_ids": order_book_ids,
+        "rows": 0,
+        "symbols_merged_patch": 0,
+        "symbols_linked_base": 0,
+        "symbols_missing_base_and_patch": 0,
+        "status": "quota_blocked",
+        "attempts": attempts,
+        "error": error,
+    }
+
+
+def _pit_patch_error_batch_summary(
+    *,
+    order_book_ids: int,
+    status: str,
+    attempts: int,
+    error: str,
+) -> dict[str, object]:
+    return {
+        "order_book_ids": order_book_ids,
+        "rows": 0,
+        "symbols_merged_patch": 0,
+        "symbols_linked_base": 0,
+        "symbols_missing_base_and_patch": 0,
+        "status": status,
+        "attempts": attempts,
+        "error": error,
+    }
+
+
+def _process_pit_patch_batch(
+    *,
+    batch_order_book_ids: list[str],
+    rqdatac,
+    context: _PitPatchContext,
+    max_attempts: int,
+    backoff_seconds: float,
+    max_backoff_seconds: float,
+    status: str,
+    error: str | None,
+    result_code: int,
+    quota_blocked: bool,
+    batches: list[dict[str, object]],
+    audit_by_symbol: Mapping[str, object],
+    record_non_entry,
+    write_symbol_patch_result,
+) -> tuple[str, str | None, int, bool]:
+    if not batch_order_book_ids or quota_blocked:
+        return status, error, result_code, quota_blocked
+
+    batch_symbol_map = {
+        order_book_id: context.symbol_map[order_book_id]
+        for order_book_id in batch_order_book_ids
+    }
+    batch_started_at = _timestamp_now()
+    try:
+        label = f"pit_financials patch fetch failed for {', '.join(batch_order_book_ids)}"
+        payload, attempts = _retry_fetch(
+            label,
+            lambda: rqdatac.get_pit_financials_ex(
+                order_book_ids=batch_order_book_ids,
+                fields=list(context.fields),
+                start_quarter=context.patch_start_quarter,
+                end_quarter=context.patch_end_quarter,
+                date=context.target_date,
+                statements=context.statements,
+                market="hk",
+            ),
+            max_attempts=max_attempts,
+            backoff_seconds=backoff_seconds,
+            max_backoff_seconds=max_backoff_seconds,
+        )
+    except MirrorQuotaError as exc:
+        batch_finished_at = _timestamp_now()
+        quota_blocked = True
+        status = "stopped_quota"
+        error = str(exc)
+        result_code = max(result_code, 2)
+        for order_book_id in batch_order_book_ids:
+            symbol = context.symbol_map[order_book_id]
+            if symbol in audit_by_symbol:
+                continue
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=order_book_id,
+                record_status="quota_blocked",
+                attempts=exc.attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                error_text=str(exc),
+            )
+        batches.append(
+            _pit_patch_quota_batch_summary(
+                order_book_ids=len(batch_order_book_ids),
+                attempts=exc.attempts,
+                error=str(exc),
+            )
+        )
+        return status, error, result_code, quota_blocked
+    except MirrorFetchError as exc:
+        batch_finished_at = _timestamp_now()
+        if len(batch_order_book_ids) > 1:
+            batches.append(
+                _pit_patch_error_batch_summary(
+                    order_book_ids=len(batch_order_book_ids),
+                    status="split_after_error",
+                    attempts=exc.attempts,
+                    error=str(exc),
+                )
+            )
+            for order_book_id in batch_order_book_ids:
+                status, error, result_code, quota_blocked = _process_pit_patch_batch(
+                    batch_order_book_ids=[order_book_id],
+                    rqdatac=rqdatac,
+                    context=context,
+                    max_attempts=max_attempts,
+                    backoff_seconds=backoff_seconds,
+                    max_backoff_seconds=max_backoff_seconds,
+                    status=status,
+                    error=error,
+                    result_code=result_code,
+                    quota_blocked=quota_blocked,
+                    batches=batches,
+                    audit_by_symbol=audit_by_symbol,
+                    record_non_entry=record_non_entry,
+                    write_symbol_patch_result=write_symbol_patch_result,
+                )
+                if quota_blocked:
+                    break
+            return status, error, result_code, quota_blocked
+
+        order_book_id = batch_order_book_ids[0]
+        symbol = context.symbol_map[order_book_id]
+        record_non_entry(
+            symbol=symbol,
+            order_book_id=order_book_id,
+            record_status="failed",
+            attempts=exc.attempts,
+            started_at_value=batch_started_at,
+            finished_at_value=batch_finished_at,
+            error_text=str(exc),
+        )
+        batches.append(
+            _pit_patch_error_batch_summary(
+                order_book_ids=1,
+                status="failed",
+                attempts=exc.attempts,
+                error=str(exc),
+            )
+        )
+        status = "completed_with_failures" if status == "completed" else status
+        result_code = max(result_code, 1)
+        return status, error, result_code, quota_blocked
+
+    batch_finished_at = _timestamp_now()
+    prepared = _prepare_asset_frame(payload, symbol_map=batch_symbol_map)
+    prepared = _ensure_requested_fields(prepared, context.fields)
+
+    before_counts = Counter(item.status for item in audit_by_symbol.values())
+    for order_book_id in batch_order_book_ids:
+        symbol = context.symbol_map[order_book_id]
+        if prepared.empty:
+            patch_symbol_frame = pd.DataFrame()
+        else:
+            patch_symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
+        write_symbol_patch_result(
+            symbol=symbol,
+            order_book_id=order_book_id,
+            patch_symbol_frame=patch_symbol_frame,
+            attempts=attempts,
+            started_at_value=batch_started_at,
+            finished_at_value=batch_finished_at,
+        )
+    delta_counts = Counter(item.status for item in audit_by_symbol.values()) - before_counts
+    batches.append(
+        {
+            "order_book_ids": len(batch_order_book_ids),
+            "rows": int(len(prepared)),
+            "symbols_merged_patch": int(delta_counts.get("merged_patch", 0)),
+            "symbols_patch_only": int(delta_counts.get("patch_only", 0)),
+            "symbols_linked_base": int(delta_counts.get("linked_base", 0)),
+            "symbols_missing_base_and_patch": int(
+                delta_counts.get("missing_base_and_patch", 0)
+            ),
+            "status": "completed",
+            "attempts": attempts,
+        }
+    )
+    return status, error, result_code, quota_blocked
+
+
+def _collect_pending_pit_patch_order_book_ids(
+    *,
+    context: _PitPatchContext,
+    skip_existing: bool,
+    record_entry,
+) -> list[str]:
+    pending_order_book_ids: list[str] = []
+    for order_book_id in context.order_book_ids:
+        symbol = context.symbol_map[order_book_id]
+        out_path = context.data_dir / f"{symbol}.parquet"
+        if skip_existing and out_path.exists():
+            entry, symbol_frame = _load_existing_entry(out_path, fields=context.fields)
+            record_entry(
+                symbol=symbol,
+                order_book_id=order_book_id,
+                record_status="skipped_existing",
+                attempts=0,
+                started_at_value=None,
+                finished_at_value=_path_mtime_iso(out_path),
+                symbol_frame=symbol_frame,
+                entry=entry,
+            )
+            continue
+        pending_order_book_ids.append(order_book_id)
+    return pending_order_book_ids
+
+
+def _record_unfinished_pit_patch_symbols(
+    *,
+    context: _PitPatchContext,
+    pending_order_book_ids: Sequence[str],
+    audit_by_symbol: Mapping[str, object],
+    quota_blocked: bool,
+    finished_at: str,
+    error: str | None,
+    status: str,
+    result_code: int,
+    record_non_entry,
+) -> tuple[str, int]:
+    if quota_blocked:
+        for order_book_id in pending_order_book_ids:
+            symbol = context.symbol_map[order_book_id]
+            if symbol in audit_by_symbol:
+                continue
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=order_book_id,
+                record_status="quota_blocked",
+                attempts=0,
+                started_at_value=None,
+                finished_at_value=finished_at,
+                error_text=error,
+            )
+
+    for order_book_id in context.order_book_ids:
+        symbol = context.symbol_map[order_book_id]
+        if symbol in audit_by_symbol:
+            continue
+        record_non_entry(
+            symbol=symbol,
+            order_book_id=order_book_id,
+            record_status="failed",
+            attempts=0,
+            started_at_value=None,
+            finished_at_value=finished_at,
+            error_text=error or "missing audit status",
+        )
+        status = "completed_with_failures" if status == "completed" else status
+        result_code = max(result_code, 1)
+    return status, result_code
+
+
 def patch_hk_pit_financials(args, rqdatac) -> int:
     _ensure_rqdatac_hk_plugin()
 
@@ -989,8 +1259,6 @@ def patch_hk_pit_financials(args, rqdatac) -> int:
     statements = context.statements
     symbols = context.symbols
     symbol_metadata = context.symbol_metadata
-    symbol_map = context.symbol_map
-    order_book_ids = context.order_book_ids
     base_query = context.base_query
     query_start_quarter = context.query_start_quarter
     query_end_quarter = context.query_end_quarter
@@ -1161,158 +1429,28 @@ def patch_hk_pit_financials(args, rqdatac) -> int:
 
     def _process_batch(batch_order_book_ids: list[str]) -> None:
         nonlocal status, error, result_code, quota_blocked
-        if not batch_order_book_ids or quota_blocked:
-            return
-        batch_symbol_map = {order_book_id: symbol_map[order_book_id] for order_book_id in batch_order_book_ids}
-        batch_started_at = _timestamp_now()
-        try:
-            label = f"pit_financials patch fetch failed for {', '.join(batch_order_book_ids)}"
-            payload, attempts = _retry_fetch(
-                label,
-                lambda: rqdatac.get_pit_financials_ex(
-                    order_book_ids=batch_order_book_ids,
-                    fields=list(fields),
-                    start_quarter=patch_start_quarter,
-                    end_quarter=patch_end_quarter,
-                    date=target_date,
-                    statements=statements,
-                    market="hk",
-                ),
-                max_attempts=max_attempts,
-                backoff_seconds=backoff_seconds,
-                max_backoff_seconds=max_backoff_seconds,
-            )
-        except MirrorQuotaError as exc:
-            batch_finished_at = _timestamp_now()
-            quota_blocked = True
-            status = "stopped_quota"
-            error = str(exc)
-            result_code = max(result_code, 2)
-            for order_book_id in batch_order_book_ids:
-                symbol = symbol_map[order_book_id]
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=order_book_id,
-                    record_status="quota_blocked",
-                    attempts=exc.attempts,
-                    started_at_value=batch_started_at,
-                    finished_at_value=batch_finished_at,
-                    error_text=str(exc),
-                )
-            batches.append(
-                {
-                    "order_book_ids": len(batch_order_book_ids),
-                    "rows": 0,
-                    "symbols_merged_patch": 0,
-                    "symbols_linked_base": 0,
-                    "symbols_missing_base_and_patch": 0,
-                    "status": "quota_blocked",
-                    "attempts": exc.attempts,
-                    "error": str(exc),
-                }
-            )
-            return
-        except MirrorFetchError as exc:
-            batch_finished_at = _timestamp_now()
-            if len(batch_order_book_ids) > 1:
-                batches.append(
-                    {
-                        "order_book_ids": len(batch_order_book_ids),
-                        "rows": 0,
-                        "symbols_merged_patch": 0,
-                        "symbols_linked_base": 0,
-                        "symbols_missing_base_and_patch": 0,
-                        "status": "split_after_error",
-                        "attempts": exc.attempts,
-                        "error": str(exc),
-                    }
-                )
-                for order_book_id in batch_order_book_ids:
-                    _process_batch([order_book_id])
-                    if quota_blocked:
-                        break
-                return
-
-            order_book_id = batch_order_book_ids[0]
-            symbol = symbol_map[order_book_id]
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                record_status="failed",
-                attempts=exc.attempts,
-                started_at_value=batch_started_at,
-                finished_at_value=batch_finished_at,
-                error_text=str(exc),
-            )
-            batches.append(
-                {
-                    "order_book_ids": 1,
-                    "rows": 0,
-                    "symbols_merged_patch": 0,
-                    "symbols_linked_base": 0,
-                    "symbols_missing_base_and_patch": 0,
-                    "status": "failed",
-                    "attempts": exc.attempts,
-                    "error": str(exc),
-                }
-            )
-            status = "completed_with_failures" if status == "completed" else status
-            result_code = max(result_code, 1)
-            return
-
-        batch_finished_at = _timestamp_now()
-        prepared = _prepare_asset_frame(payload, symbol_map=batch_symbol_map)
-        prepared = _ensure_requested_fields(prepared, fields)
-
-        batch_rows = int(len(prepared))
-        before_counts = Counter(item.status for item in audit_by_symbol.values())
-        for order_book_id in batch_order_book_ids:
-            symbol = symbol_map[order_book_id]
-            if prepared.empty:
-                patch_symbol_frame = pd.DataFrame()
-            else:
-                patch_symbol_frame = prepared[prepared["symbol"] == symbol].reset_index(drop=True)
-            _write_symbol_patch_result(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                patch_symbol_frame=patch_symbol_frame,
-                attempts=attempts,
-                started_at_value=batch_started_at,
-                finished_at_value=batch_finished_at,
-            )
-        after_counts = Counter(item.status for item in audit_by_symbol.values())
-        delta_counts = after_counts - before_counts
-        batches.append(
-            {
-                "order_book_ids": len(batch_order_book_ids),
-                "rows": batch_rows,
-                "symbols_merged_patch": int(delta_counts.get("merged_patch", 0)),
-                "symbols_patch_only": int(delta_counts.get("patch_only", 0)),
-                "symbols_linked_base": int(delta_counts.get("linked_base", 0)),
-                "symbols_missing_base_and_patch": int(delta_counts.get("missing_base_and_patch", 0)),
-                "status": "completed",
-                "attempts": attempts,
-            }
+        status, error, result_code, quota_blocked = _process_pit_patch_batch(
+            batch_order_book_ids=batch_order_book_ids,
+            rqdatac=rqdatac,
+            context=context,
+            max_attempts=max_attempts,
+            backoff_seconds=backoff_seconds,
+            max_backoff_seconds=max_backoff_seconds,
+            status=status,
+            error=error,
+            result_code=result_code,
+            quota_blocked=quota_blocked,
+            batches=batches,
+            audit_by_symbol=audit_by_symbol,
+            record_non_entry=_record_non_entry,
+            write_symbol_patch_result=_write_symbol_patch_result,
         )
 
-    pending_order_book_ids: list[str] = []
-    for order_book_id in order_book_ids:
-        symbol = symbol_map[order_book_id]
-        out_path = data_dir / f"{symbol}.parquet"
-        if skip_existing and out_path.exists():
-            entry, symbol_frame = _load_existing_entry(out_path, fields=fields)
-            _record_entry(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                record_status="skipped_existing",
-                attempts=0,
-                started_at_value=None,
-                finished_at_value=_path_mtime_iso(out_path),
-                symbol_frame=symbol_frame,
-                entry=entry,
-            )
-            continue
-        pending_order_book_ids.append(order_book_id)
+    pending_order_book_ids = _collect_pending_pit_patch_order_book_ids(
+        context=context,
+        skip_existing=skip_existing,
+        record_entry=_record_entry,
+    )
 
     for batch_order_book_ids in _chunked(
         pending_order_book_ids,
@@ -1323,35 +1461,17 @@ def patch_hk_pit_financials(args, rqdatac) -> int:
         _process_batch(batch_order_book_ids)
 
     finished_at = _timestamp_now()
-    if quota_blocked:
-        for order_book_id in pending_order_book_ids:
-            symbol = symbol_map[order_book_id]
-            if symbol in audit_by_symbol:
-                continue
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                record_status="quota_blocked",
-                attempts=0,
-                started_at_value=None,
-                finished_at_value=finished_at,
-                error_text=error,
-            )
-    for order_book_id in order_book_ids:
-        symbol = symbol_map[order_book_id]
-        if symbol in audit_by_symbol:
-            continue
-        _record_non_entry(
-            symbol=symbol,
-            order_book_id=order_book_id,
-            record_status="failed",
-            attempts=0,
-            started_at_value=None,
-            finished_at_value=finished_at,
-            error_text=error or "missing audit status",
-        )
-        status = "completed_with_failures" if status == "completed" else status
-        result_code = max(result_code, 1)
+    status, result_code = _record_unfinished_pit_patch_symbols(
+        context=context,
+        pending_order_book_ids=pending_order_book_ids,
+        audit_by_symbol=audit_by_symbol,
+        quota_blocked=quota_blocked,
+        finished_at=finished_at,
+        error=error,
+        status=status,
+        result_code=result_code,
+        record_non_entry=_record_non_entry,
+    )
 
     audit_records = [audit_by_symbol[symbol] for symbol in symbols]
     status_counts = Counter(item.status for item in audit_records)
