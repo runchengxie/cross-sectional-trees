@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -18,8 +18,23 @@ from .support import _build_rebalance_diff, save_frame, save_parquet, save_serie
 def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
     ctx = context
     run_dir = ctx["run_dir"]
+    artifacts = _initial_artifacts()
 
-    artifacts: dict[str, Any] = {
+    _write_dataset_artifacts(ctx=ctx, run_dir=run_dir, artifacts=artifacts)
+    _write_feature_artifacts(ctx=ctx, run_dir=run_dir, artifacts=artifacts)
+    _write_eval_artifacts(ctx=ctx, run_dir=run_dir, artifacts=artifacts)
+    _write_final_oos_eval_artifacts(ctx=ctx, run_dir=run_dir, artifacts=artifacts)
+    _write_dropped_date_artifacts(ctx=ctx, run_dir=run_dir)
+    _write_backtest_artifacts(ctx=ctx, run_dir=run_dir, artifacts=artifacts)
+    _write_backtest_oos_artifacts(ctx=ctx, run_dir=run_dir, artifacts=artifacts)
+    _write_position_artifacts(ctx=ctx, run_dir=run_dir, artifacts=artifacts)
+    _write_auxiliary_artifacts(ctx=ctx, run_dir=run_dir)
+
+    return artifacts
+
+
+def _initial_artifacts() -> dict[str, Any]:
+    return {
         "rolling_ic_files": {},
         "rolling_sharpe_files": {},
         "rolling_ic_oos_files": {},
@@ -58,6 +73,13 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
         "live_current_file": None,
     }
 
+
+def _write_dataset_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+    artifacts: dict[str, Any],
+) -> None:
     if ctx["SAVE_DATASET"]:
         artifacts["dataset_path"] = run_dir / "dataset.parquet"
         save_parquet(ctx["dataset"].as_multiindex(), artifacts["dataset_path"])
@@ -69,6 +91,13 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
         artifacts["eval_scored_path"] = run_dir / "eval_scored.parquet"
         save_parquet(ctx["eval_scored_data"], artifacts["eval_scored_path"])
 
+
+def _write_feature_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+    artifacts: dict[str, Any],
+) -> None:
     artifacts["feature_importance_path"] = run_dir / "feature_importance.csv"
     save_frame(ctx["importance_df"], artifacts["feature_importance_path"])
     if not ctx["walk_forward_importance_df"].empty:
@@ -88,6 +117,13 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
             artifacts["walk_forward_feature_stability_path"],
         )
 
+
+def _write_eval_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+    artifacts: dict[str, Any],
+) -> None:
     save_series(ctx["ic_series"], run_dir / "ic_test.csv", value_name="ic")
     save_series(
         ctx["pearson_ic_series"],
@@ -112,26 +148,28 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
         artifacts["bucket_ic_path"] = run_dir / "bucket_ic.csv"
         save_frame(pd.DataFrame(ctx["bucket_ic_records"]), artifacts["bucket_ic_path"])
 
-    if ctx["rolling_ic_results"]:
-        for label, frame in ctx["rolling_ic_results"].items():
-            if frame.empty:
-                continue
-            out = frame.copy()
-            out.index.name = "trade_date"
-            path = run_dir / f"ic_rolling_{label}.csv"
-            save_frame(out.reset_index(), path)
-            artifacts["rolling_ic_files"][label] = str(path)
+    _write_rolling_artifacts(
+        results=ctx["rolling_ic_results"],
+        run_dir=run_dir,
+        filename_template="ic_rolling_{label}.csv",
+        artifacts=artifacts,
+        artifacts_key="rolling_ic_files",
+    )
+    _write_rolling_artifacts(
+        results=ctx["rolling_sharpe_results"],
+        run_dir=run_dir,
+        filename_template="backtest_rolling_sharpe_{label}.csv",
+        artifacts=artifacts,
+        artifacts_key="rolling_sharpe_files",
+    )
 
-    if ctx["rolling_sharpe_results"]:
-        for label, frame in ctx["rolling_sharpe_results"].items():
-            if frame.empty:
-                continue
-            out = frame.copy()
-            out.index.name = "trade_date"
-            path = run_dir / f"backtest_rolling_sharpe_{label}.csv"
-            save_frame(out.reset_index(), path)
-            artifacts["rolling_sharpe_files"][label] = str(path)
 
+def _write_final_oos_eval_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+    artifacts: dict[str, Any],
+) -> None:
     if ctx["final_oos_eval"] is not None:
         save_series(ctx["ic_series_oos"], run_dir / "ic_oos.csv", value_name="ic")
         save_series(
@@ -155,31 +193,60 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
                 pd.DataFrame(ctx["bucket_ic_records_oos"]),
                 artifacts["bucket_ic_oos_path"],
             )
-        if ctx["rolling_ic_oos_results"]:
-            for label, frame in ctx["rolling_ic_oos_results"].items():
-                if frame.empty:
-                    continue
-                out = frame.copy()
-                out.index.name = "trade_date"
-                path = run_dir / f"ic_rolling_{label}_oos.csv"
-                save_frame(out.reset_index(), path)
-                artifacts["rolling_ic_oos_files"][label] = str(path)
-        if ctx["rolling_sharpe_oos_results"]:
-            for label, frame in ctx["rolling_sharpe_oos_results"].items():
-                if frame.empty:
-                    continue
-                out = frame.copy()
-                out.index.name = "trade_date"
-                path = run_dir / f"backtest_rolling_sharpe_{label}_oos.csv"
-                save_frame(out.reset_index(), path)
-                artifacts["rolling_sharpe_oos_files"][label] = str(path)
+        _write_rolling_artifacts(
+            results=ctx["rolling_ic_oos_results"],
+            run_dir=run_dir,
+            filename_template="ic_rolling_{label}_oos.csv",
+            artifacts=artifacts,
+            artifacts_key="rolling_ic_oos_files",
+        )
+        _write_rolling_artifacts(
+            results=ctx["rolling_sharpe_oos_results"],
+            run_dir=run_dir,
+            filename_template="backtest_rolling_sharpe_{label}_oos.csv",
+            artifacts=artifacts,
+            artifacts_key="rolling_sharpe_oos_files",
+        )
 
+
+def _write_rolling_artifacts(
+    *,
+    results: Mapping[str, pd.DataFrame],
+    run_dir: Path,
+    filename_template: str,
+    artifacts: dict[str, Any],
+    artifacts_key: str,
+) -> None:
+    if not results:
+        return
+    for label, frame in results.items():
+        if frame.empty:
+            continue
+        out = frame.copy()
+        out.index.name = "trade_date"
+        path = run_dir / filename_template.format(label=label)
+        save_frame(out.reset_index(), path)
+        artifacts[artifacts_key][label] = str(path)
+
+
+def _write_dropped_date_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+) -> None:
     if not ctx["dropped_date_counts"].empty:
         save_frame(
             ctx["dropped_date_counts"].rename("symbol_count").reset_index(),
             run_dir / "dropped_dates.csv",
         )
 
+
+def _write_backtest_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+    artifacts: dict[str, Any],
+) -> None:
     if ctx["bt_stats"] is not None:
         save_series(
             ctx["bt_net_series"],
@@ -261,6 +328,13 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
             report_prefix="backtest_benchmark_compare",
         )
 
+
+def _write_backtest_oos_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+    artifacts: dict[str, Any],
+) -> None:
     if ctx["bt_stats_oos"] is not None:
         save_series(
             ctx["bt_net_series_oos"],
@@ -344,6 +418,13 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
             report_prefix="backtest_benchmark_compare_oos",
         )
 
+
+def _write_position_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+    artifacts: dict[str, Any],
+) -> None:
     _write_position_outputs(
         positions=ctx["positions_by_rebalance"],
         run_dir=run_dir,
@@ -385,6 +466,12 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
         artifacts["live_positions_file"] = artifacts["positions_by_rebalance_live_path"]
         artifacts["live_current_file"] = artifacts["positions_current_live_path"]
 
+
+def _write_auxiliary_artifacts(
+    *,
+    ctx: Mapping[str, Any],
+    run_dir: Path,
+) -> None:
     if ctx["walk_forward_results"]:
         save_frame(
             pd.DataFrame(ctx["walk_forward_results"]),
@@ -395,8 +482,6 @@ def write_run_artifacts(*, context: Mapping[str, Any]) -> dict[str, Any]:
             pd.DataFrame({"ic": ctx["perm_stats"]["scores"]}),
             run_dir / "permutation_test.csv",
         )
-
-    return artifacts
 
 
 def _write_position_outputs(
