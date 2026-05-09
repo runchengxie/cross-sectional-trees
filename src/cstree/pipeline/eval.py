@@ -992,6 +992,222 @@ def _evaluate_walk_forward_window(
     return result, importance_rows
 
 
+def _record_period_permutation(
+    result: dict[str, Any],
+    *,
+    context: Mapping[str, Any],
+    label_prefix: str,
+    signal_direction: float,
+    rebalance_dates_eval: list[pd.Timestamp],
+    perm_train_df: Optional[pd.DataFrame],
+    perm_test_df: Optional[pd.DataFrame],
+) -> None:
+    if perm_train_df is None or perm_test_df is None:
+        raise SystemExit("Permutation test requested but data was not provided.")
+    logger.info("%sPermutation test (shuffle train labels within date) ...", label_prefix)
+    perm_scores = _permutation_test_ic(
+        perm_train_df,
+        perm_test_df,
+        context["perm_test_runs"],
+        context["perm_test_seed"],
+        signal_direction,
+        model_type=context["model_type"],
+        model_params=context["model_params"],
+        features=context["features"],
+        fit_target_col=context["train_target"],
+        target_col=context["target"],
+        sample_weight_mode=context["sample_weight_mode"],
+        sample_weight_params=context["sample_weight_params"],
+        eval_dates=rebalance_dates_eval,
+        score_postprocess_method=context["score_postprocess_method"],
+        score_postprocess_columns=context["score_postprocess_columns"],
+        score_postprocess_strength=context["score_postprocess_strength"],
+        score_postprocess_min_obs=context["score_postprocess_min_obs"],
+    )
+    if not perm_scores:
+        return
+    perm_mean = np.nanmean(perm_scores)
+    perm_std = np.nanstd(perm_scores)
+    logger.info(
+        "%sPermutation IC: mean=%.4f, std=%.4f, runs=%s",
+        label_prefix,
+        perm_mean,
+        perm_std,
+        len(perm_scores),
+    )
+    logger.info("%sPermutation ICs: %s", label_prefix, [f"{s:.4f}" for s in perm_scores])
+    result["perm_stats"] = {
+        "mean": float(perm_mean),
+        "std": float(perm_std),
+        "scores": [float(score) for score in perm_scores],
+        "runs": int(len(perm_scores)),
+    }
+
+
+def _warn_label_rebalance_gap(
+    *,
+    eval_df_full: pd.DataFrame,
+    context: Mapping[str, Any],
+    label_prefix: str,
+) -> None:
+    trade_dates_sorted_full = sorted(eval_df_full["trade_date"].unique())
+    rebalance_dates_full = get_rebalance_dates(
+        trade_dates_sorted_full,
+        context["rebalance_frequency"],
+    )
+    rebalance_gap = estimate_rebalance_gap(trade_dates_sorted_full, rebalance_dates_full)
+    if (
+        context["backtest_exit_mode"] == "rebalance"
+        and np.isfinite(rebalance_gap)
+        and context["label_horizon_mode"] == "fixed"
+    ):
+        gap_diff = abs(rebalance_gap - context["label_horizon_effective"])
+        if gap_diff >= max(3.0, rebalance_gap * 0.25):
+            logger.warning(
+                "%sLabel horizon (%s days) differs from rebalance gap (median %.1f days).",
+                label_prefix,
+                context["label_horizon_effective"],
+                rebalance_gap,
+            )
+
+
+def _build_period_positions(
+    *,
+    eval_df_full: pd.DataFrame,
+    bt_rebalance: list[pd.Timestamp],
+    context: Mapping[str, Any],
+    allow_live_fallback: bool,
+) -> pd.DataFrame | None:
+    backtest_enabled = context["backtest_enabled"]
+    live_enabled = context["live_enabled"]
+    positions_by_rebalance = None
+    if backtest_enabled or not live_enabled or not allow_live_fallback:
+        tradable_col = context["backtest_tradable_col"]
+        group_col = context["backtest_group_col"]
+        positions_by_rebalance = build_positions_by_rebalance(
+            eval_df_full,
+            pred_col="signal_backtest",
+            price_col=context["price_col"],
+            rebalance_dates=bt_rebalance,
+            top_k=context["backtest_top_k"],
+            shift_days=context["label_shift_days"],
+            weighting=context["backtest_weighting"],
+            buffer_exit=context["backtest_buffer_exit"],
+            buffer_entry=context["backtest_buffer_entry"],
+            long_only=context["backtest_long_only"],
+            short_k=context["backtest_short_k"],
+            tradable_col=tradable_col if tradable_col in eval_df_full.columns else None,
+            group_col=group_col if group_col in eval_df_full.columns else None,
+            max_names_per_group=context["backtest_max_names_per_group"],
+            execution=context["execution_model"],
+        )
+    if allow_live_fallback and live_enabled and not backtest_enabled:
+        positions_by_rebalance = context["positions_by_rebalance_live"]
+    return positions_by_rebalance
+
+
+def _record_period_execution_sim(
+    result: dict[str, Any],
+    *,
+    positions_by_rebalance: pd.DataFrame | None,
+    context: Mapping[str, Any],
+    label_prefix: str,
+) -> None:
+    execution_sim_config = context["execution_sim_config"]
+    if (
+        not context["backtest_enabled"]
+        or not getattr(execution_sim_config, "enabled", False)
+        or positions_by_rebalance is None
+        or positions_by_rebalance.empty
+    ):
+        return
+
+    backtest_pricing_df = context["backtest_pricing_df"]
+    execution_model = context["execution_model"]
+    tradable_col = context["backtest_tradable_col"]
+    sim_result = simulate_capacity_execution(
+        positions_by_rebalance,
+        backtest_pricing_df,
+        execution_sim_config,
+        price_col=execution_model.entry_policy.price_col,
+        tradable_col=tradable_col if tradable_col in backtest_pricing_df.columns else None,
+    )
+    result["execution_sim_summary"] = sim_result.summary
+    result["execution_sim_orders"] = sim_result.orders
+    result["execution_sim_fills"] = sim_result.fills
+    if sim_result.summary.get("status") == "ok":
+        logger.info(
+            "%sExecution sim: fill ratio %.2f%%, unfilled %.2f",
+            label_prefix,
+            float(sim_result.summary.get("fill_ratio", np.nan)) * 100,
+            float(sim_result.summary.get("unfilled_notional", 0.0)),
+        )
+
+
+def _run_period_backtest(
+    *,
+    eval_df_full: pd.DataFrame,
+    bt_rebalance: list[pd.Timestamp],
+    context: Mapping[str, Any],
+    label_prefix: str,
+) -> tuple[bool, Any | None]:
+    if not context["backtest_enabled"]:
+        return False, None
+
+    backtest_pricing_df = context["backtest_pricing_df"]
+    tradable_col = context["backtest_tradable_col"]
+    group_col = context["backtest_group_col"]
+    try:
+        return True, context.get("backtest_topk_fn", backtest_topk)(
+            eval_df_full,
+            pred_col="signal_backtest",
+            price_col=context["price_col"],
+            rebalance_dates=bt_rebalance,
+            top_k=context["backtest_top_k"],
+            shift_days=context["label_shift_days"],
+            cost_bps=context["backtest_cost_bps_effective"],
+            trading_days_per_year=context["backtest_trading_days_per_year"],
+            exit_mode=context["backtest_exit_mode"],
+            exit_horizon_days=context["backtest_exit_horizon_days"],
+            long_only=context["backtest_long_only"],
+            short_k=context["backtest_short_k"],
+            weighting=context["backtest_weighting"],
+            buffer_exit=context["backtest_buffer_exit"],
+            buffer_entry=context["backtest_buffer_entry"],
+            group_col=group_col if group_col in eval_df_full.columns else None,
+            max_names_per_group=context["backtest_max_names_per_group"],
+            tradable_col=tradable_col if tradable_col in backtest_pricing_df.columns else None,
+            exit_price_policy=context["backtest_exit_price_policy"],
+            exit_fallback_policy=context["backtest_exit_fallback_policy"],
+            execution=context["execution_model"],
+            pricing_data=backtest_pricing_df,
+        )
+    except ValueError as exc:
+        logger.warning("%sBacktest skipped: %s", label_prefix, exc)
+        return True, None
+
+
+def _record_period_backtest_outputs(
+    result: dict[str, Any],
+    *,
+    bt_result: Any | None,
+    context: Mapping[str, Any],
+    label_prefix: str,
+) -> None:
+    _record_backtest_outputs(
+        result,
+        bt_result,
+        label_prefix=label_prefix,
+        backtest_long_only=context["backtest_long_only"],
+        backtest_exit_mode=context["backtest_exit_mode"],
+        backtest_exit_price_policy=context["backtest_exit_price_policy"],
+        benchmark_df=context["benchmark_df"],
+        benchmark_return_series=context["benchmark_return_series"],
+        execution_model=context["execution_model"],
+        backtest_trading_days_per_year=context["backtest_trading_days_per_year"],
+    )
+
+
 def _evaluate_period(
     label: str,
     model_eval: Any,
@@ -1011,19 +1227,10 @@ def _evaluate_period(
     sample_on_rebalance_dates = context["sample_on_rebalance_dates"]
     rebalance_frequency = context["rebalance_frequency"]
     valid_dates_set = context["valid_dates_set"]
-    perm_test_runs = context["perm_test_runs"]
-    perm_test_seed = context["perm_test_seed"]
-    model_type = context["model_type"]
-    model_params = context["model_params"]
-    train_target = context["train_target"]
-    sample_weight_mode = context["sample_weight_mode"]
-    sample_weight_params = context["sample_weight_params"]
     score_postprocess_method = context["score_postprocess_method"]
     score_postprocess_columns = context["score_postprocess_columns"]
     score_postprocess_strength = context["score_postprocess_strength"]
     score_postprocess_min_obs = context["score_postprocess_min_obs"]
-    label_horizon_mode = context["label_horizon_mode"]
-    label_horizon_effective = context["label_horizon_effective"]
     n_quantiles = context["n_quantiles"]
     top_k = context["top_k"]
     eval_buffer_exit = context["eval_buffer_exit"]
@@ -1034,30 +1241,6 @@ def _evaluate_period(
     bucket_ic_method = context["bucket_ic_method"]
     bucket_ic_min_count = context["bucket_ic_min_count"]
     backtest_rebalance_frequency = context["backtest_rebalance_frequency"]
-    backtest_enabled = context["backtest_enabled"]
-    live_enabled = context["live_enabled"]
-    backtest_top_k = context["backtest_top_k"]
-    label_shift_days = context["label_shift_days"]
-    backtest_weighting = context["backtest_weighting"]
-    backtest_buffer_exit = context["backtest_buffer_exit"]
-    backtest_buffer_entry = context["backtest_buffer_entry"]
-    backtest_long_only = context["backtest_long_only"]
-    backtest_short_k = context["backtest_short_k"]
-    backtest_tradable_col = context["backtest_tradable_col"]
-    backtest_group_col = context["backtest_group_col"]
-    backtest_max_names_per_group = context["backtest_max_names_per_group"]
-    execution_model = context["execution_model"]
-    execution_sim_config = context["execution_sim_config"]
-    positions_by_rebalance_live = context["positions_by_rebalance_live"]
-    backtest_cost_bps_effective = context["backtest_cost_bps_effective"]
-    backtest_trading_days_per_year = context["backtest_trading_days_per_year"]
-    backtest_exit_mode = context["backtest_exit_mode"]
-    backtest_exit_horizon_days = context["backtest_exit_horizon_days"]
-    backtest_pricing_df = context["backtest_pricing_df"]
-    backtest_exit_price_policy = context["backtest_exit_price_policy"]
-    backtest_exit_fallback_policy = context["backtest_exit_fallback_policy"]
-    benchmark_df = context["benchmark_df"]
-    benchmark_return_series = context["benchmark_return_series"]
     exposure_source_df = context.get("exposure_source_df")
     industry_source_df = context.get("industry_source_df")
     fundamentals_mcap_col = context.get("fundamentals_mcap_col")
@@ -1066,7 +1249,6 @@ def _evaluate_period(
     price_passthrough_cols = context.get("price_passthrough_cols", [])
     passthrough_cols = context["passthrough_cols"]
     bucket_cols = context["bucket_cols"]
-    backtest_topk_fn = context.get("backtest_topk_fn", backtest_topk)
     bucket_ic_summary_fn = context.get("bucket_ic_summary_fn", bucket_ic_summary)
 
     label_prefix = f"[{label}] " if label else ""
@@ -1107,62 +1289,21 @@ def _evaluate_period(
     )
 
     if run_perm_test:
-        if perm_train_df is None or perm_test_df is None:
-            raise SystemExit("Permutation test requested but data was not provided.")
-        logger.info("%sPermutation test (shuffle train labels within date) ...", label_prefix)
-        perm_scores = _permutation_test_ic(
-            perm_train_df,
-            perm_test_df,
-            perm_test_runs,
-            perm_test_seed,
-            signal_direction,
-            model_type=model_type,
-            model_params=model_params,
-            features=features,
-            fit_target_col=train_target,
-            target_col=target,
-            sample_weight_mode=sample_weight_mode,
-            sample_weight_params=sample_weight_params,
-            eval_dates=rebalance_dates_eval,
-            score_postprocess_method=score_postprocess_method,
-            score_postprocess_columns=score_postprocess_columns,
-            score_postprocess_strength=score_postprocess_strength,
-            score_postprocess_min_obs=score_postprocess_min_obs,
+        _record_period_permutation(
+            result,
+            context=context,
+            label_prefix=label_prefix,
+            signal_direction=signal_direction,
+            rebalance_dates_eval=rebalance_dates_eval,
+            perm_train_df=perm_train_df,
+            perm_test_df=perm_test_df,
         )
-        if perm_scores:
-            perm_mean = np.nanmean(perm_scores)
-            perm_std = np.nanstd(perm_scores)
-            logger.info(
-                "%sPermutation IC: mean=%.4f, std=%.4f, runs=%s",
-                label_prefix,
-                perm_mean,
-                perm_std,
-                len(perm_scores),
-            )
-            logger.info("%sPermutation ICs: %s", label_prefix, [f"{s:.4f}" for s in perm_scores])
-            result["perm_stats"] = {
-                "mean": float(perm_mean),
-                "std": float(perm_std),
-                "scores": [float(score) for score in perm_scores],
-                "runs": int(len(perm_scores)),
-            }
 
-    trade_dates_sorted_full = sorted(eval_df_full["trade_date"].unique())
-    rebalance_dates_full = get_rebalance_dates(trade_dates_sorted_full, rebalance_frequency)
-    rebalance_gap = estimate_rebalance_gap(trade_dates_sorted_full, rebalance_dates_full)
-    if (
-        backtest_exit_mode == "rebalance"
-        and np.isfinite(rebalance_gap)
-        and label_horizon_mode == "fixed"
-    ):
-        gap_diff = abs(rebalance_gap - label_horizon_effective)
-        if gap_diff >= max(3.0, rebalance_gap * 0.25):
-            logger.warning(
-                "%sLabel horizon (%s days) differs from rebalance gap (median %.1f days).",
-                label_prefix,
-                label_horizon_effective,
-                rebalance_gap,
-            )
+    _warn_label_rebalance_gap(
+        eval_df_full=eval_df_full,
+        context=context,
+        label_prefix=label_prefix,
+    )
 
     _record_quantile_turnover_bucket_metrics(
         result,
@@ -1189,104 +1330,34 @@ def _evaluate_period(
         valid_dates=valid_dates_set,
     )
     result["backtest_rebalance_dates"] = bt_rebalance
-    bt_pred_col = "signal_backtest"
 
-    positions_by_rebalance = None
-    if backtest_enabled or not live_enabled or not allow_live_fallback:
-        positions_by_rebalance = build_positions_by_rebalance(
-            eval_df_full,
-            pred_col=bt_pred_col,
-            price_col=price_col,
-            rebalance_dates=bt_rebalance,
-            top_k=backtest_top_k,
-            shift_days=label_shift_days,
-            weighting=backtest_weighting,
-            buffer_exit=backtest_buffer_exit,
-            buffer_entry=backtest_buffer_entry,
-            long_only=backtest_long_only,
-            short_k=backtest_short_k,
-            tradable_col=backtest_tradable_col if backtest_tradable_col in eval_df_full.columns else None,
-            group_col=backtest_group_col if backtest_group_col in eval_df_full.columns else None,
-            max_names_per_group=backtest_max_names_per_group,
-            execution=execution_model,
-        )
-    if allow_live_fallback and live_enabled and not backtest_enabled:
-        positions_by_rebalance = positions_by_rebalance_live
+    positions_by_rebalance = _build_period_positions(
+        eval_df_full=eval_df_full,
+        bt_rebalance=bt_rebalance,
+        context=context,
+        allow_live_fallback=allow_live_fallback,
+    )
     result["positions_by_rebalance"] = positions_by_rebalance
 
-    if (
-        backtest_enabled
-        and getattr(execution_sim_config, "enabled", False)
-        and positions_by_rebalance is not None
-        and not positions_by_rebalance.empty
-    ):
-        sim_result = simulate_capacity_execution(
-            positions_by_rebalance,
-            backtest_pricing_df,
-            execution_sim_config,
-            price_col=execution_model.entry_policy.price_col,
-            tradable_col=backtest_tradable_col
-            if backtest_tradable_col in backtest_pricing_df.columns
-            else None,
-        )
-        result["execution_sim_summary"] = sim_result.summary
-        result["execution_sim_orders"] = sim_result.orders
-        result["execution_sim_fills"] = sim_result.fills
-        if sim_result.summary.get("status") == "ok":
-            logger.info(
-                "%sExecution sim: fill ratio %.2f%%, unfilled %.2f",
-                label_prefix,
-                float(sim_result.summary.get("fill_ratio", np.nan)) * 100,
-                float(sim_result.summary.get("unfilled_notional", 0.0)),
-            )
+    _record_period_execution_sim(
+        result,
+        positions_by_rebalance=positions_by_rebalance,
+        context=context,
+        label_prefix=label_prefix,
+    )
 
-    bt_result = None
-    bt_attempted = False
-    if backtest_enabled:
-        bt_attempted = True
-        try:
-            bt_result = backtest_topk_fn(
-                eval_df_full,
-                pred_col=bt_pred_col,
-                price_col=price_col,
-                rebalance_dates=bt_rebalance,
-                top_k=backtest_top_k,
-                shift_days=label_shift_days,
-                cost_bps=backtest_cost_bps_effective,
-                trading_days_per_year=backtest_trading_days_per_year,
-                exit_mode=backtest_exit_mode,
-                exit_horizon_days=backtest_exit_horizon_days,
-                long_only=backtest_long_only,
-                short_k=backtest_short_k,
-                weighting=backtest_weighting,
-                buffer_exit=backtest_buffer_exit,
-                buffer_entry=backtest_buffer_entry,
-                group_col=backtest_group_col if backtest_group_col in eval_df_full.columns else None,
-                max_names_per_group=backtest_max_names_per_group,
-                tradable_col=backtest_tradable_col
-                if backtest_tradable_col in backtest_pricing_df.columns
-                else None,
-                exit_price_policy=backtest_exit_price_policy,
-                exit_fallback_policy=backtest_exit_fallback_policy,
-                execution=execution_model,
-                pricing_data=backtest_pricing_df,
-            )
-        except ValueError as exc:
-            logger.warning("%sBacktest skipped: %s", label_prefix, exc)
-            bt_result = None
-
+    bt_attempted, bt_result = _run_period_backtest(
+        eval_df_full=eval_df_full,
+        bt_rebalance=bt_rebalance,
+        context=context,
+        label_prefix=label_prefix,
+    )
     if bt_attempted:
-        _record_backtest_outputs(
+        _record_period_backtest_outputs(
             result,
-            bt_result,
+            bt_result=bt_result,
+            context=context,
             label_prefix=label_prefix,
-            backtest_long_only=backtest_long_only,
-            backtest_exit_mode=backtest_exit_mode,
-            backtest_exit_price_policy=backtest_exit_price_policy,
-            benchmark_df=benchmark_df,
-            benchmark_return_series=benchmark_return_series,
-            execution_model=execution_model,
-            backtest_trading_days_per_year=backtest_trading_days_per_year,
         )
 
     result["scored_data"] = _build_scored_data(
@@ -1296,7 +1367,7 @@ def _evaluate_period(
         price_passthrough_cols=price_passthrough_cols,
         passthrough_cols=passthrough_cols,
         bucket_cols=bucket_cols,
-        backtest_tradable_col=backtest_tradable_col,
+        backtest_tradable_col=context["backtest_tradable_col"],
     )
 
     _record_exposure_outputs(
@@ -1304,11 +1375,11 @@ def _evaluate_period(
         eval_df_full=eval_df_full,
         exposure_source_df=exposure_source_df,
         positions_by_rebalance=positions_by_rebalance,
-        backtest_enabled=backtest_enabled,
-        backtest_pricing_df=backtest_pricing_df,
+        backtest_enabled=context["backtest_enabled"],
+        backtest_pricing_df=context["backtest_pricing_df"],
         price_col=price_col,
-        benchmark_df=benchmark_df,
-        benchmark_return_series=benchmark_return_series,
+        benchmark_df=context["benchmark_df"],
+        benchmark_return_series=context["benchmark_return_series"],
         fundamentals_mcap_col=fundamentals_mcap_col,
         industry_columns=industry_columns,
         industry_source_df=industry_source_df,

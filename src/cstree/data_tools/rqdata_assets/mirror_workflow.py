@@ -483,6 +483,449 @@ def _write_prepared_batch_order_book_ids(
     }
 
 
+def _quota_blocked_batch_summary(
+    *,
+    order_book_ids: int,
+    symbols_missing_remote: int,
+    attempts: int,
+    dropped_fields: Sequence[str],
+    error: str,
+) -> dict[str, object]:
+    return {
+        "order_book_ids": order_book_ids,
+        "rows": 0,
+        "symbols_written": 0,
+        "symbols_missing_remote": symbols_missing_remote,
+        "status": "quota_blocked",
+        "attempts": attempts,
+        "dropped_fields": list(dropped_fields),
+        "error": error,
+    }
+
+
+def _split_after_error_batch_summary(
+    *,
+    order_book_ids: int,
+    attempts: int,
+    error: str,
+) -> dict[str, object]:
+    return {
+        "order_book_ids": order_book_ids,
+        "rows": 0,
+        "symbols_written": 0,
+        "symbols_missing_remote": 0,
+        "status": "split_after_error",
+        "attempts": attempts,
+        "error": error,
+    }
+
+
+def _failed_batch_summary(
+    *,
+    order_book_ids: int,
+    attempts: int,
+    dropped_fields: Sequence[str],
+    error: str,
+) -> dict[str, object]:
+    return {
+        "order_book_ids": order_book_ids,
+        "rows": 0,
+        "symbols_written": 0,
+        "symbols_missing_remote": 0,
+        "status": "failed",
+        "attempts": attempts,
+        "dropped_fields": list(dropped_fields),
+        "error": error,
+    }
+
+
+def _status_after_batch_failure(status: str, result_code: int) -> str:
+    if result_code == 1 and status == "completed":
+        return "completed_with_failures"
+    return status
+
+
+def _record_dated_pending_quota_blocked(
+    *,
+    pending_symbols: Sequence[str],
+    audit_by_symbol: Mapping[str, DatedMirrorAuditRecord],
+    primary_order_book_id_by_symbol: Mapping[str, str],
+    error: str | None,
+    record_non_entry: Callable[..., None],
+) -> None:
+    quota_finished_at = _timestamp_now()
+    for symbol in pending_symbols:
+        if symbol in audit_by_symbol:
+            continue
+        record_non_entry(
+            symbol=symbol,
+            order_book_id=primary_order_book_id_by_symbol[symbol],
+            record_status="quota_blocked",
+            attempts=0,
+            started_at_value=None,
+            finished_at_value=quota_finished_at,
+            error_text=error,
+        )
+
+
+def _record_pending_quota_blocked(
+    *,
+    pending_order_book_ids: Sequence[str],
+    audit_by_symbol: Mapping[str, MirrorAuditRecord],
+    symbol_map: Mapping[str, str],
+    error: str | None,
+    record_non_entry: Callable[..., None],
+) -> None:
+    quota_finished_at = _timestamp_now()
+    for order_book_id in pending_order_book_ids:
+        symbol = symbol_map[order_book_id]
+        if symbol in audit_by_symbol:
+            continue
+        record_non_entry(
+            symbol=symbol,
+            order_book_id=order_book_id,
+            record_status="quota_blocked",
+            attempts=0,
+            started_at_value=None,
+            finished_at_value=quota_finished_at,
+            error_text=error,
+        )
+
+
+def _process_dated_mirror_batch(
+    *,
+    batch_symbols: list[str],
+    dataset_name: str,
+    fields: Sequence[str],
+    start_date: str,
+    end_date: str,
+    fetch_batch,
+    fetch_policy: _MirrorFetchPolicy,
+    request_ids_by_symbol: Mapping[str, Sequence[str]],
+    primary_order_book_id_by_symbol: Mapping[str, str],
+    data_dir: Path,
+    date_column: str,
+    status: str,
+    error: str | None,
+    result_code: int,
+    quota_blocked: bool,
+    columns: list[str],
+    batches: list[dict[str, object]],
+    audit_by_symbol: Mapping[str, DatedMirrorAuditRecord],
+    fetch_single_symbol_with_field_fallback: Callable[
+        [Sequence[str]], tuple[pd.DataFrame, int, list[str]]
+    ],
+    prepare_batch_payload: Callable[[object], pd.DataFrame],
+    record_entry: Callable[..., None],
+    record_non_entry: Callable[..., None],
+) -> tuple[str, str | None, int, bool, list[str]]:
+    if not batch_symbols or quota_blocked:
+        return status, error, result_code, quota_blocked, columns
+
+    batch_request_ids = [
+        request_id
+        for symbol in batch_symbols
+        for request_id in request_ids_by_symbol.get(symbol, ())
+        if str(request_id).strip()
+    ]
+    if not batch_request_ids:
+        return status, error, result_code, quota_blocked, columns
+
+    batch_started_at = _timestamp_now()
+    dropped_fields: list[str] = []
+    try:
+        if len(batch_symbols) == 1:
+            prepared, attempts, dropped_fields = fetch_single_symbol_with_field_fallback(
+                batch_request_ids
+            )
+        else:
+            label = f"{dataset_name} fetch failed for {', '.join(batch_symbols)}"
+            payload, attempts = _retry_mirror_fetch(
+                label,
+                lambda: fetch_batch(batch_request_ids, fields, start_date, end_date),
+                policy=fetch_policy,
+            )
+            prepared = _ensure_requested_fields(prepare_batch_payload(payload), fields)
+    except MirrorQuotaError as exc:
+        batch_finished_at = _timestamp_now()
+        quota_blocked = True
+        status = "stopped_quota"
+        error = str(exc)
+        result_code = max(result_code, 2)
+        for symbol in batch_symbols:
+            if symbol in audit_by_symbol:
+                continue
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=primary_order_book_id_by_symbol[symbol],
+                record_status="quota_blocked",
+                attempts=exc.attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                dropped_fields=dropped_fields,
+                error_text=str(exc),
+            )
+        batches.append(
+            _quota_blocked_batch_summary(
+                order_book_ids=len(batch_request_ids),
+                symbols_missing_remote=len(batch_symbols),
+                attempts=exc.attempts,
+                dropped_fields=dropped_fields,
+                error=str(exc),
+            )
+        )
+        return status, error, result_code, quota_blocked, columns
+    except MirrorFetchError as exc:
+        batch_finished_at = _timestamp_now()
+        if len(batch_symbols) > 1:
+            batches.append(
+                _split_after_error_batch_summary(
+                    order_book_ids=len(batch_request_ids),
+                    attempts=exc.attempts,
+                    error=str(exc),
+                )
+            )
+            for symbol in batch_symbols:
+                status, error, result_code, quota_blocked, columns = _process_dated_mirror_batch(
+                    batch_symbols=[symbol],
+                    dataset_name=dataset_name,
+                    fields=fields,
+                    start_date=start_date,
+                    end_date=end_date,
+                    fetch_batch=fetch_batch,
+                    fetch_policy=fetch_policy,
+                    request_ids_by_symbol=request_ids_by_symbol,
+                    primary_order_book_id_by_symbol=primary_order_book_id_by_symbol,
+                    data_dir=data_dir,
+                    date_column=date_column,
+                    status=status,
+                    error=error,
+                    result_code=result_code,
+                    quota_blocked=quota_blocked,
+                    columns=columns,
+                    batches=batches,
+                    audit_by_symbol=audit_by_symbol,
+                    fetch_single_symbol_with_field_fallback=(
+                        fetch_single_symbol_with_field_fallback
+                    ),
+                    prepare_batch_payload=prepare_batch_payload,
+                    record_entry=record_entry,
+                    record_non_entry=record_non_entry,
+                )
+                if quota_blocked:
+                    break
+            return status, error, result_code, quota_blocked, columns
+
+        symbol = batch_symbols[0]
+        record_non_entry(
+            symbol=symbol,
+            order_book_id=primary_order_book_id_by_symbol[symbol],
+            record_status="failed",
+            attempts=exc.attempts,
+            started_at_value=batch_started_at,
+            finished_at_value=batch_finished_at,
+            dropped_fields=dropped_fields,
+            error_text=str(exc),
+        )
+        batches.append(
+            _failed_batch_summary(
+                order_book_ids=len(batch_request_ids),
+                attempts=exc.attempts,
+                dropped_fields=dropped_fields,
+                error=str(exc),
+            )
+        )
+        result_code = max(result_code, 1)
+        status = _status_after_batch_failure(status, result_code)
+        return status, error, result_code, quota_blocked, columns
+
+    batch_finished_at = _timestamp_now()
+    if not prepared.empty and not columns:
+        columns = prepared.columns.tolist()
+    batches.append(
+        _write_dated_prepared_batch_symbols(
+            prepared=prepared,
+            batch_symbols=batch_symbols,
+            batch_request_ids=batch_request_ids,
+            data_dir=data_dir,
+            date_column=date_column,
+            primary_order_book_id_by_symbol=primary_order_book_id_by_symbol,
+            attempts=attempts,
+            batch_started_at=batch_started_at,
+            batch_finished_at=batch_finished_at,
+            dropped_fields=dropped_fields,
+            record_entry=record_entry,
+            record_non_entry=record_non_entry,
+        )
+    )
+    return status, error, result_code, quota_blocked, columns
+
+
+def _process_mirror_batch(
+    *,
+    batch_order_book_ids: list[str],
+    dataset_name: str,
+    fields: Sequence[str],
+    fetch_batch,
+    fetch_policy: _MirrorFetchPolicy,
+    start_quarter: str,
+    end_quarter: str,
+    statements: Sequence[str],
+    query_date: str | None,
+    data_dir: Path,
+    symbol_map: Mapping[str, str],
+    status: str,
+    error: str | None,
+    result_code: int,
+    quota_blocked: bool,
+    columns: list[str],
+    batches: list[dict[str, object]],
+    audit_by_symbol: Mapping[str, MirrorAuditRecord],
+    fetch_single_symbol_with_field_fallback: Callable[[str], tuple[pd.DataFrame, int, list[str]]],
+    prepare_batch_payload: Callable[[object], pd.DataFrame],
+    record_entry: Callable[..., None],
+    record_non_entry: Callable[..., None],
+) -> tuple[str, str | None, int, bool, list[str]]:
+    if not batch_order_book_ids or quota_blocked:
+        return status, error, result_code, quota_blocked, columns
+
+    batch_started_at = _timestamp_now()
+    dropped_fields: list[str] = []
+    try:
+        if len(batch_order_book_ids) == 1:
+            prepared, attempts, dropped_fields = fetch_single_symbol_with_field_fallback(
+                batch_order_book_ids[0]
+            )
+        else:
+            label = f"{dataset_name} fetch failed for {', '.join(batch_order_book_ids)}"
+            payload, attempts = _retry_mirror_fetch(
+                label,
+                lambda: fetch_batch(
+                    batch_order_book_ids,
+                    fields,
+                    start_quarter,
+                    end_quarter,
+                    date=query_date,
+                    statements=statements,
+                ),
+                policy=fetch_policy,
+            )
+            prepared = _ensure_requested_fields(prepare_batch_payload(payload), fields)
+    except MirrorQuotaError as exc:
+        batch_finished_at = _timestamp_now()
+        quota_blocked = True
+        status = "stopped_quota"
+        error = str(exc)
+        result_code = max(result_code, 2)
+        for order_book_id in batch_order_book_ids:
+            symbol = symbol_map[order_book_id]
+            if symbol in audit_by_symbol:
+                continue
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=order_book_id,
+                record_status="quota_blocked",
+                attempts=exc.attempts,
+                started_at_value=batch_started_at,
+                finished_at_value=batch_finished_at,
+                dropped_fields=dropped_fields,
+                error_text=str(exc),
+            )
+        batches.append(
+            _quota_blocked_batch_summary(
+                order_book_ids=len(batch_order_book_ids),
+                symbols_missing_remote=0,
+                attempts=exc.attempts,
+                dropped_fields=dropped_fields,
+                error=str(exc),
+            )
+        )
+        return status, error, result_code, quota_blocked, columns
+    except MirrorFetchError as exc:
+        batch_finished_at = _timestamp_now()
+        if len(batch_order_book_ids) > 1:
+            batches.append(
+                _split_after_error_batch_summary(
+                    order_book_ids=len(batch_order_book_ids),
+                    attempts=exc.attempts,
+                    error=str(exc),
+                )
+            )
+            for order_book_id in batch_order_book_ids:
+                status, error, result_code, quota_blocked, columns = _process_mirror_batch(
+                    batch_order_book_ids=[order_book_id],
+                    dataset_name=dataset_name,
+                    fields=fields,
+                    fetch_batch=fetch_batch,
+                    fetch_policy=fetch_policy,
+                    start_quarter=start_quarter,
+                    end_quarter=end_quarter,
+                    statements=statements,
+                    query_date=query_date,
+                    data_dir=data_dir,
+                    symbol_map=symbol_map,
+                    status=status,
+                    error=error,
+                    result_code=result_code,
+                    quota_blocked=quota_blocked,
+                    columns=columns,
+                    batches=batches,
+                    audit_by_symbol=audit_by_symbol,
+                    fetch_single_symbol_with_field_fallback=(
+                        fetch_single_symbol_with_field_fallback
+                    ),
+                    prepare_batch_payload=prepare_batch_payload,
+                    record_entry=record_entry,
+                    record_non_entry=record_non_entry,
+                )
+                if quota_blocked:
+                    break
+            return status, error, result_code, quota_blocked, columns
+
+        order_book_id = batch_order_book_ids[0]
+        symbol = symbol_map[order_book_id]
+        record_non_entry(
+            symbol=symbol,
+            order_book_id=order_book_id,
+            record_status="failed",
+            attempts=exc.attempts,
+            started_at_value=batch_started_at,
+            finished_at_value=batch_finished_at,
+            dropped_fields=dropped_fields,
+            error_text=str(exc),
+        )
+        batches.append(
+            _failed_batch_summary(
+                order_book_ids=1,
+                attempts=exc.attempts,
+                dropped_fields=dropped_fields,
+                error=str(exc),
+            )
+        )
+        result_code = max(result_code, 1)
+        status = _status_after_batch_failure(status, result_code)
+        return status, error, result_code, quota_blocked, columns
+
+    batch_finished_at = _timestamp_now()
+    if not prepared.empty and not columns:
+        columns = prepared.columns.tolist()
+    batches.append(
+        _write_prepared_batch_order_book_ids(
+            prepared=prepared,
+            batch_order_book_ids=batch_order_book_ids,
+            data_dir=data_dir,
+            symbol_map=symbol_map,
+            attempts=attempts,
+            batch_started_at=batch_started_at,
+            batch_finished_at=batch_finished_at,
+            dropped_fields=dropped_fields,
+            record_entry=record_entry,
+            record_non_entry=record_non_entry,
+        )
+    )
+    return status, error, result_code, quota_blocked, columns
+
+
 def _finalize_dated_mirror_outputs(
     *,
     context: _DatedMirrorContext,
@@ -749,129 +1192,29 @@ def _mirror_dated_dataset(
 
     def _process_batch(batch_symbols: list[str]) -> None:
         nonlocal status, error, result_code, quota_blocked, columns
-        if not batch_symbols or quota_blocked:
-            return
-        batch_request_ids = [
-            request_id
-            for symbol in batch_symbols
-            for request_id in request_ids_by_symbol.get(symbol, ())
-            if str(request_id).strip()
-        ]
-        if not batch_request_ids:
-            return
-        batch_started_at = _timestamp_now()
-        dropped_fields: list[str] = []
-        try:
-            if len(batch_symbols) == 1:
-                prepared, attempts, dropped_fields = _fetch_single_symbol_with_field_fallback(
-                    batch_request_ids
-                )
-            else:
-                label = f"{dataset_name} fetch failed for {', '.join(batch_symbols)}"
-                payload, attempts = _retry_mirror_fetch(
-                    label,
-                    lambda: fetch_batch(batch_request_ids, fields, start_date, end_date),
-                    policy=fetch_policy,
-                )
-                prepared = _ensure_requested_fields(_prepare_batch_payload(payload), fields)
-        except MirrorQuotaError as exc:
-            batch_finished_at = _timestamp_now()
-            quota_blocked = True
-            status = "stopped_quota"
-            error = str(exc)
-            result_code = max(result_code, 2)
-            for symbol in batch_symbols:
-                if symbol in audit_by_symbol:
-                    continue
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=primary_order_book_id_by_symbol[symbol],
-                    record_status="quota_blocked",
-                    attempts=exc.attempts,
-                    started_at_value=batch_started_at,
-                    finished_at_value=batch_finished_at,
-                    dropped_fields=dropped_fields,
-                    error_text=str(exc),
-                )
-            batches.append(
-                {
-                    "order_book_ids": len(batch_request_ids),
-                    "rows": 0,
-                    "symbols_written": 0,
-                    "symbols_missing_remote": len(batch_symbols),
-                    "status": "quota_blocked",
-                    "attempts": exc.attempts,
-                    "dropped_fields": list(dropped_fields),
-                    "error": str(exc),
-                }
-            )
-            return
-        except MirrorFetchError as exc:
-            batch_finished_at = _timestamp_now()
-            if len(batch_symbols) > 1:
-                batches.append(
-                    {
-                        "order_book_ids": len(batch_request_ids),
-                        "rows": 0,
-                        "symbols_written": 0,
-                        "symbols_missing_remote": 0,
-                        "status": "split_after_error",
-                        "attempts": exc.attempts,
-                        "error": str(exc),
-                    }
-                )
-                for symbol in batch_symbols:
-                    _process_batch([symbol])
-                    if quota_blocked:
-                        break
-                return
-
-            symbol = batch_symbols[0]
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=primary_order_book_id_by_symbol[symbol],
-                record_status="failed",
-                attempts=exc.attempts,
-                started_at_value=batch_started_at,
-                finished_at_value=batch_finished_at,
-                dropped_fields=dropped_fields,
-                error_text=str(exc),
-            )
-            batches.append(
-                {
-                    "order_book_ids": len(batch_request_ids),
-                    "rows": 0,
-                    "symbols_written": 0,
-                    "symbols_missing_remote": 0,
-                    "status": "failed",
-                    "attempts": exc.attempts,
-                    "dropped_fields": list(dropped_fields),
-                    "error": str(exc),
-                }
-            )
-            if status == "completed":
-                status = "completed_with_failures"
-            result_code = max(result_code, 1)
-            return
-
-        batch_finished_at = _timestamp_now()
-        if not prepared.empty and not columns:
-            columns = prepared.columns.tolist()
-        batches.append(
-            _write_dated_prepared_batch_symbols(
-                prepared=prepared,
-                batch_symbols=batch_symbols,
-                batch_request_ids=batch_request_ids,
-                data_dir=data_dir,
-                date_column=date_column,
-                primary_order_book_id_by_symbol=primary_order_book_id_by_symbol,
-                attempts=attempts,
-                batch_started_at=batch_started_at,
-                batch_finished_at=batch_finished_at,
-                dropped_fields=dropped_fields,
-                record_entry=_record_entry,
-                record_non_entry=_record_non_entry,
-            )
+        status, error, result_code, quota_blocked, columns = _process_dated_mirror_batch(
+            batch_symbols=batch_symbols,
+            dataset_name=dataset_name,
+            fields=fields,
+            start_date=start_date,
+            end_date=end_date,
+            fetch_batch=fetch_batch,
+            fetch_policy=fetch_policy,
+            request_ids_by_symbol=request_ids_by_symbol,
+            primary_order_book_id_by_symbol=primary_order_book_id_by_symbol,
+            data_dir=data_dir,
+            date_column=date_column,
+            status=status,
+            error=error,
+            result_code=result_code,
+            quota_blocked=quota_blocked,
+            columns=columns,
+            batches=batches,
+            audit_by_symbol=audit_by_symbol,
+            fetch_single_symbol_with_field_fallback=_fetch_single_symbol_with_field_fallback,
+            prepare_batch_payload=_prepare_batch_payload,
+            record_entry=_record_entry,
+            record_non_entry=_record_non_entry,
         )
 
     if resume:
@@ -904,24 +1247,17 @@ def _mirror_dated_dataset(
         return quota_blocked
 
     def _on_quota_blocked() -> None:
-        quota_finished_at = _timestamp_now()
-        for symbol in pending_symbols:
-            if symbol in audit_by_symbol:
-                continue
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=primary_order_book_id_by_symbol[symbol],
-                record_status="quota_blocked",
-                attempts=0,
-                started_at_value=None,
-                finished_at_value=quota_finished_at,
-                error_text=error,
-            )
+        _record_dated_pending_quota_blocked(
+            pending_symbols=pending_symbols,
+            audit_by_symbol=audit_by_symbol,
+            primary_order_book_id_by_symbol=primary_order_book_id_by_symbol,
+            error=error,
+            record_non_entry=_record_non_entry,
+        )
 
     def _on_completed_without_quota() -> None:
         nonlocal status
-        if result_code == 1 and status == "completed":
-            status = "completed_with_failures"
+        status = _status_after_batch_failure(status, result_code)
 
     def _on_exception(exc: Exception) -> None:
         nonlocal status, error, result_code
@@ -1087,128 +1423,29 @@ def _mirror_dataset(
 
     def _process_batch(batch_order_book_ids: list[str]) -> None:
         nonlocal status, error, result_code, quota_blocked, columns
-        if not batch_order_book_ids or quota_blocked:
-            return
-        batch_started_at = _timestamp_now()
-        dropped_fields: list[str] = []
-        try:
-            if len(batch_order_book_ids) == 1:
-                prepared, attempts, dropped_fields = _fetch_single_symbol_with_field_fallback(
-                    batch_order_book_ids[0]
-                )
-            else:
-                label = f"{dataset_name} fetch failed for {', '.join(batch_order_book_ids)}"
-                payload, attempts = _retry_mirror_fetch(
-                    label,
-                    lambda: fetch_batch(
-                        batch_order_book_ids,
-                        fields,
-                        args.start_quarter,
-                        args.end_quarter,
-                        date=getattr(args, "date", None),
-                        statements=args.statements,
-                    ),
-                    policy=fetch_policy,
-                )
-                prepared = _ensure_requested_fields(_prepare_batch_payload(payload), fields)
-        except MirrorQuotaError as exc:
-            batch_finished_at = _timestamp_now()
-            quota_blocked = True
-            status = "stopped_quota"
-            error = str(exc)
-            result_code = max(result_code, 2)
-            for order_book_id in batch_order_book_ids:
-                symbol = symbol_map[order_book_id]
-                if symbol in audit_by_symbol:
-                    continue
-                _record_non_entry(
-                    symbol=symbol,
-                    order_book_id=order_book_id,
-                    record_status="quota_blocked",
-                    attempts=exc.attempts,
-                    started_at_value=batch_started_at,
-                    finished_at_value=batch_finished_at,
-                    dropped_fields=dropped_fields,
-                    error_text=str(exc),
-                )
-            batches.append(
-                {
-                    "order_book_ids": len(batch_order_book_ids),
-                    "rows": 0,
-                    "symbols_written": 0,
-                    "symbols_missing_remote": 0,
-                    "status": "quota_blocked",
-                    "attempts": exc.attempts,
-                    "dropped_fields": list(dropped_fields),
-                    "error": str(exc),
-                }
-            )
-            return
-        except MirrorFetchError as exc:
-            batch_finished_at = _timestamp_now()
-            if len(batch_order_book_ids) > 1:
-                batches.append(
-                    {
-                        "order_book_ids": len(batch_order_book_ids),
-                        "rows": 0,
-                        "symbols_written": 0,
-                        "symbols_missing_remote": 0,
-                        "status": "split_after_error",
-                        "attempts": exc.attempts,
-                        "error": str(exc),
-                    }
-                )
-                for order_book_id in batch_order_book_ids:
-                    _process_batch([order_book_id])
-                    if quota_blocked:
-                        break
-                return
-
-            order_book_id = batch_order_book_ids[0]
-            symbol = symbol_map[order_book_id]
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                record_status="failed",
-                attempts=exc.attempts,
-                started_at_value=batch_started_at,
-                finished_at_value=batch_finished_at,
-                dropped_fields=dropped_fields,
-                error_text=str(exc),
-            )
-            batches.append(
-                {
-                    "order_book_ids": 1,
-                    "rows": 0,
-                    "symbols_written": 0,
-                    "symbols_missing_remote": 0,
-                    "status": "failed",
-                    "attempts": exc.attempts,
-                    "dropped_fields": list(dropped_fields),
-                    "error": str(exc),
-                }
-            )
-            if status == "completed":
-                status = "completed_with_failures"
-            result_code = max(result_code, 1)
-            return
-
-        batch_finished_at = _timestamp_now()
-        if not prepared.empty and not columns:
-            columns = prepared.columns.tolist()
-        batches.append(
-            _write_prepared_batch_order_book_ids(
-                prepared=prepared,
-                batch_order_book_ids=batch_order_book_ids,
-                data_dir=data_dir,
-                symbol_map=symbol_map,
-                attempts=attempts,
-                batch_started_at=batch_started_at,
-                batch_finished_at=batch_finished_at,
-                dropped_fields=dropped_fields,
-                record_entry=_record_entry,
-                record_non_entry=_record_non_entry,
-            )
+        status, error, result_code, quota_blocked, columns = _process_mirror_batch(
+            batch_order_book_ids=batch_order_book_ids,
+            dataset_name=dataset_name,
+            fields=fields,
+            fetch_batch=fetch_batch,
+            fetch_policy=fetch_policy,
+            start_quarter=args.start_quarter,
+            end_quarter=args.end_quarter,
+            statements=args.statements,
+            query_date=getattr(args, "date", None),
+            data_dir=data_dir,
+            symbol_map=symbol_map,
+            status=status,
+            error=error,
+            result_code=result_code,
+            quota_blocked=quota_blocked,
+            columns=columns,
+            batches=batches,
+            audit_by_symbol=audit_by_symbol,
+            fetch_single_symbol_with_field_fallback=_fetch_single_symbol_with_field_fallback,
+            prepare_batch_payload=_prepare_batch_payload,
+            record_entry=_record_entry,
+            record_non_entry=_record_non_entry,
         )
 
     if resume:
@@ -1239,25 +1476,17 @@ def _mirror_dataset(
         return quota_blocked
 
     def _on_quota_blocked() -> None:
-        quota_finished_at = _timestamp_now()
-        for order_book_id in pending_order_book_ids:
-            symbol = symbol_map[order_book_id]
-            if symbol in audit_by_symbol:
-                continue
-            _record_non_entry(
-                symbol=symbol,
-                order_book_id=order_book_id,
-                record_status="quota_blocked",
-                attempts=0,
-                started_at_value=None,
-                finished_at_value=quota_finished_at,
-                error_text=error,
-            )
+        _record_pending_quota_blocked(
+            pending_order_book_ids=pending_order_book_ids,
+            audit_by_symbol=audit_by_symbol,
+            symbol_map=symbol_map,
+            error=error,
+            record_non_entry=_record_non_entry,
+        )
 
     def _on_completed_without_quota() -> None:
         nonlocal status
-        if result_code == 1 and status == "completed":
-            status = "completed_with_failures"
+        status = _status_after_batch_failure(status, result_code)
 
     def _on_exception(exc: Exception) -> None:
         nonlocal status, error, result_code

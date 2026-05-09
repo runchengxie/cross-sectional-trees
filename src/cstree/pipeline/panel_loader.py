@@ -55,11 +55,11 @@ def _derive_execution_liquidity_proxy_columns(
         lagged = grouped_amount.shift(1)
         if kind == "adv":
             proxy = lagged.groupby(out["symbol"]).transform(
-                lambda series: series.rolling(window=window, min_periods=1).mean()
+                lambda series, window=window: series.rolling(window=window, min_periods=1).mean()
             )
         else:
             proxy = lagged.groupby(out["symbol"]).transform(
-                lambda series: series.rolling(window=window, min_periods=1).median()
+                lambda series, window=window: series.rolling(window=window, min_periods=1).median()
             )
 
         if out is df:
@@ -132,6 +132,289 @@ def _build_price_col_diagnostics(
     }
 
 
+def _resolve_price_symbols(
+    *,
+    symbols: list[str],
+    benchmark_symbol: str | None,
+    benchmark_compare_symbols: list[str] | None,
+) -> tuple[str | None, list[str], list[str]]:
+    benchmark_symbol = str(benchmark_symbol).strip() if benchmark_symbol else None
+    compare_symbols = [
+        str(symbol).strip()
+        for symbol in (benchmark_compare_symbols or [])
+        if str(symbol).strip()
+    ]
+    symbols_for_data = symbols[:]
+    if benchmark_symbol and benchmark_symbol not in symbols_for_data:
+        symbols_for_data.append(benchmark_symbol)
+    for symbol in compare_symbols:
+        if symbol not in symbols_for_data:
+            symbols_for_data.append(symbol)
+    return benchmark_symbol, compare_symbols, symbols_for_data
+
+
+def _fetch_daily_frames(
+    *,
+    data_interface: DataInterface,
+    symbols_for_data: list[str],
+    market: str,
+    start_date: str,
+    end_date: str,
+) -> tuple[list[pd.DataFrame], list[dict[str, Any]]]:
+    frames = []
+    tr_close_symbol_metas: list[dict[str, Any]] = []
+    for symbol in symbols_for_data:
+        logger.info("Fetching daily data for %s (%s) ...", symbol, market)
+        try:
+            data = data_interface.fetch_daily(symbol, start_date, end_date)
+        except Exception as exc:
+            logger.warning("Skipping %s after retries (%s).", symbol, exc)
+            data = pd.DataFrame()
+        if data.empty:
+            continue
+        meta = data.attrs.get("tr_close_meta")
+        if isinstance(meta, Mapping):
+            tr_close_symbol_metas.append(dict(meta))
+        else:
+            tr_close_symbol_metas.append(_default_tr_close_meta_for_frame(symbol, data))
+        frames.append(data)
+    return frames, tr_close_symbol_metas
+
+
+def _prepare_daily_panel(
+    *,
+    frames: list[pd.DataFrame],
+    execution_pricing_cols: set[str],
+) -> pd.DataFrame:
+    if not frames:
+        sys.exit("No data returned - check symbols and date range.")
+
+    df = pd.concat(frames, ignore_index=True)
+    df = canonicalize_symbol_columns(df, context="Daily panel")
+    df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
+    df.sort_values(["symbol", "trade_date"], inplace=True)
+    df = _derive_execution_liquidity_proxy_columns(df, execution_pricing_cols)
+    missing_execution_cols = [
+        col for col in sorted(execution_pricing_cols) if col not in df.columns
+    ]
+    if missing_execution_cols:
+        sys.exit(
+            "Daily data is missing execution pricing columns required by backtest.execution: "
+            + ", ".join(missing_execution_cols)
+        )
+    return df
+
+
+def _split_benchmark_frames(
+    *,
+    df: pd.DataFrame,
+    symbols: list[str],
+    benchmark_symbol: str | None,
+    compare_symbols: list[str],
+) -> tuple[pd.DataFrame, pd.DataFrame | None, dict[str, pd.DataFrame]]:
+    benchmark_df = None
+    if benchmark_symbol:
+        if benchmark_symbol in symbols:
+            logger.info("Benchmark symbol %s removed from modeling universe.", benchmark_symbol)
+        benchmark_df = df[df["symbol"] == benchmark_symbol].copy()
+        df = df[df["symbol"] != benchmark_symbol].copy()
+        if benchmark_df.empty:
+            logger.warning(
+                "Benchmark symbol %s returned no daily data; benchmark and active-return outputs will be skipped.",
+                benchmark_symbol,
+            )
+
+    benchmark_compare_dfs: dict[str, pd.DataFrame] = {}
+    for symbol in compare_symbols:
+        if benchmark_symbol and symbol == benchmark_symbol:
+            compare_df = benchmark_df.copy() if benchmark_df is not None else pd.DataFrame()
+        else:
+            compare_df = df[df["symbol"] == symbol].copy()
+            if symbol in symbols:
+                logger.info("Compare benchmark symbol %s removed from modeling universe.", symbol)
+            if not compare_df.empty:
+                df = df[df["symbol"] != symbol].copy()
+        if compare_df.empty:
+            logger.warning(
+                "Compare benchmark symbol %s returned no daily data; compare report for this symbol will be skipped.",
+                symbol,
+            )
+        benchmark_compare_dfs[symbol] = compare_df
+    return df, benchmark_df, benchmark_compare_dfs
+
+
+def _symbols_for_non_price(
+    *,
+    symbols_for_data: list[str],
+    benchmark_symbol: str | None,
+    compare_symbols: list[str],
+) -> list[str]:
+    return [
+        symbol
+        for symbol in symbols_for_data
+        if (not benchmark_symbol or symbol != benchmark_symbol) and symbol not in compare_symbols
+    ]
+
+
+def _log_price_col_diagnostics(
+    *,
+    price_col: str,
+    price_col_diagnostics: dict[str, Any],
+) -> None:
+    tr_close_source_counts = price_col_diagnostics["tr_close_source_counts"]
+    if tr_close_source_counts and (
+        price_col == "tr_close" or any(source != "unavailable" for source in tr_close_source_counts)
+    ):
+        logger.info(
+            "Price column diagnostics for %s: tr_close sources=%s",
+            price_col,
+            tr_close_source_counts,
+        )
+    if price_col != "tr_close":
+        return
+    ex_factor_gap_symbols = price_col_diagnostics["tr_close_ex_factor_gap_symbols_sample"]
+    ex_factor_gap_count = int(price_col_diagnostics["tr_close_ex_factor_gap_symbol_count"])
+    if ex_factor_gap_count > 0:
+        logger.warning(
+            "price_col=tr_close could not use local ex_factors for %s symbols; "
+            "sample=%s. summary.json -> data -> price_col_diagnostics records the source mix.",
+            ex_factor_gap_count,
+            ex_factor_gap_symbols,
+        )
+    missing_symbol_count = int(price_col_diagnostics["tr_close_missing_symbol_count"])
+    if missing_symbol_count > 0:
+        logger.warning(
+            "price_col=tr_close but tr_close was unavailable for %s symbols; sample=%s.",
+            missing_symbol_count,
+            price_col_diagnostics["tr_close_missing_symbols_sample"],
+        )
+
+
+def _load_basic_filter_frame(
+    *,
+    data_interface: DataInterface,
+    symbols_for_non_price: list[str],
+    market: str,
+    drop_st: bool,
+    min_listed_days: int,
+) -> pd.DataFrame | None:
+    if not drop_st and min_listed_days <= 0:
+        return None
+    try:
+        if market != "cn" and drop_st:
+            logger.info(
+                "drop_st uses a legacy ST-name heuristic; attempting basic data for market '%s'.",
+                market,
+            )
+        basic_df = data_interface.load_basic(symbols_for_non_price)
+        if basic_df is not None and not basic_df.empty:
+            return canonicalize_symbol_columns(basic_df, context="Basic data")
+    except Exception as exc:
+        logger.warning("Basic data load failed (%s); skipping ST/listed filters.", exc)
+    return None
+
+
+def _apply_basic_filters(
+    *,
+    df: pd.DataFrame,
+    basic_df: pd.DataFrame | None,
+    drop_st: bool,
+    min_listed_days: int,
+) -> pd.DataFrame:
+    if drop_st and basic_df is not None and "name" in basic_df.columns:
+        st_codes = basic_df[
+            basic_df["name"].str.contains("ST", case=False, na=False)
+        ]["symbol"]
+        df = df[~df["symbol"].isin(st_codes)].copy()
+
+    if min_listed_days <= 0 or basic_df is None or basic_df.empty or "list_date" not in basic_df:
+        return df
+
+    list_dates = basic_df.copy()
+    list_dates["list_date"] = pd.to_datetime(
+        list_dates["list_date"], format="%Y%m%d", errors="coerce"
+    )
+    list_date_map = list_dates.set_index("symbol")["list_date"].to_dict()
+    df["list_date"] = pd.to_datetime(df["symbol"].map(list_date_map), errors="coerce")
+    valid_list_date_mask = df["list_date"].notna()
+    if not valid_list_date_mask.any():
+        logger.warning(
+            "Basic data returned no usable list_date values; skipping min_listed_days=%s filter.",
+            min_listed_days,
+        )
+        return df
+    df = df[valid_list_date_mask].copy()
+    return df[df["trade_date"] >= df["list_date"] + pd.Timedelta(days=min_listed_days)].copy()
+
+
+def _apply_tradeability_filters(
+    *,
+    df: pd.DataFrame,
+    drop_suspended: bool,
+    suspended_policy: str,
+    min_turnover: float,
+) -> pd.DataFrame:
+    df["is_tradable"] = True
+    if drop_suspended:
+        if "amount" in df.columns:
+            tradable_mask = (df["vol"] > 0) & (df["amount"] > 0)
+        else:
+            tradable_mask = df["vol"] > 0
+        tradable_mask = tradable_mask.fillna(False)
+        df["is_tradable"] = tradable_mask
+        if suspended_policy == "filter":
+            df = df[df["is_tradable"]].copy()
+
+    if min_turnover > 0 and "amount" in df.columns:
+        df = df[df["amount"] >= min_turnover].copy()
+    return df
+
+
+def _resolve_label_horizon_state(
+    *,
+    df: pd.DataFrame,
+    label_horizon_mode: str,
+    label_rebalance_frequency: str,
+) -> dict[str, Any]:
+    label_next_rebalance_map = None
+    label_horizon_gap = None
+    label_horizon_mode_effective = label_horizon_mode
+    if label_horizon_mode != "next_rebalance":
+        return {
+            "label_horizon_mode": label_horizon_mode_effective,
+            "label_next_rebalance_map": label_next_rebalance_map,
+            "label_horizon_gap": label_horizon_gap,
+        }
+
+    label_trade_dates = sorted(df["trade_date"].unique())
+    label_rebalance_dates = get_rebalance_dates(label_trade_dates, label_rebalance_frequency)
+    if len(label_rebalance_dates) < 2:
+        logger.warning(
+            "label.horizon_mode=next_rebalance but insufficient rebalance dates; "
+            "falling back to fixed horizon_days."
+        )
+        label_horizon_mode_effective = "fixed"
+    else:
+        rebalance_array = np.array(label_rebalance_dates)
+        trade_array = np.array(label_trade_dates)
+        idx = np.searchsorted(rebalance_array, trade_array, side="right")
+        next_dates = [
+            rebalance_array[i] if i < len(rebalance_array) else pd.NaT for i in idx
+        ]
+        label_next_rebalance_map = dict(zip(label_trade_dates, next_dates))
+        label_horizon_gap = estimate_rebalance_gap(label_trade_dates, label_rebalance_dates)
+        if np.isfinite(label_horizon_gap):
+            logger.info(
+                "Label horizon set to next rebalance date (median gap %.1f days).",
+                label_horizon_gap,
+            )
+    return {
+        "label_horizon_mode": label_horizon_mode_effective,
+        "label_next_rebalance_map": label_next_rebalance_map,
+        "label_horizon_gap": label_horizon_gap,
+    }
+
+
 def _load_research_panel(
     *,
     data_interface: DataInterface,
@@ -173,90 +456,33 @@ def _load_research_panel(
     label_horizon_mode: str,
     label_rebalance_frequency: str,
 ) -> dict[str, Any]:
-    benchmark_symbol = str(benchmark_symbol).strip() if benchmark_symbol else None
-    compare_symbols = [
-        str(symbol).strip()
-        for symbol in (benchmark_compare_symbols or [])
-        if str(symbol).strip()
-    ]
-    symbols_for_data = symbols[:]
-    if benchmark_symbol and benchmark_symbol not in symbols_for_data:
-        symbols_for_data.append(benchmark_symbol)
-    for symbol in compare_symbols:
-        if symbol not in symbols_for_data:
-            symbols_for_data.append(symbol)
-
-    frames = []
-    tr_close_symbol_metas: list[dict[str, Any]] = []
-    for symbol in symbols_for_data:
-        logger.info("Fetching daily data for %s (%s) ...", symbol, market)
-        try:
-            data = data_interface.fetch_daily(symbol, start_date, end_date)
-        except Exception as exc:
-            logger.warning("Skipping %s after retries (%s).", symbol, exc)
-            data = pd.DataFrame()
-        if not data.empty:
-            meta = data.attrs.get("tr_close_meta")
-            if isinstance(meta, Mapping):
-                tr_close_symbol_metas.append(dict(meta))
-            else:
-                tr_close_symbol_metas.append(
-                    _default_tr_close_meta_for_frame(symbol, data)
-                )
-            frames.append(data)
-
-    if not frames:
-        sys.exit("No data returned - check symbols and date range.")
-
-    df = pd.concat(frames, ignore_index=True)
-    df = canonicalize_symbol_columns(df, context="Daily panel")
-    df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
-    df.sort_values(["symbol", "trade_date"], inplace=True)
-    df = _derive_execution_liquidity_proxy_columns(df, execution_pricing_cols)
-    missing_execution_cols = [
-        col for col in sorted(execution_pricing_cols) if col not in df.columns
-    ]
-    if missing_execution_cols:
-        sys.exit(
-            "Daily data is missing execution pricing columns required by backtest.execution: "
-            + ", ".join(missing_execution_cols)
-        )
-
-    benchmark_df = None
-    if benchmark_symbol:
-        if benchmark_symbol in symbols:
-            logger.info("Benchmark symbol %s removed from modeling universe.", benchmark_symbol)
-        benchmark_df = df[df["symbol"] == benchmark_symbol].copy()
-        df = df[df["symbol"] != benchmark_symbol].copy()
-        if benchmark_df.empty:
-            logger.warning(
-                "Benchmark symbol %s returned no daily data; benchmark and active-return outputs will be skipped.",
-                benchmark_symbol,
-            )
-    benchmark_compare_dfs: dict[str, pd.DataFrame] = {}
-    for symbol in compare_symbols:
-        if benchmark_symbol and symbol == benchmark_symbol:
-            compare_df = benchmark_df.copy() if benchmark_df is not None else pd.DataFrame()
-        else:
-            compare_df = df[df["symbol"] == symbol].copy()
-            if symbol in symbols:
-                logger.info(
-                    "Compare benchmark symbol %s removed from modeling universe.",
-                    symbol,
-                )
-            if not compare_df.empty:
-                df = df[df["symbol"] != symbol].copy()
-        if compare_df.empty:
-            logger.warning(
-                "Compare benchmark symbol %s returned no daily data; compare report for this symbol will be skipped.",
-                symbol,
-            )
-        benchmark_compare_dfs[symbol] = compare_df
-    symbols_for_non_price = [
-        symbol
-        for symbol in symbols_for_data
-        if (not benchmark_symbol or symbol != benchmark_symbol) and symbol not in compare_symbols
-    ]
+    benchmark_symbol, compare_symbols, symbols_for_data = _resolve_price_symbols(
+        symbols=symbols,
+        benchmark_symbol=benchmark_symbol,
+        benchmark_compare_symbols=benchmark_compare_symbols,
+    )
+    frames, tr_close_symbol_metas = _fetch_daily_frames(
+        data_interface=data_interface,
+        symbols_for_data=symbols_for_data,
+        market=market,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    df = _prepare_daily_panel(
+        frames=frames,
+        execution_pricing_cols=execution_pricing_cols,
+    )
+    df, benchmark_df, benchmark_compare_dfs = _split_benchmark_frames(
+        df=df,
+        symbols=symbols,
+        benchmark_symbol=benchmark_symbol,
+        compare_symbols=compare_symbols,
+    )
+    symbols_for_non_price = _symbols_for_non_price(
+        symbols_for_data=symbols_for_data,
+        benchmark_symbol=benchmark_symbol,
+        compare_symbols=compare_symbols,
+    )
     modeling_symbol_set = set(symbols_for_non_price)
     price_col_diagnostics = _build_price_col_diagnostics(
         price_col=price_col,
@@ -266,94 +492,32 @@ def _load_research_panel(
             if str(meta.get("symbol") or "").strip() in modeling_symbol_set
         ],
     )
-    tr_close_source_counts = price_col_diagnostics["tr_close_source_counts"]
-    if tr_close_source_counts and (
-        price_col == "tr_close" or any(source != "unavailable" for source in tr_close_source_counts)
-    ):
-        logger.info(
-            "Price column diagnostics for %s: tr_close sources=%s",
-            price_col,
-            tr_close_source_counts,
-        )
-    if price_col == "tr_close":
-        ex_factor_gap_symbols = price_col_diagnostics["tr_close_ex_factor_gap_symbols_sample"]
-        ex_factor_gap_count = int(price_col_diagnostics["tr_close_ex_factor_gap_symbol_count"])
-        if ex_factor_gap_count > 0:
-            logger.warning(
-                "price_col=tr_close could not use local ex_factors for %s symbols; "
-                "sample=%s. summary.json -> data -> price_col_diagnostics records the source mix.",
-                ex_factor_gap_count,
-                ex_factor_gap_symbols,
-            )
-        missing_symbol_count = int(price_col_diagnostics["tr_close_missing_symbol_count"])
-        if missing_symbol_count > 0:
-            logger.warning(
-                "price_col=tr_close but tr_close was unavailable for %s symbols; sample=%s.",
-                missing_symbol_count,
-                price_col_diagnostics["tr_close_missing_symbols_sample"],
-            )
+    _log_price_col_diagnostics(
+        price_col=price_col,
+        price_col_diagnostics=price_col_diagnostics,
+    )
 
-    basic_df = None
-    if drop_st or min_listed_days > 0:
-        try:
-            if market != "cn" and drop_st:
-                logger.info(
-                    "drop_st uses a legacy ST-name heuristic; attempting basic data for market '%s'.",
-                    market,
-                )
-            basic_df = data_interface.load_basic(symbols_for_non_price)
-            if basic_df is not None and not basic_df.empty:
-                basic_df = canonicalize_symbol_columns(basic_df, context="Basic data")
-        except Exception as exc:
-            logger.warning("Basic data load failed (%s); skipping ST/listed filters.", exc)
-            basic_df = None
-
-    if drop_st and basic_df is not None and "name" in basic_df.columns:
-        st_codes = basic_df[
-            basic_df["name"].str.contains("ST", case=False, na=False)
-        ]["symbol"]
-        df = df[~df["symbol"].isin(st_codes)].copy()
-
-    if min_listed_days > 0 and basic_df is not None and not basic_df.empty and "list_date" in basic_df.columns:
-        list_dates = basic_df.copy()
-        list_dates["list_date"] = pd.to_datetime(
-            list_dates["list_date"], format="%Y%m%d", errors="coerce"
-        )
-        list_date_map = list_dates.set_index("symbol")["list_date"].to_dict()
-        df["list_date"] = pd.to_datetime(df["symbol"].map(list_date_map), errors="coerce")
-        valid_list_date_mask = df["list_date"].notna()
-        if not valid_list_date_mask.any():
-            logger.warning(
-                "Basic data returned no usable list_date values; skipping min_listed_days=%s filter.",
-                min_listed_days,
-            )
-        else:
-            df = df[valid_list_date_mask].copy()
-            df = df[
-                df["trade_date"] >= df["list_date"] + pd.Timedelta(days=min_listed_days)
-            ].copy()
-
-    df["is_tradable"] = True
-    if drop_suspended:
-        if "amount" in df.columns:
-            tradable_mask = (df["vol"] > 0) & (df["amount"] > 0)
-        else:
-            tradable_mask = df["vol"] > 0
-        tradable_mask = tradable_mask.fillna(False)
-        df["is_tradable"] = tradable_mask
-        if suspended_policy == "filter":
-            df = df[df["is_tradable"]].copy()
-
-    if min_turnover > 0 and "amount" in df.columns:
-        df = df[df["amount"] >= min_turnover].copy()
+    basic_df = _load_basic_filter_frame(
+        data_interface=data_interface,
+        symbols_for_non_price=symbols_for_non_price,
+        market=market,
+        drop_st=drop_st,
+        min_listed_days=min_listed_days,
+    )
+    df = _apply_basic_filters(
+        df=df,
+        basic_df=basic_df,
+        drop_st=drop_st,
+        min_listed_days=min_listed_days,
+    )
+    df = _apply_tradeability_filters(
+        df=df,
+        drop_suspended=drop_suspended,
+        suspended_policy=suspended_policy,
+        min_turnover=min_turnover,
+    )
 
     features = list(requested_features)
-    fundamentals_cols: list[str] = []
-    industry_cols: list[str] = []
-    industry_source_df = pd.DataFrame()
-    fund_cache_dir: Path | None = None
-    provider_overlay_cache_dir: Path | None = None
-
     fundamentals_state = apply_fundamentals_enrichment(
         panel_df=df,
         data_interface=data_interface,
@@ -380,9 +544,6 @@ def _load_research_panel(
     )
     df = fundamentals_state["df"]
     features = fundamentals_state["features"]
-    fundamentals_cols = fundamentals_state["fundamentals_cols"]
-    fund_cache_dir = fundamentals_state["fund_cache_dir"]
-    provider_overlay_cache_dir = fundamentals_state["provider_overlay_cache_dir"]
 
     industry_state = apply_industry_enrichment(
         panel_df=df,
@@ -400,54 +561,25 @@ def _load_research_panel(
         industry_ffill_limit=industry_ffill_limit,
     )
     df = industry_state["df"]
-    industry_cols = industry_state["industry_cols"]
-    industry_source_df = industry_state["industry_source_df"]
-
-    label_next_rebalance_map = None
-    label_horizon_gap = None
-    label_horizon_mode_effective = label_horizon_mode
-    if label_horizon_mode == "next_rebalance":
-        label_trade_dates = sorted(df["trade_date"].unique())
-        label_rebalance_dates = get_rebalance_dates(
-            label_trade_dates, label_rebalance_frequency
-        )
-        if len(label_rebalance_dates) < 2:
-            logger.warning(
-                "label.horizon_mode=next_rebalance but insufficient rebalance dates; "
-                "falling back to fixed horizon_days."
-            )
-            label_horizon_mode_effective = "fixed"
-        else:
-            rebalance_array = np.array(label_rebalance_dates)
-            trade_array = np.array(label_trade_dates)
-            idx = np.searchsorted(rebalance_array, trade_array, side="right")
-            next_dates = [
-                rebalance_array[i] if i < len(rebalance_array) else pd.NaT
-                for i in idx
-            ]
-            label_next_rebalance_map = dict(zip(label_trade_dates, next_dates))
-            label_horizon_gap = estimate_rebalance_gap(
-                label_trade_dates, label_rebalance_dates
-            )
-            if np.isfinite(label_horizon_gap):
-                logger.info(
-                    "Label horizon set to next rebalance date (median gap %.1f days).",
-                    label_horizon_gap,
-                )
+    label_state = _resolve_label_horizon_state(
+        df=df,
+        label_horizon_mode=label_horizon_mode,
+        label_rebalance_frequency=label_rebalance_frequency,
+    )
 
     return {
         "df": df,
         "benchmark_df": benchmark_df,
         "benchmark_compare_dfs": benchmark_compare_dfs,
         "symbols_for_non_price": symbols_for_non_price,
-        "fundamentals_cols": fundamentals_cols,
-        "industry_cols": industry_cols,
-        "industry_source_df": industry_source_df,
-        "fund_cache_dir": fund_cache_dir,
-        "provider_overlay_cache_dir": provider_overlay_cache_dir,
+        "fundamentals_cols": fundamentals_state["fundamentals_cols"],
+        "industry_cols": industry_state["industry_cols"],
+        "industry_source_df": industry_state["industry_source_df"],
+        "fund_cache_dir": fundamentals_state["fund_cache_dir"],
+        "provider_overlay_cache_dir": fundamentals_state["provider_overlay_cache_dir"],
         "features": features,
-        "label_horizon_mode": label_horizon_mode_effective,
-        "label_next_rebalance_map": label_next_rebalance_map,
-        "label_horizon_gap": label_horizon_gap,
+        "label_horizon_mode": label_state["label_horizon_mode"],
+        "label_next_rebalance_map": label_state["label_next_rebalance_map"],
+        "label_horizon_gap": label_state["label_horizon_gap"],
         "price_col_diagnostics": price_col_diagnostics,
     }
