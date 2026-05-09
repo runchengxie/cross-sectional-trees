@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -106,6 +107,43 @@ VALUATION_FRESH_TARGET_GAP_REASON_LABELS = {
 CONSTANT_CROSS_SECTION_FIELD_EXEMPTIONS = {
     "southbound": {"eligible", "trading_type"},
 }
+
+
+@dataclass(frozen=True)
+class _ValuationReferenceFrames:
+    daily: pd.DataFrame | None = None
+    ex_factor: pd.DataFrame | None = None
+    shares: pd.DataFrame | None = None
+    instrument: pd.DataFrame | None = None
+
+
+class _ValuationReferenceLoader:
+    def __init__(
+        self,
+        *,
+        symbol: str,
+        daily_asset_dir: Path | None,
+        ex_factor_asset_dir: Path | None,
+        shares_asset_dir: Path | None,
+        instrument_by_symbol: Mapping[str, pd.DataFrame],
+    ) -> None:
+        self._symbol = symbol
+        self._daily_asset_dir = daily_asset_dir
+        self._ex_factor_asset_dir = ex_factor_asset_dir
+        self._shares_asset_dir = shares_asset_dir
+        self._instrument_by_symbol = instrument_by_symbol
+        self._frames: _ValuationReferenceFrames | None = None
+
+    def load(self) -> _ValuationReferenceFrames:
+        if self._frames is None:
+            self._frames = _ValuationReferenceFrames(
+                daily=_load_daily_reference_frame(self._daily_asset_dir, self._symbol),
+                ex_factor=_load_ex_factor_reference_frame(self._ex_factor_asset_dir, self._symbol),
+                shares=_load_shares_reference_frame(self._shares_asset_dir, self._symbol),
+                instrument=self._instrument_by_symbol.get(self._symbol),
+            )
+        return self._frames
+
 
 def _clean_optional_text(value: object) -> str | None:
     if value is None or pd.isna(value):
@@ -863,6 +901,7 @@ def _update_valuation_history_state(
     ex_factor_reference: pd.DataFrame | None = None,
     shares_reference: pd.DataFrame | None = None,
     instrument_reference: pd.DataFrame | None = None,
+    valuation_reference_loader: _ValuationReferenceLoader | None = None,
 ) -> None:
     deduped = (
         work.drop_duplicates(subset=[date_column], keep="last")
@@ -910,6 +949,12 @@ def _update_valuation_history_state(
             ["run_length", "end_date", "start_date"],
             ascending=[False, False, False],
         ).reset_index(drop=True)
+        if valuation_reference_loader is not None:
+            references = valuation_reference_loader.load()
+            daily_reference = references.daily
+            ex_factor_reference = references.ex_factor
+            shares_reference = references.shares
+            instrument_reference = references.instrument
 
         grouped_segments: dict[str, list[dict[str, object]]] = {
             "actionable": [],
@@ -1961,6 +2006,7 @@ def _update_asset_health_symbol_history_state(
     ex_factor_reference: pd.DataFrame | None,
     shares_reference: pd.DataFrame | None,
     instrument_reference: pd.DataFrame | None,
+    valuation_reference_loader: _ValuationReferenceLoader | None = None,
 ) -> None:
     if history_state is None:
         return
@@ -1998,6 +2044,7 @@ def _update_asset_health_symbol_history_state(
             ex_factor_reference=ex_factor_reference,
             shares_reference=shares_reference,
             instrument_reference=instrument_reference,
+            valuation_reference_loader=valuation_reference_loader,
         )
 
 
@@ -2129,6 +2176,33 @@ def _record_asset_health_prior_clean_gap(
         stats["provider_ffill_age_records"].append(ffill_record)
     else:
         stats["ffill_age_records"].append(ffill_record)
+
+
+def _target_field_stats_need_valuation_references(
+    *,
+    selected_fields: Sequence[str],
+    work: pd.DataFrame,
+    target_frame: pd.DataFrame,
+    prior_frame: pd.DataFrame,
+) -> bool:
+    for field in selected_fields:
+        if field not in work.columns:
+            continue
+        assessment = _assess_target_series(target_frame[field])
+        if assessment["has_clean"]:
+            continue
+        prior_series = prior_frame[field]
+        prior_placeholder_mask = _placeholder_mask(prior_series)
+        prior_numeric = pd.to_numeric(prior_series, errors="coerce")
+        prior_nonfinite_mask = (
+            prior_series.notna()
+            & prior_numeric.notna()
+            & ~np.isfinite(prior_numeric.to_numpy(dtype="float64"))
+        )
+        prior_clean_mask = prior_series.notna() & ~prior_placeholder_mask & ~prior_nonfinite_mask
+        if bool(prior_clean_mask.any()):
+            return True
+    return False
 
 
 def _update_asset_health_target_field_stats(
@@ -2293,11 +2367,15 @@ def inspect_hk_asset_health(args) -> int:
         ex_factor_reference = None
         shares_reference = None
         instrument_reference = None
+        valuation_reference_loader: _ValuationReferenceLoader | None = None
         if dataset == "valuation":
-            daily_reference = _load_daily_reference_frame(daily_reference_asset_dir, symbol)
-            ex_factor_reference = _load_ex_factor_reference_frame(ex_factor_reference_asset_dir, symbol)
-            shares_reference = _load_shares_reference_frame(shares_reference_asset_dir, symbol)
-            instrument_reference = instrument_reference_by_symbol.get(symbol)
+            valuation_reference_loader = _ValuationReferenceLoader(
+                symbol=symbol,
+                daily_asset_dir=daily_reference_asset_dir,
+                ex_factor_asset_dir=ex_factor_reference_asset_dir,
+                shares_asset_dir=shares_reference_asset_dir,
+                instrument_by_symbol=instrument_reference_by_symbol,
+            )
 
         if path is None:
             continue
@@ -2341,6 +2419,7 @@ def inspect_hk_asset_health(args) -> int:
             ex_factor_reference=ex_factor_reference,
             shares_reference=shares_reference,
             instrument_reference=instrument_reference,
+            valuation_reference_loader=valuation_reference_loader,
         )
 
         latest_ts = work[date_column].max()
@@ -2363,6 +2442,22 @@ def inspect_hk_asset_health(args) -> int:
         symbols_with_target_date_row += 1
         target_frame = work.loc[target_mask]
         prior_frame = work.loc[work[date_column] < target_date]
+
+        if (
+            dataset == "valuation"
+            and valuation_reference_loader is not None
+            and _target_field_stats_need_valuation_references(
+                selected_fields=selected_fields,
+                work=work,
+                target_frame=target_frame,
+                prior_frame=prior_frame,
+            )
+        ):
+            references = valuation_reference_loader.load()
+            daily_reference = references.daily
+            ex_factor_reference = references.ex_factor
+            shares_reference = references.shares
+            instrument_reference = references.instrument
 
         if dataset == "daily":
             _record_daily_rule_stats(

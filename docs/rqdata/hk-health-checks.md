@@ -21,6 +21,7 @@
 
 * `data-assets` 聚合命令默认不刷新、不修复、不删除，适合作为维护者审计入口。
 * `current-health` 只看 contract、alias、manifest 和 `as_of`，最轻。
+* `current-health` 的 freshness 规则按资产节奏区分：交易日资产严格对齐目标日，PIT / financial details 这类 filing/as-of 资产允许宽限，不再把短期滞后直接等同于 daily 缺口。
 * `asset-health` 才会真的扫 snapshot 数据；`--include-history` 会更重。
 * `pit-coverage --include-health` 回答的是“到目标调仓日为止，PIT 是否还能安全前推”。
 * intraday 检查 I/O 最重，应单独控制。
@@ -242,11 +243,14 @@ uv run cstree rqdata inspect-hk-pit-coverage \
 uv run cstree rqdata inspect-hk-intraday-health \
   --input "$INTRADAY_DIR" \
   --daily-asset-dir "$DAILY_CLEAN_DIR" \
+  --intraday-adjust-type pre \
   --fail-on-severity "$FAIL_ON_SEVERITY" \
   --format json \
   --out "artifacts/reports/hk_intraday_health_${TARGET_DATE}.json" \
   >"artifacts/reports/health_logs/${TS}_intraday_health.log" 2>&1
 ```
+
+如果日线基座是未复权或 manifest 未记录 `query.adjust_type`，可额外传 `--daily-adjust-type none`。当分钟线和日线的复权口径不一致时，OHLC mismatch 会作为 `adjustment-basis-mismatch` 信息项保留，避免把口径差异误判为数据缺口；成交量、成交额、缺 bar 等问题不受该降级影响。
 
 ### 7. 需要聚合 workflow inspect 时再跑
 

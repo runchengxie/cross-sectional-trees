@@ -420,6 +420,68 @@ def test_inspect_hk_intraday_health_reports_integrity_and_daily_reconciliation(t
     assert rqdata_assets.inspect_hk_intraday_health(fail_args) == 2
 
 
+def test_inspect_hk_intraday_health_marks_price_mismatch_as_adjustment_basis_info(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    intraday_path = repo_root / "artifacts" / "cache" / "intraday" / "hk_adjusted_5m.parquet"
+    intraday_path.parent.mkdir(parents=True)
+    daily_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_demo"
+    (daily_dir / "data").mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    date_text = "2026-04-09"
+    pd.DataFrame(
+        [
+            {
+                "symbol": "00005.HK",
+                "trade_datetime": timestamp,
+                "open": 10.0,
+                "high": 10.0,
+                "low": 10.0,
+                "close": 10.0,
+                "volume": 1.0,
+                "amount": 10.0,
+            }
+            for timestamp in _hk_5m_timestamps(date_text)
+        ]
+    ).to_parquet(intraday_path, index=False)
+    pd.DataFrame(
+        {
+            "trade_date": ["20260409"],
+            "open": [20.0],
+            "high": [20.0],
+            "low": [20.0],
+            "close": [20.0],
+            "volume": [66.0],
+            "total_turnover": [660.0],
+        }
+    ).to_parquet(daily_dir / "data" / "00005.HK.parquet", index=False)
+
+    out_path = repo_root / "intraday_adjustment_basis.json"
+    args = SimpleNamespace(
+        input=[str(intraday_path)],
+        daily_asset_dir=str(daily_dir),
+        sample_limit=5,
+        expected_bars_per_day=66,
+        numeric_rtol=1e-6,
+        numeric_atol=1e-8,
+        intraday_adjust_type="pre",
+        daily_adjust_type="none",
+        format="json",
+        out=str(out_path),
+        fail_on_severity="none",
+    )
+
+    assert rqdata_assets.inspect_hk_intraday_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["daily_reconciliation_price_adjustment_basis_mismatch"] is True
+    checks = {item["check"]: item for item in payload["quality_checks"]}
+    assert checks["daily_close_mismatch"]["severity"] == "info"
+    assert checks["daily_close_mismatch"]["classification"] == "adjustment-basis-mismatch"
+
+
 def test_inspect_hk_intraday_health_suppresses_minor_ohl_reconciliation_noise(
     tmp_path, monkeypatch
 ):

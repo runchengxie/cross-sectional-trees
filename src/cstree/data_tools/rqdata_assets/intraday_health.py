@@ -16,7 +16,7 @@ from .quality_gate import (
     quality_gate_exit_code,
     summarize_quality_checks,
 )
-from .shared import _normalize_frame_columns, _resolve_path
+from .shared import _load_manifest, _normalize_frame_columns, _resolve_path
 
 
 _EXPECTED_HK_5M_MORNING_TIME_KEYS = pd.date_range("09:35", "12:00", freq="5min").strftime("%H:%M").tolist()
@@ -63,6 +63,12 @@ _INTRADAY_HEALTH_COLUMNS = (
     "total_turnover",
 )
 _INTRADAY_READ_BATCH_SIZE = 500_000
+_PRICE_RECONCILIATION_ISSUES = {
+    "daily_open_mismatch",
+    "daily_high_mismatch",
+    "daily_low_mismatch",
+    "daily_close_mismatch",
+}
 
 
 def _round_pct(numerator: int, denominator: int) -> float:
@@ -111,6 +117,26 @@ def _serialize_scalar(value: object) -> int | float | str | None:
             return int(numeric)
         return round(numeric, 8)
     return str(value)
+
+
+def _normalize_adjust_type(value: object | None) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    return text
+
+
+def _manifest_query_adjust_type(asset_dir: Path | None) -> str | None:
+    if asset_dir is None:
+        return None
+    manifest_path = asset_dir / "manifest.yml"
+    if not manifest_path.exists():
+        return None
+    manifest = _load_manifest(manifest_path)
+    query = manifest.get("query") if isinstance(manifest, Mapping) else None
+    if not isinstance(query, Mapping):
+        return None
+    return _normalize_adjust_type(query.get("adjust_type"))
 
 
 def _bitwise_or_int(values: pd.Series) -> int:
@@ -445,6 +471,8 @@ def _build_daily_reconciliation(
     sample_limit: int,
     rtol: float,
     atol: float,
+    intraday_adjust_type: str | None,
+    daily_adjust_type: str | None,
 ) -> dict[str, object]:
     data_dir = daily_asset_dir / "data"
     if not data_dir.exists():
@@ -464,6 +492,10 @@ def _build_daily_reconciliation(
     daily_active_missing_intraday_rows = 0
     intraday_date_min = intraday_daily["trade_date"].min() if not intraday_daily.empty else None
     intraday_date_max = intraday_daily["trade_date"].max() if not intraday_daily.empty else None
+    price_adjustment_basis_mismatch = (
+        intraday_adjust_type is not None
+        and (daily_adjust_type is None or intraday_adjust_type != daily_adjust_type)
+    )
 
     for symbol, symbol_df in intraday_daily.groupby("symbol", sort=True):
         daily_path = data_dir / f"{symbol}.parquet"
@@ -646,6 +678,9 @@ def _build_daily_reconciliation(
             "daily_active_symbol_days_missing_intraday": daily_active_missing_intraday_rows,
             "mismatch_counts": dict(sorted(mismatch_counts.items())),
             "suppressed_mismatch_counts": dict(sorted(suppressed_mismatch_counts.items())),
+            "intraday_adjust_type": intraday_adjust_type,
+            "daily_adjust_type": daily_adjust_type,
+            "price_adjustment_basis_mismatch": price_adjustment_basis_mismatch,
         },
         "sample_missing_daily_rows": sample_missing_daily_rows,
         "sample_inactive_zero_volume_intraday_after_daily_end": sample_inactive_zero_volume_rows,
@@ -710,6 +745,12 @@ def inspect_hk_intraday_health(args) -> int:
     expected_bars_per_day = max(1, int(getattr(args, "expected_bars_per_day", 66) or 66))
     numeric_rtol = float(getattr(args, "numeric_rtol", 1e-6) or 1e-6)
     numeric_atol = float(getattr(args, "numeric_atol", 1e-8) or 1e-8)
+    daily_asset_dir_arg = getattr(args, "daily_asset_dir", None)
+    daily_asset_dir = _resolve_path(daily_asset_dir_arg) if daily_asset_dir_arg else None
+    intraday_adjust_type = _normalize_adjust_type(getattr(args, "intraday_adjust_type", None))
+    daily_adjust_type = _normalize_adjust_type(getattr(args, "daily_adjust_type", None))
+    if daily_adjust_type is None:
+        daily_adjust_type = _manifest_query_adjust_type(daily_asset_dir)
 
     duplicate_timestamp_groups = 0
     duplicate_timestamp_rows = 0
@@ -844,13 +885,15 @@ def inspect_hk_intraday_health(args) -> int:
                 )
 
     reconciliation = None
-    if getattr(args, "daily_asset_dir", None):
+    if daily_asset_dir is not None:
         reconciliation = _build_daily_reconciliation(
             intraday_daily=intraday_daily,
-            daily_asset_dir=_resolve_path(args.daily_asset_dir),
+            daily_asset_dir=daily_asset_dir,
             sample_limit=sample_limit,
             rtol=numeric_rtol,
             atol=numeric_atol,
+            intraday_adjust_type=intraday_adjust_type,
+            daily_adjust_type=daily_adjust_type,
         )
 
     quality_checks: list[dict[str, object]] = []
@@ -995,6 +1038,9 @@ def inspect_hk_intraday_health(args) -> int:
             if isinstance(reconciliation_summary.get("mismatch_counts"), Mapping)
             else {}
         )
+        price_basis_mismatch = bool(
+            reconciliation_summary.get("price_adjustment_basis_mismatch")
+        )
         for field_name, severity in (
             ("daily_open_mismatch", "warning"),
             ("daily_high_mismatch", "warning"),
@@ -1006,10 +1052,15 @@ def inspect_hk_intraday_health(args) -> int:
             affected = int(mismatch_counts.get(field_name) or 0)
             if affected <= 0:
                 continue
+            check_severity = severity
+            classification = None
+            if field_name in _PRICE_RECONCILIATION_ISSUES and price_basis_mismatch:
+                check_severity = "info"
+                classification = "adjustment-basis-mismatch"
             quality_checks.append(
                 {
                     "check": field_name,
-                    "severity": severity,
+                    "severity": check_severity,
                     "affected_items": affected,
                     "affected_pct": _round_pct(affected, int(reconciliation_summary.get("reconciled_symbol_days") or 0)),
                     "sample_rows": [
@@ -1017,6 +1068,7 @@ def inspect_hk_intraday_health(args) -> int:
                         for row in (reconciliation.get("sample_mismatch_rows") or [])
                         if row.get("field") == field_name
                     ],
+                    **({"classification": classification} if classification else {}),
                 }
             )
 
@@ -1029,6 +1081,11 @@ def inspect_hk_intraday_health(args) -> int:
         "trade_date_min": _format_date(trade_date_min),
         "trade_date_max": _format_date(trade_date_max),
         "expected_bars_per_day": expected_bars_per_day,
+        "intraday_adjust_type": intraday_adjust_type,
+        "daily_adjust_type": daily_adjust_type,
+        "daily_reconciliation_price_adjustment_basis_mismatch": bool(
+            reconciliation_summary.get("price_adjustment_basis_mismatch")
+        ),
         "inferred_half_day_dates": sorted(inferred_half_day_dates),
         "inferred_half_day_count": len(inferred_half_day_dates),
         "duplicate_timestamp_groups": duplicate_timestamp_groups,

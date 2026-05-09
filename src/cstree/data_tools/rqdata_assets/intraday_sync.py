@@ -181,6 +181,8 @@ def _inspect_intraday_input(
     expected_bars_per_day: int,
     numeric_rtol: float,
     numeric_atol: float,
+    intraday_adjust_type: str | None,
+    daily_adjust_type: str | None,
     fail_on_severity: str,
     out_path: Path,
 ) -> int:
@@ -191,6 +193,8 @@ def _inspect_intraday_input(
         expected_bars_per_day=expected_bars_per_day,
         numeric_rtol=numeric_rtol,
         numeric_atol=numeric_atol,
+        intraday_adjust_type=intraday_adjust_type,
+        daily_adjust_type=daily_adjust_type,
         fail_on_severity=fail_on_severity,
         format="json",
         out=str(out_path),
@@ -231,6 +235,7 @@ def sync_hk_intraday(args, rqdatac) -> int:
     expected_bars_per_day = int(getattr(args, "expected_bars_per_day", 66) or 66)
     numeric_rtol = float(getattr(args, "numeric_rtol", 1e-6) or 1e-6)
     numeric_atol = float(getattr(args, "numeric_atol", 1e-8) or 1e-8)
+    daily_adjust_type = getattr(args, "daily_adjust_type", None)
 
     patch_health_report_path = (
         _resolve_repo_path(args.health_out)
@@ -245,6 +250,8 @@ def sync_hk_intraday(args, rqdatac) -> int:
             expected_bars_per_day=expected_bars_per_day,
             numeric_rtol=numeric_rtol,
             numeric_atol=numeric_atol,
+            intraday_adjust_type=str(getattr(args, "adjust_type", "") or "") or None,
+            daily_adjust_type=str(daily_adjust_type or "") or None,
             fail_on_severity=str(getattr(args, "inspect_fail_on_severity", "warning") or "warning"),
             out_path=patch_health_report_path,
         )
@@ -287,6 +294,8 @@ def sync_hk_intraday(args, rqdatac) -> int:
             expected_bars_per_day=expected_bars_per_day,
             numeric_rtol=numeric_rtol,
             numeric_atol=numeric_atol,
+            intraday_adjust_type=str(getattr(args, "adjust_type", "") or "") or None,
+            daily_adjust_type=str(daily_adjust_type or "") or None,
             fail_on_severity=str(
                 getattr(args, "full_inspect_fail_on_severity", "warning") or "warning"
             ),

@@ -237,6 +237,32 @@ def _dedupe_dated_frame(
     return frame
 
 
+def _concat_nonempty_frames(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
+    if not frames:
+        return pd.DataFrame()
+    all_columns = _dedupe_preserve_order(
+        [
+            str(column)
+            for frame in frames
+            for column in frame.columns
+        ]
+    )
+    concat_columns = [
+        column
+        for column in all_columns
+        if any(column in frame.columns and not frame[column].isna().all() for frame in frames)
+    ]
+    trimmed_frames = [
+        frame.loc[:, [column for column in concat_columns if column in frame.columns]]
+        for frame in frames
+    ]
+    merged = pd.concat(trimmed_frames, ignore_index=True, sort=False)
+    for column in all_columns:
+        if column not in merged.columns:
+            merged[column] = pd.NA
+    return merged.loc[:, all_columns].copy()
+
+
 def _merge_symbol_frames(
     *,
     dataset_name: str,
@@ -253,7 +279,7 @@ def _merge_symbol_frames(
     kind = str(config["kind"])
     date_column = str(config["date_column"])
     sort_columns = tuple(str(column) for column in config.get("sort_columns", ()))
-    merged = pd.concat(frames, ignore_index=True, sort=False)
+    merged = _concat_nonempty_frames(frames)
 
     order_book_candidates = [
         str(value).strip()

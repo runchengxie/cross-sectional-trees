@@ -103,7 +103,8 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 公开入口 `python -m cstree.research.hk_intraday_download` 现在已经支持真正的断点续传：
 
 * 下载时每个 batch 先落到 `*.parts/batch_XXXX.parquet`
-* `--resume` 会跳过已经存在的 batch part
+* 每个 batch 同时写入 `*.parts/batch_XXXX.meta.json`，记录 symbol 列表、日期、字段、频率和复权口径的签名
+* `--resume` 只会跳过签名完全匹配的 batch part；如果换了 `symbols-file`、字段或 `adjust-type`，旧 part 会被重新下载，避免误复用
 * 最后再把 part 文件流式合并成单个 parquet
 * 现在也支持 `--adjust-type none|pre|post|pre_volume|post_volume`；后续如果要补更严肃的盘中执行样本，优先考虑单独下载 `--adjust-type none`
 * `--symbols-file` 默认按 canonical `symbol` 读入；旧文件里的 `ts_code` / `stock_ticker` / `order_book_id` 仍会自动兼容。最终落盘 parquet 会统一把 `symbol` 规范成 canonical 的五位 `.HK` 代码；`rq_order_book_id` 只作为 provider 元数据列保留

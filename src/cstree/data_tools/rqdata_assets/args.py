@@ -633,6 +633,21 @@ def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
         help="Absolute tolerance used for daily reconciliation. Default: 1e-8.",
     )
     parser.add_argument(
+        "--intraday-adjust-type",
+        choices=["none", "pre", "post", "pre_volume", "post_volume"],
+        help=(
+            "Adjustment basis for the intraday input. When it differs from the daily asset basis, "
+            "OHLC reconciliation mismatches are reported as adjustment-basis info instead of warning."
+        ),
+    )
+    parser.add_argument(
+        "--daily-adjust-type",
+        choices=["none", "pre", "post", "pre_volume", "post_volume"],
+        help=(
+            "Adjustment basis for the daily reference asset. Default: infer from manifest query.adjust_type when present."
+        ),
+    )
+    parser.add_argument(
         "--format",
         default="text",
         choices=["text", "json"],
@@ -765,6 +780,13 @@ def add_hk_intraday_sync_args(
         type=float,
         default=1e-8,
         help="Absolute tolerance used for daily reconciliation. Default: 1e-8.",
+    )
+    parser.add_argument(
+        "--daily-adjust-type",
+        choices=["none", "pre", "post", "pre_volume", "post_volume"],
+        help=(
+            "Adjustment basis for the daily reference asset. Default: infer from manifest query.adjust_type when present."
+        ),
     )
     parser.add_argument(
         "--inspect-fail-on-severity",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -361,6 +362,15 @@ def collect_inventory(
                 continue
             if child.is_dir() or child.suffix.lower() in {".parquet", ".csv", ".txt", ".yml", ".yaml"}:
                 record = _new_record(path=child, family=family, source="snapshot_scan")
+                _merge_record(records, record, key_path=child.resolve(strict=False))
+
+    snapshots_base = artifacts_root / "snapshots"
+    if (not selected) and snapshots_base.exists():
+        for child in sorted(snapshots_base.iterdir(), key=lambda item: item.name):
+            if child.name.startswith("."):
+                continue
+            if child.is_dir() or child.is_file():
+                record = _new_record(path=child, family="snapshots", source="snapshot_scan")
                 _merge_record(records, record, key_path=child.resolve(strict=False))
 
     _annotate_report_references(records, artifacts_root=artifacts_root)
@@ -1112,12 +1122,117 @@ def _path_size(path: Path) -> int:
         if path.is_file() or path.is_symlink():
             return int(path.lstat().st_size)
         total = 0
-        for child in path.rglob("*"):
-            if child.is_file() or child.is_symlink():
-                total += int(child.lstat().st_size)
+        pending = [path]
+        while pending:
+            current = pending.pop()
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    try:
+                        stat = entry.stat(follow_symlinks=False)
+                    except OSError:
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        pending.append(Path(entry.path))
+                    else:
+                        total += int(stat.st_size)
         return total
     except OSError:
         return 0
+
+
+def _record_references_summary(record: Mapping[str, Any]) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for item in record.get("references") or []:
+        if isinstance(item, Mapping):
+            counts[str(item.get("type") or "unknown")] += 1
+    return dict(sorted(counts.items()))
+
+
+def _current_replacement_for_record(
+    record: Mapping[str, Any],
+    *,
+    current_by_family: Mapping[str, Sequence[Mapping[str, Any]]],
+    target_date: str,
+) -> str | None:
+    family = str(record.get("family") or "")
+    record_as_of = _norm_date(record.get("as_of"))
+    for current in current_by_family.get(family, []):
+        current_as_of = _norm_date(current.get("as_of"))
+        if current_as_of and (record_as_of is None or current_as_of >= max(record_as_of, target_date)):
+            return str(current.get("resolved_path") or "") or None
+    return None
+
+
+def _manual_prune_reason(
+    record: Mapping[str, Any],
+    *,
+    current_by_family: Mapping[str, Sequence[Mapping[str, Any]]],
+    target_date: str,
+) -> tuple[str | None, str | None]:
+    classification = str(record.get("classification") or "unreferenced")
+    if classification == "current":
+        return None, None
+    replacement = _current_replacement_for_record(
+        record,
+        current_by_family=current_by_family,
+        target_date=target_date,
+    )
+    name = Path(str(record.get("resolved_path") or record.get("path") or "")).name.lower()
+    if record.get("metadata_issues"):
+        return "metadata_inconsistent", replacement
+    if any(token in name for token in ("patch", "repair", "broken", "tmp")):
+        return "intermediate_artifact_requires_manual_review", replacement
+    if replacement:
+        return "superseded_by_current_but_referenced_or_unproven", replacement
+    if str(record.get("family") or "") == "snapshots":
+        return "snapshot_retention_policy_required", replacement
+    return None, None
+
+
+def build_manual_prune_candidates(
+    *,
+    records: Sequence[Mapping[str, Any]],
+    artifacts_root: Path,
+    current_by_family: Mapping[str, Sequence[Mapping[str, Any]]],
+    target_date: str,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for record in records:
+        path_text = str(record.get("resolved_path") or "")
+        if not path_text:
+            continue
+        path = Path(path_text)
+        try:
+            path.resolve(strict=False).relative_to(artifacts_root.resolve())
+        except ValueError:
+            continue
+        if not path.exists():
+            continue
+        reason, replacement = _manual_prune_reason(
+            record,
+            current_by_family=current_by_family,
+            target_date=target_date,
+        )
+        if reason is None:
+            continue
+        candidates.append(
+            {
+                "path": path_text,
+                "reason": reason,
+                "family": record.get("family"),
+                "classification": record.get("classification"),
+                "as_of": record.get("as_of"),
+                "replacement": replacement,
+                "bytes": _path_size(path),
+                "references": _record_references_summary(record),
+                "metadata_issues": record.get("metadata_issues", []),
+                "delete_mode": "manual-approval-required",
+            }
+        )
+    return sorted(
+        candidates,
+        key=lambda item: (-int(item.get("bytes") or 0), str(item.get("path") or "")),
+    )
 
 
 def build_prune_plan(
@@ -1189,13 +1304,24 @@ def build_prune_plan(
                     "reason": "unreferenced_but_no_safe_replacement_evidence",
                 }
             )
+    manual_candidates = build_manual_prune_candidates(
+        records=records,
+        artifacts_root=artifacts_root,
+        current_by_family=current_by_family,
+        target_date=target_date,
+    )
     return {
         "summary": {
             "candidates": len(candidates),
             "protected": len(protected),
             "candidate_bytes": sum(int(item.get("bytes") or 0) for item in candidates),
+            "manual_review_candidates": len(manual_candidates),
+            "manual_review_candidate_bytes": sum(
+                int(item.get("bytes") or 0) for item in manual_candidates
+            ),
         },
         "candidates": candidates,
+        "manual_review_candidates": manual_candidates,
         "protected": protected,
     }
 

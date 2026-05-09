@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -168,6 +169,55 @@ def _batch_part_path(parts_dir: Path, batch_index: int) -> Path:
     return parts_dir / f"batch_{batch_index:04d}.parquet"
 
 
+def _batch_meta_path(parts_dir: Path, batch_index: int) -> Path:
+    return parts_dir / f"batch_{batch_index:04d}.meta.json"
+
+
+def _batch_signature(
+    *,
+    order_book_ids: list[str],
+    start_date: str,
+    end_date: str,
+    frequency: str,
+    fields: list[str],
+    adjust_type: str,
+) -> dict[str, object]:
+    payload = {
+        "order_book_ids": list(order_book_ids),
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "frequency": str(frequency),
+        "fields": list(fields),
+        "adjust_type": str(adjust_type),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    payload["signature"] = hashlib.sha256(encoded).hexdigest()
+    return payload
+
+
+def _load_batch_meta(path: Path) -> dict[str, object] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _batch_meta_matches(path: Path, expected: dict[str, object]) -> bool:
+    payload = _load_batch_meta(path)
+    if not isinstance(payload, dict):
+        return False
+    return str(payload.get("signature") or "") == str(expected.get("signature") or "")
+
+
+def _write_batch_meta(path: Path, *, signature: dict[str, object], rows: int) -> None:
+    payload = dict(signature)
+    payload["rows"] = int(rows)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _count_part_rows(path: Path) -> int:
     if not path.exists():
         return 0
@@ -266,11 +316,33 @@ def download_hk_intraday_cache(args, rqdatac) -> dict[str, object]:
         batch_index = start // int(args.batch_size) + 1
         batch = order_book_ids[start : start + int(args.batch_size)]
         part_path = _batch_part_path(parts_dir, batch_index)
+        part_meta_path = _batch_meta_path(parts_dir, batch_index)
+        batch_signature = _batch_signature(
+            order_book_ids=batch,
+            start_date=str(args.start_date),
+            end_date=str(args.end_date),
+            frequency=str(args.frequency),
+            fields=list(args.fields),
+            adjust_type=str(args.adjust_type),
+        )
         status = "downloaded"
-        if getattr(args, "resume", False) and part_path.exists():
-            rows = _count_part_rows(part_path)
-            status = "reused"
-        else:
+        reuse_existing = False
+        if (
+            getattr(args, "resume", False)
+            and part_path.exists()
+            and _batch_meta_matches(part_meta_path, batch_signature)
+        ):
+            try:
+                rows = _count_part_rows(part_path)
+            except Exception:
+                status = "refreshed_resume_corrupt"
+            else:
+                status = "reused"
+                reuse_existing = True
+        if not reuse_existing:
+            if getattr(args, "resume", False) and part_path.exists():
+                if status == "downloaded":
+                    status = "refreshed_resume_mismatch"
             payload = rqdatac.get_price(
                 batch,
                 args.start_date,
@@ -284,6 +356,7 @@ def download_hk_intraday_cache(args, rqdatac) -> dict[str, object]:
             frame = flatten_intraday_payload(payload, order_book_to_symbol=order_book_to_symbol)
             frame.to_parquet(part_path, index=False)
             rows = int(len(frame))
+            _write_batch_meta(part_meta_path, signature=batch_signature, rows=rows)
         batch_rows.append(
             {
                 "batch": batch_index,
@@ -291,6 +364,7 @@ def download_hk_intraday_cache(args, rqdatac) -> dict[str, object]:
                 "rows": rows,
                 "status": status,
                 "part_file": _display_path(part_path),
+                "part_meta_file": _display_path(part_meta_path),
             }
         )
         print(

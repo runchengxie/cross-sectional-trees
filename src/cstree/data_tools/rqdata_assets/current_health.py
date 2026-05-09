@@ -28,24 +28,32 @@ CURRENT_HEALTH_POLICY: dict[str, dict[str, Any]] = {
     "daily": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "daily_clean": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "intraday": {
         "required": False,
         "stale_severity": "warning",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "etf_daily": {
         "required": False,
         "stale_severity": "warning",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": {"completed", "completed_with_failures"},
         "require_manifest": True,
     },
@@ -58,78 +66,104 @@ CURRENT_HEALTH_POLICY: dict[str, dict[str, Any]] = {
     "valuation": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "instruments": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": set(),
         "require_manifest": False,
     },
     "pit": {
         "required": True,
-        "stale_severity": "error",
+        "stale_severity": "warning",
+        "allowed_lag_days": 45,
+        "cadence": "filing_asof",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "ex_factors": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "event_or_trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "dividends": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "event_or_trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "shares": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "event_or_trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "exchange_rate": {
         "required": False,
         "stale_severity": "warning",
+        "allowed_lag_days": 7,
+        "cadence": "reference_rate",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "southbound": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "financial_details": {
         "required": False,
         "stale_severity": "warning",
+        "allowed_lag_days": 45,
+        "cadence": "filing_asof",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "industry_changes": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "event_or_trading_day",
         "allowed_statuses": {"completed"},
         "require_manifest": True,
     },
     "universe_by_date": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": set(),
         "require_manifest": False,
     },
     "universe_symbols": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": set(),
         "require_manifest": False,
     },
     "universe_meta": {
         "required": True,
         "stale_severity": "error",
+        "allowed_lag_days": 0,
+        "cadence": "trading_day",
         "allowed_statuses": set(),
         "require_manifest": False,
     },
@@ -263,9 +297,35 @@ def _asset_policy(asset_key: str) -> dict[str, Any]:
     return {
         "required": bool(policy.get("required", False)),
         "stale_severity": str(policy.get("stale_severity") or "warning"),
+        "allowed_lag_days": max(0, int(policy.get("allowed_lag_days", 0) or 0)),
+        "cadence": str(policy.get("cadence") or "unspecified"),
         "allowed_statuses": set(policy.get("allowed_statuses") or []),
         "require_manifest": bool(policy.get("require_manifest", False)),
     }
+
+
+def _asset_lag_days(
+    *,
+    effective_as_of: str | None,
+    target_date: str | None,
+) -> int | None:
+    if not effective_as_of or not target_date:
+        return None
+    return _format_gap_days(effective_as_of, target_date)
+
+
+def _asset_lag_exceeds_policy(
+    *,
+    effective_as_of: str | None,
+    target_date: str | None,
+    policy: Mapping[str, Any],
+) -> bool:
+    if not effective_as_of or not target_date or effective_as_of >= target_date:
+        return False
+    gap_days = _asset_lag_days(effective_as_of=effective_as_of, target_date=target_date)
+    if gap_days is None:
+        return True
+    return gap_days > int(policy.get("allowed_lag_days") or 0)
 
 
 def _resolve_asset_record(
@@ -296,6 +356,10 @@ def _resolve_asset_record(
         "as_of": live.get("as_of"),
         "effective_as_of": live.get("as_of"),
         "effective_as_of_source": "asset_path_or_manifest",
+        "freshness_policy": {
+            "cadence": _asset_policy(asset_key)["cadence"],
+            "allowed_lag_days": _asset_policy(asset_key)["allowed_lag_days"],
+        },
     }
     if asset_key in {"universe_by_date", "universe_symbols", "universe_meta"} and isinstance(
         universe_meta_summary,
@@ -400,7 +464,11 @@ def _build_quality_checks(
                         "severity": "warning" if policy["required"] else "info",
                     }
                 )
-            elif effective_as_of < target_date:
+            elif _asset_lag_exceeds_policy(
+                effective_as_of=effective_as_of,
+                target_date=target_date,
+                policy=policy,
+            ):
                 quality_checks.append(
                     {
                         "check": "asset_as_of_lagging_target_date",
@@ -409,7 +477,12 @@ def _build_quality_checks(
                         "severity": policy["stale_severity"],
                         "actual_as_of": effective_as_of,
                         "expected_target_date": target_date,
-                        "gap_days": _format_gap_days(effective_as_of, target_date),
+                        "gap_days": _asset_lag_days(
+                            effective_as_of=effective_as_of,
+                            target_date=target_date,
+                        ),
+                        "allowed_lag_days": policy["allowed_lag_days"],
+                        "freshness_cadence": policy["cadence"],
                     }
                 )
 
@@ -578,9 +651,11 @@ def inspect_hk_current_health(args) -> int:
         "stale_assets": sum(
             1
             for record in asset_records
-            if str(record.get("effective_as_of") or "").strip()
-            and target_date
-            and str(record.get("effective_as_of")) < target_date
+            if _asset_lag_exceeds_policy(
+                effective_as_of=str(record.get("effective_as_of") or "").strip() or None,
+                target_date=target_date,
+                policy=_asset_policy(str(record["asset_key"])),
+            )
         ),
         "assets_missing_manifest": sum(
             1

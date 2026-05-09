@@ -178,3 +178,49 @@ def test_inspect_hk_current_health_falls_back_when_contract_is_missing(tmp_path)
         for item in payload["quality_checks"]
     )
     assert payload["assets"]["daily_clean"]["effective_as_of"] == "20260409"
+
+
+def test_inspect_hk_current_health_uses_asset_freshness_tolerance(tmp_path):
+    artifacts_root = tmp_path / "artifacts"
+    candidate_paths = hk_current_candidate_paths(artifacts_root)
+
+    pit_snapshot = (
+        artifacts_root
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "pit_financials"
+        / "hk_all_2000_2025_full_market_asof_20260430"
+    )
+    _write_manifest(pit_snapshot, dataset="pit_financials", end_date="20260430")
+    (pit_snapshot / "data" / "00005.HK.parquet").write_text("pit", encoding="utf-8")
+    _symlink(pit_snapshot, candidate_paths["pit"])
+
+    contract = build_hk_current_contract(
+        artifacts_root,
+        generated_by="test_current_health",
+        target_date="20260508",
+    )
+    write_current_contract(default_hk_current_contract_path(artifacts_root), contract)
+
+    out_path = tmp_path / "hk_current_health_pit_tolerance.json"
+    args = SimpleNamespace(
+        artifacts_root=str(artifacts_root),
+        current_contract=None,
+        asset=["pit"],
+        target_date="20260508",
+        format="json",
+        out=str(out_path),
+        fail_on_severity="warning",
+    )
+
+    exit_code = inspect_hk_current_health(args)
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert payload["summary"]["stale_assets"] == 0
+    assert payload["quality_checks"] == []
+    assert payload["assets"]["pit"]["freshness_policy"] == {
+        "cadence": "filing_asof",
+        "allowed_lag_days": 45,
+    }

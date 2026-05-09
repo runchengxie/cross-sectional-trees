@@ -668,6 +668,7 @@ cstree rqdata inspect-hk-current-health --asset daily_clean --asset valuation --
 
 - 程序首先尝试读取 `artifacts/metadata/current_assets/hk_current.json`。若该 contract 文档不存在，系统会将视线转向 `artifacts/` 目录下的默认别名，并随即把 `current_contract_missing` 作为诊断瑕疵计入考核结果。
 - 本工具致力于提供快速反馈。评估内容涵盖别名连接是否有效、manifest 元信息的完整性、核心更新截面 `as_of` 以及 `last_rebalance_date` 是否已明显落后于目标日期。
+- 新鲜度判断是资产分层感知的：`daily`、`daily_clean`、`valuation`、`intraday`、universe 等按目标交易日严格对齐；`pit` 和 `financial_details` 这类 filing/as-of 资产允许较长自然日滞后；`exchange_rate` 使用较短宽限。JSON 中的 `freshness_policy`、`allowed_lag_days` 和 `freshness_cadence` 会记录具体依据。
 - 相较于深度检查，它极为适合作为海量数据校验前的第一道哨卡，特别是能够化解本地受限设备或代理运行环节下因处理庞大资产而引发的卡顿。
 - 一旦质量瑕疵突破了 `--fail-on-severity` 设立的底线，程序同样会以非零状态报错终止。
 
@@ -690,6 +691,7 @@ cstree rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refr
 - `health` 聚合面板会归档同一目标日下包括 current / daily / valuation / PIT / intraday 等在内的工作流日志。日志未能如期生成的现象会被定义为警告，而非被程序静默过滤。
 - `repair.candidates[]` 提供的是系统建议。仅在参数中成对提供 `--execute-repair` 及其对应的 `--approved-repair-action` 指令后，系统才会落实建议自动修复错误。
 - 规划阶段产生的 `prune.candidates[]` 均为虚拟试运行指令。必须附带 `--delete-prune-candidates` 参数且明确出具 `--approved-prune-path` 认可意见后，废弃数据的真实删除操作才会落地。
+- `prune.manual_review_candidates[]` 只做人工清理建议，不会被 `--delete-prune-candidates` 自动删除。它会按可节省空间排序，列出 snapshot、已被新版替代但仍被报告引用、或 metadata 不一致的路径，并保留引用摘要和删除风险说明。
 
 ### cstree rqdata sync-hk-intraday
 
@@ -705,7 +707,8 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 说明：
 
 - 默认执行顺序为：`download -> inspect（仅限新的 patch） -> build asset + alias`。其中 inspect 的默认拦截级别为 `warning`，触发该级别警告后流程将终止，且后续更新 `hk_intraday_latest` 的操作会被取消。
-- `--resume` 能够自动衔接先前因网络或其他长任务截断的下载，直接基于 `<output_stem>.parts/` 里的现有碎片继续未竟的工作。
+- `--resume` 能够自动衔接先前因网络或其他长任务截断的下载，直接基于 `<output_stem>.parts/` 里的现有碎片继续未竟的工作。每个 batch 会附带 `batch_XXXX.meta.json`，只有 symbol 列表、日期、字段、频率和复权口径完全匹配时才复用，避免换了输入文件后误用旧分片。
+- `--daily-adjust-type` 可显式声明日线对账基准的复权口径；命令会把 intraday 的 `--adjust-type` 一并传给 health 检查。若 intraday 与 daily 的 OHLC 口径不同，价格类 mismatch 会降级为 `adjustment-basis-mismatch` 信息项，成交量和成交额仍按常规警告处理。
 - 提供 `--skip-inspect` 将赋予直接跃升资产层的权利，建议仅在使用者充分认识隐患的前提下开启。常规场合下仍倡导保留严防死守的质检护栏。
 - 工具通常只着眼于对本次切片内容发起检验，更新别名后忽略沉重的存量数据扫描。如有全面摸底需要，务必手动启用 `--verify-full-asset` 参数。因该计算资源消耗巨大，建议分拆作为后台任务运营。
 - 当注入 `--package` 时，系统将依附这批新快照产生专属的 intraday release 节点与对应的 tar 包；若改用 `--release` 将同步下达指令由 `gh release` 分发上网。考虑到整体数据体系的一致性约束，上述指令要求对应的 `daily` 行情基座和 `instruments` 数据同处合规可用期。
@@ -717,6 +720,7 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 ```bash
 cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet
 cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --format json --out artifacts/reports/hk_intraday_health_20260401.json
+cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --intraday-adjust-type pre --daily-adjust-type none
 cstree rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intraday/hk_intraday_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
 ```
 
@@ -726,6 +730,7 @@ cstree rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intr
 - 根据港股交易日准则，全天完整的 `5m` 记录理论数值锁定在 `66` 根柱线；全市场上午盘结束的半日市会从观测到的交易日排程中自动推断，并记录到 JSON summary 的 `inferred_half_day_dates`。基于这些排程，逻辑检测模块会自动标识不足柱线、溢出排程或显著非标定的情形。
 - 一旦挂接 `--daily-asset-dir` 账本对比源，分析模块将分钟内的 `open/high/low/close/volume/amount` 进行高频重构合并，同标准的本地日线基准做穿透式对账，直接把问题定位到 intraday 本身漏缺还是源端层级不一致。对账会把日线结束后分钟线仍返回零成交占位的情形归类为 `inactive_zero_volume_intraday_after_daily_end`，并单独标出 `intraday_after_daily_end_with_trading` 与 `daily_active_but_intraday_missing` 这类更值得排查的缺口。
 - 对账过程中，`close`、`volume` 和 `amount` 字段依然采用严格数值比较。对于 `open`、`high` 和 `low` 字段，工具会自动过滤由于轻微 tick 或集合竞价口径差异导致的噪音（前提是前述三个字段已对齐）。这样保留下来的警告信息均具有较高的人工排查价值。
+- 如果提供 `--intraday-adjust-type`，并且其与 `--daily-adjust-type` 或 daily manifest 中的 `query.adjust_type` 不一致，OHLC mismatch 会标记为 `adjustment-basis-mismatch` 的 info。该逻辑只降低价格口径噪声，不会静默成交量、成交额或缺 bar 问题。
 - 最终生成的 JSON 评估文档末段同样含有 `quality_verdict` 分级定音；通过配置 `--fail-on-severity` 可达成强制拦截效果。
 
 ### cstree rqdata build-hk-intraday-asset

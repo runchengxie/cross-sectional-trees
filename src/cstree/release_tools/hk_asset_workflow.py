@@ -1478,7 +1478,10 @@ def _build_inspect_steps(
             "--fail-on-severity",
             args.inspect_fail_on_severity,
         ]
-        if not args.skip_history:
+        include_history = not args.skip_history
+        if inspection_stage == "post_repair" and args.repair_post_inspect_skip_history:
+            include_history = False
+        if include_history:
             command.append("--include-history")
         if asset_name == "valuation":
             command.extend(["--daily-asset-dir", _repo_relative(bundle.daily_clean_dir)])
@@ -1762,6 +1765,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.set_defaults(repair_rerun_inspect=True)
     parser.add_argument(
+        "--repair-rerun-inspect-asset",
+        action="append",
+        choices=INSPECT_ASSETS,
+        default=[],
+        help=(
+            "Limit automatic post-repair inspection to selected asset(s). Repeatable. "
+            "Default: inspect every asset that had repair steps."
+        ),
+    )
+    parser.add_argument(
+        "--repair-post-inspect-skip-history",
+        action="store_true",
+        help=(
+            "When rerunning inspection after repair, skip full-history checks. "
+            "Useful for fast verification of target-date repairs before a later full audit."
+        ),
+    )
+    parser.add_argument(
         "--part",
         action="append",
         choices=AVAILABLE_PART_CHOICES,
@@ -1917,6 +1938,11 @@ def main(argv: list[str] | None = None) -> int:
                     if step.asset_name in INSPECT_ASSETS
                 )
             )
+            if args.repair_rerun_inspect_asset:
+                selected_post_repair = set(args.repair_rerun_inspect_asset)
+                repaired_assets = tuple(
+                    asset for asset in repaired_assets if asset in selected_post_repair
+                )
             if repaired_assets:
                 steps.extend(
                     _build_inspect_steps(
