@@ -278,6 +278,7 @@ def _build_backtest_section(
         "benchmark": ctx["bt_benchmark_stats"],
         "active": ctx["bt_active_stats"],
         "report_file": _path_text(art["backtest_report_path"]),
+        "tearsheet_file": _path_text(art["backtest_tearsheet_path"]),
         "benchmark_compare": {
             "summary_file": _path_text(art["backtest_benchmark_compare_summary_path"]),
             "benchmarks": art["backtest_benchmark_compare_entries"],
@@ -307,6 +308,7 @@ def _build_oos_backtest_section(
         "benchmark": ctx["bt_benchmark_stats_oos"],
         "active": ctx["bt_active_stats_oos"],
         "report_file": _path_text(art["backtest_report_oos_path"]),
+        "tearsheet_file": _path_text(art["backtest_tearsheet_oos_path"]),
         "benchmark_compare": {
             "summary_file": _path_text(
                 art["backtest_benchmark_compare_summary_oos_path"]

@@ -399,6 +399,7 @@ logging:
 | `benchmark_symbol` | 指定单一股票或 ETF 代码作为基准曲线代理 | `02800.HK` |
 | `benchmark_returns_file` | 外部提供的基准收益序列文件 | `artifacts/benchmarks/hk_connect_capw.csv` |
 | `benchmark_compare` | 报告层附加对比基准列表，不替代主基准 | 详见下方示例 |
+| `tearsheet` | 可选生成单文件 HTML 回测报告 | `{enabled: true}` |
 | `execution` | 执行层细节扩展：开平仓价格参照、滑点刻画及流动性约束 | 详见下文扩展章节 |
 
 说明：
@@ -414,6 +415,7 @@ logging:
 * `backtest.benchmark_compare` 的各配置项支持三种表达形式：直接填入收益文件的路径字符串；使用包含 `{name, returns_file}` 的字典项；或针对单一代码采用 `{name, symbol}` 格式。若省略 `name` 属性，系统会就地提取文件名或标的代码作为替代。
 * 启用 `backtest.benchmark_compare` 后，运行结果会随附生成 `backtest_benchmark_compare_summary*.csv` 及 `backtest_benchmark_compare_<name>*.csv` 对照明细，并将关联线索汇集于 `summary.json -> backtest.benchmark_compare` 中。
 * 核心回测流程会生成 `backtest_report*.csv` 汇总报表，包含策略净值、相对基准的超额收益、按自然年测算的滚动 1Y/3Y/5Y CAGR 以及滚动最大回撤。
+* 若配置 `backtest.tearsheet.enabled=true`，会额外生成 `backtest_tearsheet*.html` 单文件报告，包含累计收益、回撤、月度收益、年度收益、关键指标和最差回撤摘要；该输出不改变回测统计口径。
 * 交易费用、滑点、复权后的净价 `tr_close` 和现金分红假设见：`docs/concepts/execution-costs.md`。
 
 配置示例：
@@ -421,6 +423,8 @@ logging:
 ```yaml
 backtest:
   benchmark_returns_file: artifacts/benchmarks/hk_selected_pit_research_m_capw_open_close_20181101_20260202.csv
+  tearsheet:
+    enabled: true
   benchmark_compare:
     - name: hk_3432
       symbol: 3432.HK

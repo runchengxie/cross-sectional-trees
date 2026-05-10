@@ -376,6 +376,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 1. `backtest.stats.avg_cost_drag` 现在表示总 execution drag；若需要拆分，查看同层 `avg_fee_drag` 与 `avg_slippage_drag`。
 1. 若启用了 `backtest.execution_sim`，`summary.json -> backtest -> execution_sim` 会记录订单级容量模拟的参数、成交率、未成交金额、延迟卖出数量，以及 `execution_sim_orders.csv` / `execution_sim_fills.csv` 路径。
 1. `summary.json -> backtest -> report_file` 指向主回测报表 `backtest_report*.csv`；它会把策略收益、策略净值、benchmark 净值、相对净值，以及策略 rolling 1Y/3Y/5Y CAGR / max drawdown 放到一张表里。
+1. `summary.json -> backtest -> tearsheet_file` 指向可选 HTML 回测报告；只有配置了 `backtest.tearsheet.enabled=true` 时才会生成。
 1. `summary.json -> backtest -> benchmark_compare` 是报告层的附加 benchmark 对比，不会替代主 benchmark；若启用了 `backtest.benchmark_compare`，这里会记录 summary CSV 和逐 benchmark 详细报表路径。
 
 `summary.json -> backtest -> benchmark_compare` 结构示意：
@@ -620,6 +621,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | `backtest_turnover.csv` / `backtest_periods.csv` | `backtest.enabled=true` 且回测成功 | 回测换手与周期收益 |
 | `backtest_benchmark.csv` / `backtest_active.csv` | 配置了 `backtest.benchmark_symbol` 或 `backtest.benchmark_returns_file`，且数据可用 | 基准与主动收益 |
 | `backtest_report.csv` | `backtest.enabled=true` 且回测成功 | 主回测综合报表：策略净值、相对净值、rolling 1Y/3Y/5Y CAGR / max drawdown |
+| `backtest_tearsheet.html` | `backtest.enabled=true`、回测成功且 `backtest.tearsheet.enabled=true` | 单文件 HTML 回测报告：累计收益、回撤、月度收益、年度收益、关键指标和最差回撤 |
 | `execution_sim_orders.csv` | `backtest.execution_sim.enabled=true` 且生成了订单模拟 | 每个调仓订单的请求金额、成交金额、未成交金额、状态、成交天数 |
 | `execution_sim_fills.csv` | `backtest.execution_sim.enabled=true` 且存在实际成交 | 日度部分成交明细，包括每日容量和实际成交金额 |
 | `backtest_benchmark_compare_summary.csv` | 配置了 `backtest.benchmark_compare` | 附加 benchmark 对比摘要 |

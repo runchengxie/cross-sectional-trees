@@ -46,8 +46,10 @@ HK 研究默认用：
 这层是报告层附加对比，不会改变主 benchmark 的口径。配置后还会额外输出：
 
 * `summary.json -> backtest.report_file`
+* `summary.json -> backtest.tearsheet_file`
 * `summary.json -> backtest.benchmark_compare`
 * `backtest_report.csv`
+* `backtest_tearsheet.html`
 * `backtest_benchmark_compare_summary.csv`
 * `backtest_benchmark_compare_<name>.csv`
 

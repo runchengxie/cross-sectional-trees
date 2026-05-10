@@ -12,6 +12,7 @@ from .backtest_reporting import (
     build_benchmark_compare_summary_frame,
     slugify_report_name,
 )
+from .backtest_tearsheet import write_backtest_tearsheet
 from .support import _build_rebalance_diff, save_frame, save_parquet, save_series
 
 
@@ -61,12 +62,14 @@ def _initial_artifacts() -> dict[str, Any]:
         "execution_sim_orders_path": None,
         "execution_sim_fills_path": None,
         "backtest_report_path": None,
+        "backtest_tearsheet_path": None,
         "backtest_benchmark_compare_summary_path": None,
         "backtest_benchmark_compare_entries": [],
         "backtest_style_exposure_oos_path": None,
         "backtest_industry_exposure_oos_path": None,
         "backtest_active_exposure_summary_oos_path": None,
         "backtest_report_oos_path": None,
+        "backtest_tearsheet_oos_path": None,
         "backtest_benchmark_compare_summary_oos_path": None,
         "backtest_benchmark_compare_oos_entries": [],
         "live_positions_file": None,
@@ -311,6 +314,20 @@ def _write_backtest_artifacts(
         )
         artifacts["backtest_report_path"] = run_dir / "backtest_report.csv"
         save_frame(primary_report.reset_index(), artifacts["backtest_report_path"])
+        if ctx["BACKTEST_TEARSHEET_ENABLED"]:
+            artifacts["backtest_tearsheet_path"] = run_dir / "backtest_tearsheet.html"
+            write_backtest_tearsheet(
+                path=artifacts["backtest_tearsheet_path"],
+                strategy_returns=ctx["bt_net_series"],
+                strategy_stats=ctx["bt_stats"],
+                benchmark_returns=ctx["bt_benchmark_series"]
+                if not ctx["bt_benchmark_series"].empty
+                else None,
+                benchmark_stats=ctx["bt_benchmark_stats"],
+                active_stats=ctx["bt_active_stats"],
+                title=f"{ctx['run_name']} Backtest",
+                benchmark_name=_benchmark_display_name(ctx),
+            )
         (
             artifacts["backtest_benchmark_compare_entries"],
             artifacts["backtest_benchmark_compare_summary_path"],
@@ -401,6 +418,20 @@ def _write_backtest_oos_artifacts(
         )
         artifacts["backtest_report_oos_path"] = run_dir / "backtest_report_oos.csv"
         save_frame(primary_report_oos.reset_index(), artifacts["backtest_report_oos_path"])
+        if ctx["BACKTEST_TEARSHEET_ENABLED"]:
+            artifacts["backtest_tearsheet_oos_path"] = run_dir / "backtest_tearsheet_oos.html"
+            write_backtest_tearsheet(
+                path=artifacts["backtest_tearsheet_oos_path"],
+                strategy_returns=ctx["bt_net_series_oos"],
+                strategy_stats=ctx["bt_stats_oos"],
+                benchmark_returns=ctx["bt_benchmark_series_oos"]
+                if not ctx["bt_benchmark_series_oos"].empty
+                else None,
+                benchmark_stats=ctx["bt_benchmark_stats_oos"],
+                active_stats=ctx["bt_active_stats_oos"],
+                title=f"{ctx['run_name']} OOS Backtest",
+                benchmark_name=_benchmark_display_name(ctx),
+            )
         (
             artifacts["backtest_benchmark_compare_oos_entries"],
             artifacts["backtest_benchmark_compare_summary_oos_path"],
@@ -595,3 +626,13 @@ def _write_benchmark_compare_outputs(
     summary_path = run_dir / summary_filename
     save_frame(build_benchmark_compare_summary_frame(report_entries), summary_path)
     return report_entries, summary_path
+
+
+def _benchmark_display_name(ctx: Mapping[str, Any]) -> str | None:
+    benchmark_symbol = ctx.get("benchmark_symbol")
+    if benchmark_symbol:
+        return str(benchmark_symbol)
+    benchmark_file = ctx.get("benchmark_returns_file_path")
+    if benchmark_file:
+        return Path(benchmark_file).stem
+    return None

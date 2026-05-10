@@ -565,6 +565,19 @@ def _normalize_optional_text(raw_value: object | None) -> str | None:
     return str(raw_value).strip() or None
 
 
+def _normalize_backtest_tearsheet_enabled(backtest_cfg: Mapping[str, Any]) -> bool:
+    raw_value = backtest_cfg.get("tearsheet")
+    if raw_value is None:
+        raw_value = backtest_cfg.get("tearsheet_enabled", False)
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, Mapping):
+        return bool(raw_value.get("enabled", False))
+    if raw_value is None:
+        return False
+    raise SystemExit("backtest.tearsheet must be a boolean or a mapping with enabled.")
+
+
 def _resolve_backtest_base_settings(
     backtest_cfg: Mapping[str, Any],
     *,
@@ -621,6 +634,7 @@ def _resolve_backtest_base_settings(
         "BACKTEST_BENCHMARK_COMPARE": _normalize_benchmark_compare(
             backtest_cfg.get("benchmark_compare")
         ),
+        "BACKTEST_TEARSHEET_ENABLED": _normalize_backtest_tearsheet_enabled(backtest_cfg),
         "BACKTEST_LONG_ONLY": bool(backtest_cfg.get("long_only", True)),
         "BACKTEST_BUFFER_EXIT": int(backtest_cfg.get("buffer_exit", 0)),
         "BACKTEST_BUFFER_ENTRY": int(backtest_cfg.get("buffer_entry", 0)),

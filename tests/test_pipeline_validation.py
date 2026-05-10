@@ -160,6 +160,18 @@ def test_pipeline_backtest_rejects_invalid_compare_benchmark_specs(
         pipeline.run(str(config_path))
 
 
+def test_pipeline_backtest_rejects_invalid_tearsheet_config(tmp_path, no_client):
+    config = copy.deepcopy(_base_config(tmp_path))
+    config["backtest"]["tearsheet"] = "yes"
+    config_path = _write_config(tmp_path, config)
+
+    with pytest.raises(
+        SystemExit,
+        match="backtest.tearsheet must be a boolean or a mapping with enabled.",
+    ):
+        pipeline.run(str(config_path))
+
+
 def test_load_benchmark_return_series_accepts_yyyymmdd_csv(tmp_path):
     benchmark_file = tmp_path / "benchmark.csv"
     benchmark_file.write_text(

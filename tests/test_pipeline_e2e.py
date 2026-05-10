@@ -1418,6 +1418,7 @@ def test_pipeline_backtest_accepts_external_benchmark_returns_file(tmp_path, mon
             "long_only": True,
             "exit_mode": "rebalance",
             "benchmark_returns_file": str(benchmark_file),
+            "tearsheet": {"enabled": True},
         },
     }
 
@@ -1436,9 +1437,16 @@ def test_pipeline_backtest_accepts_external_benchmark_returns_file(tmp_path, mon
     assert summary["backtest"]["benchmark"] is not None
     assert summary["backtest"]["active"] is not None
     assert summary["backtest"]["report_file"] == str((run_dir / "backtest_report.csv").resolve())
+    assert summary["backtest"]["tearsheet_file"] == str(
+        (run_dir / "backtest_tearsheet.html").resolve()
+    )
     assert (run_dir / "backtest_benchmark.csv").exists()
     assert (run_dir / "backtest_active.csv").exists()
     assert (run_dir / "backtest_report.csv").exists()
+    assert (run_dir / "backtest_tearsheet.html").exists()
+    tearsheet_html = (run_dir / "backtest_tearsheet.html").read_text(encoding="utf-8")
+    assert "Cumulative Returns vs Benchmark" in tearsheet_html
+    assert "Key Performance Metrics" in tearsheet_html
 
 
 def test_pipeline_backtest_writes_compare_benchmark_reports(tmp_path, monkeypatch):
