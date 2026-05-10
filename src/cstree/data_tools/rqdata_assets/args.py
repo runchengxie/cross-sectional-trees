@@ -925,10 +925,10 @@ def add_hk_daily_clean_layer_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--etf-short-zero-max-run",
         type=int,
-        default=2,
+        default=4,
         help=(
             "When ETF product metadata is available, null out vanilla ETF all-zero OHLC runs up to this length. "
-            "Default: 2."
+            "Default: 4."
         ),
     )
     parser.add_argument(

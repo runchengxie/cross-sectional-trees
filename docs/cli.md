@@ -756,7 +756,7 @@ cstree rqdata build-hk-intraday-asset --input artifacts/cache/intraday --name hk
 ```bash
 cstree rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402 --alias artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
 cstree rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_20260402 --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --zero-price-min-run 10 --overwrite
-cstree rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_clean_20260402 --instruments-file artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet --etf-short-zero-max-run 2 --overwrite
+cstree rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_latest --out-dir artifacts/assets/rqdata/hk/daily/hk_etf_daily_clean_20260402 --instruments-file artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet --etf-short-zero-max-run 4 --overwrite
 ```
 
 说明：
@@ -764,7 +764,7 @@ cstree rqdata build-hk-daily-clean-layer --asset-dir artifacts/assets/rqdata/hk/
 - 程序拒绝污染既有 `asset-dir` 环境；针对被清洗标的一经捕获仅重组并在设定 `out-dir` 内完成全新镜像写入。状态良好的文件将受惠于零拷贝逻辑直接延续至新域内。
 - `price_bounds_fix` 逻辑约束异常维的上下限溢出：它仅向自身当日的最高至最低区间妥协修正，绝对维护 `open` 和 `close` 不受侵犯。
 - 对冗长常数域的修整建立在稳健的前提下：默认寻找 `5` 个以上完全零化（即 `open=high=low=close=0`）的空窗死区段位，通过把其对应的价、量、金额齐齐置空，杜绝死数据持续灌溉下游模型。
-- 若涉及 ETF 类属且支持获取全信息，净化器启用次级处理通道。一般的经典产品容忍较短时间段落的修正；反之如涉及加减杠杆、crypto 题材或是非常态商品标的，系统将卸载强制清扫工作流，仅作观测并单独陈列至 `cleaning_report.json` 作备忘考察。
+- 若涉及 ETF 类属且支持获取全信息，净化器启用次级处理通道。一般的经典产品默认容忍最多 4 个交易日的短零价段修正；反之如涉及加减杠杆、crypto 题材或是非常态商品标的，系统将卸载强制清扫工作流，仅作观测并单独陈列至 `cleaning_report.json` 作备忘考察。
 - 当下的规则倾向更为克制保守，遭遇量化项负数异常一律优先置空隐去而非粗暴改归零值。
 - 后台同时会沉淀出对应的行动纪要 `cleaning_report.json` 和 `cleaning_actions.csv` 附文，让具体施加给哪些品种做了何种修正统统具备可溯原的证迹。
 

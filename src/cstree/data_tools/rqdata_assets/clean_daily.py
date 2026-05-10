@@ -641,7 +641,7 @@ def build_hk_daily_clean_layer(args) -> int:
                 symbol=symbol,
                 zero_price_min_run=int(getattr(args, "zero_price_min_run", 5) or 5),
                 etf_metadata=etf_metadata,
-                etf_short_zero_max_run=int(getattr(args, "etf_short_zero_max_run", 2) or 2),
+                etf_short_zero_max_run=int(getattr(args, "etf_short_zero_max_run", 4) or 4),
             )
         except Exception as exc:
             audit_records.append(
@@ -828,7 +828,7 @@ def build_hk_daily_clean_layer(args) -> int:
             "partial_nonpositive_price_to_null": True,
             "zero_price_min_run": int(getattr(args, "zero_price_min_run", 5) or 5),
             "etf_second_pass": bool(etf_metadata_by_symbol),
-            "etf_short_zero_max_run": int(getattr(args, "etf_short_zero_max_run", 2) or 2),
+            "etf_short_zero_max_run": int(getattr(args, "etf_short_zero_max_run", 4) or 4),
             "etf_instruments_file": str(etf_instruments_path) if etf_instruments_path is not None else None,
         },
         "report_file": str(report_path),
