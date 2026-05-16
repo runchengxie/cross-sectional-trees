@@ -651,6 +651,8 @@ bash scripts/dev/refresh_hk_current.sh --target-date 20260410
 * 固定走 `--refresh-mode patch`，对支持的资产拉尾窗 patch 后再 merge / dedupe。
 * 默认只跑 `refresh + inspect`，不把每次日常刷新都变成打包或 release。
 * 默认 gate 是 `warning`；inspect 命中阈值时，latest/current 放行会被底层 workflow 阻断。
+* `daily_clean` 放行后会自动重建 `hk_all_full_by_date.csv`、`hk_all_full_symbols.txt` 和对应 meta；如果只是试跑 dated snapshot，可通过 workflow 参数 `--no-refresh-universe` 跳过。
+* ETF daily 使用独立分支和权限 preflight；若账号没有 ETF day bar 权限，workflow 会记录 non-actionable provider gap 并保留旧 ETF daily alias。
 * 仍会写结构化 workflow report，便于后续按 repair candidates 做局部重拉。
 
 需要月末、基线 run 或发布前留档时，再显式加一份 current 备份：

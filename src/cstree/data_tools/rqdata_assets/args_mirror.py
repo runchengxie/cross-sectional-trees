@@ -69,6 +69,21 @@ def add_hk_daily_mirror_args(
         default=default_batch_size,
         help=f"Number of order_book_ids per RQData request. Default: {default_batch_size}.",
     )
+    parser.add_argument(
+        "--provider-permission-preflight",
+        action="store_true",
+        help=(
+            "Run a one-symbol daily get_price permission check before bulk requests. "
+            "Useful for ETF daily mirrors where account-level permission gaps should fail fast."
+        ),
+    )
+    parser.add_argument(
+        "--preflight-symbol",
+        help=(
+            "Optional HK symbol to use for --provider-permission-preflight. "
+            "Defaults to the first pending symbol."
+        ),
+    )
     _add_mirror_output_args(parser, default_out_root=default_out_root)
     _add_resume_args(
         parser,

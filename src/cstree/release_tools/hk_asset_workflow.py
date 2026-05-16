@@ -49,8 +49,11 @@ from .package_assets import AVAILABLE_PART_CHOICES, create_relative_symlink
 
 REFRESH_ASSETS = (
     "instruments",
+    "etf_instruments",
     "daily",
     "daily_clean",
+    "etf_daily",
+    "etf_daily_clean",
     "valuation",
     "ex_factors",
     "dividends",
@@ -75,6 +78,7 @@ PATCH_MERGE_SUPPORTED_ASSETS = frozenset(PATCH_MERGE_SUPPORTED_ASSET_ORDER)
 REPAIR_ASSETS = PATCH_MERGE_SUPPORTED_ASSET_ORDER
 DEFAULT_DAILY_PATCH_LOOKBACK_DAYS = 20
 DEFAULT_DATED_PATCH_LOOKBACK_DAYS = 40
+PROVIDER_PERMISSION_EXIT_CODE = 78
 
 
 def _normalize_target_date(value: str) -> str:
@@ -148,7 +152,17 @@ def _phase_selection(args: argparse.Namespace) -> tuple[str, ...]:
 
 
 def _selected_refresh_assets(args: argparse.Namespace) -> tuple[str, ...]:
-    return tuple(dict.fromkeys(args.refresh_asset or REFRESH_ASSETS))
+    selected = list(dict.fromkeys(args.refresh_asset or REFRESH_ASSETS))
+    if "etf_daily_clean" in selected and "etf_daily" not in selected:
+        selected.insert(selected.index("etf_daily_clean"), "etf_daily")
+    if any(asset in selected for asset in ("etf_daily", "etf_daily_clean")) and "etf_instruments" not in selected:
+        insert_at = min(
+            selected.index(asset)
+            for asset in ("etf_daily", "etf_daily_clean")
+            if asset in selected
+        )
+        selected.insert(insert_at, "etf_instruments")
+    return tuple(dict.fromkeys(selected))
 
 
 def _selected_inspect_assets(args: argparse.Namespace) -> tuple[str, ...]:
@@ -161,6 +175,21 @@ def _selected_parts(args: argparse.Namespace) -> tuple[str, ...]:
 
 def _selected_repair_assets(args: argparse.Namespace) -> tuple[str, ...]:
     return tuple(dict.fromkeys(args.repair_asset or REPAIR_ASSETS))
+
+
+def _should_refresh_universe(
+    args: argparse.Namespace,
+    *,
+    phases: tuple[str, ...],
+    selected_mutating_assets: tuple[str, ...],
+) -> bool:
+    if not bool(getattr(args, "refresh_universe", True)):
+        return False
+    if args.no_repoint_latest:
+        return False
+    if not any(phase in phases for phase in ("refresh", "repair")):
+        return False
+    return "daily_clean" in selected_mutating_assets
 
 
 def _load_asset_manifest(asset_dir: Path, *, asset_name: str) -> dict[str, object]:
@@ -200,7 +229,7 @@ def _subtract_calendar_days(date_text: str, days: int) -> str:
 
 
 def _patch_lookback_days(args: argparse.Namespace, *, asset_name: str) -> int:
-    if asset_name == "daily":
+    if asset_name in {"daily", "etf_daily"}:
         return int(args.daily_patch_lookback_days)
     return int(args.dated_patch_lookback_days)
 
@@ -225,6 +254,10 @@ def _resolve_patch_start_date(
 
 def _patch_snapshot_path(refreshed_path: Path) -> Path:
     return refreshed_path.parent / f"{refreshed_path.name}__patch"
+
+
+def _etf_symbols_file_path(target_date: str) -> Path:
+    return ASSETS_ROOT / "rqdata" / "hk" / "instruments" / f"hk_etf_symbols_{target_date}.txt"
 
 
 def _normalize_report_path(path: Path | None, *, base_root: Path) -> Path | None:
@@ -706,6 +739,8 @@ def _record_refresh_report(
         alias_path = metadata.get("alias_path")
         entry["refreshed"] = _describe_path(refreshed_path) if isinstance(refreshed_path, Path) else None
         entry["latest_alias"] = _describe_path(alias_path) if isinstance(alias_path, Path) else None
+        if metadata.get("symbols_file") is not None:
+            entry["symbols_file"] = str(metadata["symbols_file"])
 
 
 def _record_inspect_report(
@@ -767,6 +802,44 @@ def _record_step_report(
         _record_refresh_report(report, step=step)
     elif step.phase == "inspect":
         _record_inspect_report(report, step=step)
+    elif step.phase == "post_refresh":
+        report.setdefault("post_refresh", {}).setdefault("steps", []).append(
+            {
+                "label": step.label,
+                "asset_name": step.asset_name,
+                "metadata": {
+                    key: str(value) if isinstance(value, Path) else value
+                    for key, value in (step.report_metadata or {}).items()
+                },
+            }
+        )
+
+
+def _record_dependency_skipped_step(
+    report: dict[str, Any],
+    *,
+    step: Step,
+    reason: str,
+) -> None:
+    report.setdefault("steps", []).append(
+        {
+            "phase": step.phase,
+            "label": step.label,
+            "asset_name": step.asset_name,
+            "returncode": None,
+            "command": step.command,
+            "skipped": True,
+            "reason": reason,
+        }
+    )
+    report.setdefault("workflow", {}).setdefault("skipped_steps", []).append(
+        {
+            "phase": step.phase,
+            "label": step.label,
+            "asset_name": step.asset_name,
+            "reason": reason,
+        }
+    )
 
 
 def _build_patch_refresh_steps(
@@ -776,8 +849,12 @@ def _build_patch_refresh_steps(
     command_name: str,
     current_path: Path,
     refreshed_path: Path,
-    by_date_file: Path,
+    by_date_file: Path | None = None,
+    symbols_file: Path | None = None,
     floor_start_date: str,
+    extra_mirror_args: tuple[str, ...] = (),
+    nonfatal_returncodes: tuple[int, ...] = (),
+    fetch_depends_on_assets: tuple[str, ...] = (),
 ) -> list[Step]:
     patch_start_date = _resolve_patch_start_date(
         args,
@@ -786,17 +863,23 @@ def _build_patch_refresh_steps(
         floor_start_date=floor_start_date,
     )
     patch_dir = _patch_snapshot_path(refreshed_path)
-    mirror_command = _rqdata_command(
-        args,
-        command_name,
-        "--by-date-file",
-        _repo_relative(by_date_file),
-        "--start-date",
-        patch_start_date,
-        "--end-date",
-        args.target_date,
-        "--name",
-        patch_dir.name,
+    if (by_date_file is None) == (symbols_file is None):
+        raise SystemExit("Patch refresh requires exactly one of by_date_file or symbols_file.")
+    mirror_command = _rqdata_command(args, command_name)
+    if by_date_file is not None:
+        mirror_command.extend(["--by-date-file", _repo_relative(by_date_file)])
+    if symbols_file is not None:
+        mirror_command.extend(["--symbols-file", _repo_relative(symbols_file)])
+    mirror_command.extend(
+        [
+            "--start-date",
+            patch_start_date,
+            "--end-date",
+            args.target_date,
+            "--name",
+            patch_dir.name,
+            *extra_mirror_args,
+        ]
     )
     if args.resume:
         mirror_command.append("--resume")
@@ -819,6 +902,8 @@ def _build_patch_refresh_steps(
             label=f"Mirror HK {display_name} patch window",
             command=mirror_command,
             asset_name=asset_name,
+            nonfatal_returncodes=nonfatal_returncodes,
+            depends_on_assets=fetch_depends_on_assets,
             report_metadata={
                 "action": "patch_fetch",
                 "mode": "patch",
@@ -837,6 +922,7 @@ def _build_patch_refresh_steps(
             alias_target=refreshed_path,
             alias_link=current_path,
             asset_name=asset_name,
+            depends_on_assets=(asset_name,),
             report_metadata={
                 "action": "patch_merge",
                 "mode": "patch",
@@ -1197,8 +1283,11 @@ def _planned_bundle(
     payload = current.__dict__.copy()
     mapping = {
         "instruments": "instruments_file",
+        "etf_instruments": "etf_instruments_file",
         "daily": "daily_dir",
         "daily_clean": "daily_clean_dir",
+        "etf_daily": "etf_daily_dir",
+        "etf_daily_clean": "etf_daily_clean_dir",
         "valuation": "valuation_dir",
         "ex_factors": "ex_factors_dir",
         "dividends": "dividends_dir",
@@ -1260,6 +1349,36 @@ def _build_refresh_steps(
                     "mode": "full",
                     "refreshed_path": refreshed.instruments_file,
                     "alias_path": current.instruments_file,
+                },
+            )
+        )
+
+    if "etf_instruments" in selected:
+        etf_symbols_file = _etf_symbols_file_path(args.target_date)
+        steps.append(
+            Step(
+                phase="refresh",
+                label="Export HK ETF instruments",
+                command=_rqdata_command(
+                    args,
+                    "export-hk-instruments",
+                    "--instrument-type",
+                    "ETF",
+                    "--out",
+                    _repo_relative(refreshed.etf_instruments_file),
+                    "--symbols-out",
+                    _repo_relative(etf_symbols_file),
+                    "--force",
+                ),
+                alias_target=refreshed.etf_instruments_file,
+                alias_link=current.etf_instruments_file,
+                asset_name="etf_instruments",
+                report_metadata={
+                    "action": "export",
+                    "mode": "full",
+                    "refreshed_path": refreshed.etf_instruments_file,
+                    "alias_path": current.etf_instruments_file,
+                    "symbols_file": etf_symbols_file,
                 },
             )
         )
@@ -1328,6 +1447,86 @@ def _build_refresh_steps(
                 ],
                 alias_target=refreshed.daily_clean_dir,
                 alias_link=current.daily_clean_dir,
+                asset_name="daily_clean",
+            )
+        )
+
+    if "etf_daily" in selected:
+        etf_symbols_file = _etf_symbols_file_path(args.target_date)
+        if patch_mode:
+            steps.extend(
+                _build_patch_refresh_steps(
+                    args,
+                    asset_name="etf_daily",
+                    command_name="mirror-hk-daily",
+                    current_path=current.etf_daily_dir,
+                    refreshed_path=refreshed.etf_daily_dir,
+                    symbols_file=etf_symbols_file,
+                    floor_start_date=args.start_date,
+                    extra_mirror_args=("--provider-permission-preflight",),
+                    nonfatal_returncodes=(PROVIDER_PERMISSION_EXIT_CODE,),
+                    fetch_depends_on_assets=("etf_instruments",),
+                )
+            )
+        else:
+            command = _rqdata_command(
+                args,
+                "mirror-hk-daily",
+                "--symbols-file",
+                _repo_relative(etf_symbols_file),
+                "--start-date",
+                args.start_date,
+                "--end-date",
+                args.target_date,
+                "--name",
+                refreshed.etf_daily_dir.name,
+                "--provider-permission-preflight",
+            )
+            if args.resume:
+                command.append("--resume")
+            steps.append(
+                Step(
+                    phase="refresh",
+                    label="Mirror HK ETF daily",
+                    command=command,
+                    alias_target=refreshed.etf_daily_dir,
+                    alias_link=current.etf_daily_dir,
+                    asset_name="etf_daily",
+                    nonfatal_returncodes=(PROVIDER_PERMISSION_EXIT_CODE,),
+                    depends_on_assets=("etf_instruments",),
+                    report_metadata={
+                        "action": "full_refresh",
+                        "mode": "full",
+                        "refreshed_path": refreshed.etf_daily_dir,
+                        "alias_path": current.etf_daily_dir,
+                        "start_date": args.start_date,
+                        "end_date": args.target_date,
+                        "symbols_file": etf_symbols_file,
+                    },
+                )
+            )
+
+    if "etf_daily_clean" in selected:
+        steps.append(
+            Step(
+                phase="refresh",
+                label="Build HK ETF daily clean layer",
+                command=[
+                    *_cstree_executable(),
+                    "rqdata",
+                    "build-hk-daily-clean-layer",
+                    "--asset-dir",
+                    _repo_relative(refreshed.etf_daily_dir if "etf_daily" in selected else current.etf_daily_dir),
+                    "--out-dir",
+                    _repo_relative(refreshed.etf_daily_clean_dir),
+                    "--instruments-file",
+                    _repo_relative(refreshed.etf_instruments_file if "etf_instruments" in selected else current.etf_instruments_file),
+                    "--overwrite",
+                ],
+                alias_target=refreshed.etf_daily_clean_dir,
+                alias_link=current.etf_daily_clean_dir,
+                asset_name="etf_daily_clean",
+                depends_on_assets=("etf_daily",),
             )
         )
 
@@ -1557,6 +1756,50 @@ def _build_package_step(
     return Step(phase="package", label="Stage HK asset release parts", command=command)
 
 
+def _build_universe_refresh_step(
+    args: argparse.Namespace,
+    *,
+    bundle: SnapshotBundle,
+) -> Step:
+    command = [
+        *_cstree_executable(),
+        "universe",
+        "hk-daily-assets",
+        "--",
+        "--daily-asset-dir",
+        _repo_relative(bundle.daily_clean_dir),
+        "--start-date",
+        args.start_date,
+        "--end-date",
+        args.target_date,
+        "--out",
+        _repo_relative(bundle.universe_by_date),
+        "--latest-out",
+        _repo_relative(bundle.universe_symbols),
+        "--meta-out",
+        _repo_relative(bundle.universe_meta) if bundle.universe_meta is not None else "",
+        "--write-meta",
+    ]
+    if bundle.universe_meta is None:
+        meta_index = command.index("--meta-out")
+        del command[meta_index : meta_index + 2]
+    return Step(
+        phase="post_refresh",
+        label="Rebuild HK universe from refreshed daily clean layer",
+        command=command,
+        asset_name="universe",
+        report_metadata={
+            "action": "rebuild_universe",
+            "daily_asset_dir": bundle.daily_clean_dir,
+            "by_date_file": bundle.universe_by_date,
+            "symbols_file": bundle.universe_symbols,
+            "meta_file": bundle.universe_meta,
+            "start_date": args.start_date,
+            "end_date": args.target_date,
+        },
+    )
+
+
 def _build_release_step(args: argparse.Namespace) -> Step:
     command = [
         sys.executable,
@@ -1643,8 +1886,11 @@ def _update_active_bundle(
         return bundle
     replacements = {
         bundle.instruments_file: ("instruments_file", step.alias_target),
+        bundle.etf_instruments_file: ("etf_instruments_file", step.alias_target),
         bundle.daily_dir: ("daily_dir", step.alias_target),
         bundle.daily_clean_dir: ("daily_clean_dir", step.alias_target),
+        bundle.etf_daily_dir: ("etf_daily_dir", step.alias_target),
+        bundle.etf_daily_clean_dir: ("etf_daily_clean_dir", step.alias_target),
         bundle.valuation_dir: ("valuation_dir", step.alias_target),
         bundle.ex_factors_dir: ("ex_factors_dir", step.alias_target),
         bundle.dividends_dir: ("dividends_dir", step.alias_target),
@@ -1847,6 +2093,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Leave generic latest symlinks untouched after refresh.",
     )
+    parser.add_argument(
+        "--no-refresh-universe",
+        action="store_false",
+        dest="refresh_universe",
+        help=(
+            "Do not rebuild artifacts/assets/universe/hk_all_full_* after a daily/daily_clean refresh. "
+            "By default, the workflow refreshes universe files after inspect gates pass."
+        ),
+    )
+    parser.set_defaults(refresh_universe=True)
     parser.add_argument("--preset", default="hk_full", help="Preset forwarded to package_assets.")
     parser.add_argument(
         "--distribution-name",
@@ -1972,6 +2228,12 @@ def main(argv: list[str] | None = None) -> int:
         refreshed,
         selected_refresh_assets=selected_mutating_assets,
     )
+    if _should_refresh_universe(
+        args,
+        phases=phases,
+        selected_mutating_assets=selected_mutating_assets,
+    ):
+        steps.append(_build_universe_refresh_step(args, bundle=planned_bundle))
     if "package" in phases:
         package_bundle = active_bundle if not any(phase in phases for phase in ("refresh", "repair")) else planned_bundle
         steps.append(_build_package_step(args, bundle=package_bundle))
@@ -2014,18 +2276,53 @@ def main(argv: list[str] | None = None) -> int:
         and str((step.report_metadata or {}).get("inspection_stage") or "default") == gate_stage
     )
     pending_alias_steps: list[Step] = []
+    non_actionable_assets: set[str] = set()
 
     for index, step in enumerate(steps, start=1):
-        if gate_triggered and step.phase in {"package", "release"}:
+        dependency_hits = sorted(set(step.depends_on_assets).intersection(non_actionable_assets))
+        if dependency_hits:
+            reason = "dependency marked non-actionable: " + ", ".join(dependency_hits)
+            print(f"==> [{index}/{len(steps)}] {step.phase}: {step.label}")
+            print(f"  skipped: {reason}")
+            if not args.dry_run:
+                _record_dependency_skipped_step(workflow_report, step=step, reason=reason)
+            continue
+        if gate_triggered and step.phase in {"post_refresh", "package", "release"}:
             reason = f"inspect gate triggered at severity >= {args.gate_on_severity}"
             print(f"==> [{index}/{len(steps)}] {step.phase}: {step.label}")
             print(f"  skipped due to inspect gate: {reason}")
             if not args.dry_run:
-                _record_skipped_step(workflow_report, step=step, reason=reason)
+                if step.phase == "post_refresh":
+                    _record_dependency_skipped_step(workflow_report, step=step, reason=reason)
+                else:
+                    _record_skipped_step(workflow_report, step=step, reason=reason)
             continue
         print(f"==> [{index}/{len(steps)}] {step.phase}: {step.label}")
         result = _run(step.command, dry_run=args.dry_run)
         if result.returncode != 0:
+            if result.returncode in step.nonfatal_returncodes:
+                if step.asset_name:
+                    non_actionable_assets.add(step.asset_name)
+                    workflow_report.setdefault("workflow", {}).setdefault(
+                        "non_actionable_assets",
+                        [],
+                    ).append(
+                        {
+                            "asset_name": step.asset_name,
+                            "phase": step.phase,
+                            "label": step.label,
+                            "returncode": int(result.returncode),
+                            "reason": "provider_permission_or_boundary_gap",
+                        }
+                    )
+                print(
+                    "  non-actionable provider/boundary gap:",
+                    f"asset={step.asset_name}",
+                    f"returncode={result.returncode}",
+                )
+                if not args.dry_run:
+                    _record_step_report(workflow_report, step=step, result=result)
+                continue
             raise SystemExit(result.returncode)
 
         should_defer_alias = (

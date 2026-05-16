@@ -91,6 +91,30 @@ def _looks_like_quota_error(exc: Exception) -> bool:
     return any(term in text for term in quota_terms) and any(term in text for term in exhaustion_terms)
 
 
+def _looks_like_provider_permission_error(exc: Exception | str) -> bool:
+    text = str(exc).strip().lower()
+    if not text:
+        return False
+    permission_terms = (
+        "permission",
+        "no permission",
+        "not authorized",
+        "unauthorized",
+        "access denied",
+        "无权限",
+    )
+    provider_terms = (
+        "ricequant",
+        "rqdata",
+        "instrument",
+        "instruments",
+        "day bar",
+        "access",
+        "权限",
+    )
+    return any(term in text for term in permission_terms) and any(term in text for term in provider_terms)
+
+
 def _extract_invalid_field_name(error_text: str) -> str | None:
     if not error_text:
         return None

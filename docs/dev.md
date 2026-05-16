@@ -325,6 +325,8 @@ python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 2
 * `--refresh-mode full` 表示整包重拉。
 * `--refresh-mode patch` 表示增量补丁刷新（patch refresh）：先拉近期数据补丁，再用补丁合并（patch merge）生成新的 canonical snapshot。
 * patch 默认回溯：`daily` 20 个日历日，其他支持增量的 dated assets 40 个日历日。可用 `--daily-patch-lookback-days` 和 `--dated-patch-lookback-days` 调整。
+* 默认刷新链路会在 `daily_clean` 通过 inspect gate 后重建 `artifacts/assets/universe/hk_all_full_*`。如需只产出 dated snapshot 或保留旧 universe，传 `--no-refresh-universe`；`--no-repoint-latest` 也会自动跳过该后处理。
+* ETF 日线有独立刷新分支：workflow 会先导出 ETF instruments 和 symbols 文件，再对 `mirror-hk-daily` 启用权限 preflight。若 RQData 账号没有 ETF day bar 权限，该分支会标记为 non-actionable provider gap，跳过 ETF daily merge/clean，且不更新 ETF daily alias。
 * 非 dry-run 执行会写结构化 workflow report，默认路径是 `artifacts/reports/hk_asset_refresh_<target_date>.json`。
 * 非 dry-run workflow 还会刷新 `artifacts/metadata/current_assets/hk_current.json`，记录当前 alias、resolved snapshot、manifest 摘要和 `as_of`。
 * 默认 `--gate-on-severity warning`。如果 inspect 达到阈值，`latest` alias 重新指派、package 和 release 会被拦截。

@@ -18,6 +18,7 @@ from .asset_io import (
     _write_daily_symbol_frame,
 )
 from .fetch_runtime import _retry_fetch
+from .fetch_runtime import _looks_like_provider_permission_error
 from .manifest_ops import _build_daily_manifest, _validate_daily_resume_inputs
 from .mirror_workflow import (
     _failed_batch_summary,
@@ -45,6 +46,7 @@ DEFAULT_MIRROR_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_BACKOFF_SECONDS")
 DEFAULT_MIRROR_MAX_BACKOFF_SECONDS = _package_attr("DEFAULT_MIRROR_MAX_BACKOFF_SECONDS")
 DEFAULT_BATCH_SIZE = _package_attr("DEFAULT_BATCH_SIZE")
 DEFAULT_OUT_ROOT = _package_attr("DEFAULT_OUT_ROOT")
+PROVIDER_PERMISSION_EXIT_CODE = 78
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,8 @@ class _DailyMirrorContext:
     symbol_map: dict[str, str]
     order_book_ids: list[str]
     config_ref: object
+    provider_permission_preflight: bool
+    preflight_symbol: str | None
 
 
 def _prepare_daily_mirror_context(args) -> _DailyMirrorContext:
@@ -128,6 +132,10 @@ def _prepare_daily_mirror_context(args) -> _DailyMirrorContext:
         symbol_map=symbol_map,
         order_book_ids=list(symbol_map.keys()),
         config_ref=getattr(args, "config", None),
+        provider_permission_preflight=bool(
+            getattr(args, "provider_permission_preflight", False)
+        ),
+        preflight_symbol=str(getattr(args, "preflight_symbol", "") or "").strip() or None,
     )
 
 
@@ -395,6 +403,78 @@ def _collect_pending_daily_order_book_ids(
     return pending_order_book_ids
 
 
+def _select_preflight_order_book_id(
+    *,
+    context: _DailyMirrorContext,
+    pending_order_book_ids: Sequence[str],
+) -> str | None:
+    if not pending_order_book_ids:
+        return None
+    if context.preflight_symbol:
+        candidate = _to_rqdata_symbol("hk", context.preflight_symbol)
+        if candidate in context.symbol_map:
+            return candidate
+    return str(pending_order_book_ids[0])
+
+
+def _run_provider_permission_preflight(
+    *,
+    pending_order_book_ids: Sequence[str],
+    rqdatac,
+    context: _DailyMirrorContext,
+    audit_by_symbol: Mapping[str, DailyMirrorAuditRecord],
+    batches: list[dict[str, object]],
+    record_non_entry,
+) -> str | None:
+    if not context.provider_permission_preflight:
+        return None
+    preflight_order_book_id = _select_preflight_order_book_id(
+        context=context,
+        pending_order_book_ids=pending_order_book_ids,
+    )
+    if preflight_order_book_id is None:
+        return None
+
+    started_at = _timestamp_now()
+    try:
+        _fetch_daily_batch_payload(
+            rqdatac=rqdatac,
+            batch_order_book_ids=[preflight_order_book_id],
+            context=context,
+        )
+    except Exception as exc:
+        if not _looks_like_provider_permission_error(exc):
+            return None
+        finished_at = _timestamp_now()
+        message = f"daily permission preflight failed for {preflight_order_book_id}: {exc}"
+        for order_book_id in pending_order_book_ids:
+            symbol = context.symbol_map[order_book_id]
+            if symbol in audit_by_symbol:
+                continue
+            record_non_entry(
+                symbol=symbol,
+                order_book_id=order_book_id,
+                record_status="provider_permission_blocked",
+                attempts=1,
+                started_at_value=started_at,
+                finished_at_value=finished_at,
+                error_text=message,
+            )
+        batches.append(
+            {
+                "order_book_ids": len(pending_order_book_ids),
+                "rows": 0,
+                "symbols_written": 0,
+                "symbols_missing_remote": len(pending_order_book_ids),
+                "status": "provider_permission_blocked",
+                "attempts": 1,
+                "error": message,
+            }
+        )
+        return message
+    return None
+
+
 def _finalize_daily_mirror_outputs(
     *,
     context: _DailyMirrorContext,
@@ -558,6 +638,19 @@ def mirror_hk_daily(args, rqdatac) -> int:
             context=context,
             record_entry=_record_entry,
         )
+        provider_permission_error = _run_provider_permission_preflight(
+            pending_order_book_ids=pending_order_book_ids,
+            rqdatac=rqdatac,
+            context=context,
+            audit_by_symbol=audit_by_symbol,
+            batches=batches,
+            record_non_entry=_record_non_entry,
+        )
+        if provider_permission_error is not None:
+            status = "blocked_provider_permission"
+            error = provider_permission_error
+            result_code = max(result_code, PROVIDER_PERMISSION_EXIT_CODE)
+            pending_order_book_ids = []
 
         def _quota_blocked() -> bool:
             return quota_blocked

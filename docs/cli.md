@@ -456,13 +456,14 @@ cstree rqdata list-hk-financial-fields --contains profit
 
 ```bash
 cstree rqdata export-hk-instruments --out artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
-cstree rqdata export-hk-instruments --instrument-type ETF --out artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet
+cstree rqdata export-hk-instruments --instrument-type ETF --out artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet --symbols-out artifacts/assets/rqdata/hk/instruments/hk_etf_symbols_latest.txt
 ```
 
 补充说明：
 
 - `--instrument-type` 的默认值为 `CS`（Common Stock），代表当前口径仅包含普通股票。
 - 如需单独导出 ETF 股票池，请显式传入参数 `--instrument-type ETF`。
+- `--symbols-out` 可同步落一个 mirror 命令可直接使用的 symbol 列表。导出逻辑会保留港股复用代码的 `unique_id`，避免历史 ETF 代码互相覆盖。
 
 ### cstree rqdata mirror-hk-daily
 
@@ -470,12 +471,14 @@ cstree rqdata export-hk-instruments --instrument-type ETF --out artifacts/assets
 
 ```bash
 cstree rqdata mirror-hk-daily --by-date-file artifacts/assets/universe/hk_connect_full_by_date.csv --start-date 20000101 --end-date 20260311 --batch-size 50 --name hk_connect_full_2000_20260311_daily_latest
+cstree rqdata mirror-hk-daily --symbols-file artifacts/assets/rqdata/hk/instruments/hk_etf_symbols_latest.txt --start-date 20260401 --end-date 20260410 --provider-permission-preflight --name hk_etf_daily_patch_probe
 ```
 
 补充说明：
 
 - `--batch-size` 参数默认值为 `20`，用于控制每次 `rqdatac.get_price` 请求中合并的 `order_book_id` 数量。
 - 遇网络波动导致批量请求失败时，命令会自动降级为单 symbol 请求重试，确保大部分正常产物顺利落盘。
+- `--provider-permission-preflight` 会先用单个 symbol 试探日线权限；若命中 ETF day bar 这类账号权限缺口，会快速写出 `provider_permission_blocked` audit/manifest 并以专用退出码返回，避免进入大批量请求后长时间卡住。维护者 workflow 会把这种情况归类为 non-actionable provider gap，不会更新 ETF daily alias。
 
 ### cstree rqdata mirror-hk-pit-financials
 
@@ -706,11 +709,11 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 
 说明：
 
-- 默认执行顺序为：`download -> inspect（仅限新的 patch） -> build asset + alias`。其中 inspect 的默认拦截级别为 `warning`，触发该级别警告后流程将终止，且后续更新 `hk_intraday_latest` 的操作会被取消。
+- 默认执行顺序为：`download -> patch health（仅限新的 patch） -> build asset + alias`。其中 patch health 的默认拦截级别为 `error`，避免少量可解释 warning 阻断日常刷新；需要更严格时可显式传 `--inspect-fail-on-severity warning`。
 - `--resume` 能够自动衔接先前因网络或其他长任务截断的下载，直接基于 `<output_stem>.parts/` 里的现有碎片继续未竟的工作。每个 batch 会附带 `batch_XXXX.meta.json`，只有 symbol 列表、日期、字段、频率和复权口径完全匹配时才复用，避免换了输入文件后误用旧分片。
 - `--daily-adjust-type` 可显式声明日线对账基准的复权口径；命令会把 intraday 的 `--adjust-type` 一并传给 health 检查。若 intraday 与 daily 的 OHLC 口径不同，价格类 mismatch 会降级为 `adjustment-basis-mismatch` 信息项，成交量和成交额仍按常规警告处理。
 - 提供 `--skip-inspect` 将赋予直接跃升资产层的权利，建议仅在使用者充分认识隐患的前提下开启。常规场合下仍倡导保留严防死守的质检护栏。
-- 工具通常只着眼于对本次切片内容发起检验，更新别名后忽略沉重的存量数据扫描。如有全面摸底需要，务必手动启用 `--verify-full-asset` 参数。因该计算资源消耗巨大，建议分拆作为后台任务运营。
+- 工具通常只着眼于对本次切片内容发起轻量 patch health，更新别名后忽略沉重的存量数据扫描。如有全面摸底需要，务必手动启用 `--verify-full-asset` 参数。因该计算资源消耗巨大，建议按周/月单独作为后台任务运营。
 - 当注入 `--package` 时，系统将依附这批新快照产生专属的 intraday release 节点与对应的 tar 包；若改用 `--release` 将同步下达指令由 `gh release` 分发上网。考虑到整体数据体系的一致性约束，上述指令要求对应的 `daily` 行情基座和 `instruments` 数据同处合规可用期。
 
 ### cstree rqdata inspect-hk-intraday-health

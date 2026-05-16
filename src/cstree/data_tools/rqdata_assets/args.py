@@ -81,6 +81,10 @@ def add_hk_instruments_export_args(
         ),
     )
     parser.add_argument(
+        "--symbols-out",
+        help="Optional text output with one exported HK symbol per line.",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Overwrite the output file if it already exists.",
@@ -790,12 +794,12 @@ def add_hk_intraday_sync_args(
     )
     parser.add_argument(
         "--inspect-fail-on-severity",
-        default="warning",
+        default="error",
         choices=["none", "info", "warning", "error"],
         help=(
-            "Quality gate threshold for the inspection step. "
+            "Quality gate threshold for the default patch health inspection step. "
             "When triggered, the command stops before repointing the intraday latest alias. "
-            "Default: warning."
+            "Default: error."
         ),
     )
     parser.add_argument(

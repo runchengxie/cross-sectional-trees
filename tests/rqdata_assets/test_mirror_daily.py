@@ -21,6 +21,22 @@ from tests.rqdata_assets._fakes import (
 )
 
 
+class _PermissionDeniedDailyClient(_FakeRQDailyMirrorClient):
+    def get_price(self, order_book_id, start_date, end_date, frequency, **kwargs):
+        self.price_calls.append(
+            {
+                "order_book_id": order_book_id,
+                "start_date": start_date,
+                "end_date": end_date,
+                "frequency": frequency,
+                "kwargs": dict(kwargs),
+            }
+        )
+        raise RuntimeError(
+            "no permission to access day bar for instruments with type ETF, please contact RiceQuant"
+        )
+
+
 def test_mirror_hk_daily_writes_manifest_and_assets(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -85,6 +101,66 @@ def test_mirror_hk_daily_writes_manifest_and_assets(tmp_path, monkeypatch):
     assert manifest["totals"]["symbols_requested"] == 2
     assert manifest["totals"]["symbols_written"] == 2
     assert manifest["missing_symbols"] == []
+
+
+def test_mirror_hk_daily_provider_permission_preflight_fails_fast(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+    data_providers._RQDATA_LISTED_DATE_CACHE.clear()
+
+    client = _PermissionDeniedDailyClient()
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        start_date="20250101",
+        end_date="20250103",
+        field=[],
+        fields_file=[],
+        symbol=["02800.HK", "02801.HK"],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        batch_size=20,
+        adjust_type=None,
+        skip_suspended=None,
+        out_root="artifacts/assets/rqdata",
+        name="etf_daily_permission_demo",
+        resume=False,
+        skip_existing=False,
+        max_attempts=3,
+        backoff_seconds=0.0,
+        max_backoff_seconds=0.0,
+        provider_permission_preflight=True,
+        preflight_symbol=None,
+    )
+
+    assert rqdata_assets.mirror_hk_daily(args, client) == 78
+
+    assert client.price_calls == [
+        {
+            "order_book_id": "02800.XHKG",
+            "start_date": "20250101",
+            "end_date": "20250103",
+            "frequency": "1d",
+            "kwargs": {
+                "fields": list(rqdata_assets.DEFAULT_HK_DAILY_FIELDS),
+                "skip_suspended": True,
+                "market": "hk",
+            },
+        }
+    ]
+
+    output_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "etf_daily_permission_demo"
+    audit = pd.read_csv(output_dir / "audit.csv")
+    assert set(audit["status"]) == {"provider_permission_blocked"}
+    assert audit["error"].str.contains("no permission to access day bar").all()
+
+    manifest = yaml.safe_load((output_dir / "manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["status"] == "blocked_provider_permission"
+    assert manifest["totals"]["symbols_provider_permission_blocked"] == 2
+    assert manifest["provider_permission_blocked_symbols"] == ["02800.HK", "02801.HK"]
 
 def test_mirror_hk_valuation_writes_manifest_and_assets(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"

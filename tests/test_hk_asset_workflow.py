@@ -379,6 +379,14 @@ def test_hk_asset_workflow_gate_ignores_raw_daily_price_bounds_when_daily_clean_
 
     assert exit_code == 0
     assert any(cmd[1:3] == ["-m", "cstree.release_tools.package_assets"] for cmd in calls)
+    inspect_index = next(index for index, cmd in enumerate(calls) if "inspect-hk-asset-health" in cmd)
+    universe_index = next(
+        index for index, cmd in enumerate(calls) if len(cmd) >= 3 and cmd[1:3] == ["universe", "hk-daily-assets"]
+    )
+    package_index = next(
+        index for index, cmd in enumerate(calls) if cmd[1:3] == ["-m", "cstree.release_tools.package_assets"]
+    )
+    assert inspect_index < universe_index < package_index
 
     report = json.loads(
         (repo_root / "artifacts" / "reports" / "hk_asset_refresh_20260402.json").read_text(encoding="utf-8")
@@ -513,6 +521,80 @@ def test_hk_asset_workflow_patch_mode_builds_patch_and_merge_commands(tmp_path, 
     assert daily_merge_cmd[daily_merge_cmd.index("--patch-dir") + 1].endswith(
         "artifacts/assets/rqdata/hk/daily/hk_all_2000_20260402_daily_final_refetched_latest__patch"
     )
+
+
+def test_hk_asset_workflow_etf_daily_permission_gap_is_nonfatal(tmp_path, monkeypatch):
+    workflow = _load_module("cstree.release_tools.hk_asset_workflow")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _configure_repo_roots(workflow, repo_root)
+
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], *, dry_run: bool):
+        calls.append(cmd)
+        if "export-hk-instruments" in cmd:
+            out_path = repo_root / cmd[cmd.index("--out") + 1]
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text("etf instruments", encoding="utf-8")
+            symbols_out = repo_root / cmd[cmd.index("--symbols-out") + 1]
+            symbols_out.write_text("02800.HK\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if "mirror-hk-daily" in cmd:
+            return subprocess.CompletedProcess(cmd, 78, "", "no permission")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(workflow, "_run", _fake_run)
+
+    exit_code = workflow.main(
+        [
+            "--phase",
+            "refresh",
+            "--refresh-asset",
+            "etf_daily_clean",
+            "--refresh-mode",
+            "full",
+            "--target-date",
+            "20260402",
+        ]
+    )
+
+    assert exit_code == 0
+    assert any("export-hk-instruments" in cmd for cmd in calls)
+    assert any("mirror-hk-daily" in cmd and "--provider-permission-preflight" in cmd for cmd in calls)
+    assert not any("build-hk-daily-clean-layer" in cmd for cmd in calls)
+
+    etf_instruments_alias = (
+        repo_root
+        / "artifacts"
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "instruments"
+        / "hk_etf_instruments_latest.parquet"
+    )
+    assert etf_instruments_alias.is_symlink()
+
+    report = json.loads(
+        (repo_root / "artifacts" / "reports" / "hk_asset_refresh_20260402.json").read_text(encoding="utf-8")
+    )
+    assert report["workflow"]["non_actionable_assets"] == [
+        {
+            "asset_name": "etf_daily",
+            "phase": "refresh",
+            "label": "Mirror HK ETF daily",
+            "returncode": 78,
+            "reason": "provider_permission_or_boundary_gap",
+        }
+    ]
+    assert report["workflow"]["skipped_steps"] == [
+        {
+            "phase": "refresh",
+            "label": "Build HK ETF daily clean layer",
+            "asset_name": "etf_daily_clean",
+            "reason": "dependency marked non-actionable: etf_daily",
+        }
+    ]
 
 
 def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatch):

@@ -235,6 +235,9 @@ def _build_manifest(
         "missing_symbols": list(missing_symbols),
         "failed_symbols": [item.symbol for item in audit_records if item.status == "failed"],
         "quota_blocked_symbols": [item.symbol for item in audit_records if item.status == "quota_blocked"],
+        "provider_permission_blocked_symbols": [
+            item.symbol for item in audit_records if item.status == "provider_permission_blocked"
+        ],
         "totals": {
             "symbols_requested": len(symbols_requested),
             "symbols_written": len(entries),
@@ -243,6 +246,9 @@ def _build_manifest(
             "symbols_missing_remote": int(status_counts.get("missing_remote", 0)),
             "symbols_failed": int(status_counts.get("failed", 0)),
             "symbols_quota_blocked": int(status_counts.get("quota_blocked", 0)),
+            "symbols_provider_permission_blocked": int(
+                status_counts.get("provider_permission_blocked", 0)
+            ),
             "files": len(entries),
             "rows": sum(item.rows for item in entries),
             "bytes": sum(item.total_bytes for item in entries),
@@ -325,6 +331,9 @@ def _build_daily_manifest(
         "missing_symbols": list(missing_symbols),
         "failed_symbols": [item.symbol for item in audit_records if item.status == "failed"],
         "quota_blocked_symbols": [item.symbol for item in audit_records if item.status == "quota_blocked"],
+        "provider_permission_blocked_symbols": [
+            item.symbol for item in audit_records if item.status == "provider_permission_blocked"
+        ],
         "totals": {
             "symbols_requested": len(symbols_requested),
             "symbols_written": len(entries),
@@ -333,6 +342,9 @@ def _build_daily_manifest(
             "symbols_missing_remote": int(status_counts.get("missing_remote", 0)),
             "symbols_failed": int(status_counts.get("failed", 0)),
             "symbols_quota_blocked": int(status_counts.get("quota_blocked", 0)),
+            "symbols_provider_permission_blocked": int(
+                status_counts.get("provider_permission_blocked", 0)
+            ),
             "files": len(entries),
             "rows": sum(item.rows for item in entries),
             "bytes": sum(item.total_bytes for item in entries),

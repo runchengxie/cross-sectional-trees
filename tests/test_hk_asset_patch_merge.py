@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pandas as pd
 import yaml
 
-from cstree.research.hk_asset_patch_merge import merge_asset_patch
+from cstree.research.hk_asset_patch_merge import _concat_nonempty_frames, merge_asset_patch
 
 
 def _write_daily_snapshot(root: Path, name: str, *, end_date: str) -> Path:
@@ -54,6 +55,35 @@ def _write_daily_snapshot(root: Path, name: str, *, end_date: str) -> Path:
         encoding="utf-8",
     )
     return asset_dir
+
+
+def test_concat_nonempty_frames_omits_per_frame_all_na_columns_without_future_warning():
+    base = pd.DataFrame(
+        {
+            "symbol": ["00005.HK"],
+            "trade_date": ["20260401"],
+            "stale_provider_field": [pd.NA],
+            "base_only": [1.0],
+        }
+    )
+    patch = pd.DataFrame(
+        {
+            "symbol": ["00005.HK"],
+            "trade_date": ["20260402"],
+            "stale_provider_field": [2.0],
+            "base_only": [pd.NA],
+        }
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", FutureWarning)
+        merged = _concat_nonempty_frames([base, patch])
+
+    assert [item for item in caught if issubclass(item.category, FutureWarning)] == []
+    assert pd.isna(merged["stale_provider_field"].iloc[0])
+    assert merged["stale_provider_field"].iloc[1] == 2.0
+    assert merged["base_only"].iloc[0] == 1.0
+    assert pd.isna(merged["base_only"].iloc[1])
 
 
 def _write_daily_patch(root: Path, name: str) -> Path:

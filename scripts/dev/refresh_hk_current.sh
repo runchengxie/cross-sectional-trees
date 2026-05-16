@@ -40,6 +40,8 @@ Options:
   --dry-run                       Forward --dry-run to the workflow; skips
                                   backup execution.
   --no-repoint-latest             Forward --no-repoint-latest to the workflow.
+  -- workflow args...             Extra workflow args, e.g. --no-refresh-universe
+                                  or --refresh-asset etf_daily.
   -h, --help                      Show this help text.
 
 Examples:

@@ -252,10 +252,17 @@ def _concat_nonempty_frames(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
         for column in all_columns
         if any(column in frame.columns and not frame[column].isna().all() for frame in frames)
     ]
-    trimmed_frames = [
-        frame.loc[:, [column for column in concat_columns if column in frame.columns]]
-        for frame in frames
-    ]
+    trimmed_frames = []
+    for frame in frames:
+        keep_columns = [
+            column
+            for column in concat_columns
+            if column in frame.columns and not frame[column].isna().all()
+        ]
+        if keep_columns:
+            trimmed_frames.append(frame.loc[:, keep_columns].copy())
+    if not trimmed_frames:
+        return pd.DataFrame(columns=all_columns)
     merged = pd.concat(trimmed_frames, ignore_index=True, sort=False)
     for column in all_columns:
         if column not in merged.columns:

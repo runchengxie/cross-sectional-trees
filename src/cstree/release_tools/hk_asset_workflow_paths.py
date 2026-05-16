@@ -15,8 +15,11 @@ RELEASES_ROOT = REPO_ROOT / "artifacts" / "releases"
 @dataclass
 class SnapshotBundle:
     instruments_file: Path
+    etf_instruments_file: Path
     daily_dir: Path
     daily_clean_dir: Path
+    etf_daily_dir: Path
+    etf_daily_clean_dir: Path
     valuation_dir: Path
     ex_factors_dir: Path
     dividends_dir: Path
@@ -41,6 +44,8 @@ class Step:
     alias_link: Path | None = None
     asset_name: str | None = None
     report_metadata: dict[str, Any] | None = None
+    nonfatal_returncodes: tuple[int, ...] = ()
+    depends_on_assets: tuple[str, ...] = ()
 
 
 def current_snapshot_bundle(*, assets_root: Path = ASSETS_ROOT) -> SnapshotBundle:
@@ -51,12 +56,23 @@ def current_snapshot_bundle(*, assets_root: Path = ASSETS_ROOT) -> SnapshotBundl
         / "hk"
         / "instruments"
         / "hk_all_instruments_latest.parquet",
+        etf_instruments_file=assets_root
+        / "rqdata"
+        / "hk"
+        / "instruments"
+        / "hk_etf_instruments_latest.parquet",
         daily_dir=assets_root / "rqdata" / "hk" / "daily" / "hk_all_daily_latest",
         daily_clean_dir=assets_root
         / "rqdata"
         / "hk"
         / "daily"
         / "hk_all_daily_clean_latest",
+        etf_daily_dir=assets_root / "rqdata" / "hk" / "daily" / "hk_etf_daily_latest",
+        etf_daily_clean_dir=assets_root
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / "hk_etf_daily_clean_latest",
         valuation_dir=assets_root / "rqdata" / "hk" / "valuation" / "hk_all_valuation_latest",
         ex_factors_dir=assets_root
         / "rqdata"
@@ -104,6 +120,11 @@ def refreshed_snapshot_bundle(
         / "hk"
         / "instruments"
         / f"hk_all_instruments_{target_date}.parquet",
+        etf_instruments_file=assets_root
+        / "rqdata"
+        / "hk"
+        / "instruments"
+        / f"hk_etf_instruments_{target_date}.parquet",
         daily_dir=assets_root
         / "rqdata"
         / "hk"
@@ -114,6 +135,16 @@ def refreshed_snapshot_bundle(
         / "hk"
         / "daily"
         / f"hk_all_2000_{target_date}_daily_clean_refetched_latest",
+        etf_daily_dir=assets_root
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / f"hk_etf_2000_{target_date}_daily_latest",
+        etf_daily_clean_dir=assets_root
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / f"hk_etf_2000_{target_date}_daily_clean_latest",
         valuation_dir=assets_root
         / "rqdata"
         / "hk"

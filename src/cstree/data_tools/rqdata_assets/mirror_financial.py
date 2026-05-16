@@ -71,6 +71,63 @@ def _ensure_rqdatac_hk_plugin() -> None:
     ensure_plugin()
 
 
+def _is_open_ended_hk_delisted_date(value: object) -> bool:
+    text = str(value or "").strip()
+    return text == "" or text.lower() in {"none", "nan", "nat"} or text == "0000-00-00"
+
+
+def _is_active_hk_instrument(row: pd.Series) -> bool:
+    status = str(row.get("status") or "").strip().lower()
+    if status == "active":
+        return True
+    if status in {"delisted", "de_listed", "inactive"}:
+        return False
+    return _is_open_ended_hk_delisted_date(row.get("de_listed_date"))
+
+
+def _hk_date_sort_key(value: object) -> pd.Timestamp:
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return pd.Timestamp.min
+    return parsed
+
+
+def _disambiguate_hk_instrument_unique_ids(instruments: pd.DataFrame) -> pd.DataFrame:
+    if "unique_id" not in instruments.columns:
+        return instruments
+    duplicate_symbols = instruments["symbol"].duplicated(keep=False)
+    if not duplicate_symbols.any():
+        return instruments
+
+    normalized = instruments.copy()
+    for _symbol, group in normalized[duplicate_symbols].groupby("symbol", sort=False):
+        if len(group) <= 1:
+            continue
+
+        active_indices = [
+            index for index, row in group.iterrows() if _is_active_hk_instrument(row)
+        ]
+        plain_index_candidates = active_indices or list(group.index)
+        plain_index = max(
+            plain_index_candidates,
+            key=lambda index: _hk_date_sort_key(normalized.at[index, "listed_date"])
+            if "listed_date" in normalized.columns
+            else pd.Timestamp.min,
+        )
+
+        for index, row in group.iterrows():
+            if index == plain_index:
+                continue
+            unique_id = str(row.get("unique_id") or "").strip()
+            unique_symbol = _normalize_hk_symbol(unique_id)
+            if not unique_symbol or unique_symbol == row["symbol"]:
+                continue
+            normalized.at[index, "symbol"] = unique_symbol
+            normalized.at[index, "order_book_id"] = unique_id
+
+    return normalized
+
+
 def _load_hk_financial_fields() -> list[str]:
     loader = _package_attr(
         "_load_hk_financial_fields",
@@ -134,6 +191,7 @@ def export_hk_instruments(args, rqdatac) -> int:
         instruments = instruments.rename(columns={"symbol": "instrument_symbol"})
     instruments["order_book_id"] = instruments["order_book_id"].astype(str).str.strip()
     instruments["symbol"] = instruments["order_book_id"].map(_normalize_hk_symbol)
+    instruments = _disambiguate_hk_instrument_unique_ids(instruments)
     instruments = instruments[instruments["symbol"] != ""].copy()
 
     if symbol_filter is not None:
@@ -182,6 +240,12 @@ def export_hk_instruments(args, rqdatac) -> int:
         instruments.to_csv(out_path, index=False)
     else:
         instruments.to_parquet(out_path, index=False)
+    symbols_out_arg = getattr(args, "symbols_out", None)
+    symbols_out_path = _resolve_path(symbols_out_arg) if symbols_out_arg else None
+    if symbols_out_path is not None:
+        symbols_out_path.parent.mkdir(parents=True, exist_ok=True)
+        symbols_out = "\n".join(instruments["symbol"].astype(str).tolist())
+        symbols_out_path.write_text(symbols_out + ("\n" if symbols_out else ""), encoding="utf-8")
 
     manifest_path = Path(f"{out_path}.manifest.yml")
     symbol_metadata = dict(symbol_metadata)
@@ -196,6 +260,7 @@ def export_hk_instruments(args, rqdatac) -> int:
         "config_ref": getattr(args, "config", None),
         "output_file": str(out_path),
         "format": out_path.suffix.lstrip(".").lower(),
+        "symbols_file": str(symbols_out_path) if symbols_out_path is not None else None,
         "symbol_source": symbol_metadata,
         "columns": instruments.columns.tolist(),
         "totals": {
@@ -213,6 +278,8 @@ def export_hk_instruments(args, rqdatac) -> int:
         f"(instrument_type={instrument_type}) to {out_path} "
         f"(manifest: {manifest_path})"
     )
+    if symbols_out_path is not None:
+        print(f"Wrote {len(instruments)} HK instrument symbols to {symbols_out_path}")
     return 0
 
 

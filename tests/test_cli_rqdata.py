@@ -123,6 +123,9 @@ def test_cli_parses_rqdata_core_asset_commands():
             "vwap",
             "--batch-size",
             "50",
+            "--provider-permission-preflight",
+            "--preflight-symbol",
+            "02800.HK",
             "--resume",
             "--include-suspended",
             "--name",
@@ -136,6 +139,8 @@ def test_cli_parses_rqdata_core_asset_commands():
     assert daily.end_date == "20260311"
     assert daily.field == ["vwap"]
     assert daily.batch_size == 50
+    assert daily.provider_permission_preflight is True
+    assert daily.preflight_symbol == "02800.HK"
     assert daily.resume is True
     assert daily.skip_suspended is False
     assert daily.name == "daily_demo"

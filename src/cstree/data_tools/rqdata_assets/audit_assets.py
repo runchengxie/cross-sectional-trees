@@ -1494,7 +1494,17 @@ def _run_refresh_workflow(args: Any, *, repo_root: Path, target_date: str, repor
     ]
     for asset in getattr(args, "refresh_asset", []) or []:
         command.extend(["--refresh-asset", str(asset)])
-        command.extend(["--inspect-asset", str(asset)])
+        if str(asset) in {
+            "daily",
+            "daily_clean",
+            "valuation",
+            "ex_factors",
+            "dividends",
+            "shares",
+            "industry_changes",
+            "southbound",
+        }:
+            command.extend(["--inspect-asset", str(asset)])
     if getattr(args, "config", None):
         command.extend(["--config", str(args.config)])
     if getattr(args, "refresh_dry_run", False):

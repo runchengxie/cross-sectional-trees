@@ -84,6 +84,85 @@ class _QuarterRangeRQPitClient:
         )
 
 
+class _DuplicateInstrumentClient:
+    def all_instruments(self, instrument_type, market="hk"):
+        assert instrument_type == "ETF"
+        assert market == "hk"
+        return pd.DataFrame(
+            [
+                {
+                    "order_book_id": "02802.XHKG",
+                    "unique_id": "02802_02.XHKG",
+                    "symbol": "A CSOP HSCEICC",
+                    "listed_date": "2025-12-11",
+                    "de_listed_date": "0000-00-00",
+                    "status": "Active",
+                    "round_lot": 100,
+                },
+                {
+                    "order_book_id": "02802.XHKG",
+                    "unique_id": "02802_01.XHKG",
+                    "symbol": "ISHARES EM ASIA",
+                    "listed_date": "2009-04-23",
+                    "de_listed_date": "2023-03-22",
+                    "status": "Delisted",
+                    "round_lot": 200,
+                },
+                {
+                    "order_book_id": "02800.XHKG",
+                    "unique_id": "02800_01.XHKG",
+                    "symbol": "TRACKER FUND",
+                    "listed_date": "1999-11-12",
+                    "de_listed_date": "0000-00-00",
+                    "status": "Active",
+                    "round_lot": 500,
+                },
+            ]
+        )
+
+
+def test_export_hk_instruments_preserves_unique_ids_for_reused_hk_codes(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    monkeypatch.chdir(repo_root)
+    monkeypatch.setattr(rqdata_assets, "_ensure_rqdatac_hk_plugin", lambda: None)
+
+    out_path = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "instruments" / "hk_etf.parquet"
+    args = SimpleNamespace(
+        config=None,
+        username=None,
+        password=None,
+        use_config_universe=False,
+        instrument_type="ETF",
+        symbol=[],
+        symbols_file=None,
+        by_date_file=None,
+        limit=None,
+        out=str(out_path),
+        symbols_out=str(out_path.with_suffix(".txt")),
+        force=False,
+    )
+
+    assert rqdata_assets.export_hk_instruments(args, _DuplicateInstrumentClient()) == 0
+
+    exported = pd.read_parquet(out_path)
+    assert exported["symbol"].tolist() == ["02800.HK", "02802.HK", "02802_01.HK"]
+    assert exported["order_book_id"].tolist() == [
+        "02800.XHKG",
+        "02802.XHKG",
+        "02802_01.XHKG",
+    ]
+
+    manifest = yaml.safe_load(Path(f"{out_path}.manifest.yml").read_text(encoding="utf-8"))
+    assert manifest["totals"]["rows"] == 3
+    assert manifest["totals"]["symbols"] == 3
+    assert out_path.with_suffix(".txt").read_text(encoding="utf-8").splitlines() == [
+        "02800.HK",
+        "02802.HK",
+        "02802_01.HK",
+    ]
+
+
 def test_mirror_hk_pit_financials_uses_config_universe_with_legacy_symbol_column_and_writes_manifest(
     tmp_path, monkeypatch
 ):
