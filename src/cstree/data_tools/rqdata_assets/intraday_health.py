@@ -10,7 +10,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from ..symbols import normalize_symbol_for_market
-from ...research.hk_intraday_slippage_report import resolve_input_parquet_paths
+from ...intraday_paths import resolve_input_parquet_paths, resolve_intraday_input_groups
 from .quality_gate import (
     append_quality_verdict_lines,
     quality_gate_exit_code,
@@ -137,6 +137,24 @@ def _manifest_query_adjust_type(asset_dir: Path | None) -> str | None:
     if not isinstance(query, Mapping):
         return None
     return _normalize_adjust_type(query.get("adjust_type"))
+
+
+def _infer_intraday_adjust_type(input_specs: Sequence[str]) -> str | None:
+    inferred: set[str] = set()
+    for group in resolve_intraday_input_groups(list(input_specs)):
+        meta_path = group.meta_path
+        if meta_path is None or not meta_path.exists():
+            continue
+        try:
+            payload = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        value = _normalize_adjust_type(payload.get("adjust_type"))
+        if value:
+            inferred.add(value)
+    if len(inferred) == 1:
+        return next(iter(inferred))
+    return None
 
 
 def _bitwise_or_int(values: pd.Series) -> int:
@@ -482,12 +500,14 @@ def _build_daily_reconciliation(
     suppressed_mismatch_counts: Counter[str] = Counter()
     sample_missing_daily_rows: list[dict[str, object]] = []
     sample_inactive_zero_volume_rows: list[dict[str, object]] = []
+    sample_inactive_zero_volume_missing_daily_rows: list[dict[str, object]] = []
     sample_intraday_after_daily_end_with_trading_rows: list[dict[str, object]] = []
     sample_daily_active_missing_intraday_rows: list[dict[str, object]] = []
     sample_mismatch_rows: list[dict[str, object]] = []
     reconciled_symbol_days = 0
     missing_daily_rows = 0
     inactive_zero_volume_after_daily_end_rows = 0
+    inactive_zero_volume_missing_daily_rows = 0
     intraday_after_daily_end_with_trading_rows = 0
     daily_active_missing_intraday_rows = 0
     intraday_date_min = intraday_daily["trade_date"].min() if not intraday_daily.empty else None
@@ -572,9 +592,16 @@ def _build_daily_reconciliation(
         if bool(missing_match_mask.any()):
             daily_max_date = daily_frame["trade_date"].max()
             after_daily_end_mask = missing_match_mask & merged["trade_date"].notna() & (merged["trade_date"] > daily_max_date)
-            inactive_zero_mask = after_daily_end_mask & _zero_volume_amount_mask(merged)
+            inactive_zero_without_daily_mask = missing_match_mask & _zero_volume_amount_mask(merged)
+            inactive_zero_mask = after_daily_end_mask & inactive_zero_without_daily_mask
+            inactive_zero_missing_daily_mask = inactive_zero_without_daily_mask & ~after_daily_end_mask
             trading_after_end_mask = after_daily_end_mask & ~inactive_zero_mask
-            unclassified_missing_mask = missing_match_mask & ~inactive_zero_mask & ~trading_after_end_mask
+            unclassified_missing_mask = (
+                missing_match_mask
+                & ~inactive_zero_mask
+                & ~inactive_zero_missing_daily_mask
+                & ~trading_after_end_mask
+            )
 
             if bool(inactive_zero_mask.any()):
                 inactive_zero_volume_after_daily_end_rows += int(inactive_zero_mask.sum())
@@ -585,6 +612,21 @@ def _build_daily_reconciliation(
                             "symbol": symbol,
                             "trade_date": row["trade_date"],
                             "reason": "inactive_zero_volume_intraday_after_daily_end",
+                            "intraday_volume": row.get("intraday_volume"),
+                            "intraday_amount": row.get("intraday_amount"),
+                        },
+                        limit=sample_limit,
+                    )
+
+            if bool(inactive_zero_missing_daily_mask.any()):
+                inactive_zero_volume_missing_daily_rows += int(inactive_zero_missing_daily_mask.sum())
+                for _, row in merged.loc[inactive_zero_missing_daily_mask].head(sample_limit).iterrows():
+                    _append_sample(
+                        sample_inactive_zero_volume_missing_daily_rows,
+                        {
+                            "symbol": symbol,
+                            "trade_date": row["trade_date"],
+                            "reason": "inactive_zero_volume_intraday_missing_daily_row",
                             "intraday_volume": row.get("intraday_volume"),
                             "intraday_amount": row.get("intraday_amount"),
                         },
@@ -674,6 +716,7 @@ def _build_daily_reconciliation(
             "reconciled_symbol_days": reconciled_symbol_days,
             "missing_daily_symbol_days": missing_daily_rows,
             "inactive_zero_volume_intraday_after_daily_end_symbol_days": inactive_zero_volume_after_daily_end_rows,
+            "inactive_zero_volume_intraday_missing_daily_row_symbol_days": inactive_zero_volume_missing_daily_rows,
             "intraday_after_daily_end_with_trading_symbol_days": intraday_after_daily_end_with_trading_rows,
             "daily_active_symbol_days_missing_intraday": daily_active_missing_intraday_rows,
             "mismatch_counts": dict(sorted(mismatch_counts.items())),
@@ -684,6 +727,7 @@ def _build_daily_reconciliation(
         },
         "sample_missing_daily_rows": sample_missing_daily_rows,
         "sample_inactive_zero_volume_intraday_after_daily_end": sample_inactive_zero_volume_rows,
+        "sample_inactive_zero_volume_intraday_missing_daily_row": sample_inactive_zero_volume_missing_daily_rows,
         "sample_intraday_after_daily_end_with_trading": sample_intraday_after_daily_end_with_trading_rows,
         "sample_daily_active_missing_intraday_rows": sample_daily_active_missing_intraday_rows,
         "sample_mismatch_rows": sample_mismatch_rows,
@@ -712,6 +756,7 @@ def _render_intraday_health_text(payload: Mapping[str, object]) -> str:
         "daily_reconciliation_symbol_days",
         "daily_reconciliation_missing_daily_rows",
         "daily_reconciliation_inactive_zero_volume_after_daily_end_rows",
+        "daily_reconciliation_inactive_zero_volume_missing_daily_rows",
         "daily_reconciliation_intraday_after_daily_end_with_trading_rows",
         "daily_reconciliation_daily_active_missing_intraday_rows",
     ):
@@ -748,6 +793,8 @@ def inspect_hk_intraday_health(args) -> int:
     daily_asset_dir_arg = getattr(args, "daily_asset_dir", None)
     daily_asset_dir = _resolve_path(daily_asset_dir_arg) if daily_asset_dir_arg else None
     intraday_adjust_type = _normalize_adjust_type(getattr(args, "intraday_adjust_type", None))
+    if intraday_adjust_type is None:
+        intraday_adjust_type = _infer_intraday_adjust_type(input_specs)
     daily_adjust_type = _normalize_adjust_type(getattr(args, "daily_adjust_type", None))
     if daily_adjust_type is None:
         daily_adjust_type = _manifest_query_adjust_type(daily_asset_dir)
@@ -991,6 +1038,9 @@ def inspect_hk_intraday_health(args) -> int:
         inactive_zero_count = int(
             reconciliation_summary.get("inactive_zero_volume_intraday_after_daily_end_symbol_days") or 0
         )
+        inactive_zero_missing_daily_count = int(
+            reconciliation_summary.get("inactive_zero_volume_intraday_missing_daily_row_symbol_days") or 0
+        )
         if inactive_zero_count > 0:
             quality_checks.append(
                 {
@@ -1001,6 +1051,19 @@ def inspect_hk_intraday_health(args) -> int:
                     "classification": "provider-inactive-boundary",
                     "sample_rows": list(
                         reconciliation.get("sample_inactive_zero_volume_intraday_after_daily_end") or []
+                    ),
+                }
+            )
+        if inactive_zero_missing_daily_count > 0:
+            quality_checks.append(
+                {
+                    "check": "inactive_zero_volume_intraday_without_daily_row",
+                    "severity": "info",
+                    "affected_items": inactive_zero_missing_daily_count,
+                    "affected_pct": _round_pct(inactive_zero_missing_daily_count, symbol_days_scanned),
+                    "classification": "provider-inactive-boundary",
+                    "sample_rows": list(
+                        reconciliation.get("sample_inactive_zero_volume_intraday_missing_daily_row") or []
                     ),
                 }
             )
@@ -1107,6 +1170,9 @@ def inspect_hk_intraday_health(args) -> int:
         "daily_reconciliation_missing_daily_rows": int(reconciliation_summary.get("missing_daily_symbol_days") or 0),
         "daily_reconciliation_inactive_zero_volume_after_daily_end_rows": int(
             reconciliation_summary.get("inactive_zero_volume_intraday_after_daily_end_symbol_days") or 0
+        ),
+        "daily_reconciliation_inactive_zero_volume_missing_daily_rows": int(
+            reconciliation_summary.get("inactive_zero_volume_intraday_missing_daily_row_symbol_days") or 0
         ),
         "daily_reconciliation_intraday_after_daily_end_with_trading_rows": int(
             reconciliation_summary.get("intraday_after_daily_end_with_trading_symbol_days") or 0

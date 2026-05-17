@@ -115,6 +115,18 @@ def test_inspect_hk_intraday_health_classifies_daily_reconciliation_boundaries(
                 "amount": 20.0,
             }
         )
+        rows.append(
+            {
+                "symbol": "00010.HK",
+                "trade_datetime": timestamp,
+                "open": 3.0,
+                "high": 3.0,
+                "low": 3.0,
+                "close": 3.0,
+                "volume": 0.0,
+                "amount": 0.0,
+            }
+        )
     pd.DataFrame(rows).to_parquet(intraday_path, index=False)
 
     for symbol in ("00007.HK", "00008.HK"):
@@ -140,6 +152,17 @@ def test_inspect_hk_intraday_health_classifies_daily_reconciliation_boundaries(
             "total_turnover": [1320.0, 210.0],
         }
     ).to_parquet(daily_dir / "data" / "00009.HK.parquet", index=False)
+    pd.DataFrame(
+        {
+            "trade_date": ["20240501", "20240503"],
+            "open": [3.0, 3.0],
+            "high": [3.0, 3.0],
+            "low": [3.0, 3.0],
+            "close": [3.0, 3.0],
+            "volume": [0.0, 0.0],
+            "total_turnover": [0.0, 0.0],
+        }
+    ).to_parquet(daily_dir / "data" / "00010.HK.parquet", index=False)
 
     out_path = repo_root / "intraday_reconciliation_boundaries.json"
     args = SimpleNamespace(
@@ -160,6 +183,7 @@ def test_inspect_hk_intraday_health_classifies_daily_reconciliation_boundaries(
     reconciliation_summary = payload["daily_reconciliation"]["summary"]
     assert reconciliation_summary["missing_daily_symbol_days"] == 0
     assert reconciliation_summary["inactive_zero_volume_intraday_after_daily_end_symbol_days"] == 2
+    assert reconciliation_summary["inactive_zero_volume_intraday_missing_daily_row_symbol_days"] == 1
     assert reconciliation_summary["intraday_after_daily_end_with_trading_symbol_days"] == 2
     assert reconciliation_summary["daily_active_symbol_days_missing_intraday"] == 1
 
@@ -167,6 +191,8 @@ def test_inspect_hk_intraday_health_classifies_daily_reconciliation_boundaries(
     assert "intraday_daily_rows_missing_from_asset" not in checks
     assert checks["inactive_zero_volume_intraday_after_daily_end"]["severity"] == "info"
     assert checks["inactive_zero_volume_intraday_after_daily_end"]["affected_items"] == 2
+    assert checks["inactive_zero_volume_intraday_without_daily_row"]["severity"] == "info"
+    assert checks["inactive_zero_volume_intraday_without_daily_row"]["affected_items"] == 1
     assert checks["intraday_after_daily_end_with_trading"]["affected_items"] == 2
     assert checks["daily_active_but_intraday_missing"]["affected_items"] == 1
 
@@ -446,6 +472,10 @@ def test_inspect_hk_intraday_health_marks_price_mismatch_as_adjustment_basis_inf
             for timestamp in _hk_5m_timestamps(date_text)
         ]
     ).to_parquet(intraday_path, index=False)
+    intraday_path.with_suffix(".meta.json").write_text(
+        json.dumps({"adjust_type": "pre"}),
+        encoding="utf-8",
+    )
     pd.DataFrame(
         {
             "trade_date": ["20260409"],
@@ -466,7 +496,7 @@ def test_inspect_hk_intraday_health_marks_price_mismatch_as_adjustment_basis_inf
         expected_bars_per_day=66,
         numeric_rtol=1e-6,
         numeric_atol=1e-8,
-        intraday_adjust_type="pre",
+        intraday_adjust_type=None,
         daily_adjust_type="none",
         format="json",
         out=str(out_path),
