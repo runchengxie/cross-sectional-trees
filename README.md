@@ -1,4 +1,4 @@
-# cross-sectional-hk-trees
+# cross-sectional-trees
 
 本项目使用 RQData 日线数据进行港股截面树模型研究、benchmark 对照、模型评估、回测、持仓快照和研究证据管理。当前正式支持的数据输入与研究主线边界为 `market=hk` 结合 `data.provider=rqdata`，同时支持可选的本地港股资产直读功能。
 

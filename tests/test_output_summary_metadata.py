@@ -33,6 +33,15 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
         ),
         encoding="utf-8",
     )
+    expected_manifest_summary = {
+        "dataset": "daily",
+        "status": "completed",
+        "output_dir": str(snapshot_dir),
+        "snapshot_name": snapshot_dir.name,
+        "query_start_date": "20000101",
+        "query_end_date": "20260327",
+        "totals": {},
+    }
 
     alias_path = tmp_path / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_clean_latest"
     alias_path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,13 +62,7 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
                         "alias_path": str(alias_path.absolute()),
                         "resolved_path": str(snapshot_dir.resolve()),
                         "manifest_path": str(snapshot_dir / "manifest.yml"),
-                        "manifest": {
-                            "dataset": "daily",
-                            "status": "completed",
-                            "output_dir": str(snapshot_dir),
-                            "snapshot_name": snapshot_dir.name,
-                            "query_end_date": "20260327",
-                        },
+                        "manifest": expected_manifest_summary,
                         "as_of": "20260327",
                         "exists": True,
                     }
@@ -111,13 +114,7 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
     assert daily_resolution["is_symlink"] is True
     assert daily_resolution["points_to_latest_name"] is True
     assert daily_resolution["manifest_path"] == str(snapshot_dir / "manifest.yml")
-    assert daily_resolution["manifest"] == {
-        "dataset": "daily",
-        "status": "completed",
-        "output_dir": str(snapshot_dir),
-        "snapshot_name": snapshot_dir.name,
-        "query_end_date": "20260327",
-    }
+    assert daily_resolution["manifest"] == expected_manifest_summary
     assert daily_resolution["current_contract"] == {
         "contract_name": "hk_current",
         "contract_path": str(current_contract_path),
@@ -125,12 +122,6 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
         "alias_path": str(alias_path.absolute()),
         "resolved_path": str(snapshot_dir.resolve()),
         "manifest_path": str(snapshot_dir / "manifest.yml"),
-        "manifest": {
-            "dataset": "daily",
-            "status": "completed",
-            "output_dir": str(snapshot_dir),
-            "snapshot_name": snapshot_dir.name,
-            "query_end_date": "20260327",
-        },
+        "manifest": expected_manifest_summary,
         "as_of": "20260327",
     }

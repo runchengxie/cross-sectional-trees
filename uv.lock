@@ -266,7 +266,7 @@ wheels = [
 ]
 
 [[package]]
-name = "cross-sectional-hk-trees"
+name = "cross-sectional-trees"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
