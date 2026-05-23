@@ -122,6 +122,54 @@ def test_hk_data_asset_audit_reports_inventory_freshness_and_prune_plan(tmp_path
     assert all(item["status"] == "dry-run" for item in report["prune"]["delete_result"]["results"])
 
 
+def test_hk_data_asset_audit_treats_report_and_release_references_as_soft_prune_evidence(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    artifacts_root = repo_root / "artifacts"
+    candidate_paths = hk_current_candidate_paths(artifacts_root)
+    monkeypatch.chdir(repo_root)
+
+    current_daily = artifacts_root / "assets" / "rqdata" / "hk" / "daily" / "hk_all_2000_20260410_daily_latest"
+    _write_manifest(current_daily, dataset="daily")
+    _symlink(current_daily, candidate_paths["daily"])
+
+    stale_patch = artifacts_root / "assets" / "rqdata" / "hk" / "daily" / "hk_all_2000_20260409_daily_latest__patch"
+    _write_manifest(stale_patch, dataset="daily", end_date="20260409")
+    reports_dir = artifacts_root / "reports"
+    releases_dir = artifacts_root / "releases" / "hk_rqdata_assets_20260409"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    releases_dir.mkdir(parents=True, exist_ok=True)
+    (reports_dir / "hk_current_health_20260410_soft_reference.json").write_text(
+        json.dumps({"checked_path": str(stale_patch)}),
+        encoding="utf-8",
+    )
+    (releases_dir / "manifest.yml").write_text(
+        yaml.safe_dump({"source_path": str(stale_patch)}, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    contract = build_hk_current_contract(artifacts_root, generated_by="test", target_date="20260410")
+    write_current_contract(default_hk_current_contract_path(artifacts_root), contract)
+
+    report = build_hk_data_asset_audit_report(_args(asset=["daily"], scan_family=["daily"]))
+
+    stale_record = next(
+        item
+        for item in report["inventory"]["records"]
+        if str(item["path"]).endswith("hk_all_2000_20260409_daily_latest__patch")
+    )
+    assert stale_record["classification"] == "unreferenced"
+    assert {item["type"] for item in stale_record["references"]} == {"report", "release"}
+    candidate = next(
+        item
+        for item in report["prune"]["candidates"]
+        if str(item["path"]).endswith("hk_all_2000_20260409_daily_latest__patch")
+    )
+    assert candidate["references"] == {"release": 1, "report": 1}
+    assert candidate["references_checked"] == ["current"]
+    assert candidate["soft_references_ignored_for_prune"] == ["release", "report"]
+
+
 def test_hk_data_asset_audit_classifies_stale_etf_daily_repair_candidate(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

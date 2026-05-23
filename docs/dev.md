@@ -331,6 +331,7 @@ python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 2
 * 非 dry-run 执行会写结构化 workflow report，默认路径是 `artifacts/reports/hk_asset_refresh_<target_date>.json`。
 * 非 dry-run workflow 还会刷新 `artifacts/metadata/current_assets/hk_current.json`，记录当前 alias、resolved snapshot、manifest 摘要和 `as_of`，并从该 contract 自动生成 `artifacts/metadata/dataset_registry.csv`。
 * 如需在 patch merge 成功后删除本轮生成的 `__patch` / `__repair` 中间目录，显式传 `--prune-successful-patches`；默认仅保留，由后续 audit/prune 报告给出清理建议。
+* audit/prune 只把 current contract 当作硬保护；历史 release / report 里出现过的路径会作为软引用写入报告，但不再单独阻止自动 prune 候选生成。
 * 默认 `--gate-on-severity warning`。如果 inspect 达到阈值，`latest` alias 重新指派、package 和 release 会被拦截。
 * 单独跑 `inspect` 时，通常只生成报告，不触发后续门控推进。
 * `repair` 会读取 workflow report 中的 `inspect.assets.<asset>.repair_candidates`，按 `symbol/date` 精简后重拉问题子集，并执行 patch merge。

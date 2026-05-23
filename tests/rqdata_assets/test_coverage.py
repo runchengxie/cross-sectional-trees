@@ -578,6 +578,7 @@ def test_inspect_hk_pit_coverage_include_health_reports_target_date_staleness(
         "check": "symbol_without_any_pit_row_before_target_date",
         "field": None,
         "severity": "error",
+        "classification": "local-gap",
         "affected_symbols": 1,
         "affected_pct": 33.33,
         "sample_symbols": ["00700.HK"],
@@ -599,6 +600,78 @@ def test_inspect_hk_pit_coverage_include_health_reports_target_date_staleness(
         "message": "2 quality issue(s) detected, including at least one error.",
     }
     assert payload["quality_verdict"] == health["quality_verdict"]
+
+
+def test_inspect_hk_pit_coverage_downgrades_manifest_missing_remote_symbols(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
+    asset_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    pd.DataFrame(
+        {
+            "trade_date": ["20260522"],
+            "symbol": ["00005.HK"],
+            "revenue": [100.0],
+        }
+    ).to_parquet(asset_dir / "pipeline_fundamentals.parquet", index=False)
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "pit_financials",
+                "status": "completed",
+                "missing_symbols": ["00700.HK"],
+                "totals": {"symbols_missing_remote": 1},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    symbols_file = repo_root / "symbols.txt"
+    symbols_file.write_text("00005.HK\n00700.HK\n", encoding="utf-8")
+    out_path = repo_root / "coverage_provider_boundary.json"
+
+    args = SimpleNamespace(
+        config=None,
+        asset_dir=str(asset_dir),
+        fundamentals_file=None,
+        field_profile=[],
+        field=["revenue"],
+        fields_file=[],
+        mode="strict",
+        include_health=True,
+        target_date="20260522",
+        symbols_file=str(symbols_file),
+        by_date_file=None,
+        health_sample_limit=3,
+        min_symbols=1,
+        top=10,
+        quarter_limit=12,
+        format="json",
+        out=str(out_path),
+    )
+
+    assert rqdata_assets.inspect_hk_pit_coverage(args) == 0
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    health = payload["health"]
+    checks = {(item["check"], item.get("field")): item for item in health["quality_checks"]}
+
+    assert health["summary"]["symbols_missing_remote_in_manifest"] == 1
+    assert health["summary"]["symbols_missing_local_without_manifest_evidence"] == 0
+    assert checks[("symbol_without_remote_pit_row_before_target_date", None)] == {
+        "check": "symbol_without_remote_pit_row_before_target_date",
+        "field": None,
+        "severity": "warning",
+        "classification": "provider-boundary",
+        "affected_symbols": 1,
+        "affected_pct": 50.0,
+        "sample_symbols": ["00700.HK"],
+    }
+    assert ("symbol_without_any_pit_row_before_target_date", None) not in checks
+    assert health["quality_verdict"]["overall_severity"] == "warning"
+
 
 def test_inspect_hk_pit_coverage_fail_on_severity_auto_enables_health(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"

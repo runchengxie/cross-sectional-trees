@@ -221,6 +221,7 @@ def _build_pit_health_section(
     *,
     args,
     config_data: Mapping[str, object] | None,
+    asset_manifest: Mapping[str, object] | None,
     frame: pd.DataFrame,
     feature_frame: pd.DataFrame,
     selected_features: Sequence[str],
@@ -251,6 +252,13 @@ def _build_pit_health_section(
     available_set = set(all_fundamentals_symbols)
     available_symbols = [symbol for symbol in requested_symbols if symbol in available_set]
     missing_asset_symbols = [symbol for symbol in requested_symbols if symbol not in available_set]
+    manifest_missing_remote_symbols = set(
+        _normalize_symbol_list(
+            asset_manifest.get("missing_symbols")
+            if isinstance(asset_manifest, Mapping)
+            else []
+        )
+    )
 
     scope_mask = frame["symbol"].isin(requested_set) & (frame["trade_date"] <= target_date)
     scoped_frame = frame.loc[scope_mask].copy()
@@ -363,9 +371,17 @@ def _build_pit_health_section(
         )
     )
 
-    feature_date_frame = pd.DataFrame(index=requested_symbols)
-    for feature, latest_dates in feature_date_map.items():
-        feature_date_frame[feature] = latest_dates.reindex(requested_symbols)
+    feature_date_frame = (
+        pd.concat(
+            {
+                feature: latest_dates.reindex(requested_symbols)
+                for feature, latest_dates in feature_date_map.items()
+            },
+            axis=1,
+        )
+        if feature_date_map
+        else pd.DataFrame(index=requested_symbols)
+    )
     any_feature_mask = feature_date_frame.notna().any(axis=1) if not feature_date_frame.empty else pd.Series(False, index=requested_symbols)
     all_feature_mask = feature_date_frame.notna().all(axis=1) if not feature_date_frame.empty else pd.Series(False, index=requested_symbols)
     complete_oldest_dates = (
@@ -406,15 +422,34 @@ def _build_pit_health_section(
     ]
 
     symbols_without_rows = [symbol for symbol in requested_symbols if symbol not in set(latest_row_dates.index)]
-    if symbols_without_rows:
+    provider_missing_symbols = [
+        symbol for symbol in symbols_without_rows if symbol in manifest_missing_remote_symbols
+    ]
+    local_missing_symbols = [
+        symbol for symbol in symbols_without_rows if symbol not in manifest_missing_remote_symbols
+    ]
+    if provider_missing_symbols:
+        quality_checks.append(
+            {
+                "check": "symbol_without_remote_pit_row_before_target_date",
+                "field": None,
+                "severity": "warning",
+                "classification": "provider-boundary",
+                "affected_symbols": len(provider_missing_symbols),
+                "affected_pct": _round_pct(len(provider_missing_symbols), total_symbols),
+                "sample_symbols": _make_sample_symbols(provider_missing_symbols, limit=sample_limit),
+            }
+        )
+    if local_missing_symbols:
         quality_checks.append(
             {
                 "check": "symbol_without_any_pit_row_before_target_date",
                 "field": None,
                 "severity": "error",
-                "affected_symbols": len(symbols_without_rows),
-                "affected_pct": _round_pct(len(symbols_without_rows), total_symbols),
-                "sample_symbols": _make_sample_symbols(symbols_without_rows, limit=sample_limit),
+                "classification": "local-gap",
+                "affected_symbols": len(local_missing_symbols),
+                "affected_pct": _round_pct(len(local_missing_symbols), total_symbols),
+                "sample_symbols": _make_sample_symbols(local_missing_symbols, limit=sample_limit),
             }
         )
 
@@ -462,6 +497,8 @@ def _build_pit_health_section(
             "symbols_scanned": total_symbols,
             "symbols_available_in_fundamentals": len(available_symbols),
             "symbols_missing_in_fundamentals": len(missing_asset_symbols),
+            "symbols_missing_remote_in_manifest": len(provider_missing_symbols),
+            "symbols_missing_local_without_manifest_evidence": len(local_missing_symbols),
             "symbols_with_any_row_before_target_date": int(latest_row_dates.index.nunique()),
             "symbols_without_any_row_before_target_date": len(symbols_without_rows),
             "symbols_with_any_selected_features_asof_target_date": int(any_feature_mask.sum()) if len(any_feature_mask) else 0,
@@ -1327,6 +1364,7 @@ def inspect_hk_pit_coverage(args) -> int:
         _build_pit_health_section(
             args=args,
             config_data=config_data,
+            asset_manifest=asset_manifest if isinstance(asset_manifest, Mapping) else None,
             frame=frame,
             feature_frame=feature_frame,
             selected_features=selected_features,

@@ -688,13 +688,13 @@ cstree rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refr
 说明：
 
 - 程序首选读取 `artifacts/metadata/current_assets/hk_current.json` 作为依赖参照物；一旦缺失，将退回到 `artifacts/` 主节点中进行线索追溯，并将证据保留在生成的 `inventory` 文档中。
-- 生成的 `inventory.records[]` 矩阵会汇总所有 current 引用、报表、release 快照以及各自的分类归属。资产池的状态标签会被划分为：`current`、`retained`、`unreferenced` 或是存在冲突的 `metadata-inconsistent`。
+- 生成的 `inventory.records[]` 矩阵会汇总所有 current 引用、报表、release 快照以及各自的分类归属。资产池的状态标签会被划分为：`current`、`retained`、`unreferenced` 或是存在冲突的 `metadata-inconsistent`。其中 current 引用是硬保护；release / report 引用只作为软证据保留，不再阻止 prune 候选生成。
 - `freshness.etf_daily` 扫描器将专门盯防 ETF 数据列：确保其覆盖从创设初段（如 2000 年代）直至当前的 `--target-date` 窗口，同时精确切割出提供商空隙（`provider-boundary`）和本地遗漏（`local-gap`）两类问题。
 - `freshness.intraday` 默认使用清单合同校验其最大日期。需要高频扫描时可开启 `--intraday-mode scan`；更重度的体检可启用 `--intraday-mode health` 挂载执行 `inspect-hk-intraday-health` 逻辑。
 - `health` 聚合面板会归档同一目标日下包括 current / daily / valuation / PIT 等在内的工作流日志。显式传入的 PIT / intraday report 会按文件名归入对应类别并去重；`intraday_health` 只有在 `--intraday-mode health` 或已有 report 时才参与，避免默认审计触发重 I/O 预期。
 - `repair.candidates[]` 提供的是系统建议。仅在参数中成对提供 `--execute-repair` 及其对应的 `--approved-repair-action` 指令后，系统才会落实建议自动修复错误。
 - 规划阶段产生的 `prune.candidates[]` 均为虚拟试运行指令。必须附带 `--delete-prune-candidates` 参数且明确出具 `--approved-prune-path` 认可意见后，废弃数据的真实删除操作才会落地。
-- `prune.manual_review_candidates[]` 只做人工清理建议，不会被 `--delete-prune-candidates` 自动删除。它会按可节省空间排序，列出 snapshot、已被新版替代但仍被报告引用、或 metadata 不一致的路径，并保留引用摘要和删除风险说明。
+- `prune.manual_review_candidates[]` 只做人工清理建议，不会被 `--delete-prune-candidates` 自动删除。它会按可节省空间排序，列出 snapshot、已被新版替代但尚未形成自动删除证据、或 metadata 不一致的路径，并保留引用摘要和删除风险说明。
 
 ### cstree rqdata sync-hk-intraday
 

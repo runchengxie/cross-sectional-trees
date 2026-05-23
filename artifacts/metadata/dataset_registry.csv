@@ -11,13 +11,13 @@ hk_etf_daily_clean,20260508,hk,etf_daily_clean,2000-01-01 to 2026-05-08,derived,
 hk_etf_instruments,20260522,hk,etf_instruments,as of 2026-05-22,rqdata,,,current HK ETF instrument master,artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_20260522.parquet
 hk_valuation,20260522,hk,valuation,2000-01-01 to 2026-05-22,rqdata,11082906,3195,current HK valuation factors,artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260522_valuation_full_market_refetched_latest
 hk_instruments,20260522,hk,instruments,as of 2026-05-22,rqdata,,,current HK instrument master,artifacts/assets/rqdata/hk/instruments/hk_all_instruments_20260522.parquet
-hk_pit,20260515,hk,pit,as of 2026-05-15,rqdata,110611,3186,current HK PIT fundamentals asset,artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_asof_20260515_patch_2024q4_2025q4
+hk_pit,20260522,hk,pit,as of 2026-05-22,rqdata,110901,3186,current HK PIT fundamentals asset,artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2026_full_market_asof_20260522_patch_2024q4_2026q1
 hk_ex_factors,20260522,hk,ex_factors,2000-01-01 to 2026-05-22,rqdata,34551,2687,current HK ex-factor events,artifacts/assets/rqdata/hk/ex_factors/hk_all_2000_20260522_ex_factors_full_market_latest
 hk_dividends,20260522,hk,dividends,2000-01-01 to 2026-05-22,rqdata,30311,2301,current HK dividend events,artifacts/assets/rqdata/hk/dividends/hk_all_2000_20260522_dividends_full_market_latest
 hk_shares,20260522,hk,shares,2000-01-01 to 2026-05-22,rqdata,97634,3195,current HK share capital events,artifacts/assets/rqdata/hk/shares/hk_all_2000_20260522_shares_full_market_latest
 hk_exchange_rate,20260522,hk,exchange_rate,2026-03-20 to 2026-05-22,rqdata,365,,current HK exchange-rate reference asset,artifacts/assets/rqdata/hk/exchange_rate/hk_exchange_rate_probe_20260320_20260522
 hk_southbound,20260522,hk,southbound,2014-11-17 to 2026-05-22,rqdata,59624,338,current HK Connect southbound eligibility asset,artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_20260522
-hk_financial_details,20260515,hk,financial_details,as of 2026-05-15,rqdata,11394,353,current HK financial details asset,artifacts/assets/rqdata/hk/financial_details/hk_financial_details_hk_all3195_superset_2000_2025_20260515
+hk_financial_details,20260522,hk,financial_details,as of 2026-05-22,rqdata,11586,365,current HK financial details asset,artifacts/assets/rqdata/hk/financial_details/hk_financial_details_hk_all3195_superset_2000_2026_20260522
 hk_industry_changes,20260522,hk,industry_changes,2000-01-01 to 2026-05-22,rqdata,3737,3045,current HK industry membership changes,artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260522_industry_changes_full_market_latest
 hk_universe_by_date,20260522,hk,universe_by_date,,derived,,,current HK full-market universe by date,artifacts/assets/universe/hk_all_full_by_date.csv
 hk_universe_symbols,20260522,hk,universe_symbols,,derived,,,current HK latest full-market universe symbols,artifacts/assets/universe/hk_all_full_symbols.txt

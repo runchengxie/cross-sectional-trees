@@ -338,7 +338,7 @@ def _classify_inventory_record(record: dict[str, Any]) -> str:
     ref_types = {str(item.get("type")) for item in refs if isinstance(item, Mapping)}
     if "current" in ref_types:
         return "current"
-    if ref_types.intersection({"release", "report", "workflow"}):
+    if "workflow" in ref_types:
         return "retained"
     return "unreferenced"
 
@@ -1436,7 +1436,9 @@ def build_prune_plan(
                     "replacement": replacement,
                     "bytes": _path_size(path),
                     "classification": "deletion-candidate",
-                    "references_checked": ["current", "release", "report"],
+                    "references": _record_references_summary(record),
+                    "references_checked": ["current"],
+                    "soft_references_ignored_for_prune": ["release", "report"],
                 }
             )
         else:
