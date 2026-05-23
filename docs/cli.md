@@ -642,7 +642,7 @@ cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/val
 cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --field pe_ratio_ttm --field pb_ratio_ttm --target-date 20260331 --format json --out artifacts/reports/hk_valuation_health_20260331.json
 cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260331_valuation_full_market_latest --by-date-file artifacts/assets/universe/hk_selected_pit_research_by_date.csv --target-date 20260331
 cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --target-date 20260401 --include-history --history-sample-limit 10 --format json --out artifacts/reports/hk_daily_health_20260401_full_history.json
-cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260401_valuation_full_market_refetched_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260401_daily_clean_latest --target-date 20260401 --include-history --format json --out artifacts/reports/hk_valuation_health_20260401_with_daily_ref.json
+cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260401_valuation_full_market_refetched_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_2000_20260401_daily_clean_latest --target-date 20260401 --include-history --history-tail-days 370 --history-timeout-seconds 600 --format json --out artifacts/reports/hk_valuation_health_20260401_with_daily_ref.json
 ```
 
 说明：
@@ -654,7 +654,7 @@ cstree rqdata inspect-hk-asset-health --asset-dir artifacts/assets/rqdata/hk/val
 - 对针对 `daily` 类型的量价资产，系统会增加特定的逻辑校验，比如识别 `high/low/open/close` 边界的非自洽冲突以及负成交量、负成交额异常。
 - `sample_stale_symbols` 清单重点曝光覆盖不到目标日落后标的，帮助排查是因为原始数据池缺失，还是单纯的更新滞后。
 - 诊断记录包含对 `audit.csv` 失败日志的挖掘，辅助操作者区分这是由于权限、流量限额问题造成的阻断，还是远端数据源本身的缺失。
-- 加入 `--include-history` 开关后，系统会启动历史扫描回溯功能。例如，深挖日线价量矛盾、零负价差、以及长周期常数值固化等隐藏问题。可通过 `--history-sample-limit` 灵活配置采样展示的数量规模。
+- 加入 `--include-history` 开关后，系统会启动历史扫描回溯功能。例如，深挖日线价量矛盾、零负价差、以及长周期常数值固化等隐藏问题。可通过 `--history-sample-limit` 灵活配置采样展示的数量规模；对 `valuation` 这类大资产，优先配合 `--history-tail-days`、`--history-timeout-seconds`、`--history-max-symbols` 和 `--history-progress-every-symbols` 做增量或尾部检查，避免每次重扫全历史。
 - 当分析 `valuation` 类资产并绑定了 `--daily-asset-dir` 时，系统将引用本地日线收盘价展开辅助验证：若发现收盘价未发生活动，系统即会智能静默连续的估值停滞警告，由此过滤掉因长期停牌或无交易引发的平价固化噪音。
 - `json` 格式报告的尾部总揽中带有高度集成的 `quality_verdict` 评分体系；结合 `--fail-on-severity none|info|warning|error` 参数控制运行退出状态。
 
@@ -701,10 +701,10 @@ cstree rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refr
 贯穿执行港股 `5m` 分钟线的一站式维护通道：首先将 intraday 数据下载并暂存到缓存层，紧接调用深度数据检查；放行后自动将缓存提升为正式 intraday 快照资产，并刷新 `hk_intraday_latest` 别名；如有更进一步的归档需求，须显式引入 `--package` 或 `--release` 开关完成 tarball 压缩和 GitHub 发行。
 
 ```bash
-cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --resume
-cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --inspect-fail-on-severity error
-cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --verify-full-asset --full-inspect-fail-on-severity none
-cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --package
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --resume
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --inspect-fail-on-severity error
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --verify-full-asset --full-inspect-fail-on-severity none
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --package
 ```
 
 说明：
@@ -722,9 +722,9 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 
 ```bash
 cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet
-cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --format json --out artifacts/reports/hk_intraday_health_20260401.json
-cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --intraday-adjust-type pre --daily-adjust-type none
-cstree rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intraday/hk_intraday_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
+cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest --format json --out artifacts/reports/hk_intraday_health_20260401.json
+cstree rqdata inspect-hk-intraday-health --input artifacts/cache/intraday/hk_all_5m_20260327_20260401.parquet --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest --intraday-adjust-type pre --daily-adjust-type none
+cstree rqdata inspect-hk-intraday-health --input artifacts/assets/rqdata/hk/intraday/hk_intraday_latest --daily-asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
 ```
 
 说明：

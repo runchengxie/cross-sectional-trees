@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import time
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -782,10 +784,13 @@ def _init_history_state(*, dataset: str | None) -> dict[str, object]:
     return {
         "dataset": dataset,
         "symbols_scanned": 0,
+        "symbols_skipped": 0,
         "rows_scanned": 0,
         "date_min": None,
         "date_max": None,
         "issues": issues,
+        "truncated": False,
+        "truncation_reason": None,
     }
 
 
@@ -2010,7 +2015,10 @@ def _update_asset_health_symbol_history_state(
 ) -> None:
     if history_state is None:
         return
+    if work.empty:
+        return
 
+    history_state["symbols_scanned"] = int(history_state["symbols_scanned"]) + 1
     history_state["rows_scanned"] = int(history_state["rows_scanned"]) + int(len(work))
     history_date_min = work[date_column].min()
     history_date_max = work[date_column].max()
@@ -2046,6 +2054,192 @@ def _update_asset_health_symbol_history_state(
             instrument_reference=instrument_reference,
             valuation_reference_loader=valuation_reference_loader,
         )
+
+
+def _parse_history_date(value: object, *, label: str) -> pd.Timestamp | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return _parse_compact_date(text, label=label).normalize()
+
+
+def _resolve_history_window(
+    args,
+    *,
+    target_date: pd.Timestamp,
+) -> dict[str, object]:
+    tail_days_raw = getattr(args, "history_tail_days", None)
+    tail_days = int(tail_days_raw) if tail_days_raw not in (None, "") else None
+    if tail_days is not None and tail_days <= 0:
+        raise SystemExit("--history-tail-days must be > 0 when provided.")
+
+    start = _parse_history_date(
+        getattr(args, "history_start_date", None),
+        label="--history-start-date",
+    )
+    end = _parse_history_date(
+        getattr(args, "history_end_date", None),
+        label="--history-end-date",
+    )
+    if tail_days is not None and start is None:
+        start = (target_date - pd.Timedelta(days=tail_days - 1)).normalize()
+    if start is not None and end is not None and start > end:
+        raise SystemExit("--history-start-date must be <= --history-end-date.")
+
+    timeout_raw = getattr(args, "history_timeout_seconds", None)
+    timeout_seconds = float(timeout_raw) if timeout_raw not in (None, "") else None
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise SystemExit("--history-timeout-seconds must be > 0 when provided.")
+
+    max_symbols_raw = getattr(args, "history_max_symbols", None)
+    max_symbols = int(max_symbols_raw) if max_symbols_raw not in (None, "") else None
+    if max_symbols is not None and max_symbols <= 0:
+        raise SystemExit("--history-max-symbols must be > 0 when provided.")
+
+    progress_raw = getattr(args, "history_progress_every_symbols", 0)
+    progress_every = int(progress_raw or 0)
+    if progress_every < 0:
+        raise SystemExit("--history-progress-every-symbols must be >= 0.")
+
+    return {
+        "start": start,
+        "end": end,
+        "tail_days": tail_days,
+        "timeout_seconds": timeout_seconds,
+        "max_symbols": max_symbols,
+        "progress_every": progress_every,
+        "started_at": time.monotonic(),
+    }
+
+
+def _filter_history_work_frame(
+    work: pd.DataFrame,
+    *,
+    date_column: str,
+    history_window: Mapping[str, object],
+) -> pd.DataFrame:
+    start = history_window.get("start")
+    end = history_window.get("end")
+    if start is None and end is None:
+        return work
+    mask = pd.Series(True, index=work.index, dtype=bool)
+    if start is not None:
+        mask &= work[date_column] >= start
+    if end is not None:
+        mask &= work[date_column] <= end
+    return work.loc[mask].copy()
+
+
+def _history_scan_exhausted(
+    *,
+    history_state: dict[str, object] | None,
+    history_window: Mapping[str, object],
+) -> str | None:
+    if history_state is None:
+        return None
+    max_symbols = history_window.get("max_symbols")
+    if max_symbols is not None and int(history_state.get("symbols_scanned") or 0) >= int(max_symbols):
+        return "max_symbols"
+    timeout_seconds = history_window.get("timeout_seconds")
+    if timeout_seconds is not None:
+        elapsed = time.monotonic() - float(history_window.get("started_at") or time.monotonic())
+        if elapsed >= float(timeout_seconds):
+            return "timeout_seconds"
+    return None
+
+
+def _mark_history_scan_truncated(
+    *,
+    history_state: dict[str, object] | None,
+    reason: str,
+) -> None:
+    if history_state is None:
+        return
+    history_state["truncated"] = True
+    history_state["truncation_reason"] = reason
+    history_state["symbols_skipped"] = int(history_state.get("symbols_skipped") or 0) + 1
+
+
+def _maybe_log_history_progress(
+    *,
+    history_state: dict[str, object] | None,
+    history_window: Mapping[str, object],
+    total_symbols: int,
+    asset_dir: Path,
+) -> None:
+    if history_state is None:
+        return
+    progress_every = int(history_window.get("progress_every") or 0)
+    scanned = int(history_state.get("symbols_scanned") or 0)
+    if progress_every <= 0 or scanned <= 0 or scanned % progress_every != 0:
+        return
+    elapsed = time.monotonic() - float(history_window.get("started_at") or time.monotonic())
+    print(
+        "asset history progress:",
+        f"asset={asset_dir.name}",
+        f"symbols={scanned}/{total_symbols}",
+        f"rows={int(history_state.get('rows_scanned') or 0)}",
+        f"elapsed_seconds={elapsed:.1f}",
+        file=sys.stderr,
+    )
+
+
+def _maybe_update_asset_health_history_for_symbol(
+    *,
+    work: pd.DataFrame,
+    symbol: str,
+    date_column: str,
+    dataset: str | None,
+    selected_fields: Sequence[str],
+    history_state: dict[str, object] | None,
+    history_window: Mapping[str, object],
+    history_sample_limit: int,
+    daily_reference: pd.DataFrame | None,
+    ex_factor_reference: pd.DataFrame | None,
+    shares_reference: pd.DataFrame | None,
+    instrument_reference: pd.DataFrame | None,
+    valuation_reference_loader: _ValuationReferenceLoader | None,
+    total_symbols: int,
+    asset_dir: Path,
+) -> None:
+    if history_state is None:
+        return
+    exhaustion_reason = _history_scan_exhausted(
+        history_state=history_state,
+        history_window=history_window,
+    )
+    if exhaustion_reason:
+        _mark_history_scan_truncated(
+            history_state=history_state,
+            reason=exhaustion_reason,
+        )
+        return
+
+    history_work = _filter_history_work_frame(
+        work,
+        date_column=date_column,
+        history_window=history_window,
+    )
+    _update_asset_health_symbol_history_state(
+        work=history_work,
+        symbol=symbol,
+        date_column=date_column,
+        dataset=dataset,
+        selected_fields=selected_fields,
+        history_state=history_state,
+        sample_limit=history_sample_limit,
+        daily_reference=daily_reference,
+        ex_factor_reference=ex_factor_reference,
+        shares_reference=shares_reference,
+        instrument_reference=instrument_reference,
+        valuation_reference_loader=valuation_reference_loader,
+    )
+    _maybe_log_history_progress(
+        history_state=history_state,
+        history_window=history_window,
+        total_symbols=total_symbols,
+        asset_dir=asset_dir,
+    )
 
 
 def _record_asset_health_missing_target_field(
@@ -2312,6 +2506,19 @@ def inspect_hk_asset_health(args) -> int:
     )
     include_history = bool(getattr(args, "include_history", False))
     history_state = _init_history_state(dataset=dataset) if include_history else None
+    history_window = (
+        _resolve_history_window(args, target_date=target_date)
+        if include_history
+        else {
+            "start": None,
+            "end": None,
+            "tail_days": None,
+            "timeout_seconds": None,
+            "max_symbols": None,
+            "progress_every": 0,
+            "started_at": None,
+        }
+    )
     (
         daily_reference_asset_dir,
         ex_factor_reference_asset_dir,
@@ -2386,8 +2593,6 @@ def inspect_hk_asset_health(args) -> int:
             selected_fields=selected_fields,
             dataset=dataset,
         )
-        if history_state is not None:
-            history_state["symbols_scanned"] = int(history_state["symbols_scanned"]) + 1
         if work.empty:
             if len(stale_rows) < sample_limit:
                 stale_rows.append(
@@ -2407,19 +2612,22 @@ def inspect_hk_asset_health(args) -> int:
             duplicate_date_stats=duplicate_date_stats,
             sample_limit=sample_limit,
         )
-        _update_asset_health_symbol_history_state(
+        _maybe_update_asset_health_history_for_symbol(
             work=work,
             symbol=symbol,
             date_column=date_column,
             dataset=dataset,
             selected_fields=selected_fields,
             history_state=history_state,
-            sample_limit=history_sample_limit,
+            history_window=history_window,
+            history_sample_limit=history_sample_limit,
             daily_reference=daily_reference,
             ex_factor_reference=ex_factor_reference,
             shares_reference=shares_reference,
             instrument_reference=instrument_reference,
             valuation_reference_loader=valuation_reference_loader,
+            total_symbols=len(candidate_symbols),
+            asset_dir=asset_dir,
         )
 
         latest_ts = work[date_column].max()
@@ -2565,4 +2773,19 @@ def inspect_hk_asset_health(args) -> int:
         stale_rows=stale_rows,
         field_rows=field_rows,
     )
+    if history_state is not None:
+        payload["history_scan_control"] = {
+            "start_date": _format_date(history_window.get("start")),
+            "end_date": _format_date(history_window.get("end")),
+            "tail_days": history_window.get("tail_days"),
+            "timeout_seconds": history_window.get("timeout_seconds"),
+            "max_symbols": history_window.get("max_symbols"),
+            "progress_every_symbols": history_window.get("progress_every"),
+            "truncated": bool(history_state.get("truncated")),
+            "truncation_reason": history_state.get("truncation_reason"),
+            "symbols_skipped": int(history_state.get("symbols_skipped") or 0),
+        }
+        payload["summary"]["history_scan_truncated"] = bool(history_state.get("truncated"))
+        payload["summary"]["history_scan_truncation_reason"] = history_state.get("truncation_reason")
+        payload["summary"]["history_symbols_skipped"] = int(history_state.get("symbols_skipped") or 0)
     return _write_asset_health_output(args, payload)

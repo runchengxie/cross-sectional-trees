@@ -228,6 +228,8 @@ run_step \
   --asset-dir "${DAILY_CLEAN_DIR}" \
   --target-date "${TARGET_DATE}" \
   --include-history \
+  --history-tail-days 370 \
+  --history-timeout-seconds 600 \
   --history-sample-limit "${HISTORY_SAMPLE_LIMIT}" \
   --fail-on-severity "${FAIL_ON_SEVERITY}" \
   --format json \

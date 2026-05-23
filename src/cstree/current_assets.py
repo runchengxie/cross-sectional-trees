@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 from collections.abc import Mapping
@@ -74,6 +76,7 @@ def load_manifest_summary(path: Path | None) -> dict[str, Any] | None:
     if not isinstance(payload, Mapping):
         return None
     query = payload.get("query") if isinstance(payload.get("query"), Mapping) else {}
+    totals = payload.get("totals") if isinstance(payload.get("totals"), Mapping) else {}
     output_dir = str(payload.get("output_dir") or "").strip()
     snapshot_name = Path(output_dir).name if output_dir else None
     query_end_date = None
@@ -84,12 +87,26 @@ def load_manifest_summary(path: Path | None) -> dict[str, Any] | None:
         query_end_date = str(value).strip() or None
         if query_end_date:
             break
+    query_start_date = None
+    for key in ("start_date", "start", "from"):
+        value = query.get(key)
+        if value is None:
+            continue
+        query_start_date = str(value).strip() or None
+        if query_start_date:
+            break
     return {
         "dataset": str(payload.get("dataset") or "").strip() or None,
         "status": str(payload.get("status") or "").strip() or None,
         "output_dir": output_dir or None,
         "snapshot_name": snapshot_name,
+        "query_start_date": query_start_date,
         "query_end_date": query_end_date,
+        "totals": {
+            str(key): int(value)
+            for key, value in totals.items()
+            if str(key).strip() and str(value).strip().isdigit()
+        },
     }
 
 
@@ -173,6 +190,182 @@ def load_current_contract(path: Path) -> dict[str, Any] | None:
         return None
     payload = json.loads(path.read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else None
+
+
+DATASET_REGISTRY_RELATIVE_PATH = Path("metadata") / "dataset_registry.csv"
+DATASET_REGISTRY_COLUMNS = (
+    "dataset_name",
+    "version",
+    "market",
+    "type",
+    "date_range",
+    "source",
+    "records",
+    "symbols",
+    "description",
+    "path",
+)
+DATASET_REGISTRY_DESCRIPTIONS = {
+    "current_contract": "current HK asset contract with resolved aliases and manifest summaries",
+    "daily": "current HK raw daily OHLCV asset",
+    "daily_clean": "current HK daily clean layer",
+    "intraday": "current HK intraday 5m asset",
+    "etf_daily": "current HK ETF raw daily asset",
+    "etf_daily_clean": "current HK ETF daily clean layer",
+    "etf_instruments": "current HK ETF instrument master",
+    "valuation": "current HK valuation factors",
+    "instruments": "current HK instrument master",
+    "pit": "current HK PIT fundamentals asset",
+    "ex_factors": "current HK ex-factor events",
+    "dividends": "current HK dividend events",
+    "shares": "current HK share capital events",
+    "exchange_rate": "current HK exchange-rate reference asset",
+    "southbound": "current HK Connect southbound eligibility asset",
+    "financial_details": "current HK financial details asset",
+    "industry_changes": "current HK industry membership changes",
+    "universe_by_date": "current HK full-market universe by date",
+    "universe_symbols": "current HK latest full-market universe symbols",
+    "universe_meta": "current HK universe build metadata",
+}
+DATASET_REGISTRY_SOURCES = {
+    "daily_clean": "derived",
+    "etf_daily_clean": "derived",
+    "universe_by_date": "derived",
+    "universe_symbols": "derived",
+    "universe_meta": "derived",
+    "instruments": "rqdata",
+    "etf_instruments": "rqdata",
+}
+
+
+def default_dataset_registry_path(artifacts_root: str | Path) -> Path:
+    return Path(artifacts_root).expanduser().resolve() / DATASET_REGISTRY_RELATIVE_PATH
+
+
+def _registry_date(value: object | None) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.search(r"(\d{8})", text)
+    if match:
+        token = match.group(1)
+        return f"{token[:4]}-{token[4:6]}-{token[6:8]}"
+    return text
+
+
+def _registry_path(path_text: object, *, artifacts_root: Path) -> str:
+    path = Path(str(path_text or "")).expanduser()
+    try:
+        return path.resolve(strict=False).relative_to(artifacts_root.parent.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _registry_records_text(entry: Mapping[str, Any]) -> str:
+    manifest = entry.get("manifest") if isinstance(entry.get("manifest"), Mapping) else {}
+    totals = manifest.get("totals") if isinstance(manifest.get("totals"), Mapping) else {}
+    rows = totals.get("rows")
+    files = totals.get("files")
+    if rows is not None:
+        return str(rows)
+    if files is not None:
+        return f"{files} files"
+    return ""
+
+
+def _registry_symbols_text(entry: Mapping[str, Any]) -> str:
+    manifest = entry.get("manifest") if isinstance(entry.get("manifest"), Mapping) else {}
+    totals = manifest.get("totals") if isinstance(manifest.get("totals"), Mapping) else {}
+    for key in ("symbols_written", "symbols", "files"):
+        if totals.get(key) is not None:
+            return str(totals[key])
+    return ""
+
+
+def _registry_date_range(entry: Mapping[str, Any]) -> str:
+    manifest = entry.get("manifest") if isinstance(entry.get("manifest"), Mapping) else {}
+    start = _registry_date(manifest.get("query_start_date"))
+    end = _registry_date(manifest.get("query_end_date") or entry.get("as_of"))
+    if start and end:
+        return f"{start} to {end}"
+    if end:
+        return f"as of {end}"
+    return ""
+
+
+def build_dataset_registry_rows(contract: Mapping[str, Any]) -> list[dict[str, str]]:
+    contract_meta = contract.get("contract") if isinstance(contract.get("contract"), Mapping) else {}
+    target_date = str(contract_meta.get("target_date") or "").strip()
+    assets = contract.get("assets") if isinstance(contract.get("assets"), Mapping) else {}
+    artifacts_root = Path(str(contract_meta.get("artifacts_root") or "artifacts")).resolve()
+    contract_path = str(contract_meta.get("contract_path") or "").strip()
+    rows: list[dict[str, str]] = []
+    if contract_path:
+        rows.append(
+            {
+                "dataset_name": "hk_current_contract",
+                "version": target_date,
+                "market": "hk",
+                "type": "metadata",
+                "date_range": f"as of {_registry_date(target_date)}" if target_date else "",
+                "source": "local",
+                "records": f"{len(assets)} assets",
+                "symbols": str(len(assets)),
+                "description": DATASET_REGISTRY_DESCRIPTIONS["current_contract"],
+                "path": _registry_path(contract_path, artifacts_root=artifacts_root),
+            }
+        )
+    for asset_key, raw_entry in assets.items():
+        if not isinstance(raw_entry, Mapping):
+            continue
+        resolved_path = str(raw_entry.get("resolved_path") or raw_entry.get("alias_path") or "").strip()
+        if not resolved_path:
+            continue
+        manifest = raw_entry.get("manifest") if isinstance(raw_entry.get("manifest"), Mapping) else {}
+        as_of = str(raw_entry.get("as_of") or manifest.get("query_end_date") or target_date).strip()
+        version = re.sub(r"\D", "", as_of) or target_date
+        rows.append(
+            {
+                "dataset_name": f"hk_{asset_key}",
+                "version": version,
+                "market": "hk",
+                "type": str(asset_key),
+                "date_range": _registry_date_range(raw_entry),
+                "source": DATASET_REGISTRY_SOURCES.get(
+                    str(asset_key),
+                    "rqdata" if manifest.get("dataset") else "local",
+                ),
+                "records": _registry_records_text(raw_entry),
+                "symbols": _registry_symbols_text(raw_entry),
+                "description": DATASET_REGISTRY_DESCRIPTIONS.get(str(asset_key), f"current HK {asset_key} asset"),
+                "path": _registry_path(resolved_path, artifacts_root=artifacts_root),
+            }
+        )
+    return rows
+
+
+def render_dataset_registry_csv(
+    contract: Mapping[str, Any],
+    *,
+    generated_at: datetime | None = None,
+) -> str:
+    generated = generated_at or datetime.now().astimezone()
+    buffer = io.StringIO()
+    buffer.write("# Dataset Registry for current HK research data assets.\n")
+    buffer.write(
+        "# Auto-generated from artifacts/metadata/current_assets/hk_current.json; "
+        "prefer hk_current.json plus each asset manifest for source-of-truth freshness.\n"
+    )
+    buffer.write(f"# Last updated: {generated.date().isoformat()}\n")
+    writer = csv.DictWriter(buffer, fieldnames=list(DATASET_REGISTRY_COLUMNS), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(build_dataset_registry_rows(contract))
+    return buffer.getvalue()
+
+
+def write_dataset_registry(path: Path, contract: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_dataset_registry_csv(contract), encoding="utf-8")
 
 
 def current_contract_entry(contract: Mapping[str, Any] | None, asset_key: str) -> dict[str, Any] | None:

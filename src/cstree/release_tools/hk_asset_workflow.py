@@ -7,7 +7,7 @@ import shlex
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -16,7 +16,9 @@ import yaml
 
 from cstree.current_assets import (
     build_hk_current_contract,
+    default_dataset_registry_path,
     default_hk_current_contract_path,
+    write_dataset_registry,
     write_current_contract,
 )
 
@@ -404,16 +406,31 @@ def _build_gate_quality_summary(path: Path, *, threshold: str) -> dict[str, Any]
     }
 
 
-def _is_daily_price_bounds_only_gate_hit(summary: Mapping[str, Any]) -> bool:
+RAW_DAILY_DIAGNOSTIC_CHECKS = {
+    "daily_price_bounds_violation",
+    "daily_nonpositive_price",
+    "daily_negative_volume",
+    "daily_negative_total_turnover",
+    "daily_price_bounds_violation_any_date",
+    "daily_nonpositive_price_any_date",
+    "daily_negative_volume_any_date",
+    "daily_negative_total_turnover_any_date",
+}
+
+
+def _daily_raw_diagnostic_gate_checks(summary: Mapping[str, Any]) -> set[str] | None:
     relevant_checks = summary.get("quality_checks")
     if not isinstance(relevant_checks, list) or not relevant_checks:
-        return False
+        return None
+    checks: set[str] = set()
     for item in relevant_checks:
         if not isinstance(item, Mapping):
-            return False
-        if str(item.get("check") or "").strip() != "daily_price_bounds_violation":
-            return False
-    return True
+            return None
+        check = str(item.get("check") or "").strip()
+        if check not in RAW_DAILY_DIAGNOSTIC_CHECKS:
+            return None
+        checks.add(check)
+    return checks
 
 
 def _suppress_gate_hits_for_clean_daily_consumer_path(
@@ -434,11 +451,18 @@ def _suppress_gate_hits_for_clean_daily_consumer_path(
     daily_clean_summary = by_asset.get("daily_clean")
     if daily_summary is None or daily_clean_summary is None:
         return gate_results
-    if not _is_daily_price_bounds_only_gate_hit(daily_summary):
+    diagnostic_checks = _daily_raw_diagnostic_gate_checks(daily_summary)
+    if not diagnostic_checks:
         return gate_results
     if _health_summary_hits_gate(daily_clean_summary, threshold=threshold):
         return gate_results
 
+    if diagnostic_checks == {"daily_price_bounds_violation"}:
+        reason = "raw daily price-bounds-only issues are tolerated when daily_clean passes the gate"
+    else:
+        reason = (
+            "raw daily diagnostic data-quality issues are tolerated when daily_clean passes the gate"
+        )
     gate = report.setdefault("gate", {})
     suppressed = gate.setdefault("suppressed_triggered_assets", [])
     suppressed_entry = {
@@ -446,7 +470,7 @@ def _suppress_gate_hits_for_clean_daily_consumer_path(
         "overall_severity": daily_summary.get("overall_severity"),
         "severity_counts": dict(daily_summary.get("severity_counts") or {}),
         "report_path": daily_summary.get("report_path"),
-        "reason": "raw daily price-bounds-only issues are tolerated when daily_clean passes the gate",
+        "reason": reason,
     }
     if suppressed_entry not in suppressed:
         suppressed.append(suppressed_entry)
@@ -737,6 +761,9 @@ def _record_refresh_report(
     if action in {"patch_merge", "full_refresh", "export"}:
         refreshed_path = metadata.get("refreshed_path")
         alias_path = metadata.get("alias_path")
+        patch_path = metadata.get("patch_path")
+        if isinstance(patch_path, Path):
+            entry["merged_patch"] = _describe_path(patch_path)
         entry["refreshed"] = _describe_path(refreshed_path) if isinstance(refreshed_path, Path) else None
         entry["latest_alias"] = _describe_path(alias_path) if isinstance(alias_path, Path) else None
         if metadata.get("symbols_file") is not None:
@@ -926,6 +953,7 @@ def _build_patch_refresh_steps(
             report_metadata={
                 "action": "patch_merge",
                 "mode": "patch",
+                "patch_path": patch_dir,
                 "refreshed_path": refreshed_path,
                 "alias_path": current_path,
             },
@@ -1265,6 +1293,7 @@ def _build_repair_steps(
                     report_metadata={
                         "action": "patch_merge",
                         "mode": "repair",
+                        "patch_path": patch_path,
                         "refreshed_path": refreshed_path,
                         "alias_path": current_path,
                     },
@@ -1684,6 +1713,23 @@ def _build_inspect_steps(
             command.append("--include-history")
         if asset_name == "valuation":
             command.extend(["--daily-asset-dir", _repo_relative(bundle.daily_clean_dir)])
+            if include_history:
+                if int(args.valuation_history_tail_days) > 0:
+                    command.extend(["--history-tail-days", str(args.valuation_history_tail_days)])
+                if float(args.valuation_history_timeout_seconds) > 0:
+                    command.extend(
+                        [
+                            "--history-timeout-seconds",
+                            str(args.valuation_history_timeout_seconds),
+                        ]
+                    )
+                if int(args.valuation_history_progress_every_symbols) > 0:
+                    command.extend(
+                        [
+                            "--history-progress-every-symbols",
+                            str(args.valuation_history_progress_every_symbols),
+                        ]
+                    )
         label = f"Inspect HK {asset_name} asset health"
         if inspection_stage == "post_repair":
             label = f"Inspect HK {asset_name} asset health after repair"
@@ -1876,6 +1922,42 @@ def _maybe_repoint_alias(step: Step, *, dry_run: bool, repoint_latest: bool) -> 
         raise SystemExit(f"Expected refreshed output not found: {step.alias_target}")
     create_relative_symlink(step.alias_target, step.alias_link)
     print(f"  repointed latest alias: {_repo_relative(step.alias_link)} -> {step.alias_target.name}")
+
+
+def _is_safe_intermediate_patch_path(path: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(ASSETS_ROOT.resolve())
+    except ValueError:
+        return False
+    if path.is_symlink():
+        return False
+    return path.name.endswith("__patch") or path.name.endswith("__repair")
+
+
+def _prune_successful_patch_dirs(
+    patch_dirs: Sequence[Path],
+    *,
+    report: dict[str, Any],
+) -> None:
+    results: list[dict[str, Any]] = []
+    for path in sorted(dict.fromkeys(patch_dirs), key=lambda item: item.as_posix()):
+        result = {
+            "path": str(path),
+            "safe_intermediate_path": _is_safe_intermediate_patch_path(path),
+        }
+        if not result["safe_intermediate_path"]:
+            result["status"] = "skipped"
+            result["reason"] = "not_safe_intermediate_patch_path"
+        elif not path.exists():
+            result["status"] = "skipped"
+            result["reason"] = "path_missing"
+        else:
+            shutil.rmtree(path)
+            result["status"] = "deleted"
+        results.append(result)
+        if result["status"] == "deleted":
+            print(f"  pruned intermediate patch dir: {_repo_relative(path)}")
+    report.setdefault("workflow", {})["pruned_intermediate_patch_dirs"] = results
 
 
 def _update_active_bundle(
@@ -2089,6 +2171,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not add --include-history to inspect-hk-asset-health.",
     )
     parser.add_argument(
+        "--valuation-history-tail-days",
+        type=int,
+        default=370,
+        help=(
+            "Limit valuation --include-history scans to the trailing N calendar days. "
+            "Use 0 for full valuation history. Default: 370."
+        ),
+    )
+    parser.add_argument(
+        "--valuation-history-timeout-seconds",
+        type=float,
+        default=600.0,
+        help=(
+            "Stop valuation history scanning after this many seconds and mark the report truncated. "
+            "Use 0 to disable the timeout. Default: 600."
+        ),
+    )
+    parser.add_argument(
+        "--valuation-history-progress-every-symbols",
+        type=int,
+        default=250,
+        help="Print valuation history progress every N symbols. Use 0 to disable. Default: 250.",
+    )
+    parser.add_argument(
+        "--prune-successful-patches",
+        action="store_true",
+        help=(
+            "After successful patch/repair merges, delete the intermediate __patch/__repair directories "
+            "created by this workflow run."
+        ),
+    )
+    parser.add_argument(
         "--no-repoint-latest",
         action="store_true",
         help="Leave generic latest symlinks untouched after refresh.",
@@ -2132,6 +2246,12 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--daily-patch-lookback-days must be > 0.")
     if args.dated_patch_lookback_days <= 0:
         raise SystemExit("--dated-patch-lookback-days must be > 0.")
+    if args.valuation_history_tail_days < 0:
+        raise SystemExit("--valuation-history-tail-days must be >= 0.")
+    if args.valuation_history_timeout_seconds < 0:
+        raise SystemExit("--valuation-history-timeout-seconds must be >= 0.")
+    if args.valuation_history_progress_every_symbols < 0:
+        raise SystemExit("--valuation-history-progress-every-symbols must be >= 0.")
     args.package_dest = args.package_dest or _default_package_dest(args.target_date)
     args.tar_dir = args.tar_dir or _default_tar_dir(args.target_date)
     args.reports_dir = args.reports_dir.resolve() if args.reports_dir.is_absolute() else REPO_ROOT / args.reports_dir
@@ -2277,6 +2397,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     pending_alias_steps: list[Step] = []
     non_actionable_assets: set[str] = set()
+    successful_patch_merge_dirs: list[Path] = []
 
     for index, step in enumerate(steps, start=1):
         dependency_hits = sorted(set(step.depends_on_assets).intersection(non_actionable_assets))
@@ -2324,6 +2445,12 @@ def main(argv: list[str] | None = None) -> int:
                     _record_step_report(workflow_report, step=step, result=result)
                 continue
             raise SystemExit(result.returncode)
+
+        metadata = step.report_metadata or {}
+        if str(metadata.get("action") or "") == "patch_merge":
+            patch_path = metadata.get("patch_path")
+            if isinstance(patch_path, Path):
+                successful_patch_merge_dirs.append(patch_path)
 
         should_defer_alias = (
             gate_enabled
@@ -2423,15 +2550,24 @@ def main(argv: list[str] | None = None) -> int:
                 _write_json_report(remaining_path, payload=remaining_payload)
                 workflow_report.setdefault("repair", {})["remaining_candidates"] = remaining_payload
 
+    if not args.dry_run and args.prune_successful_patches:
+        _prune_successful_patch_dirs(
+            successful_patch_merge_dirs,
+            report=workflow_report,
+        )
+
     if not args.dry_run:
         current_contract_path = default_hk_current_contract_path(ASSETS_ROOT.parent)
+        dataset_registry_path = default_dataset_registry_path(ASSETS_ROOT.parent)
         current_contract_payload = build_hk_current_contract(
             ASSETS_ROOT.parent,
             generated_by="hk_asset_workflow",
             target_date=args.target_date,
         )
         write_current_contract(current_contract_path, current_contract_payload)
+        write_dataset_registry(dataset_registry_path, current_contract_payload)
         workflow_report.setdefault("workflow", {})["current_contract_path"] = str(current_contract_path)
+        workflow_report.setdefault("workflow", {})["dataset_registry_path"] = str(dataset_registry_path)
 
     if not args.dry_run and args.workflow_report is not None:
         _write_workflow_report(args.workflow_report, report=workflow_report)

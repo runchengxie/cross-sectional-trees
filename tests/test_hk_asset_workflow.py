@@ -55,6 +55,14 @@ def test_hk_asset_workflow_dry_run_builds_refresh_package_and_release_commands(t
     assert any("mirror-hk-daily" in cmd for cmd in calls)
     assert any("build-hk-daily-clean-layer" in cmd for cmd in calls)
     assert any("mirror-hk-valuation" in cmd for cmd in calls)
+    valuation_inspect_cmd = next(
+        cmd
+        for cmd in calls
+        if "inspect-hk-asset-health" in cmd and "--daily-asset-dir" in cmd
+    )
+    assert valuation_inspect_cmd[valuation_inspect_cmd.index("--history-tail-days") + 1] == "370"
+    assert valuation_inspect_cmd[valuation_inspect_cmd.index("--history-timeout-seconds") + 1] == "600.0"
+    assert valuation_inspect_cmd[valuation_inspect_cmd.index("--history-progress-every-symbols") + 1] == "250"
 
     package_cmd = next(cmd for cmd in calls if cmd[1:3] == ["-m", "cstree.release_tools.package_assets"])
     assert "--valuation-snapshot" in package_cmd
@@ -123,6 +131,13 @@ def test_hk_asset_workflow_refresh_repoints_latest_aliases(tmp_path, monkeypatch
     assert current_contract["assets"]["instruments"]["alias_path"] == str(instruments_alias.absolute())
     assert current_contract["assets"]["instruments"]["resolved_path"] == str(instruments_alias.resolve())
     assert current_contract["assets"]["instruments"]["exists"] is True
+
+    dataset_registry_path = repo_root / "artifacts" / "metadata" / "dataset_registry.csv"
+    assert dataset_registry_path.exists()
+    registry_text = dataset_registry_path.read_text(encoding="utf-8")
+    assert "hk_current_contract" in registry_text
+    assert "hk_valuation" in registry_text
+    assert "20260402" in registry_text
 
 
 def test_hk_asset_workflow_inspect_gate_blocks_alias_repoint_and_package(tmp_path, monkeypatch):
@@ -736,6 +751,7 @@ def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatc
             "patch",
             "--gate-on-severity",
             "none",
+            "--prune-successful-patches",
         ]
     )
 
@@ -758,6 +774,23 @@ def test_hk_asset_workflow_writes_structured_refresh_report(tmp_path, monkeypatc
     assert report["refresh"]["assets"]["daily"]["base"]["manifest"]["query"]["end_date"] == "20260401"
     assert report["refresh"]["assets"]["daily"]["patch"]["manifest"]["query"]["end_date"] == "20260402"
     assert report["refresh"]["assets"]["daily"]["refreshed"]["manifest"]["totals"]["rows"] == 12
+    patch_dir = (
+        repo_root
+        / "artifacts"
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / "hk_all_2000_20260402_daily_final_refetched_latest__patch"
+    )
+    assert not patch_dir.exists()
+    assert report["workflow"]["pruned_intermediate_patch_dirs"] == [
+        {
+            "path": str(patch_dir),
+            "safe_intermediate_path": True,
+            "status": "deleted",
+        }
+    ]
     assert report["inspect"]["assets"]["daily"]["quality"] == {
         "report_path": str(
             repo_root / "artifacts" / "reports" / "hk_daily_health_20260402_full_history.json"

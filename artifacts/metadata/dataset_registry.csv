@@ -1,21 +1,24 @@
 # Dataset Registry for current HK research data assets.
-# This is a compact human-maintained index. For source-of-truth paths and freshness, prefer artifacts/metadata/current_assets/hk_current.json plus each asset manifest.
-# Last updated: 2026-05-09
+# Auto-generated from artifacts/metadata/current_assets/hk_current.json; prefer hk_current.json plus each asset manifest for source-of-truth freshness.
+# Last updated: 2026-05-23
 dataset_name,version,market,type,date_range,source,records,symbols,description,path
-hk_current_contract,20260508,hk,metadata,as of 2026-05-08,local,19 assets,19,current HK asset contract with resolved aliases and manifest summaries,artifacts/metadata/current_assets/hk_current.json
-hk_all_universe_by_date,20260508,hk,universe,2000-01-04 to 2026-05-08,derived,537134 rows,2628 symbols,full-market by-date universe used by current HK assets,artifacts/assets/universe/hk_all_full_by_date.csv
-hk_all_instruments,20260508,hk,instruments,as of 2026-05-08,rqdata,3442,3442,current HK instrument master,artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
-hk_etf_instruments,20260508,hk,instruments,as of 2026-05-08,rqdata,585,585,current HK ETF instrument master,artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_latest.parquet
-hk_all_daily_raw,20260508,hk,daily,2000-01-04 to 2026-05-08,rqdata,11015865,3195,full-market raw daily OHLCV current snapshot,artifacts/assets/rqdata/hk/daily/hk_all_daily_latest
-hk_all_daily_clean,20260508,hk,daily_clean,2000-01-04 to 2026-05-08,derived,11015865,3195,health-checked full-market daily clean layer,artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
-hk_etf_daily_raw,20260508,hk,etf_daily,2000-01-04 to 2026-05-08,rqdata,631826,585 requested / 494 written,ETF daily current raw layer with provider-boundary gaps,artifacts/assets/rqdata/hk/daily/hk_etf_daily_latest
-hk_etf_daily_clean,20260508,hk,etf_daily_clean,2000-01-04 to 2026-05-08,derived,631826 source rows,585 requested / 494 written,ETF daily clean current layer,artifacts/assets/rqdata/hk/daily/hk_etf_daily_clean_latest
-hk_intraday_5m,20260508,hk,intraday_5m,2024-05-02 to 2026-05-08,rqdata/local_cache,86448846,2840,formal 5m intraday asset; full health has reconcile warnings only,artifacts/assets/rqdata/hk/intraday/hk_intraday_latest
-hk_valuation,20260508,hk,valuation,2000-01-04 to 2026-05-08,rqdata,11055746,3195,full-market valuation factors with daily reference health green,artifacts/assets/rqdata/hk/valuation/hk_all_valuation_latest
-hk_pit_financials,20260430,hk,pit_financials,2001-02-08 to 2026-04-30,rqdata,101284 pipeline rows,3186,current PIT pipeline fundamentals; health warning but no errors,artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest
-hk_ex_factors,20260508,hk,ex_factors,2000-01-01 to 2026-05-08,rqdata,34423,3221 requested / 2676 written,corporate action ex-factor events,artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest
-hk_dividends,20260508,hk,dividends,2000-01-01 to 2026-05-08,rqdata,30299,3221 requested / 2297 written,dividend event history,artifacts/assets/rqdata/hk/dividends/hk_all_dividends_latest
-hk_shares,20260508,hk,shares,2000-01-01 to 2026-05-08,rqdata,98456,3195,share capital history,artifacts/assets/rqdata/hk/shares/hk_all_shares_latest
-hk_industry_changes,20260508,hk,industry_changes,2000-01-01 to 2026-05-08,rqdata,3737,3045,industry membership change history,artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest
-hk_southbound,20260508,hk,southbound,2014-11-17 to 2026-05-08,rqdata,59624,338,HK Connect southbound eligibility current snapshot,artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_latest
-hk_exchange_rate,20260508,hk,exchange_rate,2026-03-20 to 2026-05-08,rqdata,355,11 currency pairs,short-window exchange-rate probe behind neutral current alias,artifacts/assets/rqdata/hk/exchange_rate/hk_exchange_rate_latest
+hk_current_contract,20260522,hk,metadata,as of 2026-05-22,local,19 assets,19,current HK asset contract with resolved aliases and manifest summaries,artifacts/metadata/current_assets/hk_current.json
+hk_daily,20260522,hk,daily,2000-01-01 to 2026-05-22,rqdata,11041836,3195,current HK raw daily OHLCV asset,artifacts/assets/rqdata/hk/daily/hk_all_2000_20260522_daily_final_refetched_latest
+hk_daily_clean,20260522,hk,daily_clean,2000-01-01 to 2026-05-22,derived,11041836,3195,current HK daily clean layer,artifacts/assets/rqdata/hk/daily/hk_all_2000_20260522_daily_clean_refetched_latest
+hk_intraday,20260522,hk,intraday,2024-05-01 to 2026-05-22,rqdata,88241406,,current HK intraday 5m asset,artifacts/assets/rqdata/hk/intraday/intraday_20240501_20260522_20260523_081127
+hk_etf_daily,20260508,hk,etf_daily,2000-01-01 to 2026-05-08,rqdata,631826,494,current HK ETF raw daily asset,artifacts/assets/rqdata/hk/daily/hk_etf_2000_20260508_daily_latest
+hk_etf_daily_clean,20260508,hk,etf_daily_clean,2000-01-01 to 2026-05-08,derived,631826,494,current HK ETF daily clean layer,artifacts/assets/rqdata/hk/daily/hk_etf_2000_20260508_daily_clean_latest
+hk_etf_instruments,20260522,hk,etf_instruments,as of 2026-05-22,rqdata,,,current HK ETF instrument master,artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_20260522.parquet
+hk_valuation,20260522,hk,valuation,2000-01-01 to 2026-05-22,rqdata,11082906,3195,current HK valuation factors,artifacts/assets/rqdata/hk/valuation/hk_all_2000_20260522_valuation_full_market_refetched_latest
+hk_instruments,20260522,hk,instruments,as of 2026-05-22,rqdata,,,current HK instrument master,artifacts/assets/rqdata/hk/instruments/hk_all_instruments_20260522.parquet
+hk_pit,20260515,hk,pit,as of 2026-05-15,rqdata,110611,3186,current HK PIT fundamentals asset,artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_asof_20260515_patch_2024q4_2025q4
+hk_ex_factors,20260522,hk,ex_factors,2000-01-01 to 2026-05-22,rqdata,34551,2687,current HK ex-factor events,artifacts/assets/rqdata/hk/ex_factors/hk_all_2000_20260522_ex_factors_full_market_latest
+hk_dividends,20260522,hk,dividends,2000-01-01 to 2026-05-22,rqdata,30311,2301,current HK dividend events,artifacts/assets/rqdata/hk/dividends/hk_all_2000_20260522_dividends_full_market_latest
+hk_shares,20260522,hk,shares,2000-01-01 to 2026-05-22,rqdata,97634,3195,current HK share capital events,artifacts/assets/rqdata/hk/shares/hk_all_2000_20260522_shares_full_market_latest
+hk_exchange_rate,20260522,hk,exchange_rate,2026-03-20 to 2026-05-22,rqdata,365,,current HK exchange-rate reference asset,artifacts/assets/rqdata/hk/exchange_rate/hk_exchange_rate_probe_20260320_20260522
+hk_southbound,20260522,hk,southbound,2014-11-17 to 2026-05-22,rqdata,59624,338,current HK Connect southbound eligibility asset,artifacts/assets/rqdata/hk/southbound/hk_connect_southbound_20260522
+hk_financial_details,20260515,hk,financial_details,as of 2026-05-15,rqdata,11394,353,current HK financial details asset,artifacts/assets/rqdata/hk/financial_details/hk_financial_details_hk_all3195_superset_2000_2025_20260515
+hk_industry_changes,20260522,hk,industry_changes,2000-01-01 to 2026-05-22,rqdata,3737,3045,current HK industry membership changes,artifacts/assets/rqdata/hk/industry_changes/hk_all_2000_20260522_industry_changes_full_market_latest
+hk_universe_by_date,20260522,hk,universe_by_date,,derived,,,current HK full-market universe by date,artifacts/assets/universe/hk_all_full_by_date.csv
+hk_universe_symbols,20260522,hk,universe_symbols,,derived,,,current HK latest full-market universe symbols,artifacts/assets/universe/hk_all_full_symbols.txt
+hk_universe_meta,20260522,hk,universe_meta,,derived,,,current HK universe build metadata,artifacts/assets/universe/hk_all_full_by_date.meta.yml

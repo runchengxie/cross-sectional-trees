@@ -155,6 +155,70 @@ def test_hk_data_asset_audit_classifies_stale_etf_daily_repair_candidate(tmp_pat
     )
 
 
+def test_hk_data_asset_audit_downgrades_stale_etf_daily_when_provider_permission_blocked(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    artifacts_root = repo_root / "artifacts"
+    candidate_paths = hk_current_candidate_paths(artifacts_root)
+    monkeypatch.chdir(repo_root)
+
+    etf_snapshot = artifacts_root / "assets" / "rqdata" / "hk" / "daily" / "hk_etf_2000_20260409_daily_latest"
+    _write_manifest(etf_snapshot, dataset="daily", end_date="20260409")
+    (etf_snapshot / "symbols.txt").write_text("02800.HK\n", encoding="utf-8")
+    pd.DataFrame(
+        {
+            "trade_date": ["20000103", "20260409"],
+            "close": [1.0, 2.0],
+        }
+    ).to_parquet(etf_snapshot / "data" / "02800.HK.parquet", index=False)
+    _symlink(etf_snapshot, candidate_paths["etf_daily"])
+
+    blocked_patch = artifacts_root / "assets" / "rqdata" / "hk" / "daily" / "hk_etf_2000_20260410_daily_latest__patch"
+    (blocked_patch / "data").mkdir(parents=True, exist_ok=True)
+    (blocked_patch / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily",
+                "status": "blocked_provider_permission",
+                "error": "no permission to access day bar for instruments with type ETF, please contact RiceQuant",
+                "output_dir": str(blocked_patch),
+                "query": {"start_date": "20260401", "end_date": "20260410"},
+                "status_counts": {"provider_permission_blocked": 1},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    contract = build_hk_current_contract(artifacts_root, generated_by="test", target_date="20260410")
+    write_current_contract(default_hk_current_contract_path(artifacts_root), contract)
+
+    report = build_hk_data_asset_audit_report(
+        _args(asset=["etf_daily"], scan_family=["daily"], metadata_only_etf_daily=False)
+    )
+
+    assert report["freshness"]["etf_daily"]["status"] == "pass"
+    stale_issue = next(
+        item
+        for item in report["freshness"]["etf_daily"]["issues"]
+        if item["code"] == "asset_stale_before_target"
+    )
+    assert stale_issue["severity"] == "warning"
+    assert stale_issue["classification"] == "provider-permission-gap"
+    assert stale_issue["provider_permission_blocker"]["path"] == str(blocked_patch.resolve())
+    assert all(
+        item["action"] == "provider-boundary"
+        for item in report["repair"]["candidates"]
+        if item["asset_key"] == "etf_daily"
+    )
+    assert any(
+        item["path"] == str(blocked_patch.resolve())
+        for item in report["prune"]["candidates"]
+    )
+
+
 def test_hk_data_asset_audit_classifies_etf_provider_permission_gap(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

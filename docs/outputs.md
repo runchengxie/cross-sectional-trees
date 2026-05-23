@@ -164,8 +164,9 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 * `artifacts/metadata/catalog.sqlite`
 * `artifacts/metadata/catalog_summary.csv`
 * `artifacts/metadata/current_assets/hk_current.json`
+* `artifacts/metadata/dataset_registry.csv`
 
-其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `cstree data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新。
+其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `cstree data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新；`dataset_registry.csv` 也由 workflow 从 `hk_current.json` 自动生成，是面向人工盘点的紧凑索引。
 
 如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
 
@@ -187,6 +188,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 * `catalog.sqlite` 是控制面，不存行情本体。
 * `catalog_summary.csv` 是给人看和临时筛选的平面导出，不替代 SQLite。
 * `current_assets/hk_current.json` 是一份轻量 current contract，记录当前 HK 资产 alias 的 resolved snapshot/file、manifest 摘要和 `as_of`；`package_assets --preset hk_current` 与 run 侧 `inputs.lock.json` 会优先消费它，审计时不直接依赖 `latest` alias。
+* `dataset_registry.csv` 从 current contract 派生，避免手工维护时落后于 alias；source-of-truth 仍是 `hk_current.json` 和各资产的 `manifest.yml`。
 
 ## Standardized Layer
 

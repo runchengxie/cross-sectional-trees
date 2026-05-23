@@ -149,6 +149,71 @@ def test_inspect_hk_asset_health_include_history_flags_prior_daily_anomalies(tmp
         ],
     }
 
+
+def test_inspect_hk_asset_health_include_history_can_scan_tail_window(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "daily" / "daily_tail_demo"
+    data_dir = asset_dir / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    (asset_dir / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily",
+                "query": {
+                    "end_date": "20260331",
+                    "fields": ["open", "high", "low", "close", "volume", "total_turnover"],
+                },
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        {
+            "trade_date": ["20260301", "20260330", "20260331"],
+            "open": [-1.0, 10.0, 11.0],
+            "high": [-1.0, 10.5, 11.5],
+            "low": [-1.0, 9.5, 10.5],
+            "close": [-1.0, 10.2, 11.2],
+            "volume": [100.0, 100.0, 100.0],
+            "total_turnover": [100.0, 100.0, 100.0],
+        }
+    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
+
+    out_path = repo_root / "daily_tail_health.json"
+    args = SimpleNamespace(
+        asset_dir=str(asset_dir),
+        symbols_file=None,
+        by_date_file=None,
+        field=[],
+        date_column=None,
+        target_date="20260331",
+        sample_limit=5,
+        top_latest_dates=5,
+        include_history=True,
+        history_sample_limit=3,
+        history_tail_days=2,
+        history_start_date=None,
+        history_end_date=None,
+        history_timeout_seconds=None,
+        history_max_symbols=None,
+        history_progress_every_symbols=0,
+        format="json",
+        out=str(out_path),
+    )
+
+    assert rqdata_assets.inspect_hk_asset_health(args) == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["history_scan_control"]["start_date"] == "2026-03-30"
+    assert payload["summary"]["history_scan_truncated"] is False
+    assert payload["history"]["summary"]["rows_scanned"] == 2
+    assert payload["history"]["summary"]["date_min"] == "2026-03-30"
+    assert payload["history"]["summary"]["issue_count"] == 0
+
 def test_inspect_hk_asset_health_include_history_reports_valuation_stale_runs(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "valuation" / "valuation_history_demo"

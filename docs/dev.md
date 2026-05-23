@@ -325,10 +325,12 @@ python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 2
 * `--refresh-mode full` 表示整包重拉。
 * `--refresh-mode patch` 表示增量补丁刷新（patch refresh）：先拉近期数据补丁，再用补丁合并（patch merge）生成新的 canonical snapshot。
 * patch 默认回溯：`daily` 20 个日历日，其他支持增量的 dated assets 40 个日历日。可用 `--daily-patch-lookback-days` 和 `--dated-patch-lookback-days` 调整。
+* valuation inspect 默认只对最近 370 个自然日做历史停滞检查，并设置 600 秒历史扫描预算；用 `--valuation-history-tail-days 0` 可恢复全历史扫描，或用 `--valuation-history-timeout-seconds` / `--valuation-history-progress-every-symbols` 调整。
 * 默认刷新链路会在 `daily_clean` 通过 inspect gate 后重建 `artifacts/assets/universe/hk_all_full_*`。如需只产出 dated snapshot 或保留旧 universe，传 `--no-refresh-universe`；`--no-repoint-latest` 也会自动跳过该后处理。
 * ETF 日线有独立刷新分支：workflow 会先导出 ETF instruments 和 symbols 文件，再对 `mirror-hk-daily` 启用权限 preflight。若 RQData 账号没有 ETF day bar 权限，该分支会标记为 non-actionable provider gap，跳过 ETF daily merge/clean，且不更新 ETF daily alias。
 * 非 dry-run 执行会写结构化 workflow report，默认路径是 `artifacts/reports/hk_asset_refresh_<target_date>.json`。
-* 非 dry-run workflow 还会刷新 `artifacts/metadata/current_assets/hk_current.json`，记录当前 alias、resolved snapshot、manifest 摘要和 `as_of`。
+* 非 dry-run workflow 还会刷新 `artifacts/metadata/current_assets/hk_current.json`，记录当前 alias、resolved snapshot、manifest 摘要和 `as_of`，并从该 contract 自动生成 `artifacts/metadata/dataset_registry.csv`。
+* 如需在 patch merge 成功后删除本轮生成的 `__patch` / `__repair` 中间目录，显式传 `--prune-successful-patches`；默认仅保留，由后续 audit/prune 报告给出清理建议。
 * 默认 `--gate-on-severity warning`。如果 inspect 达到阈值，`latest` alias 重新指派、package 和 release 会被拦截。
 * 单独跑 `inspect` 时，通常只生成报告，不触发后续门控推进。
 * `repair` 会读取 workflow report 中的 `inspect.assets.<asset>.repair_candidates`，按 `symbol/date` 精简后重拉问题子集，并执行 patch merge。

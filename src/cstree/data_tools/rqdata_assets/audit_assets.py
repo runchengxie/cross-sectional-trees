@@ -145,14 +145,21 @@ def _manifest_summary(path: Path | None) -> dict[str, Any] | None:
     if not isinstance(payload, Mapping):
         return None
     output_dir = str(payload.get("output_dir") or "").strip() or None
+    status_counts = payload.get("status_counts") if isinstance(payload.get("status_counts"), Mapping) else {}
     return {
         "path": str(path.resolve()),
         "dataset": str(payload.get("dataset") or "").strip() or None,
         "status": str(payload.get("status") or "").strip() or None,
+        "error": str(payload.get("error") or "").strip() or None,
         "output_dir": output_dir,
         "snapshot_name": Path(output_dir).name if output_dir else None,
         "query_start_date": _infer_query_date(payload, ("start_date", "start", "from")),
         "query_end_date": _infer_query_date(payload, ("end_date", "date", "mapping_date", "as_of_date", "to")),
+        "status_counts": {
+            str(key): int(value)
+            for key, value in status_counts.items()
+            if str(key).strip() and str(value).strip().isdigit()
+        },
     }
 
 
@@ -204,7 +211,15 @@ def _new_record(
     if path.exists() and path.is_dir() and manifest_path is None:
         metadata_issues.append({"code": "manifest_missing", "severity": "warning"})
     if isinstance(manifest, Mapping) and manifest.get("status") not in {None, "", "completed"}:
-        metadata_issues.append({"code": "manifest_status_not_completed", "severity": "warning"})
+        if _is_provider_permission_manifest(manifest):
+            metadata_issues.append(
+                {
+                    "code": "manifest_status_provider_permission_boundary",
+                    "severity": "info",
+                }
+            )
+        else:
+            metadata_issues.append({"code": "manifest_status_not_completed", "severity": "warning"})
     if isinstance(manifest, Mapping) and manifest.get("output_dir"):
         manifest_output = Path(str(manifest["output_dir"])).expanduser()
         if not manifest_output.is_absolute():
@@ -312,7 +327,12 @@ def _annotate_report_references(records: dict[str, dict[str, Any]], *, artifacts
 
 
 def _classify_inventory_record(record: dict[str, Any]) -> str:
-    if record.get("metadata_issues"):
+    metadata_issues = [
+        item
+        for item in (record.get("metadata_issues") or [])
+        if isinstance(item, Mapping)
+    ]
+    if any(str(item.get("severity") or "warning") != "info" for item in metadata_issues):
         return "metadata-inconsistent"
     refs = record.get("references") if isinstance(record.get("references"), list) else []
     ref_types = {str(item.get("type")) for item in refs if isinstance(item, Mapping)}
@@ -453,6 +473,52 @@ def _read_asset_audit_rows(asset_dir: Path) -> dict[str, dict[str, str]]:
 def _is_provider_permission_error(text: object) -> bool:
     lowered = str(text or "").lower()
     return "permission" in lowered and ("ricequant" in lowered or "instrument" in lowered or "access" in lowered)
+
+
+def _is_provider_permission_manifest(manifest: Mapping[str, Any] | None) -> bool:
+    if not isinstance(manifest, Mapping):
+        return False
+    status = str(manifest.get("status") or "").strip().lower()
+    if "provider_permission" in status:
+        return True
+    if _is_provider_permission_error(manifest.get("error")):
+        return True
+    status_counts = manifest.get("status_counts")
+    return isinstance(status_counts, Mapping) and int(status_counts.get("provider_permission_blocked") or 0) > 0
+
+
+def _find_etf_provider_permission_blocker(
+    *,
+    inventory: Mapping[str, Any],
+    effective_end: str | None,
+) -> dict[str, Any] | None:
+    candidates: list[dict[str, Any]] = []
+    for record in inventory.get("records") or []:
+        if not isinstance(record, Mapping):
+            continue
+        if str(record.get("family") or "") != "daily":
+            continue
+        resolved_name = Path(str(record.get("resolved_path") or record.get("path") or "")).name.lower()
+        if "hk_etf" not in resolved_name:
+            continue
+        manifest = record.get("manifest") if isinstance(record.get("manifest"), Mapping) else None
+        if not _is_provider_permission_manifest(manifest):
+            continue
+        query_end = _norm_date(record.get("query_end_date") or record.get("as_of"))
+        if effective_end and query_end and query_end < effective_end:
+            continue
+        candidates.append(
+            {
+                "path": record.get("resolved_path") or record.get("path"),
+                "manifest_path": record.get("manifest_path"),
+                "query_end_date": _iso_date(query_end),
+                "status": record.get("manifest_status"),
+                "error": manifest.get("error") if isinstance(manifest, Mapping) else None,
+            }
+        )
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda item: str(item.get("query_end_date") or ""))[-1]
 
 
 def _build_etf_missing_file_issues(
@@ -645,6 +711,13 @@ def verify_etf_daily_completeness(
 
     effective_start = min(date_min_values) if date_min_values else None
     effective_end = max(date_max_values) if date_max_values else None
+    provider_permission_blocker = _find_etf_provider_permission_blocker(
+        inventory=inventory,
+        effective_end=effective_end,
+    )
+    if provider_permission_blocker is not None and local_stale_symbols:
+        provider_boundary_stale_symbols.extend(local_stale_symbols)
+        local_stale_symbols = []
     if effective_start and effective_start > expected_start_date:
         start_issue = _etf_start_gap_issue(
             effective_start=effective_start,
@@ -654,13 +727,19 @@ def verify_etf_daily_completeness(
         if start_issue is not None:
             issues.append(start_issue)
     if effective_end and effective_end < target_date:
+        stale_classification = "provider-permission-gap" if provider_permission_blocker is not None else "local-gap"
         issues.append(
             {
                 "code": "asset_stale_before_target",
-                "severity": "error",
-                "classification": "local-gap",
+                "severity": "warning" if provider_permission_blocker is not None else "error",
+                "classification": stale_classification,
                 "target_date": _iso_date(target_date),
                 "latest_observed_date": _iso_date(effective_end),
+                **(
+                    {"provider_permission_blocker": provider_permission_blocker}
+                    if provider_permission_blocker is not None
+                    else {}
+                ),
             }
         )
     if local_stale_symbols:
@@ -678,9 +757,18 @@ def verify_etf_daily_completeness(
             {
                 "code": "provider_boundary_stale_symbols_before_target",
                 "severity": "warning",
-                "classification": "provider-boundary",
+                "classification": (
+                    "provider-permission-gap"
+                    if provider_permission_blocker is not None
+                    else "provider-boundary"
+                ),
                 "affected_symbols": len(provider_boundary_stale_symbols),
                 "sample_symbols": provider_boundary_stale_symbols[:sample_limit],
+                **(
+                    {"provider_permission_blocker": provider_permission_blocker}
+                    if provider_permission_blocker is not None
+                    else {}
+                ),
             }
         )
 

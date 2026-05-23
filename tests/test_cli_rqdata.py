@@ -568,6 +568,14 @@ def test_cli_parses_rqdata_health_and_audit_commands():
             "--include-history",
             "--history-sample-limit",
             "4",
+            "--history-tail-days",
+            "370",
+            "--history-timeout-seconds",
+            "600",
+            "--history-max-symbols",
+            "100",
+            "--history-progress-every-symbols",
+            "25",
             "--fail-on-severity",
             "error",
             "--format",
@@ -588,6 +596,10 @@ def test_cli_parses_rqdata_health_and_audit_commands():
     assert asset_health.top_latest_dates == 3
     assert asset_health.include_history is True
     assert asset_health.history_sample_limit == 4
+    assert asset_health.history_tail_days == 370
+    assert asset_health.history_timeout_seconds == 600
+    assert asset_health.history_max_symbols == 100
+    assert asset_health.history_progress_every_symbols == 25
     assert asset_health.fail_on_severity == "error"
     assert asset_health.format == "json"
     assert asset_health.out == "artifacts/reports/hk_asset_health.json"

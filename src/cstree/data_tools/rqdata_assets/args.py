@@ -423,6 +423,47 @@ def add_hk_asset_health_args(parser: argparse.ArgumentParser) -> None:
         help="Number of sample historical issue rows shown when --include-history is enabled. Default: 5.",
     )
     parser.add_argument(
+        "--history-start-date",
+        help=(
+            "Optional lower date bound for --include-history scans in YYYYMMDD. "
+            "Useful for incremental/tail health checks on large assets."
+        ),
+    )
+    parser.add_argument(
+        "--history-end-date",
+        help="Optional upper date bound for --include-history scans in YYYYMMDD.",
+    )
+    parser.add_argument(
+        "--history-tail-days",
+        type=int,
+        help=(
+            "Limit --include-history to the trailing N calendar days ending at --target-date. "
+            "Ignored when --history-start-date is also provided."
+        ),
+    )
+    parser.add_argument(
+        "--history-timeout-seconds",
+        type=float,
+        help=(
+            "Stop adding full-history work after this many seconds and mark the report as truncated; "
+            "target-date health checks still complete."
+        ),
+    )
+    parser.add_argument(
+        "--history-max-symbols",
+        type=int,
+        help=(
+            "Maximum number of symbols to include in --include-history scans. "
+            "Target-date health checks still scan all selected symbols."
+        ),
+    )
+    parser.add_argument(
+        "--history-progress-every-symbols",
+        type=int,
+        default=0,
+        help="Print history scan progress to stderr every N symbols. Default: disabled.",
+    )
+    parser.add_argument(
         "--format",
         default="text",
         choices=["text", "json"],
