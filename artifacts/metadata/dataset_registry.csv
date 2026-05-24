@@ -1,6 +1,6 @@
 # Dataset Registry for current HK research data assets.
 # Auto-generated from artifacts/metadata/current_assets/hk_current.json; prefer hk_current.json plus each asset manifest for source-of-truth freshness.
-# Last updated: 2026-05-23
+# Last updated: 2026-05-24
 dataset_name,version,market,type,date_range,source,records,symbols,description,path
 hk_current_contract,20260522,hk,metadata,as of 2026-05-22,local,19 assets,19,current HK asset contract with resolved aliases and manifest summaries,artifacts/metadata/current_assets/hk_current.json
 hk_daily,20260522,hk,daily,2000-01-01 to 2026-05-22,rqdata,11041836,3195,current HK raw daily OHLCV asset,artifacts/assets/rqdata/hk/daily/hk_all_2000_20260522_daily_final_refetched_latest

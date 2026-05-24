@@ -1403,6 +1403,17 @@ def build_prune_plan(
         except ValueError:
             continue
         classification = str(record.get("classification") or "unreferenced")
+        manifest = record.get("manifest") if isinstance(record.get("manifest"), Mapping) else None
+        if _is_provider_permission_manifest(manifest):
+            protected.append(
+                {
+                    "path": path_text,
+                    "classification": classification,
+                    "references": record.get("references", []),
+                    "reason": "provider_permission_boundary_evidence",
+                }
+            )
+            continue
         if classification != "unreferenced":
             protected.append(
                 {

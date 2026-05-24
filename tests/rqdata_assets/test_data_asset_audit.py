@@ -261,9 +261,14 @@ def test_hk_data_asset_audit_downgrades_stale_etf_daily_when_provider_permission
         for item in report["repair"]["candidates"]
         if item["asset_key"] == "etf_daily"
     )
-    assert any(
+    assert not any(
         item["path"] == str(blocked_patch.resolve())
         for item in report["prune"]["candidates"]
+    )
+    assert any(
+        item["path"] == str(blocked_patch.resolve())
+        and item["reason"] == "provider_permission_boundary_evidence"
+        for item in report["prune"]["protected"]
     )
 
 

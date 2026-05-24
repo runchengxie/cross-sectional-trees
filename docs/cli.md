@@ -694,6 +694,7 @@ cstree rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refr
 - `health` 聚合面板会归档同一目标日下包括 current / daily / valuation / PIT 等在内的工作流日志。显式传入的 PIT / intraday report 会按文件名归入对应类别并去重；`intraday_health` 只有在 `--intraday-mode health` 或已有 report 时才参与，避免默认审计触发重 I/O 预期。
 - `repair.candidates[]` 提供的是系统建议。仅在参数中成对提供 `--execute-repair` 及其对应的 `--approved-repair-action` 指令后，系统才会落实建议自动修复错误。
 - 规划阶段产生的 `prune.candidates[]` 均为虚拟试运行指令。必须附带 `--delete-prune-candidates` 参数且明确出具 `--approved-prune-path` 认可意见后，废弃数据的真实删除操作才会落地。
+- 带有 `blocked_provider_permission` manifest 的 patch 会作为 provider 边界证据保留在 `prune.protected[]`，不会进入删除候选；否则清理后会丢失 ETF 等权限缺口的可审计依据。
 - `prune.manual_review_candidates[]` 只做人工清理建议，不会被 `--delete-prune-candidates` 自动删除。它会按可节省空间排序，列出 snapshot、已被新版替代但尚未形成自动删除证据、或 metadata 不一致的路径，并保留引用摘要和删除风险说明。
 
 ### cstree rqdata sync-hk-intraday
