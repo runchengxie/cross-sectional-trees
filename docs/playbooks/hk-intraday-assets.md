@@ -45,8 +45,8 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 * 正式入口在 `artifacts/assets/rqdata/hk/intraday/<snapshot>/`
 * 命令会把 parquet、同名 `.meta.json` 和 `.parts/` 一起复制到 `data/`
 * 之后即使你清掉 `artifacts/cache/intraday/`，正式资产仍然可直接被健康检查和滑点报告脚本复用
-* 如果你想把 `download -> inspect -> alias` 也收口成一条命令，现在优先用 `cstree rqdata sync-hk-intraday`；它默认只检查新增 patch，不会顺手整包回扫 `hk_intraday_latest`
-* `--verify-full-asset` 是显式重动作，适合放后台或离线环境跑；`--package` / `--release` 也只在明确要出 tarball / GitHub Release 时再开
+* 如果你想把 `download -> inspect -> alias` 也收口成一条命令，现在优先用 `cstree rqdata sync-hk-intraday`；它默认只检查新增 patch，按需可加 `--verify-sampled-segments 3` 等距抽查正式资产的历史分段
+* `--verify-full-asset` 是显式重动作，适合低频放后台或离线环境跑；`--package` / `--release` 也只在明确要出 tarball / GitHub Release 时再开
 
 如果你只是想临时保留一下本地状态，`artifacts/snapshots/` 仍然适合做冻结备份；如果你要给下游长期复用，优先用这里的正式资产层。
 

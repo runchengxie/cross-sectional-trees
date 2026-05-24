@@ -675,6 +675,22 @@ cstree rqdata inspect-hk-current-health --asset daily_clean --asset valuation --
 - 相较于深度检查，它极为适合作为海量数据校验前的第一道哨卡，特别是能够化解本地受限设备或代理运行环节下因处理庞大资产而引发的卡顿。
 - 一旦质量瑕疵突破了 `--fail-on-severity` 设立的底线，程序同样会以非零状态报错终止。
 
+### cstree rqdata rebase-hk-asset-metadata
+
+在仓库或 `artifacts/` 随项目迁移到新绝对路径后，修订 live HK asset metadata 中仍嵌入的旧仓库前缀，避免 current contract 与 manifest 误报路径缺失。
+
+```bash
+cstree rqdata rebase-hk-asset-metadata --from-prefix /old/workspace/cross-sectional-trees --format json --out artifacts/reports/hk_metadata_rebase_dry_run.json
+cstree rqdata rebase-hk-asset-metadata --from-prefix /old/workspace/cross-sectional-trees --to-prefix /new/workspace/cross-sectional-trees --execute --format json --out artifacts/reports/hk_metadata_rebase_execute.json
+```
+
+说明：
+
+- 默认仅生成 dry-run 报告；只有显式传入 `--execute` 才会改写 metadata。
+- 扫描范围限定为 `artifacts/assets/` 与 `artifacts/metadata/` 下的文本 metadata 文件，不改写 parquet、报告归档或 release 快照。可用 `--max-file-bytes` 限制被检查的单文件大小。
+- 未提供 `--to-prefix` 时，以 `--artifacts-root` 的父目录作为新仓库前缀；自定义 artifacts 布局应显式传入新前缀。
+- 执行成功且存在 current contract 时，命令会从当前 alias 重新生成 `artifacts/metadata/current_assets/hk_current.json` 与 `artifacts/metadata/dataset_registry.csv`。随后应运行 `inspect-hk-current-health` 验证引用已恢复。
+
 ### cstree rqdata inspect-hk-data-assets
 
 全方位汇集梳理 HK current 资产库。检查范围覆盖 ETF 的全日线连续度、intraday 数据新鲜度、各个已有的 health report 日志、自动维护候选项以及稳健的旧资源清理计划。默认执行只读检查，不做刷新、修复和清理。
@@ -693,6 +709,7 @@ cstree rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refr
 - `freshness.intraday` 默认使用清单合同校验其最大日期。需要高频扫描时可开启 `--intraday-mode scan`；更重度的体检可启用 `--intraday-mode health` 挂载执行 `inspect-hk-intraday-health` 逻辑。
 - `health` 聚合面板会归档同一目标日下包括 current / daily / valuation / PIT 等在内的工作流日志。显式传入的 PIT / intraday report 会按文件名归入对应类别并去重；`intraday_health` 只有在 `--intraday-mode health` 或已有 report 时才参与，避免默认审计触发重 I/O 预期。
 - `repair.candidates[]` 提供的是系统建议。仅在参数中成对提供 `--execute-repair` 及其对应的 `--approved-repair-action` 指令后，系统才会落实建议自动修复错误。
+- ETF 日线落后时产生的 `patch-refresh` 建议会限定到 `etf_daily` 与 `etf_daily_clean` 分支，不会因为一条 ETF 候选而默认重刷整组 current assets。
 - 规划阶段产生的 `prune.candidates[]` 均为虚拟试运行指令。必须附带 `--delete-prune-candidates` 参数且明确出具 `--approved-prune-path` 认可意见后，废弃数据的真实删除操作才会落地。
 - 带有 `blocked_provider_permission` manifest 的 patch 会作为 provider 边界证据保留在 `prune.protected[]`，不会进入删除候选；否则清理后会丢失 ETF 等权限缺口的可审计依据。
 - `prune.manual_review_candidates[]` 只做人工清理建议，不会被 `--delete-prune-candidates` 自动删除。它会按可节省空间排序，列出 snapshot、已被新版替代但尚未形成自动删除证据、或 metadata 不一致的路径，并保留引用摘要和删除风险说明。
@@ -704,6 +721,7 @@ cstree rqdata inspect-hk-data-assets --target-date 20260410 --run-refresh --refr
 ```bash
 cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --resume
 cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --inspect-fail-on-severity error
+cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --verify-sampled-segments 3 --sampled-inspect-fail-on-severity warning
 cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --verify-full-asset --full-inspect-fail-on-severity none
 cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest/symbols.txt --start-date 20260402 --end-date 20260409 --output artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet --package
 ```
@@ -714,7 +732,8 @@ cstree rqdata sync-hk-intraday --symbols-file artifacts/assets/rqdata/hk/daily/h
 - `--resume` 能够自动衔接先前因网络或其他长任务截断的下载，直接基于 `<output_stem>.parts/` 里的现有碎片继续未竟的工作。每个 batch 会附带 `batch_XXXX.meta.json`，只有 symbol 列表、日期、字段、频率和复权口径完全匹配时才复用，避免换了输入文件后误用旧分片。
 - `--daily-adjust-type` 可显式声明日线对账基准的复权口径；命令会把 intraday 的 `--adjust-type` 一并传给 health 检查。若 intraday 与 daily 的 OHLC 口径不同，价格类 mismatch 会降级为 `adjustment-basis-mismatch` 信息项，成交量和成交额仍按常规警告处理。
 - 提供 `--skip-inspect` 将赋予直接跃升资产层的权利，建议仅在使用者充分认识隐患的前提下开启。常规场合下仍倡导保留严防死守的质检护栏。
-- 工具通常只着眼于对本次切片内容发起轻量 patch health，更新别名后忽略沉重的存量数据扫描。如有全面摸底需要，务必手动启用 `--verify-full-asset` 参数。因该计算资源消耗巨大，建议按周/月单独作为后台任务运营。
+- 工具默认只对本次切片执行轻量 patch health。`--verify-sampled-segments N` 会在 alias 放行后，从正式资产的历史分段中等距抽取 `N` 段复核，`N=1` 表示只查最新存量段；报告路径可用 `--sampled-health-out` 固定。
+- 如需全面摸底，应显式启用 `--verify-full-asset`。维护频率建议采用“日常 patch health、周期性 segment sample、低频 full verification”三级策略，避免每次增量更新都承担完整历史扫描成本。
 - 当注入 `--package` 时，系统将依附这批新快照产生专属的 intraday release 节点与对应的 tar 包；若改用 `--release` 将同步下达指令由 `gh release` 分发上网。考虑到整体数据体系的一致性约束，上述指令要求对应的 `daily` 行情基座和 `instruments` 数据同处合规可用期。
 
 ### cstree rqdata inspect-hk-intraday-health

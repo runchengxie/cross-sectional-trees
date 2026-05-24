@@ -6,7 +6,7 @@ ARTIFACTS_ROOT="artifacts"
 TARGET_DATE=""
 FAIL_ON_SEVERITY="warning"
 HISTORY_SAMPLE_LIMIT="10"
-PIT_CONFIG="configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml"
+PIT_CONFIG=""
 WITH_INTRADAY="0"
 WITH_WORKFLOW_INSPECT="0"
 
@@ -23,9 +23,9 @@ Options:
   --fail-on-severity LEVEL      none|info|warning|error. Default: warning
   --history-sample-limit N      Sample row count for asset history checks.
                                 Default: 10
-  --pit-config PATH             Config passed to inspect-hk-pit-coverage.
-                                Default:
-                                configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
+  --pit-config PATH             Optional config passed to inspect-hk-pit-coverage.
+                                Default: inspect current PIT asset against
+                                stable core fields and current daily symbols.
   --with-intraday               Also run intraday health.
   --with-workflow-inspect       Also run the maintainer workflow inspect phase.
   -h, --help                    Show this help text.
@@ -198,6 +198,7 @@ fi
 
 DAILY_CLEAN_DIR="$(read_current_path daily_clean)"
 VALUATION_DIR="$(read_current_path valuation)"
+PIT_DIR="$(read_current_path pit)"
 
 {
   echo "# HK health checks"
@@ -205,7 +206,8 @@ VALUATION_DIR="$(read_current_path valuation)"
   echo "target_date=${TARGET_DATE}"
   echo "artifacts_root=${ARTIFACTS_ROOT}"
   echo "fail_on_severity=${FAIL_ON_SEVERITY}"
-  echo "pit_config=${PIT_CONFIG}"
+  echo "pit_config=${PIT_CONFIG:-<current-contract-core-fields>}"
+  echo "pit_dir=${PIT_DIR}"
   echo "daily_clean_dir=${DAILY_CLEAN_DIR}"
   echo "valuation_dir=${VALUATION_DIR}"
   echo
@@ -250,17 +252,34 @@ run_step \
   --format json \
   --out "${ARTIFACTS_ROOT}/reports/hk_valuation_health_${TARGET_DATE}.json"
 
+PIT_HEALTH_CMD=(
+  uv run cstree rqdata inspect-hk-pit-coverage
+  --mode both
+  --include-health
+  --target-date "${TARGET_DATE}"
+  --fail-on-severity "${FAIL_ON_SEVERITY}"
+  --format json
+  --out "${ARTIFACTS_ROOT}/reports/hk_pit_health_${TARGET_DATE}.json"
+)
+if [[ -n "${PIT_CONFIG}" ]]; then
+  PIT_HEALTH_CMD+=(--config "${PIT_CONFIG}")
+else
+  PIT_HEALTH_CMD+=(
+    --asset-dir "${PIT_DIR}"
+    --fundamentals-file "${PIT_DIR}/pipeline_fundamentals.parquet"
+    --symbols-file "${DAILY_CLEAN_DIR}/symbols.txt"
+    --field revenue
+    --field operating_revenue
+    --field net_profit
+    --field basic_earnings_per_share
+    --field cash_flow_from_operating_activities
+  )
+fi
+
 run_step \
   pit_health \
   "${ARTIFACTS_ROOT}/reports/hk_pit_health_${TARGET_DATE}.json" \
-  uv run cstree rqdata inspect-hk-pit-coverage \
-  --config "${PIT_CONFIG}" \
-  --mode both \
-  --include-health \
-  --target-date "${TARGET_DATE}" \
-  --fail-on-severity "${FAIL_ON_SEVERITY}" \
-  --format json \
-  --out "${ARTIFACTS_ROOT}/reports/hk_pit_health_${TARGET_DATE}.json"
+  "${PIT_HEALTH_CMD[@]}"
 
 if [[ "${WITH_INTRADAY}" == "1" ]]; then
   INTRADAY_DIR="$(read_current_path intraday)"

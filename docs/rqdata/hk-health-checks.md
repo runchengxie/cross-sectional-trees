@@ -24,7 +24,7 @@
 * `current-health` 的 freshness 规则按资产节奏区分：交易日资产严格对齐目标日，PIT / financial details 这类 filing/as-of 资产允许宽限，不再把短期滞后直接等同于 daily 缺口。
 * `asset-health` 才会真的扫 snapshot 数据；`--include-history` 会更重。
 * `pit-coverage --include-health` 回答的是“到目标调仓日为止，PIT 是否还能安全前推”。
-* intraday 检查 I/O 最重，应单独控制。
+* intraday 检查 I/O 最重，应单独控制；日常同步可用分段抽样复核，完整资产深扫只需低频运行。
 
 ## helper 片段
 
@@ -129,8 +129,9 @@ bash scripts/dev/run_hk_pit_health.sh \
 
 说明：
 
-* 脚本会优先从 `artifacts/metadata/current_assets/hk_current.json` 解析 `daily_clean`、`valuation`、`intraday` 的 resolved path。
+* 脚本会优先从 `artifacts/metadata/current_assets/hk_current.json` 解析 `daily_clean`、`valuation`、`pit`、`intraday` 的 resolved path。
 * 如果 current contract 缺失，会回退到默认 alias 路径。
+* 默认 PIT health 检查 current `pit` 资产里的 `pipeline_fundamentals.parquet` 与核心字段；`--pit-config` 是显式切换到特定研究配置的覆盖项。
 * 脚本本身不是公开 `cstree` CLI 子命令；它是本地运维辅助入口。
 
 ## 逐条手动跑
@@ -145,7 +146,6 @@ TS=$(date +%Y%m%d_%H%M%S)
 TARGET_DATE=20260409
 FAIL_ON_SEVERITY=warning
 HISTORY_SAMPLE_LIMIT=10
-PIT_CONFIG=configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml
 ```
 
 ### 1. 解析 current asset 路径
@@ -180,6 +180,7 @@ PY
 
 DAILY_CLEAN_DIR="$(read_current_path daily_clean)"
 VALUATION_DIR="$(read_current_path valuation)"
+PIT_DIR="$(read_current_path pit)"
 INTRADAY_DIR="$(read_current_path intraday)"
 ```
 
@@ -229,7 +230,14 @@ uv run cstree rqdata inspect-hk-asset-health \
 
 ```bash
 uv run cstree rqdata inspect-hk-pit-coverage \
-  --config "$PIT_CONFIG" \
+  --asset-dir "$PIT_DIR" \
+  --fundamentals-file "$PIT_DIR/pipeline_fundamentals.parquet" \
+  --symbols-file "$DAILY_CLEAN_DIR/symbols.txt" \
+  --field revenue \
+  --field operating_revenue \
+  --field net_profit \
+  --field basic_earnings_per_share \
+  --field cash_flow_from_operating_activities \
   --mode both \
   --include-health \
   --target-date "$TARGET_DATE" \
@@ -253,6 +261,8 @@ uv run cstree rqdata inspect-hk-intraday-health \
 ```
 
 如果日线基座是未复权或 manifest 未记录 `query.adjust_type`，可额外传 `--daily-adjust-type none`。当分钟线和日线的复权口径不一致时，OHLC mismatch 会作为 `adjustment-basis-mismatch` 信息项保留，避免把口径差异误判为数据缺口；成交量、成交额、缺 bar 等问题不受该降级影响。
+
+维护分钟线资产时，`sync-hk-intraday --verify-sampled-segments 3` 可在每次或每周刷新时等距抽查存量分段；`--verify-full-asset` 留给更低频的完整历史复核。
 
 ### 7. 需要聚合 workflow inspect 时再跑
 

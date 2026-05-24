@@ -50,6 +50,7 @@ from .mirror_industry import (
     mirror_hk_instrument_industry,
     mirror_hk_southbound,
 )
+from .rebase_metadata import rebase_hk_asset_metadata
 from .request_groups import DEFAULT_HK_INSTRUMENTS_FILENAME_PREFIX
 from .shared import (
     DEFAULT_HK_INDUSTRY_LABELS_FILENAME_PREFIX,
@@ -171,6 +172,7 @@ HK_INDUSTRY_LABELS_BUILD_ARGS = RQDataAssetArgsBuilder(
 HK_PIT_COVERAGE_ARGS = RQDataAssetArgsBuilder(_args.add_hk_pit_coverage_args)
 HK_ASSET_HEALTH_ARGS = RQDataAssetArgsBuilder(_args.add_hk_asset_health_args)
 HK_CURRENT_HEALTH_ARGS = RQDataAssetArgsBuilder(_args.add_hk_current_health_args)
+HK_ASSET_METADATA_REBASE_ARGS = RQDataAssetArgsBuilder(_args.add_hk_asset_metadata_rebase_args)
 HK_DATA_ASSET_AUDIT_ARGS = RQDataAssetArgsBuilder(_args.add_hk_data_asset_audit_args)
 HK_INTRADAY_HEALTH_ARGS = RQDataAssetArgsBuilder(_args.add_hk_intraday_health_args)
 HK_INTRADAY_ASSET_BUILD_ARGS = RQDataAssetArgsBuilder(
@@ -330,6 +332,12 @@ def rqdata_asset_command_specs() -> Sequence[RQDataAssetCommandSpec]:
             ),
             add_args=HK_CURRENT_HEALTH_ARGS,
             runner=inspect_hk_current_health,
+        ),
+        RQDataAssetCommandSpec(
+            name="rebase-hk-asset-metadata",
+            help="Rebase embedded repository prefixes in live HK asset metadata after moving the checkout",
+            add_args=HK_ASSET_METADATA_REBASE_ARGS,
+            runner=rebase_hk_asset_metadata,
         ),
         RQDataAssetCommandSpec(
             name="inspect-hk-data-assets",

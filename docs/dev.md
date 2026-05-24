@@ -264,8 +264,9 @@ bash scripts/dev/run_hk_health_checks.sh --target-date 20260409 --with-workflow-
 说明：
 
 * 这些脚本是本地运维和调试工具，不是面向最终用户的 `cstree` CLI 功能。
-* 脚本会从 `artifacts/metadata/current_assets/hk_current.json` 读取当前 `daily_clean`、`valuation`、`intraday` 路径。
+* 脚本会从 `artifacts/metadata/current_assets/hk_current.json` 读取当前 `daily_clean`、`valuation`、`pit`、`intraday` 路径。
 * 默认生成 `current`、`daily_clean`、`valuation`、`pit` 四份 JSON 健康报告。
+* 默认 PIT 检查直接对 current contract 指向的 flat file 和核心字段运行；只有显式传入 `--pit-config` 时才切换到配置入口。
 * stdout 和 stderr 日志会放在 `artifacts/reports/health_logs/`。
 * 手动命令和报告阅读顺序见 `docs/rqdata/hk-health-checks.md`。
 
@@ -330,8 +331,10 @@ python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 2
 * ETF 日线有独立刷新分支：workflow 会先导出 ETF instruments 和 symbols 文件，再对 `mirror-hk-daily` 启用权限 preflight。若 RQData 账号没有 ETF day bar 权限，该分支会标记为 non-actionable provider gap，跳过 ETF daily merge/clean，且不更新 ETF daily alias。
 * 非 dry-run 执行会写结构化 workflow report，默认路径是 `artifacts/reports/hk_asset_refresh_<target_date>.json`。
 * 非 dry-run workflow 还会刷新 `artifacts/metadata/current_assets/hk_current.json`，记录当前 alias、resolved snapshot、manifest 摘要和 `as_of`，并从该 contract 自动生成 `artifacts/metadata/dataset_registry.csv`。
+* 仓库搬迁后，若 metadata 中仍保留旧绝对路径，先用 `cstree rqdata rebase-hk-asset-metadata --from-prefix <old-root>` dry-run 审核影响范围，再加 `--execute` 修订 live metadata 并重建 current contract / registry。
 * 如需在 patch merge 成功后删除本轮生成的 `__patch` / `__repair` 中间目录，显式传 `--prune-successful-patches`；默认仅保留，由后续 audit/prune 报告给出清理建议。
 * audit/prune 只把 current contract 当作硬保护；历史 release / report 里出现过的路径会作为软引用写入报告，但不再单独阻止自动 prune 候选生成。
+* audit 对落后的 ETF 日线生成的 patch refresh 候选只刷新 `etf_daily` 与 `etf_daily_clean`；provider 权限阻断 patch 作为证据保留，不纳入自动删除候选。
 * 默认 `--gate-on-severity warning`。如果 inspect 达到阈值，`latest` alias 重新指派、package 和 release 会被拦截。
 * 单独跑 `inspect` 时，通常只生成报告，不触发后续门控推进。
 * `repair` 会读取 workflow report 中的 `inspect.assets.<asset>.repair_candidates`，按 `symbol/date` 精简后重拉问题子集，并执行 patch merge。

@@ -1202,7 +1202,7 @@ def _repair_command(
     affected_range: Mapping[str, Any] | None = None,
 ) -> list[str] | None:
     if action == "patch-refresh":
-        return [
+        command = [
             "scripts/dev/refresh_hk_current.sh",
             "--target-date",
             target_date,
@@ -1210,6 +1210,16 @@ def _repair_command(
             "--refresh-mode",
             "patch",
         ]
+        if asset_key == "etf_daily":
+            command.extend(
+                [
+                    "--refresh-asset",
+                    "etf_daily",
+                    "--refresh-asset",
+                    "etf_daily_clean",
+                ]
+            )
+        return command
     if action == "targeted-rebuild" and asset_key == "intraday":
         start_date = _norm_date((affected_range or {}).get("start")) or target_date
         end_date = _norm_date((affected_range or {}).get("end")) or target_date

@@ -521,6 +521,41 @@ def add_hk_current_health_args(parser: argparse.ArgumentParser) -> None:
     _add_quality_gate_arg(parser)
 
 
+def add_hk_asset_metadata_rebase_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--artifacts-root",
+        default="artifacts",
+        help="Artifacts root containing live HK asset metadata. Default: artifacts.",
+    )
+    parser.add_argument(
+        "--from-prefix",
+        required=True,
+        help="Old absolute repository prefix embedded in manifests/contracts.",
+    )
+    parser.add_argument(
+        "--to-prefix",
+        help="New absolute repository prefix. Default: parent directory of --artifacts-root.",
+    )
+    parser.add_argument(
+        "--max-file-bytes",
+        type=int,
+        default=5_000_000,
+        help="Skip text metadata files larger than this limit. Default: 5000000.",
+    )
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write metadata replacements and rebuild hk_current/registry. Default: dry-run.",
+    )
+    parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format. Default: text.",
+    )
+    parser.add_argument("--out", help="Optional report path. Default: print to stdout.")
+
+
 def add_hk_data_asset_audit_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--artifacts-root",
@@ -849,6 +884,31 @@ def add_hk_intraday_sync_args(
         help=(
             "After the new asset alias is repointed, also scan the full formal intraday asset. "
             "This is much heavier than the default patch-only inspection."
+        ),
+    )
+    parser.add_argument(
+        "--verify-sampled-segments",
+        type=int,
+        default=0,
+        help=(
+            "After publishing the formal asset, inspect N evenly distributed stored input segments; "
+            "N=1 inspects the latest segment only. Default: 0 (disabled)."
+        ),
+    )
+    parser.add_argument(
+        "--sampled-health-out",
+        help=(
+            "Optional JSON path for the post-publish sampled-segment health report. "
+            "Only used with --verify-sampled-segments."
+        ),
+    )
+    parser.add_argument(
+        "--sampled-inspect-fail-on-severity",
+        default="warning",
+        choices=["none", "info", "warning", "error"],
+        help=(
+            "Quality gate threshold for the optional sampled-segment inspection step. "
+            "Only used with --verify-sampled-segments. Default: warning."
         ),
     )
     parser.add_argument(

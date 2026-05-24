@@ -17,7 +17,7 @@ python scripts/dev/test_impact.py src/cstree/pipeline/runner.py docs/dev.md
 * `scripts/dev/install_git_hooks.sh`：安装本地 `pre-commit` 和 `pre-push` hooks，提前检查文档契约、路径引用、测试入口和快回归。
 * `scripts/dev/refresh_hk_current.sh`：本地日常刷新 HK current 资产；默认使用尾部增量刷新（patch refresh）和健康检查门控（inspect gate）。
 * `scripts/dev/run_hk_data_asset_audit.sh`：生成 HK current 资产审计报告，覆盖资产清单、新鲜度、修复候选和删除预演（prune dry-run）。
-* `scripts/dev/run_hk_health_checks.sh`：批量运行 HK / RQData 资产健康检查，并统一保存 report / log。
+* `scripts/dev/run_hk_health_checks.sh`：批量运行 HK / RQData 资产健康检查，并统一保存 report / log；默认 PIT 输入取 current contract，`--pit-config` 用于显式检查特定研究配置。
 * `scripts/dev/run_hk_pit_health.sh`：针对某个 HK PIT config 单独运行 coverage + health，并统一保存 report / log。
 * `scripts/internal/`：维护者私有工具，不属于公开 `cstree` 工作流。
 

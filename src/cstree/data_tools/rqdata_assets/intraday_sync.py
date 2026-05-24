@@ -57,6 +57,10 @@ def _default_full_health_report_path(asset_dir: Path) -> Path:
     return REPORTS_ROOT / f"{asset_dir.name}_health.json"
 
 
+def _default_sampled_health_report_path(asset_dir: Path, segment_count: int) -> Path:
+    return REPORTS_ROOT / f"{asset_dir.name}_sampled_{segment_count}_segments_health.json"
+
+
 def _default_package_dest(*, distribution_name: str, as_of: str) -> Path:
     return RELEASES_ROOT / f"{distribution_name}_{as_of}_stage"
 
@@ -173,6 +177,29 @@ def _build_asset_inputs(*, asset_alias: Path, downloaded_output_path: Path) -> l
     return inputs
 
 
+def _sample_intraday_asset_inputs(asset_dir: Path, segment_count: int) -> list[str]:
+    if segment_count <= 0:
+        return []
+    groups = resolve_intraday_input_groups([str(asset_dir)])
+    if not groups:
+        raise SystemExit(f"No intraday segments available for sampled verification: {asset_dir}")
+    if segment_count >= len(groups):
+        selected = groups
+    elif segment_count == 1:
+        selected = [groups[-1]]
+    else:
+        indexes = {
+            round(position * (len(groups) - 1) / (segment_count - 1))
+            for position in range(segment_count)
+        }
+        selected = [groups[index] for index in sorted(indexes)]
+    return [
+        str(group.parquet_path or group.parts_dir)
+        for group in selected
+        if group.parquet_path is not None or group.parts_dir is not None
+    ]
+
+
 def _inspect_intraday_input(
     *,
     input_specs: list[str],
@@ -209,6 +236,9 @@ def sync_hk_intraday(args, rqdatac) -> int:
     end_date = _normalize_date_token(args.end_date, label="--end-date")
     if start_date > end_date:
         raise SystemExit("--start-date must be <= --end-date.")
+    sampled_segment_count = int(getattr(args, "verify_sampled_segments", 0) or 0)
+    if sampled_segment_count < 0:
+        raise SystemExit("--verify-sampled-segments must be >= 0.")
 
     frequency = str(getattr(args, "frequency", "5m") or "5m").strip()
     output_path = (
@@ -280,6 +310,30 @@ def sync_hk_intraday(args, rqdatac) -> int:
         raise SystemExit(f"Expected intraday asset alias not found after build: {asset_alias}")
     asset_dir = asset_alias.resolve()
     print(f"intraday asset alias: {asset_alias} -> {asset_dir.name}")
+
+    if sampled_segment_count:
+        sampled_inputs = _sample_intraday_asset_inputs(asset_dir, sampled_segment_count)
+        sampled_health_report_path = (
+            _resolve_repo_path(args.sampled_health_out)
+            if getattr(args, "sampled_health_out", None)
+            else _default_sampled_health_report_path(asset_dir, sampled_segment_count)
+        )
+        sampled_inspect_result = _inspect_intraday_input(
+            input_specs=sampled_inputs,
+            daily_asset_dir=daily_asset_dir,
+            sample_limit=sample_limit,
+            expected_bars_per_day=expected_bars_per_day,
+            numeric_rtol=numeric_rtol,
+            numeric_atol=numeric_atol,
+            intraday_adjust_type=str(getattr(args, "adjust_type", "") or "") or None,
+            daily_adjust_type=str(daily_adjust_type or "") or None,
+            fail_on_severity=str(
+                getattr(args, "sampled_inspect_fail_on_severity", "warning") or "warning"
+            ),
+            out_path=sampled_health_report_path,
+        )
+        if sampled_inspect_result != 0:
+            return int(sampled_inspect_result)
 
     if getattr(args, "verify_full_asset", False):
         full_health_report_path = (

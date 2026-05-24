@@ -201,6 +201,17 @@ def test_hk_data_asset_audit_classifies_stale_etf_daily_repair_candidate(tmp_pat
         item["asset_key"] == "etf_daily" and item["action"] == "patch-refresh"
         for item in report["repair"]["candidates"]
     )
+    candidate = next(
+        item
+        for item in report["repair"]["candidates"]
+        if item["asset_key"] == "etf_daily" and item["action"] == "patch-refresh"
+    )
+    assert candidate["command"][-4:] == [
+        "--refresh-asset",
+        "etf_daily",
+        "--refresh-asset",
+        "etf_daily_clean",
+    ]
 
 
 def test_hk_data_asset_audit_downgrades_stale_etf_daily_when_provider_permission_blocked(

@@ -228,6 +228,7 @@ from .mirror_workflow import (
     _mirror_dated_dataset,
     _run_partitioned_mirror_batches,
 )
+from .rebase_metadata import rebase_hk_asset_metadata
 
 
 def add_list_hk_financial_fields_args(parser: argparse.ArgumentParser) -> None:
@@ -422,6 +423,10 @@ def add_hk_current_health_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_current_health_args(parser)
 
 
+def add_hk_asset_metadata_rebase_args(parser: argparse.ArgumentParser) -> None:
+    _args.add_hk_asset_metadata_rebase_args(parser)
+
+
 def add_hk_intraday_health_args(parser: argparse.ArgumentParser) -> None:
     _args.add_hk_intraday_health_args(parser)
 
@@ -496,6 +501,7 @@ __all__ = [
     "mirror_hk_instrument_industry",
     "mirror_hk_pit_financials",
     "patch_hk_pit_financials",
+    "rebase_hk_asset_metadata",
     "mirror_hk_shares",
     "mirror_hk_southbound",
     "mirror_hk_valuation",

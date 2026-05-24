@@ -53,12 +53,14 @@ def test_rqdata_asset_specs_expose_runner_and_argument_defaults():
 def test_rqdata_asset_package_facade_omits_argument_builders():
     assert hasattr(rqdata_assets_tool, "mirror_hk_daily")
     assert hasattr(rqdata_assets_tool, "inspect_hk_current_health")
+    assert hasattr(rqdata_assets_tool, "rebase_hk_asset_metadata")
     assert not hasattr(rqdata_assets_tool, "add_hk_daily_mirror_args")
 
 
 def test_rqdata_asset_facades_expose_only_stable_public_names():
     assert "mirror_hk_daily" in rqdata_assets_tool.__all__
     assert "inspect_hk_current_health" in rqdata_assets_tool.__all__
+    assert "rebase_hk_asset_metadata" in rqdata_assets_tool.__all__
     assert "add_hk_daily_mirror_args" not in rqdata_assets_tool.__all__
     assert all(not name.startswith("_") for name in rqdata_assets_tool.__all__)
     assert all(not name.startswith("_") for name in rqdata_public_api.__all__)
@@ -108,6 +110,27 @@ def test_cli_parses_rqdata_core_asset_commands():
     assert export_instruments.out == "artifacts/assets/rqdata/hk/instruments/demo.parquet"
     assert export_instruments.force is True
     assert callable(export_instruments.func)
+
+    metadata_rebase = parser.parse_args(
+        [
+            "rqdata",
+            "rebase-hk-asset-metadata",
+            "--from-prefix",
+            "/old/repo",
+            "--to-prefix",
+            "/new/repo",
+            "--execute",
+            "--format",
+            "json",
+            "--out",
+            "artifacts/reports/hk_metadata_rebase.json",
+        ]
+    )
+    assert metadata_rebase.rq_command == "rebase-hk-asset-metadata"
+    assert metadata_rebase.from_prefix == "/old/repo"
+    assert metadata_rebase.to_prefix == "/new/repo"
+    assert metadata_rebase.execute is True
+    assert callable(metadata_rebase.func)
 
     daily = parser.parse_args(
         [
@@ -784,6 +807,12 @@ def test_cli_parses_rqdata_intraday_and_daily_clean_commands():
             "--resume",
             "--inspect-fail-on-severity",
             "error",
+            "--verify-sampled-segments",
+            "3",
+            "--sampled-health-out",
+            "artifacts/reports/hk_intraday_sampled_health.json",
+            "--sampled-inspect-fail-on-severity",
+            "error",
             "--verify-full-asset",
             "--full-health-out",
             "artifacts/reports/hk_intraday_latest_health.json",
@@ -808,6 +837,9 @@ def test_cli_parses_rqdata_intraday_and_daily_clean_commands():
     assert intraday_sync.output == "artifacts/cache/intraday/hk_all_5m_20260402_20260409.parquet"
     assert intraday_sync.resume is True
     assert intraday_sync.inspect_fail_on_severity == "error"
+    assert intraday_sync.verify_sampled_segments == 3
+    assert intraday_sync.sampled_health_out == "artifacts/reports/hk_intraday_sampled_health.json"
+    assert intraday_sync.sampled_inspect_fail_on_severity == "error"
     assert intraday_sync.verify_full_asset is True
     assert intraday_sync.full_health_out == "artifacts/reports/hk_intraday_latest_health.json"
     assert intraday_sync.full_inspect_fail_on_severity == "none"

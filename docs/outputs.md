@@ -189,6 +189,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 * `catalog_summary.csv` 是给人看和临时筛选的平面导出，不替代 SQLite。
 * `current_assets/hk_current.json` 是一份轻量 current contract，记录当前 HK 资产 alias 的 resolved snapshot/file、manifest 摘要和 `as_of`；`package_assets --preset hk_current` 与 run 侧 `inputs.lock.json` 会优先消费它，审计时不直接依赖 `latest` alias。
 * `dataset_registry.csv` 从 current contract 派生，避免手工维护时落后于 alias；source-of-truth 仍是 `hk_current.json` 和各资产的 `manifest.yml`。
+* 仓库位置迁移后，如上述 metadata 内嵌的绝对路径已失效，使用 `cstree rqdata rebase-hk-asset-metadata` 先生成 dry-run 报告，再显式执行改写并重建 current contract / registry。
 
 ## Standardized Layer
 

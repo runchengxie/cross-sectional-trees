@@ -36,6 +36,9 @@ def _base_args() -> SimpleNamespace:
         numeric_rtol=1e-6,
         numeric_atol=1e-8,
         inspect_fail_on_severity="warning",
+        verify_sampled_segments=0,
+        sampled_health_out=None,
+        sampled_inspect_fail_on_severity="warning",
         verify_full_asset=False,
         full_health_out=None,
         full_inspect_fail_on_severity="warning",
@@ -392,3 +395,71 @@ def test_sync_hk_intraday_full_verify_is_explicit_and_scans_asset_alias(tmp_path
     assert len(inspect_calls) == 2
     assert inspect_calls[0][0].endswith("hk_intraday_5m_20260402_20260409.parquet")
     assert inspect_calls[1][0].endswith("artifacts/assets/rqdata/hk/intraday/hk_intraday_sync_demo")
+
+
+def test_sync_hk_intraday_sampled_verify_selects_oldest_and_latest_segments(tmp_path, monkeypatch):
+    sync = _load_module("cstree.data_tools.rqdata_assets.intraday_sync")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _configure_repo_roots(sync, repo_root)
+
+    inspect_calls: list[list[str]] = []
+
+    def _fake_download(args, rqdatac):
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("intraday", encoding="utf-8")
+        return {
+            "output_path": output_path,
+            "meta_path": output_path.with_suffix(".meta.json"),
+            "parts_dir": output_path.parent / f"{output_path.stem}.parts",
+            "rows": 10,
+            "symbols_requested": 2,
+            "symbols_downloaded": 2,
+            "meta": {},
+        }
+
+    def _fake_inspect(args):
+        inspect_calls.append(list(args.input))
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            json.dumps(
+                {
+                    "summary": {"trade_date_max": "2026-04-09", "rows_scanned": 10},
+                    "quality_verdict": {
+                        "overall_severity": "info",
+                        "severity_counts": {"error": 0, "warning": 0, "info": 0},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return 0
+
+    def _fake_build(args):
+        asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "intraday" / args.name
+        data_dir = asset_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        for stem in (
+            "hk_all_5m_20240101_20241231",
+            "hk_all_5m_20250101_20251231",
+            "hk_all_5m_20260101_20260409",
+        ):
+            (data_dir / f"{stem}.parquet").write_text(stem, encoding="utf-8")
+        alias_path = Path(args.alias)
+        alias_path.parent.mkdir(parents=True, exist_ok=True)
+        alias_path.symlink_to(asset_dir, target_is_directory=True)
+        return 0
+
+    monkeypatch.setattr(sync, "download_hk_intraday_cache", _fake_download)
+    monkeypatch.setattr(sync, "inspect_hk_intraday_health", _fake_inspect)
+    monkeypatch.setattr(sync, "build_hk_intraday_asset", _fake_build)
+
+    args = _base_args()
+    args.verify_sampled_segments = 2
+
+    assert sync.sync_hk_intraday(args, rqdatac=object()) == 0
+    assert len(inspect_calls) == 2
+    assert inspect_calls[1][0].endswith("hk_all_5m_20240101_20241231.parquet")
+    assert inspect_calls[1][1].endswith("hk_all_5m_20260101_20260409.parquet")
