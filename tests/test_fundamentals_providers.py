@@ -200,8 +200,8 @@ def test_fetch_fundamentals_rqdata_non_hk_market_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="market='hk'"):
         data_providers.fetch_fundamentals(
-            "legacy-market",
-            "AAPL",
+            "cn",
+            "000001.SZ",
             "20250102",
             "20250103",
             cache_dir,

@@ -1132,6 +1132,8 @@ def fetch_fundamentals(
         raise ValueError(
             "Fundamentals provider not supported. Use fundamentals.source=file or provider='rqdata'."
         )
+    if market != "hk":
+        raise ValueError("RQData fundamentals provider currently supports only market='hk'.")
     if client is None:
         try:
             import rqdatac as client

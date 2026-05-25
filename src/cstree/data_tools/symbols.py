@@ -41,8 +41,8 @@ def normalize_symbol_for_market(value: object, *, market: str | None) -> str:
     if upper.endswith(".HK"):
         upper = upper[:-3]
     if upper.isdigit():
-        upper = upper.zfill(5)
-    return f"{upper}.HK"
+        return f"{upper.zfill(5)}.HK"
+    return upper
 
 
 def _clean_symbol_series(values: pd.Series) -> pd.Series:
