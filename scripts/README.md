@@ -43,6 +43,7 @@ python scripts/dev/test_impact.py src/cstree/pipeline/runner.py docs/dev.md
 当前 `scripts/internal/` 里和 HK 资产维护相关的常用入口：
 
 * `scripts/internal/run_hk_asset_workflow.py`：维护者 driver / 兼容 wrapper。它串联 `refresh / inspect / repair / package / release`，底层仍复用现有 `cstree rqdata ...` 与 `cstree.release_tools.*`。valuation 历史检查默认走尾部窗口，可用 `--valuation-history-tail-days 0` 恢复全历史；repair 后可用 `--repair-rerun-inspect-asset` 和 `--repair-post-inspect-skip-history` 缩小复检范围；成功 patch 的中间目录可用 `--prune-successful-patches` 显式清理。`scripts/dev/refresh_hk_current.sh` 和 `scripts/dev/run_hk_health_checks.sh` 仍调用这个入口，因此暂不删除。
+* `scripts/internal/publish_hk_tick_depth_assets.py`：维护者迁移工具。它把 `rqdata-hk-depth-snapshots` 的本地 raw tick-depth 缓存、已聚合 daily parquet 和基线 execution cost 参数发布到 HK data platform artifacts root；raw 默认以外部 symlink 接入，避免在 stage-1 迁移里复制 43G 缓存。
 * `scripts/internal/package_repo.sh`：维护者 private helper。它把仓库源码打包、校验、可选切分为 parts；不属于公开 `cstree` 工作流，但有 `tests/test_package_repo_script.py` 覆盖。
 * `scripts/internal/export_repo_source.py`：维护者 private helper。它把仓库文本源码导出为单个 `full_project_source.txt`，用于离线审阅或维护场景；不属于公开 `cstree` 工作流。
 
