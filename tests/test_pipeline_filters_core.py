@@ -109,7 +109,7 @@ def test_pipeline_filters_and_fallbacks(tmp_path, monkeypatch):
 @pytest.mark.slow
 def test_pipeline_min_listed_days_skips_empty_basic_df(tmp_path, monkeypatch):
     dates = pd.date_range("2020-01-01", periods=12, freq="B")
-    symbols = ["AAA.HK", "BBB.HK"]
+    symbols = ["AAA", "BBB"]
     frames = _build_frames(symbols, dates)
 
     output_dir = tmp_path / "runs"

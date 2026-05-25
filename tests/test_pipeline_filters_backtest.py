@@ -17,14 +17,14 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
     tmp_path, monkeypatch
 ):
     dates = pd.date_range("2020-01-01", periods=15, freq="B")
-    symbols = ["AAA.HK", "BBB.HK"]
+    symbols = ["AAA", "BBB"]
     frames = _build_frames(symbols, dates, include_amount=False)
 
     universe_path = tmp_path / "universe_by_date.csv"
     pd.DataFrame(
         {
             "trade_date": ["20200101", "20200101", "20200113", "20200113", "20200116"],
-            "symbol": ["AAA.HK", "BBB.HK", "AAA.HK", "BBB.HK", "BBB.HK"],
+            "symbol": ["AAA", "BBB", "AAA", "BBB", "BBB"],
         }
     ).to_csv(universe_path, index=False)
 
@@ -125,8 +125,9 @@ def test_pipeline_backtest_uses_unfiltered_pricing_panel_with_universe_by_date(
         pricing_df["trade_date"] == dropped_date, "symbol"
     ].tolist()
 
-    assert "AAA.HK" not in selection_symbols
-    assert "AAA.HK" in pricing_symbols
+    assert "AAA" not in selection_symbols
+    assert "AAA" in pricing_symbols
+
 
 @pytest.mark.slow
 def test_pipeline_backtest_pricing_includes_execution_columns(tmp_path, monkeypatch):
