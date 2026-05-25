@@ -217,3 +217,93 @@ def test_build_inputs_lock_uses_hk_data_platform_root_for_current_contract(
     assert daily_resolution["configured_path"] == str(alias_path)
     assert daily_resolution["resolved_path"] == str(snapshot_dir.resolve())
     assert daily_resolution["current_contract"]["contract_path"] == str(current_contract_path)
+
+
+def test_build_inputs_lock_uses_cn_current_contract_for_cn_market(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    data_root = tmp_path / "market-data-platform-artifacts"
+    monkeypatch.setenv("DATA_PLATFORM_ROOT", str(data_root))
+
+    snapshot_dir = (
+        data_root
+        / "assets"
+        / "rqdata"
+        / "cn"
+        / "daily"
+        / "cn_all_20260522_daily_clean"
+    )
+    snapshot_dir.mkdir(parents=True)
+    manifest_path = snapshot_dir / "manifest.yml"
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily_clean",
+                "status": "completed",
+                "query": {"start_date": "20200101", "end_date": "20260522"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    alias_path = data_root / "assets" / "rqdata" / "cn" / "daily" / "cn_all_daily_clean_latest"
+    os.symlink(
+        os.path.relpath(snapshot_dir, start=alias_path.parent),
+        alias_path,
+        target_is_directory=True,
+    )
+    current_contract_path = data_root / "metadata" / "current_assets" / "cn_current.json"
+    current_contract_path.parent.mkdir(parents=True)
+    current_contract_path.write_text(
+        json.dumps(
+            {
+                "contract": {"name": "cn_current", "market": "cn", "version": 1},
+                "assets": {
+                    "daily_clean": {
+                        "alias_path": str(alias_path),
+                        "resolved_path": str(snapshot_dir),
+                        "manifest_path": str(manifest_path),
+                        "as_of": "20260522",
+                        "exists": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_inputs_lock(
+        {
+            "market": "cn",
+            "data_cfg": {
+                "start_date": "20200101",
+                "end_date": "20260522",
+                "rqdata": {
+                    "daily_asset_dir": "artifacts/assets/rqdata/cn/daily/cn_all_daily_clean_latest",
+                },
+            },
+            "eval_cfg": {},
+            "live_cfg": {},
+            "ARTIFACTS_ROOT": tmp_path / "artifacts",
+            "run_dir": tmp_path / "artifacts" / "runs" / "demo",
+            "config_path": tmp_path / "config.yml",
+            "config_source": "file",
+            "START_DATE": "20200101",
+            "END_DATE": "20260522",
+            "LIVE_AS_OF": None,
+            "CACHE_DIR": "cache",
+            "by_date_file": None,
+            "FUNDAMENTALS_FILE": None,
+            "INDUSTRY_FILE": None,
+            "BACKTEST_BENCHMARK_RETURNS_FILE": None,
+            "BACKTEST_BENCHMARK_COMPARE": [],
+        }
+    )
+
+    assert payload["data_platform_root"] == str(data_root.resolve())
+    assert payload["current_contracts"] == {"cn_current": str(current_contract_path)}
+    daily_resolution = payload["input_resolution"]["daily_asset_dir"]
+    assert daily_resolution["current_contract"]["contract_name"] == "cn_current"
+    assert daily_resolution["current_contract"]["contract_path"] == str(current_contract_path)

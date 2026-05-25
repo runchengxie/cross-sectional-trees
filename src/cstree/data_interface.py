@@ -17,6 +17,7 @@ from .data_providers import (
     normalize_market,
     resolve_provider,
 )
+from .data_provider_contracts import require_supported_market
 from .rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
@@ -36,15 +37,14 @@ class DataInterface:
     max_backoff_seconds: float = field(init=False)
 
     def __post_init__(self) -> None:
-        self.market = normalize_market(self.market)
+        try:
+            self.market = require_supported_market(normalize_market(self.market))
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         self.data_cfg = self.data_cfg if isinstance(self.data_cfg, Mapping) else {}
         self.provider = resolve_provider(self.data_cfg)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.market != "hk":
-            raise SystemExit(
-                f"Unsupported market '{self.market}'. This project currently supports only market='hk'."
-            )
         if self.provider != "rqdata":
             raise SystemExit(
                 f"Unsupported data.provider '{self.provider}'. This project currently supports only provider='rqdata'."

@@ -4,19 +4,18 @@ from typing import Any
 
 import pandas as pd
 
+from ..data_provider_contracts import to_rqdata_symbol
+
 
 def to_rq_order_book_id(symbol: str, market: str | None) -> str:
     text = str(symbol or "").strip().upper()
     if not text:
         return text
-    if text.endswith(".XHKG"):
+    market_text = str(market or "").strip().lower()
+    if text.endswith((".XHKG", ".XSHG", ".XSHE")):
         return text
-    if text.endswith(".XSHG") or text.endswith(".XSHE") or text.endswith(".SH") or text.endswith(".SZ"):
-        raise SystemExit(
-            f"Unsupported symbol '{symbol}'. This project currently supports only HK symbols."
-        )
 
-    if text.endswith(".HK") or market == "hk":
+    if text.endswith(".HK") or market_text == "hk":
         if text.endswith(".HK"):
             text = text[:-3]
         if text.endswith(".XHKG"):
@@ -25,9 +24,10 @@ def to_rq_order_book_id(symbol: str, market: str | None) -> str:
             text = text.zfill(5)
         return f"{text}.XHKG"
 
-    raise SystemExit(
-        f"Unsupported symbol '{symbol}'. This project currently supports only HK symbols."
-    )
+    if text.endswith((".SH", ".SZ")) or market_text == "cn":
+        return to_rqdata_symbol("cn", text)
+
+    raise SystemExit(f"Unsupported symbol '{symbol}'. Supported markets: hk, cn.")
 
 
 def resolve_price_date(rqdatac: Any, as_of: pd.Timestamp, market: str | None) -> pd.Timestamp:

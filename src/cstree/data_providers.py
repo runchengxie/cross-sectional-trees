@@ -48,6 +48,13 @@ DEFAULT_RQDATA_HK_FUNDAMENTAL_FIELDS = {
 }
 
 DEFAULT_COLUMN_MAPS = {
+    "cn": {
+        "trade_date": "trade_date",
+        "symbol": "symbol",
+        "close": "close",
+        "vol": "volume",
+        "amount": "total_turnover",
+    },
     "hk": {
         "trade_date": "trade_date",
         "symbol": "symbol",
@@ -399,6 +406,9 @@ def _load_basic_rqdata(
     )
     df_basic = _drop_legacy_symbol_aliases(df_basic)
     df_basic = df_basic[["symbol", "name", "list_date"]].copy()
+    df_basic["symbol"] = df_basic["symbol"].map(
+        lambda value: normalize_symbol_for_market(value, market=market)
+    )
     if "list_date" in df_basic.columns:
         df_basic["list_date"] = pd.to_datetime(df_basic["list_date"], errors="coerce").dt.strftime(
             "%Y%m%d"

@@ -278,6 +278,18 @@ def test_cli_main_init_config_writes_default_configs_dir(tmp_path, monkeypatch, 
     assert capsys.readouterr().out.strip() == f"Wrote {out_path}"
 
 
+def test_cli_main_init_config_supports_cn_template(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["init-config", "--market", "cn"]) == 0
+
+    out_path = tmp_path / "configs" / "cn.yml"
+    assert out_path.exists()
+    source_path = resolve_repo_preset_path("cn.yml")
+    assert out_path.read_text(encoding="utf-8") == source_path.read_text(encoding="utf-8")
+    assert capsys.readouterr().out.strip() == f"Wrote {out_path}"
+
+
 def test_cli_main_init_config_directory_output_and_overwrite_guard(tmp_path):
     out_dir = tmp_path / "exports"
 

@@ -430,6 +430,37 @@ def test_load_basic_from_local_asset_normalizes_hk_symbol_when_order_book_id_pre
     assert result["list_date"].tolist() == ["19721101"]
 
 
+def test_load_basic_from_local_asset_normalizes_cn_order_book_id(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    instruments_file = tmp_path / "cn_instruments.parquet"
+
+    pd.DataFrame(
+        {
+            "order_book_id": ["600000.XSHG", "000001.XSHE"],
+            "name": ["PF Bank", "Ping An Bank"],
+            "listed_date": ["1999-11-10", "1991-04-03"],
+        }
+    ).to_parquet(instruments_file)
+
+    result = data_providers.load_basic(
+        "cn",
+        cache_dir,
+        client=None,
+        data_cfg={
+            "provider": "rqdata",
+            "rqdata": {
+                "instruments_file": str(instruments_file),
+            },
+        },
+        symbols=["600000.SH"],
+    )
+
+    assert result["symbol"].tolist() == ["600000.SH"]
+    assert result["name"].tolist() == ["PF Bank"]
+    assert result["list_date"].tolist() == ["19991110"]
+
+
 def test_fetch_daily_backfills_tr_close_for_existing_cache(tmp_path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -612,3 +643,39 @@ def test_fetch_daily_rqdata_returns_empty_when_symbol_lists_after_requested_rang
 
     assert client.price_calls == []
     assert result.empty
+
+
+def test_fetch_daily_rqdata_maps_cn_symbol_to_provider_id(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    data_providers._RQDATA_LISTED_DATE_CACHE.clear()
+    client = _FakeRQDailyClient("1999-11-10")
+
+    result = data_providers.fetch_daily(
+        "cn",
+        "600000.SH",
+        "20200101",
+        "20200131",
+        cache_dir,
+        client=client,
+        data_cfg={
+            "provider": "rqdata",
+            "cache_mode": "range",
+            "rqdata": {"market": "cn", "skip_suspended": False},
+        },
+    )
+
+    assert client.price_calls == [
+        (
+            "600000.XSHG",
+            "20200101",
+            "20200131",
+            "1d",
+            {
+                "fields": ["close", "volume", "total_turnover"],
+                "skip_suspended": False,
+                "market": "cn",
+            },
+        )
+    ]
+    assert result["symbol"].tolist() == ["600000.SH", "600000.SH"]

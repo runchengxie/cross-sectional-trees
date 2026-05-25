@@ -11,7 +11,7 @@ from ..artifacts import (
     resolve_hk_data_platform_root,
 )
 from ..current_assets import (
-    default_hk_current_contract_path,
+    default_current_contract_path,
     infer_manifest_path,
     load_current_contract,
     load_manifest_summary,
@@ -113,6 +113,7 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
     eval_cfg = ctx.get("eval_cfg") if isinstance(ctx.get("eval_cfg"), Mapping) else {}
     live_cfg = ctx.get("live_cfg") if isinstance(ctx.get("live_cfg"), Mapping) else {}
     rq_cfg = data_cfg.get("rqdata") if isinstance(data_cfg.get("rqdata"), Mapping) else {}
+    market = str(ctx.get("market") or "hk").strip().lower() or "hk"
     benchmark_compare_cfg = (
         ctx.get("BACKTEST_BENCHMARK_COMPARE")
         if isinstance(ctx.get("BACKTEST_BENCHMARK_COMPARE"), list)
@@ -144,7 +145,7 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
     data_platform_root = resolve_hk_data_platform_root()
     current_contract_root = data_platform_root or artifacts_root
     current_contract_path = (
-        default_hk_current_contract_path(current_contract_root)
+        default_current_contract_path(current_contract_root, market=market)
         if current_contract_root is not None
         else None
     )
@@ -179,7 +180,7 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         if key not in {"cache_dir", "eval_output_dir"} and entry.get("manifest_path")
     }
     current_contracts = (
-        {"hk_current": str(current_contract_path)}
+        {f"{market}_current": str(current_contract_path)}
         if current_contract_path is not None
         and any(entry.get("current_contract") for entry in input_resolution.values())
         else {}
@@ -198,6 +199,7 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         resolved_inputs["benchmark_compare_symbols"] = benchmark_compare_symbols
     return {
         "artifacts_root": str(ctx.get("ARTIFACTS_ROOT")) if ctx.get("ARTIFACTS_ROOT") else None,
+        "data_platform_root": str(data_platform_root) if data_platform_root else None,
         "hk_data_platform_root": str(data_platform_root) if data_platform_root else None,
         "run_dir": str(ctx["run_dir"]),
         "config_path": str(ctx["config_path"]) if ctx.get("config_path") else None,

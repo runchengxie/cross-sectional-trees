@@ -1,10 +1,35 @@
-"""Provider and market boundary helpers for the supported HK/RQData workflow."""
+"""Provider and market boundary helpers for supported RQData workflows."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Mapping, Optional
 
-SUPPORTED_MARKETS = {"hk"}
+SUPPORTED_MARKETS = {"hk", "cn"}
+
+
+@dataclass(frozen=True)
+class MarketSpec:
+    market: str
+    provider_market: str
+    canonical_suffixes: tuple[str, ...]
+    rqdata_suffixes: tuple[str, ...]
+
+
+MARKET_SPECS = {
+    "hk": MarketSpec(
+        market="hk",
+        provider_market="hk",
+        canonical_suffixes=(".HK",),
+        rqdata_suffixes=(".XHKG",),
+    ),
+    "cn": MarketSpec(
+        market="cn",
+        provider_market="cn",
+        canonical_suffixes=(".SH", ".SZ"),
+        rqdata_suffixes=(".XSHG", ".XSHE"),
+    ),
+}
 
 
 def normalize_market(market: Optional[str], *, default: Optional[str] = "hk") -> Optional[str]:
@@ -37,7 +62,7 @@ def require_supported_market(market: str) -> str:
     market = normalize_market(market)
     if market not in SUPPORTED_MARKETS:
         raise ValueError(
-            f"Unsupported market '{market}'. This project currently supports only market='hk'."
+            f"Unsupported market '{market}'. Supported markets: {', '.join(sorted(SUPPORTED_MARKETS))}."
         )
     return market
 
@@ -55,6 +80,35 @@ def hk_to_rqdata_symbol(symbol: str) -> str:
     return f"{text}.XHKG"
 
 
+def _infer_cn_suffix(code: str) -> str | None:
+    if code.startswith(("5", "6", "9")):
+        return ".XSHG"
+    if code.startswith(("0", "2", "3")):
+        return ".XSHE"
+    return None
+
+
+def cn_to_rqdata_symbol(symbol: str) -> str:
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return text
+    if text.endswith((".XSHG", ".XSHE")):
+        return text
+    if text.endswith(".SH"):
+        return f"{text[:-3].zfill(6)}.XSHG"
+    if text.endswith(".SZ"):
+        return f"{text[:-3].zfill(6)}.XSHE"
+    if text.isdigit():
+        suffix = _infer_cn_suffix(text.zfill(6))
+        if suffix is not None:
+            return f"{text.zfill(6)}{suffix}"
+    return text
+
+
 def to_rqdata_symbol(market: str, symbol: str) -> str:
-    require_supported_market(market)
-    return hk_to_rqdata_symbol(symbol)
+    market = require_supported_market(market)
+    if market == "hk":
+        return hk_to_rqdata_symbol(symbol)
+    if market == "cn":
+        return cn_to_rqdata_symbol(symbol)
+    return str(symbol or "").strip()

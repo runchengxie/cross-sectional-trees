@@ -31,7 +31,12 @@ from ..modeling import resolve_model_spec
 from .config_eval import normalize_eval_settings  # noqa: F401  # re-exported compatibility
 from .runtime import config_hash, setup_logging
 from .stats import _ensure_execution_daily_fields
-from .support import load_symbols_file, load_universe_by_date, normalize_symbol_list
+from .support import (
+    load_symbols_file,
+    load_universe_by_date,
+    normalize_symbol_list,
+    normalize_universe_symbol,
+)
 
 
 def load_run_config(
@@ -144,6 +149,8 @@ def resolve_universe_inputs(
 
     if not symbols:
         symbols = default_symbols
+
+    symbols = list(dict.fromkeys(normalize_universe_symbol(symbol, market) for symbol in symbols))
 
     if not symbols:
         raise SystemExit("No symbols configured.")

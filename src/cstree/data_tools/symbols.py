@@ -15,10 +15,27 @@ def normalize_symbol_for_market(value: object, *, market: str | None) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    if str(market or "").strip().lower() != "hk":
+    market_text = str(market or "").strip().lower()
+    upper = text.upper()
+    if market_text == "cn":
+        if upper.endswith(".XSHG"):
+            return f"{upper[:-5].zfill(6)}.SH"
+        if upper.endswith(".XSHE"):
+            return f"{upper[:-5].zfill(6)}.SZ"
+        if upper.endswith(".SH"):
+            return f"{upper[:-3].zfill(6)}.SH"
+        if upper.endswith(".SZ"):
+            return f"{upper[:-3].zfill(6)}.SZ"
+        if upper.isdigit():
+            code = upper.zfill(6)
+            if code.startswith(("5", "6", "9")):
+                return f"{code}.SH"
+            if code.startswith(("0", "2", "3")):
+                return f"{code}.SZ"
+        return upper
+    if market_text != "hk":
         return text
 
-    upper = text.upper()
     if upper.endswith(".XHKG"):
         upper = upper[:-5]
     if upper.endswith(".HK"):

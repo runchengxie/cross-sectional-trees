@@ -23,6 +23,7 @@ LIVE_RUNS_DIR = ARTIFACTS_ROOT / "live_runs"
 SWEEPS_DIR = ARTIFACTS_ROOT / "sweeps"
 SNAPSHOTS_DIR = ARTIFACTS_ROOT / "snapshots"
 ENV_ARTIFACTS_ROOT = "CSTREE_ARTIFACTS_ROOT"
+ENV_DATA_PLATFORM_ROOT = "DATA_PLATFORM_ROOT"
 ENV_HK_DATA_PLATFORM_ROOT = "HK_DATA_PLATFORM_ROOT"
 ENV_METADATA_DB_PATH = "CSTREE_METADATA_DB_PATH"
 ENV_WAREHOUSE_DB_PATH = "CSTREE_WAREHOUSE_DB_PATH"
@@ -61,7 +62,11 @@ def resolve_artifacts_root(path_text: str | Path | None = None) -> Path:
 
 
 def resolve_hk_data_platform_root(path_text: str | Path | None = None) -> Path | None:
-    configured = _normalize_path_text(path_text) or _resolve_env_path(ENV_HK_DATA_PLATFORM_ROOT)
+    configured = (
+        _normalize_path_text(path_text)
+        or _resolve_env_path(ENV_DATA_PLATFORM_ROOT)
+        or _resolve_env_path(ENV_HK_DATA_PLATFORM_ROOT)
+    )
     return resolve_repo_path(configured) if configured is not None else None
 
 

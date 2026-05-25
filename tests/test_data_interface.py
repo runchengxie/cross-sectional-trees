@@ -5,8 +5,8 @@ import pytest
 from cstree.data_interface import DataInterface
 
 
-def test_data_interface_rejects_non_hk_market(tmp_path):
-    with pytest.raises(SystemExit, match="supports only market='hk'"):
+def test_data_interface_rejects_unsupported_market(tmp_path):
+    with pytest.raises(SystemExit, match="Supported markets: cn, hk"):
         DataInterface(
             market="legacy-market",
             data_cfg={"provider": "rqdata", "retry": {"max_attempts": 1}},

@@ -57,8 +57,18 @@ HK_CURRENT_PATH_SPECS = {
 }
 
 
+def default_current_contract_path(artifacts_root: str | Path, *, market: str = "hk") -> Path:
+    market_text = str(market or "hk").strip().lower() or "hk"
+    return (
+        Path(artifacts_root).expanduser().resolve()
+        / "metadata"
+        / "current_assets"
+        / f"{market_text}_current.json"
+    )
+
+
 def default_hk_current_contract_path(artifacts_root: str | Path) -> Path:
-    return Path(artifacts_root).expanduser().resolve() / HK_CURRENT_CONTRACT_RELATIVE_PATH
+    return default_current_contract_path(artifacts_root, market="hk")
 
 
 def hk_current_candidate_paths(artifacts_root: str | Path) -> dict[str, Path]:

@@ -60,7 +60,7 @@ def register_core_commands(subparsers) -> None:
     )
     run.add_argument(
         "--config",
-        help="Path to YAML config or built-in name (default/hk).",
+        help="Path to YAML config or built-in name (default/hk/cn).",
     )
     run.add_argument(
         "--fail-on-quality",
@@ -88,7 +88,7 @@ def register_core_commands(subparsers) -> None:
     init_cfg.add_argument(
         "--market",
         default="default",
-        help="Template to export (default/hk).",
+        help="Template to export (default/hk/cn).",
     )
     init_cfg.add_argument(
         "--out",
