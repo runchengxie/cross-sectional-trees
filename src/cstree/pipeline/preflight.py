@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from ..artifacts import resolve_repo_path
+from ..artifacts import resolve_data_input_path
 from ..data_interface import DataInterface
 from ..data_providers import fundamentals_provider_supported
 from .config import (
@@ -209,7 +209,7 @@ def resolve_effective_data_inputs(
             logger.warning("%s Fundamentals disabled.", message)
             fundamentals_enabled = False
         if fundamentals_source == "file" and fundamentals_enabled:
-            fundamentals_file_path = resolve_repo_path(fundamentals_file)
+            fundamentals_file_path = resolve_data_input_path(fundamentals_file)
             if not fundamentals_file_path.exists():
                 message = f"Fundamentals file not found: {fundamentals_file_path}"
                 if fundamentals_required:
@@ -225,7 +225,7 @@ def resolve_effective_data_inputs(
             logger.warning("%s Industry join disabled.", message)
             industry_enabled = False
         else:
-            industry_file_path = resolve_repo_path(industry_file)
+            industry_file_path = resolve_data_input_path(industry_file)
             if not industry_file_path.exists():
                 message = f"Industry file not found: {industry_file_path}"
                 if industry_required:
@@ -259,7 +259,7 @@ def resolve_effective_data_inputs(
 
     benchmark_symbol = str(backtest_benchmark).strip() if backtest_benchmark else None
     benchmark_returns_file_path = (
-        resolve_repo_path(backtest_benchmark_returns_file)
+        resolve_data_input_path(backtest_benchmark_returns_file)
         if backtest_benchmark_returns_file
         else None
     )
@@ -278,7 +278,7 @@ def resolve_effective_data_inputs(
         if source_type == "symbol":
             compare_spec["symbol"] = str(spec["symbol"]).strip()
         else:
-            returns_file_path = resolve_repo_path(spec["returns_file"])
+            returns_file_path = resolve_data_input_path(spec["returns_file"])
             series = (
                 benchmark_return_series.copy()
                 if benchmark_returns_file_path is not None

@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from ..artifacts import resolve_repo_path
+from ..artifacts import resolve_data_input_path
 from ..config_utils import get_research_universe_config, resolve_pipeline_config
 from ..data_tools import rqdata_assets
 from ..data_tools.rqdata_assets.quality_gate import (
@@ -89,7 +89,7 @@ def _build_hk_pit_preflight_args(
     return Namespace(
         config=None,
         asset_dir=None,
-        fundamentals_file=str(resolve_repo_path(str(fundamentals_file))),
+        fundamentals_file=str(resolve_data_input_path(str(fundamentals_file))),
         field_profile=[],
         field=_normalize_list(fundamentals_cfg.get("features")),
         fields_file=[],
@@ -97,7 +97,7 @@ def _build_hk_pit_preflight_args(
         include_health=True,
         target_date=target_date_text,
         symbols_file=None,
-        by_date_file=str(resolve_repo_path(str(by_date_file))) if by_date_file else None,
+        by_date_file=str(resolve_data_input_path(str(by_date_file))) if by_date_file else None,
         health_sample_limit=int(quality_cfg.get("health_sample_limit", 5) or 5),
         min_symbols=min_symbols_value,
         top=10,

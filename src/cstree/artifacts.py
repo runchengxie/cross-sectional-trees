@@ -23,8 +23,14 @@ LIVE_RUNS_DIR = ARTIFACTS_ROOT / "live_runs"
 SWEEPS_DIR = ARTIFACTS_ROOT / "sweeps"
 SNAPSHOTS_DIR = ARTIFACTS_ROOT / "snapshots"
 ENV_ARTIFACTS_ROOT = "CSTREE_ARTIFACTS_ROOT"
+ENV_HK_DATA_PLATFORM_ROOT = "HK_DATA_PLATFORM_ROOT"
 ENV_METADATA_DB_PATH = "CSTREE_METADATA_DB_PATH"
 ENV_WAREHOUSE_DB_PATH = "CSTREE_WAREHOUSE_DB_PATH"
+DATA_PLATFORM_PATH_PREFIXES = {
+    ("artifacts", "assets"),
+    ("artifacts", "metadata"),
+    ("artifacts", "standardized"),
+}
 
 
 def default_path_text(path: Path) -> str:
@@ -52,6 +58,37 @@ def _resolve_env_path(env_name: str) -> str | None:
 def resolve_artifacts_root(path_text: str | Path | None = None) -> Path:
     configured = _normalize_path_text(path_text) or _resolve_env_path(ENV_ARTIFACTS_ROOT)
     return resolve_repo_path(configured or ARTIFACTS_ROOT)
+
+
+def resolve_hk_data_platform_root(path_text: str | Path | None = None) -> Path | None:
+    configured = _normalize_path_text(path_text) or _resolve_env_path(ENV_HK_DATA_PLATFORM_ROOT)
+    return resolve_repo_path(configured) if configured is not None else None
+
+
+def _data_platform_relative_path(path: Path) -> Path | None:
+    if path.is_absolute():
+        return None
+    parts = path.parts
+    if len(parts) < 2:
+        return None
+    if (parts[0], parts[1]) not in DATA_PLATFORM_PATH_PREFIXES:
+        return None
+    return Path(*parts[1:])
+
+
+def configured_data_input_path(path_text: str | Path) -> Path:
+    path = Path(path_text).expanduser()
+    if path.is_absolute():
+        return path.absolute()
+    data_root = resolve_hk_data_platform_root()
+    relative = _data_platform_relative_path(path)
+    if data_root is not None and relative is not None:
+        return (data_root / relative).absolute()
+    return (Path.cwd() / path).absolute()
+
+
+def resolve_data_input_path(path_text: str | Path) -> Path:
+    return configured_data_input_path(path_text).resolve()
 
 
 def resolve_configured_artifacts_root(

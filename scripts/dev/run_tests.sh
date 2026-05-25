@@ -135,19 +135,19 @@ fi
 
 case "$mode" in
   all)
-    exec uv run pytest "$@"
+    exec uv run python -m pytest "$@"
     ;;
   fast | unit)
-    exec uv run pytest --no-cov -m "not integration and not slow" "$@"
+    exec uv run python -m pytest --no-cov -m "not integration and not slow" "$@"
     ;;
   slow)
-    exec uv run pytest --no-cov -m "slow and not integration" "$@"
+    exec uv run python -m pytest --no-cov -m "slow and not integration" "$@"
     ;;
   integration)
-    exec uv run pytest --no-cov -m "integration" "$@"
+    exec uv run python -m pytest --no-cov -m "integration" "$@"
     ;;
   coverage)
-    exec uv run pytest --cov=cstree --cov-report=term-missing "$@"
+    exec uv run python -m pytest --cov=cstree --cov-report=term-missing "$@"
     ;;
   lint)
     run_ruff check src tests scripts "$@"

@@ -89,12 +89,12 @@ def test_run_tests_script_lint_ratchet_mentions_high_signal_rules():
 @pytest.mark.parametrize(
     ("mode", "expected_argv"),
     [
-        ("all", ["run", "pytest"]),
-        ("fast", ["run", "pytest", "--no-cov", "-m", "not integration and not slow"]),
-        ("unit", ["run", "pytest", "--no-cov", "-m", "not integration and not slow"]),
-        ("slow", ["run", "pytest", "--no-cov", "-m", "slow and not integration"]),
-        ("integration", ["run", "pytest", "--no-cov", "-m", "integration"]),
-        ("coverage", ["run", "pytest", "--cov=cstree", "--cov-report=term-missing"]),
+        ("all", ["run", "python", "-m", "pytest"]),
+        ("fast", ["run", "python", "-m", "pytest", "--no-cov", "-m", "not integration and not slow"]),
+        ("unit", ["run", "python", "-m", "pytest", "--no-cov", "-m", "not integration and not slow"]),
+        ("slow", ["run", "python", "-m", "pytest", "--no-cov", "-m", "slow and not integration"]),
+        ("integration", ["run", "python", "-m", "pytest", "--no-cov", "-m", "integration"]),
+        ("coverage", ["run", "python", "-m", "pytest", "--cov=cstree", "--cov-report=term-missing"]),
         ("typecheck", ["run", "--extra", "dev", "pyright"]),
     ],
 )
@@ -117,6 +117,8 @@ def test_run_tests_script_forwards_additional_pytest_args(tmp_path):
     assert result.returncode == 0, result.stderr
     assert argv == [
         "run",
+        "python",
+        "-m",
         "pytest",
         "--no-cov",
         "-m",

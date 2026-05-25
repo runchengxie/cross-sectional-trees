@@ -74,6 +74,7 @@ cstree <subcommand> --help
 
 - 该参数仅修改默认的派生基础路径。已经明确指定的具体路径（如 `eval.output_dir`、`data.cache_dir`、`fundamentals.file`、`--db-path`、`--out-root`）将保持不变。
 - 若只需单独修改 metadata catalog 或 standardized 输出的位置，可继续直接传入 `--db-path`、`--summary-out`、`--out-root` 或 `--standardized-root` 参数。
+- 若目标是只读消费共享 HK 数据平台，优先设置 `HK_DATA_PLATFORM_ROOT`，不要把 `--artifacts-root` 当作数据输入专用开关；后者也会改变 run/cache/report 等默认输出位置。
 
 ### 日期 Token 解析
 

@@ -25,7 +25,7 @@ def test_test_impact_maps_pipeline_runner_to_focused_tests():
     commands = module.recommended_commands(["src/cstree/pipeline/runner.py"])
 
     assert commands == [
-        "uv run pytest tests/test_pipeline_runtime.py "
+        "uv run python -m pytest tests/test_pipeline_runtime.py "
         "tests/test_pipeline_filters_core.py -q",
         "scripts/dev/run_tests.sh lint",
     ]

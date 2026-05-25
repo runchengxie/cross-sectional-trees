@@ -48,7 +48,7 @@ scripts/dev/run_tests.sh format
 
 `all` 覆盖主 `pytest` 测试集，不包含可选依赖冒烟检查和显式开启的真实 provider 联调；完整 CI 分层以 `docs/dev.md` 为准。
 
-需要定点排查时再直接调用 `uv run pytest tests/...`。
+需要定点排查时再直接调用 `uv run python -m pytest tests/...`。
 
 如需 RQData 相关功能：
 
@@ -140,7 +140,7 @@ uv sync --extra dev --extra rqdata
 * 优先做小范围改动，避免顺手重写无关文件。
 * 不要提交 `artifacts/`、旧 `out/`、缓存文件或临时实验产物，除非任务明确要求。
 * 文档改动至少检查交叉引用和路径是否仍然有效。
-* 文档、脚本说明或测试入口改动，优先跑：`uv run pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q`。
+* 文档、脚本说明或测试入口改动，优先跑：`uv run python -m pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q`。
 * 如需在本地提前拦住文档 / 路径 / 快回归问题，可安装仓库内置 git hooks：`./scripts/dev/install_git_hooks.sh`。
 * 代码改动后，运行与改动范围匹配的测试。
 * HK + RQData 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/rqdata_assets/`、`tests/test_data_providers_cache.py`。

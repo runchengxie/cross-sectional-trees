@@ -22,6 +22,8 @@
 * 环境变量：`CSTREE_ARTIFACTS_ROOT`
 * CLI：`--artifacts-root`
 
+若只想让策略 run 读取共享 HK 数据平台，设置 `HK_DATA_PLATFORM_ROOT`。它只影响 `artifacts/assets/...`、`artifacts/metadata/...`、`artifacts/standardized/...` 这类数据输入路径；run/cache/report 输出仍由 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` 或 `--artifacts-root` 控制。
+
 本页示例仍统一写成 `artifacts/...`，只是为了说明目录结构，不代表根目录必须留在仓库内。
 
 当前默认根目录结构：
@@ -170,7 +172,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `cstree data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新；`dataset_registry.csv` 也由 workflow 从 `hk_current.json` 自动生成，是面向人工盘点的紧凑索引。
 
-如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。
+如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。设置 `HK_DATA_PLATFORM_ROOT` 时，run 侧的输入锁会优先从共享数据平台根目录读取 `current_assets/hk_current.json`，但不会改变 metadata catalog 的默认写入位置。
 
 用途：
 

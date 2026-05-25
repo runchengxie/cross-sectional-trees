@@ -14,7 +14,7 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 echo "[pre-commit] running docs/path contract checks"
-exec uv run pytest \
+exec uv run python -m pytest \
   tests/test_docs_contracts.py \
   tests/test_repo_path_references.py \
   tests/test_run_tests_script.py \

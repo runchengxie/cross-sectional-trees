@@ -40,6 +40,7 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
         "snapshot_name": snapshot_dir.name,
         "query_start_date": "20000101",
         "query_end_date": "20260327",
+        "schema_version": None,
         "totals": {},
     }
 
@@ -125,3 +126,94 @@ def test_build_inputs_lock_records_symlink_resolution_and_manifest_metadata(
         "manifest": expected_manifest_summary,
         "as_of": "20260327",
     }
+
+
+def test_build_inputs_lock_uses_hk_data_platform_root_for_current_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    data_root = tmp_path / "hk-data-platform-artifacts"
+    monkeypatch.setenv("HK_DATA_PLATFORM_ROOT", str(data_root))
+
+    snapshot_dir = (
+        data_root
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "daily"
+        / "hk_all_2000_20260327_daily_clean"
+    )
+    snapshot_dir.mkdir(parents=True)
+    manifest_path = snapshot_dir / "manifest.yml"
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {
+                "dataset": "daily",
+                "status": "completed",
+                "query": {"start_date": "20000101", "end_date": "20260327"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    alias_path = data_root / "assets" / "rqdata" / "hk" / "daily" / "hk_all_daily_clean_latest"
+    os.symlink(
+        os.path.relpath(snapshot_dir, start=alias_path.parent),
+        alias_path,
+        target_is_directory=True,
+    )
+    current_contract_path = data_root / "metadata" / "current_assets" / "hk_current.json"
+    current_contract_path.parent.mkdir(parents=True)
+    current_contract_path.write_text(
+        json.dumps(
+            {
+                "contract": {"name": "hk_current", "market": "hk", "version": 1},
+                "assets": {
+                    "daily_clean": {
+                        "alias_path": str(alias_path),
+                        "resolved_path": str(snapshot_dir),
+                        "manifest_path": str(manifest_path),
+                        "as_of": "20260327",
+                        "exists": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_inputs_lock(
+        {
+            "data_cfg": {
+                "start_date": "20200101",
+                "end_date": "20200331",
+                "rqdata": {
+                    "daily_asset_dir": "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest",
+                },
+            },
+            "eval_cfg": {},
+            "live_cfg": {},
+            "ARTIFACTS_ROOT": tmp_path / "artifacts",
+            "run_dir": tmp_path / "artifacts" / "runs" / "demo",
+            "config_path": tmp_path / "config.yml",
+            "config_source": "file",
+            "START_DATE": "20200101",
+            "END_DATE": "20200331",
+            "LIVE_AS_OF": None,
+            "CACHE_DIR": "cache",
+            "by_date_file": None,
+            "FUNDAMENTALS_FILE": None,
+            "INDUSTRY_FILE": None,
+            "BACKTEST_BENCHMARK_RETURNS_FILE": None,
+            "BACKTEST_BENCHMARK_COMPARE": [],
+        }
+    )
+
+    daily_resolution = payload["input_resolution"]["daily_asset_dir"]
+    assert payload["artifacts_root"] == str(tmp_path / "artifacts")
+    assert payload["hk_data_platform_root"] == str(data_root.resolve())
+    assert payload["current_contracts"] == {"hk_current": str(current_contract_path)}
+    assert daily_resolution["configured_path"] == str(alias_path)
+    assert daily_resolution["resolved_path"] == str(snapshot_dir.resolve())
+    assert daily_resolution["current_contract"]["contract_path"] == str(current_contract_path)

@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from ..artifacts import (
     cache_dir_for,
+    resolve_data_input_path,
     resolve_configured_artifacts_root,
     resolve_repo_path,
     runs_dir_for,
@@ -110,11 +111,11 @@ def resolve_universe_inputs(
     universe_mode_effective = universe_mode
 
     if not symbols and symbols_file:
-        symbols = load_symbols_file(Path(symbols_file))
+        symbols = load_symbols_file(resolve_data_input_path(symbols_file))
 
     if by_date_file:
         universe_by_date = load_universe_by_date(
-            resolve_repo_path(by_date_file),
+            resolve_data_input_path(by_date_file),
             market,
         )
         symbols_from_universe = sorted(universe_by_date["symbol"].unique().tolist())

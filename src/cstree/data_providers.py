@@ -11,6 +11,7 @@ from typing import Iterable, Mapping, Optional
 import numpy as np
 import pandas as pd
 
+from .artifacts import resolve_data_input_path
 from .data_provider_contracts import (
     SUPPORTED_MARKETS as SUPPORTED_MARKETS,
     fundamentals_provider_supported as fundamentals_provider_supported,
@@ -509,11 +510,7 @@ def _standardize_daily_frame(
 def _resolve_local_path(path_text: object, *, label: str) -> Path | None:
     if path_text in {None, ""}:
         return None
-    path = Path(str(path_text)).expanduser()
-    if not path.is_absolute():
-        path = (Path.cwd() / path).resolve()
-    else:
-        path = path.resolve()
+    path = resolve_data_input_path(str(path_text))
     if not path.exists():
         raise SystemExit(f"{label} not found: {path}")
     return path

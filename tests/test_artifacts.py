@@ -3,8 +3,10 @@ from pathlib import Path
 import pytest
 
 from cstree.artifacts import (
+    resolve_data_input_path,
     resolve_artifacts_root,
     resolve_configured_artifacts_root,
+    resolve_hk_data_platform_root,
     resolve_metadata_db_path,
     resolve_repo_path,
     resolve_warehouse_db_path,
@@ -40,6 +42,41 @@ def test_resolve_configured_artifacts_root_prefers_cstree_env(tmp_path, monkeypa
     )
 
     assert resolved == (tmp_path / "preferred-artifacts").resolve()
+
+
+def test_resolve_hk_data_platform_root_uses_neutral_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HK_DATA_PLATFORM_ROOT", "hk-data-platform-artifacts")
+
+    assert resolve_hk_data_platform_root() == (
+        tmp_path / "hk-data-platform-artifacts"
+    ).resolve()
+
+
+def test_resolve_data_input_path_rebases_shared_data_only(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HK_DATA_PLATFORM_ROOT", "hk-data-platform-artifacts")
+
+    assert resolve_data_input_path("artifacts/assets/universe/demo.csv") == (
+        tmp_path / "hk-data-platform-artifacts" / "assets" / "universe" / "demo.csv"
+    ).resolve()
+    assert resolve_data_input_path("artifacts/metadata/current_assets/hk_current.json") == (
+        tmp_path
+        / "hk-data-platform-artifacts"
+        / "metadata"
+        / "current_assets"
+        / "hk_current.json"
+    ).resolve()
+    assert resolve_data_input_path("artifacts/runs/demo") == (
+        tmp_path / "artifacts" / "runs" / "demo"
+    ).resolve()
+
+
+def test_hk_data_platform_root_does_not_override_run_artifacts_root(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HK_DATA_PLATFORM_ROOT", "hk-data-platform-artifacts")
+
+    assert resolve_artifacts_root() == (tmp_path / "artifacts").resolve()
 
 
 @pytest.mark.parametrize(

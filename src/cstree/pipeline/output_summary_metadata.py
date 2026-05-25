@@ -6,6 +6,10 @@ from typing import Any
 
 import yaml
 
+from ..artifacts import (
+    configured_data_input_path,
+    resolve_hk_data_platform_root,
+)
 from ..current_assets import (
     default_hk_current_contract_path,
     infer_manifest_path,
@@ -14,7 +18,6 @@ from ..current_assets import (
     match_current_contract_entry,
 )
 from ..date_utils import is_relative_date_token
-from ..repo_paths import resolve_repo_path as resolve_repo_relative_path
 from .support import save_json
 
 
@@ -24,17 +27,14 @@ def _configured_input_path(value: object | None) -> Path | None:
     text = str(value).strip()
     if not text:
         return None
-    path = Path(text).expanduser()
-    if path.is_absolute():
-        return path.absolute()
-    return (Path.cwd() / path).absolute()
+    return configured_data_input_path(text)
 
 
 def _resolve_input_path(value: object | None) -> Path | None:
     configured = _configured_input_path(value)
     if configured is None:
         return None
-    return resolve_repo_relative_path(configured)
+    return configured.resolve()
 
 
 def _looks_like_latest(value: object | None) -> bool:
@@ -141,8 +141,12 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         "eval_output_dir": eval_cfg.get("output_dir"),
     }
     artifacts_root = Path(ctx["ARTIFACTS_ROOT"]).resolve() if ctx.get("ARTIFACTS_ROOT") else None
+    data_platform_root = resolve_hk_data_platform_root()
+    current_contract_root = data_platform_root or artifacts_root
     current_contract_path = (
-        default_hk_current_contract_path(artifacts_root) if artifacts_root is not None else None
+        default_hk_current_contract_path(current_contract_root)
+        if current_contract_root is not None
+        else None
     )
     current_contract = (
         load_current_contract(current_contract_path)
@@ -194,6 +198,7 @@ def build_inputs_lock(context: Mapping[str, Any]) -> dict[str, Any]:
         resolved_inputs["benchmark_compare_symbols"] = benchmark_compare_symbols
     return {
         "artifacts_root": str(ctx.get("ARTIFACTS_ROOT")) if ctx.get("ARTIFACTS_ROOT") else None,
+        "hk_data_platform_root": str(data_platform_root) if data_platform_root else None,
         "run_dir": str(ctx["run_dir"]),
         "config_path": str(ctx["config_path"]) if ctx.get("config_path") else None,
         "config_source": ctx.get("config_source"),

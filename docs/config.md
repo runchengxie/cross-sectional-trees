@@ -85,6 +85,7 @@ paths:
 * 当 `warehouse_db_path` 留空时，`cstree data query` 命令默认将数据写入 `<artifacts_root>/metadata/warehouse.duckdb`。
 * 命令行参数 `--artifacts-root` 的优先级高于环境变量和此处的 YAML 配置。
 * 环境变量 `CSTREE_ARTIFACTS_ROOT`、`CSTREE_METADATA_DB_PATH`、`CSTREE_WAREHOUSE_DB_PATH` 是当前推荐的全局默认覆盖手段。
+* 如果只想把 HK 输入数据迁到共享数据平台，而让本仓库继续把 run/cache/report 写在自己的产物根目录下，设置 `HK_DATA_PLATFORM_ROOT`。它只会重定向形如 `artifacts/assets/...`、`artifacts/metadata/...`、`artifacts/standardized/...` 的数据输入路径，不会覆盖 `paths.artifacts_root`。
 
 ### 数据源配置 (`data`)
 

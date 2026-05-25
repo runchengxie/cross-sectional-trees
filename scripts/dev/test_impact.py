@@ -13,7 +13,7 @@ FAST_COMMAND = "scripts/dev/run_tests.sh fast"
 LINT_COMMAND = "scripts/dev/run_tests.sh lint"
 
 DOCS_COMMAND = (
-    "uv run pytest tests/test_docs_contracts.py tests/test_repo_path_references.py "
+    "uv run python -m pytest tests/test_docs_contracts.py tests/test_repo_path_references.py "
     "tests/test_run_tests_script.py -q"
 )
 
@@ -37,7 +37,7 @@ RULES: tuple[ImpactRule, ...] = (
         name="pipeline-train-eval",
         prefixes=("src/cstree/pipeline/train_eval_stage.py",),
         commands=(
-            "uv run pytest tests/test_pipeline_train_eval_contracts.py "
+            "uv run python -m pytest tests/test_pipeline_train_eval_contracts.py "
             "tests/test_modeling.py tests/test_split.py -q",
         ),
     ),
@@ -45,7 +45,7 @@ RULES: tuple[ImpactRule, ...] = (
         name="pipeline-runner",
         prefixes=("src/cstree/pipeline/runner.py",),
         commands=(
-            "uv run pytest tests/test_pipeline_runtime.py "
+            "uv run python -m pytest tests/test_pipeline_runtime.py "
             "tests/test_pipeline_filters_core.py -q",
         ),
     ),
@@ -56,14 +56,14 @@ RULES: tuple[ImpactRule, ...] = (
             "src/cstree/pipeline/config_eval.py",
         ),
         commands=(
-            "uv run pytest tests/test_config_utils.py tests/test_pipeline_validation.py -q",
+            "uv run python -m pytest tests/test_config_utils.py tests/test_pipeline_validation.py -q",
         ),
     ),
     ImpactRule(
         name="pipeline-general",
         prefixes=("src/cstree/pipeline/",),
         commands=(
-            "uv run pytest tests/test_pipeline_runtime.py "
+            "uv run python -m pytest tests/test_pipeline_runtime.py "
             "tests/test_pipeline_filters_core.py -q",
         ),
     ),
@@ -71,7 +71,7 @@ RULES: tuple[ImpactRule, ...] = (
         name="backtest",
         prefixes=("src/cstree/backtest.py", "src/cstree/portfolio.py"),
         commands=(
-            "uv run pytest tests/test_metrics.py tests/test_backtest.py "
+            "uv run python -m pytest tests/test_metrics.py tests/test_backtest.py "
             "tests/test_backtest_reporting.py tests/test_pipeline_e2e.py -q",
         ),
     ),
@@ -81,13 +81,13 @@ RULES: tuple[ImpactRule, ...] = (
             "src/cstree/data_tools/rqdata_assets/",
             "tests/rqdata_assets/",
         ),
-        commands=("uv run pytest tests/rqdata_assets/ tests/test_cli_rqdata.py -q",),
+        commands=("uv run python -m pytest tests/rqdata_assets/ tests/test_cli_rqdata.py -q",),
     ),
     ImpactRule(
         name="liveops",
         prefixes=("src/cstree/liveops/",),
         commands=(
-            "uv run pytest tests/test_cli_liveops.py tests/test_alloc.py "
+            "uv run python -m pytest tests/test_cli_liveops.py tests/test_alloc.py "
             "tests/test_alloc_hk.py -q",
         ),
     ),
@@ -95,7 +95,7 @@ RULES: tuple[ImpactRule, ...] = (
         name="release-tools",
         prefixes=("src/cstree/release_tools/", "scripts/internal/"),
         commands=(
-            "uv run pytest tests/test_hk_asset_workflow.py "
+            "uv run python -m pytest tests/test_hk_asset_workflow.py "
             "tests/test_run_release_scripts.py tests/test_asset_release_scripts.py -q",
         ),
     ),

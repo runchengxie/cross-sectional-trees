@@ -18,7 +18,7 @@ cat <<'EOF'
 Configured local git hooks via .githooks
 
 pre-commit:
-  uv run pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q
+  uv run python -m pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q
 
 pre-push:
   ./scripts/dev/run_tests.sh fast

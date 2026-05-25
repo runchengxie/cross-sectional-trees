@@ -44,6 +44,14 @@ cstree run --config configs/presets/hk.yml --artifacts-root /data/cstree-artifac
 
 `--artifacts-root` > `CSTREE_ARTIFACTS_ROOT` > `paths.artifacts_root` > 默认 `artifacts/`
 
+如果你要做的是“策略项目只读消费共享 HK 数据平台”，不要用这个变量把所有 run 输出也切过去；改用：
+
+```bash
+export HK_DATA_PLATFORM_ROOT=/data/hk-data-platform
+```
+
+`HK_DATA_PLATFORM_ROOT` 只会把 `artifacts/assets/...`、`artifacts/metadata/...`、`artifacts/standardized/...` 这类数据输入路径映射到共享根目录下。`artifacts/runs/...`、`artifacts/cache/...`、`artifacts/reports/...` 仍按本仓库自己的 `artifacts_root` 派生。
+
 ## 哪些命令会跟着走
 
 下面这些命令会按新的产物根目录派生默认路径：
@@ -77,6 +85,8 @@ cstree run --config configs/presets/hk.yml --artifacts-root /data/cstree-artifac
 * `--standardized-root`
 
 如果这些路径已经写死，它们仍然优先。
+
+例外：设置了 `HK_DATA_PLATFORM_ROOT` 时，显式写成 `artifacts/assets/...`、`artifacts/metadata/...`、`artifacts/standardized/...` 的 HK 数据输入路径会被解释为共享数据平台根目录下的相同相对路径。
 
 ## 复现时保留什么
 

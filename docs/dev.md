@@ -75,7 +75,7 @@ scripts/dev/run_tests.sh all
 
 ```bash
 # 只跑某个测试文件
-uv run pytest tests/test_metrics.py
+uv run python -m pytest tests/test_metrics.py
 
 # 高频快回归
 scripts/dev/run_tests.sh fast
@@ -114,7 +114,7 @@ scripts/dev/run_tests.sh format
 scripts/dev/run_tests.sh format-all
 
 # 真实 provider 在线联调，需要显式开启并配置 token 或账号
-CSTREE_RUN_PROVIDER_INTEGRATION=1 uv run pytest tests/test_provider_integration.py -m integration
+CSTREE_RUN_PROVIDER_INTEGRATION=1 uv run python -m pytest tests/test_provider_integration.py -m integration
 ```
 
 维护债指标需要看趋势时，用下面的只读入口生成快照；它只扫描 `src/`、`scripts/`
@@ -137,7 +137,7 @@ scripts/dev/run_tests.sh maintainability --json --limit 20
 
 | hook | 命令 | 作用 |
 | --- | --- | --- |
-| `pre-commit` | `uv run pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q` | 提前发现文档契约、路径引用和测试入口问题 |
+| `pre-commit` | `uv run python -m pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q` | 提前发现文档契约、路径引用和测试入口问题 |
 | `pre-push` | `scripts/dev/run_tests.sh fast` | 推送前跑快回归 |
 
 说明：

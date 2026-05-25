@@ -56,7 +56,13 @@
 
 ## 共享数据根目录
 
-当前推荐先使用外置 `artifacts_root` 承载共享 HK 数据层：
+当前推荐先使用共享 HK 数据根承载输入资产，并让策略项目继续保留自己的 run/cache/report 输出：
+
+```bash
+export HK_DATA_PLATFORM_ROOT=/data/hk-data-platform
+```
+
+如果你明确希望把本仓库的 run/cache/report 默认输出也放到同一个根目录，再额外设置：
 
 ```bash
 export CSTREE_ARTIFACTS_ROOT=/data/hk-data-platform
@@ -68,6 +74,8 @@ export CSTREE_ARTIFACTS_ROOT=/data/hk-data-platform
 paths:
   artifacts_root: "/data/hk-data-platform"
 ```
+
+这会把策略运行产物也写入共享根，因此更适合数据维护仓库，不是普通研究 run 的默认选择。
 
 这个根目录内继续沿用现有分层：
 
