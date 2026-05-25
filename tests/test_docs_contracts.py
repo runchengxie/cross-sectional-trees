@@ -35,12 +35,13 @@ EXPECTED_TEST_WORKFLOW_JOBS = {
     "fast",
     "slow",
     "integration",
+    "typecheck",
     "rqdata-extra-smoke",
     "duckdb-extra-smoke",
     "liveops-hk-extra-smoke",
     "stats-extra-smoke",
 }
-EXPECTED_TEST_WORKFLOW_SCRIPT_MODES = {"fast", "slow", "integration"}
+EXPECTED_TEST_WORKFLOW_SCRIPT_MODES = {"fast", "slow", "integration", "typecheck"}
 EXPECTED_DEV_TEST_TOKENS = [
     "scripts/dev/run_tests.sh all",
     "scripts/dev/run_tests.sh fast",
@@ -48,6 +49,7 @@ EXPECTED_DEV_TEST_TOKENS = [
     "scripts/dev/run_tests.sh slow",
     "scripts/dev/run_tests.sh integration",
     "scripts/dev/run_tests.sh coverage",
+    "scripts/dev/run_tests.sh typecheck",
     "CSTREE_RUN_PROVIDER_INTEGRATION=1",
     "不完全等同于在 CI 环境下的完整复现",
 ]

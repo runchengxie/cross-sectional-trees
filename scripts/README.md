@@ -5,7 +5,7 @@
 ## 常用入口
 
 * `scripts/dev/run_tests.sh`：开发与 CI 的测试入口。
-  * 常用模式：`all`、`fast`、`unit`、`slow`、`integration`、`coverage`、`lint`、`imports`、`format`、`format-all`、`c901-debt`、`maintainability`。
+  * 常用模式：`all`、`fast`、`unit`、`slow`、`integration`、`coverage`、`lint`、`typecheck`、`imports`、`format`、`format-all`、`c901-debt`、`maintainability`。
   * `all` 覆盖主 `pytest` 测试集，不包含可选依赖冒烟检查和显式开启的真实 provider 联调。
   * `coverage` 的范围与 `all` 一致，只是额外输出覆盖率报告；它也不是完整 CI 矩阵。
 * test-impact helper：按改动路径推荐 focused verification，适合在决定是否跑 `all` / `slow` 前先定位最小回归范围。
@@ -31,6 +31,7 @@ python scripts/dev/test_impact.py src/cstree/pipeline/runner.py docs/dev.md
 | `integration` | 标记为 `integration` 的跨模块测试；真实 provider 联调需设置 `CSTREE_RUN_PROVIDER_INTEGRATION=1` |
 | `coverage` | 主测试集加覆盖率报告 |
 | `lint` | Ruff lint、基础复杂度检查、改动文件 import / 长行 ratchet |
+| `typecheck` | Pyright 类型检查；当前覆盖 `pyproject.toml` 中登记的稳定模块子集 |
 | `imports` | 全仓库 import 排序检查 |
 | `format` | 检查本次改动的 Python 文件格式 |
 | `format-all` | 检查 `src`、`tests` 和 `scripts` 下所有 Python 文件格式 |

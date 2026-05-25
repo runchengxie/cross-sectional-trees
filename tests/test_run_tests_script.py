@@ -65,6 +65,7 @@ def test_run_tests_script_help_lists_supported_modes():
     assert "slow" in result.stdout
     assert "integration" in result.stdout
     assert "coverage" in result.stdout
+    assert "typecheck" in result.stdout
     assert "main pytest suite without coverage" in result.stdout
     assert "Does not include optional-extra smoke jobs" in result.stdout
     assert "Real provider integration uses CSTREE_RUN_PROVIDER_INTEGRATION=1" in result.stdout
@@ -94,6 +95,7 @@ def test_run_tests_script_lint_ratchet_mentions_high_signal_rules():
         ("slow", ["run", "pytest", "--no-cov", "-m", "slow and not integration"]),
         ("integration", ["run", "pytest", "--no-cov", "-m", "integration"]),
         ("coverage", ["run", "pytest", "--cov=cstree", "--cov-report=term-missing"]),
+        ("typecheck", ["run", "--extra", "dev", "pyright"]),
     ],
 )
 def test_run_tests_script_mode_maps_to_expected_pytest_argv(tmp_path, mode, expected_argv):

@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|imports|format|format-all|c901-debt|maintainability] [args...]
+Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|typecheck|imports|format|format-all|c901-debt|maintainability] [args...]
 
 Modes:
   all          Run the main pytest suite without coverage.
@@ -15,6 +15,7 @@ Modes:
   coverage     Run the main pytest suite with coverage.
                Scope matches 'all'; it is not the full CI matrix.
   lint         Run Ruff lint and basic complexity checks, plus changed-file ratchets.
+  typecheck    Run Pyright over the configured typed module subset.
   imports      Run Ruff import-order checks across src, tests, and scripts.
   format       Check Ruff formatting on changed Python files.
   format-all   Check Ruff formatting across src, tests, and scripts.
@@ -157,6 +158,9 @@ case "$mode" in
     check_added_python_long_lines
     check_added_c901_ignores
     check_c901_debt_registry
+    ;;
+  typecheck)
+    exec uv run --extra dev pyright "$@"
     ;;
   imports)
     run_ruff check --select I src tests scripts "$@"

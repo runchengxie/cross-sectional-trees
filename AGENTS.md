@@ -42,6 +42,7 @@ scripts/dev/run_tests.sh slow
 scripts/dev/run_tests.sh integration
 scripts/dev/run_tests.sh coverage
 scripts/dev/run_tests.sh lint
+scripts/dev/run_tests.sh typecheck
 scripts/dev/run_tests.sh format
 ```
 

@@ -95,6 +95,9 @@ scripts/dev/run_tests.sh coverage
 # Ruff lint、基础复杂度检查、改动 Python 文件的 import / 长行 ratchet
 scripts/dev/run_tests.sh lint
 
+# Pyright 类型检查；当前只覆盖 pyproject.toml 中登记的稳定模块子集
+scripts/dev/run_tests.sh typecheck
+
 # 轻量校验 C901 豁免是否登记在维护债 inventory
 scripts/dev/run_tests.sh c901-debt
 
@@ -142,6 +145,7 @@ scripts/dev/run_tests.sh maintainability --json --limit 20
 * 本地 hook 用来提前发现问题，不能替代远端 CI。
 * 特殊情况下可以用 `git commit --no-verify` 或 `git push --no-verify` 跳过。
 * Ruff 已启用 formatter、import 排序和基础复杂度检查。`lint` 会拦截高风险语法错误、新增高复杂函数，并检查本次改动的 Python import 排序、未使用 import、未使用变量、lambda / closure late-binding 风险和新增 Python 长行。
+* Pyright 已接入 `typecheck` 和 CI。当前只检查 `pyproject.toml` 中 `[tool.pyright].include` 列出的稳定模块子集；扩大覆盖范围时，应先修复对应模块的类型问题，再把路径加入 include。
 * 历史 import 和 format 遗留问题可用 `imports`、`format-all` 单独盘点。
 * 已知复杂度历史债务记录在 `pyproject.toml` 的 `per-file-ignores`，并在内部维护债清单里按 owner area、原因、验证命令和退出条件登记。完成拆分优化后，应逐个撤销豁免。
 * 触碰 Python 文件时，不要新增超过 100 字符的代码行或新的 `C901` 文件级豁免；如果豁免仍不能撤销，要在内部维护债清单里记录原因。`lint` 会在新增 `C901` ignore 但未同步维护债清单时失败，并额外校验当前豁免是否都在维护债清单登记。
@@ -173,19 +177,20 @@ scripts/dev/run_tests.sh integration
 
 ## GitHub Actions CI
 
-CI 配置在 `.github/workflows/tests.yml`。默认拆成七个 job：
+CI 配置在 `.github/workflows/tests.yml`。默认拆成八个 job：
 
 1. `fast`：运行 `scripts/dev/run_tests.sh fast`。
 2. `slow`：运行 `scripts/dev/run_tests.sh slow`。
 3. `integration`：运行 `scripts/dev/run_tests.sh integration`。
-4. `rqdata-extra-smoke`：安装 `--extra rqdata`，验证导入和 `cstree rqdata --help`。
-5. `duckdb-extra-smoke`：安装 `--extra duckdb`，验证最小 DuckDB query 执行。
-6. `liveops-hk-extra-smoke`：安装 `--extra liveops-hk`，验证 xlsx 文件的基本写入能力。
-7. `stats-extra-smoke`：安装 `--extra stats`，验证 `scipy` 和 `summarize_ic`。
+4. `typecheck`：运行 `scripts/dev/run_tests.sh typecheck`。
+5. `rqdata-extra-smoke`：安装 `--extra rqdata`，验证导入和 `cstree rqdata --help`。
+6. `duckdb-extra-smoke`：安装 `--extra duckdb`，验证最小 DuckDB query 执行。
+7. `liveops-hk-extra-smoke`：安装 `--extra liveops-hk`，验证 xlsx 文件的基本写入能力。
+8. `stats-extra-smoke`：安装 `--extra stats`，验证 `scipy` 和 `summarize_ic`。
 
 可选依赖冒烟检查（optional extra smoke）只验证额外依赖能安装、能导入、能完成最小调用。它们不替代主测试集。
 
-本地模拟 CI 强度时，除了 `all` / `fast` / `slow` / `integration`，还要手动跑下面四组：
+本地模拟 CI 强度时，除了 `all` / `fast` / `slow` / `integration` / `typecheck`，还要手动跑下面四组：
 
 ```bash
 # rqdata-extra-smoke

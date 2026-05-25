@@ -8,6 +8,7 @@ import yaml
 
 from cstree.current_assets import (
     build_hk_current_contract,
+    build_dataset_registry_rows,
     default_hk_current_contract_path,
     hk_current_candidate_paths,
     write_current_contract,
@@ -220,6 +221,70 @@ def test_inspect_hk_current_health_accepts_etf_daily_clean_current_key(tmp_path)
     assert exit_code == 0
     assert payload["assets"]["etf_daily_clean"]["effective_as_of"] == "20260409"
     assert payload["quality_checks"] == []
+
+
+def test_inspect_hk_current_health_accepts_tick_depth_daily_contract_key(tmp_path):
+    artifacts_root = tmp_path / "artifacts"
+    candidate_paths = hk_current_candidate_paths(artifacts_root)
+
+    tick_daily_snapshot = (
+        artifacts_root
+        / "assets"
+        / "rqdata"
+        / "hk"
+        / "tick_depth_daily"
+        / "hk_tick_depth_daily_core_20250401_20260409"
+    )
+    (tick_daily_snapshot / "data").mkdir(parents=True, exist_ok=True)
+    (tick_daily_snapshot / "data" / "data.parquet").write_text("tick-depth-daily", encoding="utf-8")
+    (tick_daily_snapshot / "manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": "tick_depth_daily.v1",
+                "provider": "rqdata",
+                "market": "hk",
+                "frequency": "daily",
+                "row_count": 123,
+                "symbol_count": 2,
+                "date_range": {"start": "20250401", "end": "20260409"},
+                "files": ["data/data.parquet"],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    _symlink(tick_daily_snapshot, candidate_paths["tick_depth_daily"])
+
+    contract = build_hk_current_contract(
+        artifacts_root,
+        generated_by="test_current_health",
+        target_date="20260409",
+    )
+    write_current_contract(default_hk_current_contract_path(artifacts_root), contract)
+
+    out_path = tmp_path / "hk_current_health_tick_depth_daily.json"
+    args = SimpleNamespace(
+        artifacts_root=str(artifacts_root),
+        current_contract=None,
+        asset=["tick_depth_daily"],
+        target_date="20260409",
+        format="json",
+        out=str(out_path),
+        fail_on_severity="warning",
+    )
+
+    exit_code = inspect_hk_current_health(args)
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    registry_rows = build_dataset_registry_rows(contract)
+    tick_row = next(row for row in registry_rows if row["dataset_name"] == "hk_tick_depth_daily")
+    assert exit_code == 0
+    assert payload["assets"]["tick_depth_daily"]["effective_as_of"] == "20260409"
+    assert payload["assets"]["tick_depth_daily"]["manifest"]["dataset"] == "tick_depth_daily"
+    assert payload["quality_checks"] == []
+    assert tick_row["source"] == "derived"
+    assert tick_row["records"] == "123"
+    assert tick_row["symbols"] == "2"
 
 
 def test_inspect_hk_current_health_uses_asset_freshness_tolerance(tmp_path):

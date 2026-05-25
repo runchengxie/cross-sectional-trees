@@ -17,6 +17,21 @@ HK_CURRENT_PATH_SPECS = {
     "daily": ("assets", "rqdata", "hk", "daily", "hk_all_daily_latest"),
     "daily_clean": ("assets", "rqdata", "hk", "daily", "hk_all_daily_clean_latest"),
     "intraday": ("assets", "rqdata", "hk", "intraday", "hk_intraday_latest"),
+    "tick_depth_raw": ("assets", "rqdata", "hk", "tick_depth", "hk_tick_depth_latest"),
+    "tick_depth_daily": (
+        "assets",
+        "rqdata",
+        "hk",
+        "tick_depth_daily",
+        "hk_tick_depth_daily_latest",
+    ),
+    "execution_cost_model": (
+        "assets",
+        "rqdata",
+        "hk",
+        "execution_cost",
+        "hk_execution_cost_model_latest",
+    ),
     "etf_daily": ("assets", "rqdata", "hk", "daily", "hk_etf_daily_latest"),
     "etf_daily_clean": ("assets", "rqdata", "hk", "daily", "hk_etf_daily_clean_latest"),
     "etf_instruments": ("assets", "rqdata", "hk", "instruments", "hk_etf_instruments_latest.parquet"),
@@ -69,15 +84,28 @@ def infer_manifest_path(path: Path | None) -> Path | None:
     return None
 
 
+def _as_str_key_mapping(value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
 def load_manifest_summary(path: Path | None) -> dict[str, Any] | None:
     if path is None or not path.exists():
         return None
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         return None
-    query = payload.get("query") if isinstance(payload.get("query"), Mapping) else {}
-    totals = payload.get("totals") if isinstance(payload.get("totals"), Mapping) else {}
+    schema_version = str(payload.get("schema_version") or "").strip()
+    dataset = str(payload.get("dataset") or "").strip() or None
+    if dataset is None and schema_version:
+        dataset = schema_version.split(".", 1)[0] or None
+    query = _as_str_key_mapping(payload.get("query"))
+    totals = _as_str_key_mapping(payload.get("totals"))
+    date_range = _as_str_key_mapping(payload.get("date_range"))
     output_dir = str(payload.get("output_dir") or "").strip()
+    if not output_dir and schema_version:
+        output_dir = str(path.parent)
     snapshot_name = Path(output_dir).name if output_dir else None
     query_end_date = None
     for key in ("end_date", "date", "mapping_date", "as_of_date"):
@@ -87,6 +115,8 @@ def load_manifest_summary(path: Path | None) -> dict[str, Any] | None:
         query_end_date = str(value).strip() or None
         if query_end_date:
             break
+    if not query_end_date:
+        query_end_date = str(date_range.get("end") or "").strip() or None
     query_start_date = None
     for key in ("start_date", "start", "from"):
         value = query.get(key)
@@ -95,18 +125,31 @@ def load_manifest_summary(path: Path | None) -> dict[str, Any] | None:
         query_start_date = str(value).strip() or None
         if query_start_date:
             break
+    if not query_start_date:
+        query_start_date = str(date_range.get("start") or "").strip() or None
+    totals_out = {
+        str(key): int(value)
+        for key, value in totals.items()
+        if str(key).strip() and str(value).strip().isdigit()
+    }
+    row_count = payload.get("row_count")
+    if row_count is not None and str(row_count).strip().isdigit():
+        totals_out.setdefault("rows", int(row_count))
+    symbol_count = payload.get("symbol_count")
+    if symbol_count is not None and str(symbol_count).strip().isdigit():
+        totals_out.setdefault("symbols", int(symbol_count))
+    files = payload.get("files")
+    if isinstance(files, list):
+        totals_out.setdefault("files", len(files))
     return {
-        "dataset": str(payload.get("dataset") or "").strip() or None,
+        "dataset": dataset,
+        "schema_version": schema_version or None,
         "status": str(payload.get("status") or "").strip() or None,
         "output_dir": output_dir or None,
         "snapshot_name": snapshot_name,
         "query_start_date": query_start_date,
         "query_end_date": query_end_date,
-        "totals": {
-            str(key): int(value)
-            for key, value in totals.items()
-            if str(key).strip() and str(value).strip().isdigit()
-        },
+        "totals": totals_out,
     }
 
 
@@ -210,6 +253,9 @@ DATASET_REGISTRY_DESCRIPTIONS = {
     "daily": "current HK raw daily OHLCV asset",
     "daily_clean": "current HK daily clean layer",
     "intraday": "current HK intraday 5m asset",
+    "tick_depth_raw": "current HK raw 10-level tick depth snapshot asset",
+    "tick_depth_daily": "current HK daily aggregate derived from 10-level tick depth snapshots",
+    "execution_cost_model": "current HK execution cost model calibrated from market microstructure assets",
     "etf_daily": "current HK ETF raw daily asset",
     "etf_daily_clean": "current HK ETF daily clean layer",
     "etf_instruments": "current HK ETF instrument master",
@@ -230,11 +276,14 @@ DATASET_REGISTRY_DESCRIPTIONS = {
 DATASET_REGISTRY_SOURCES = {
     "daily_clean": "derived",
     "etf_daily_clean": "derived",
+    "tick_depth_daily": "derived",
+    "execution_cost_model": "derived",
     "universe_by_date": "derived",
     "universe_symbols": "derived",
     "universe_meta": "derived",
     "instruments": "rqdata",
     "etf_instruments": "rqdata",
+    "tick_depth_raw": "rqdata",
 }
 
 
@@ -262,8 +311,8 @@ def _registry_path(path_text: object, *, artifacts_root: Path) -> str:
 
 
 def _registry_records_text(entry: Mapping[str, Any]) -> str:
-    manifest = entry.get("manifest") if isinstance(entry.get("manifest"), Mapping) else {}
-    totals = manifest.get("totals") if isinstance(manifest.get("totals"), Mapping) else {}
+    manifest = _as_str_key_mapping(entry.get("manifest"))
+    totals = _as_str_key_mapping(manifest.get("totals"))
     rows = totals.get("rows")
     files = totals.get("files")
     if rows is not None:
@@ -274,8 +323,8 @@ def _registry_records_text(entry: Mapping[str, Any]) -> str:
 
 
 def _registry_symbols_text(entry: Mapping[str, Any]) -> str:
-    manifest = entry.get("manifest") if isinstance(entry.get("manifest"), Mapping) else {}
-    totals = manifest.get("totals") if isinstance(manifest.get("totals"), Mapping) else {}
+    manifest = _as_str_key_mapping(entry.get("manifest"))
+    totals = _as_str_key_mapping(manifest.get("totals"))
     for key in ("symbols_written", "symbols", "files"):
         if totals.get(key) is not None:
             return str(totals[key])
@@ -283,7 +332,7 @@ def _registry_symbols_text(entry: Mapping[str, Any]) -> str:
 
 
 def _registry_date_range(entry: Mapping[str, Any]) -> str:
-    manifest = entry.get("manifest") if isinstance(entry.get("manifest"), Mapping) else {}
+    manifest = _as_str_key_mapping(entry.get("manifest"))
     start = _registry_date(manifest.get("query_start_date"))
     end = _registry_date(manifest.get("query_end_date") or entry.get("as_of"))
     if start and end:
@@ -294,9 +343,9 @@ def _registry_date_range(entry: Mapping[str, Any]) -> str:
 
 
 def build_dataset_registry_rows(contract: Mapping[str, Any]) -> list[dict[str, str]]:
-    contract_meta = contract.get("contract") if isinstance(contract.get("contract"), Mapping) else {}
+    contract_meta = _as_str_key_mapping(contract.get("contract"))
     target_date = str(contract_meta.get("target_date") or "").strip()
-    assets = contract.get("assets") if isinstance(contract.get("assets"), Mapping) else {}
+    assets = _as_str_key_mapping(contract.get("assets"))
     artifacts_root = Path(str(contract_meta.get("artifacts_root") or "artifacts")).resolve()
     contract_path = str(contract_meta.get("contract_path") or "").strip()
     rows: list[dict[str, str]] = []
@@ -318,11 +367,12 @@ def build_dataset_registry_rows(contract: Mapping[str, Any]) -> list[dict[str, s
     for asset_key, raw_entry in assets.items():
         if not isinstance(raw_entry, Mapping):
             continue
-        resolved_path = str(raw_entry.get("resolved_path") or raw_entry.get("alias_path") or "").strip()
+        entry = _as_str_key_mapping(raw_entry)
+        resolved_path = str(entry.get("resolved_path") or entry.get("alias_path") or "").strip()
         if not resolved_path:
             continue
-        manifest = raw_entry.get("manifest") if isinstance(raw_entry.get("manifest"), Mapping) else {}
-        as_of = str(raw_entry.get("as_of") or manifest.get("query_end_date") or target_date).strip()
+        manifest = _as_str_key_mapping(entry.get("manifest"))
+        as_of = str(entry.get("as_of") or manifest.get("query_end_date") or target_date).strip()
         version = re.sub(r"\D", "", as_of) or target_date
         rows.append(
             {
@@ -330,14 +380,17 @@ def build_dataset_registry_rows(contract: Mapping[str, Any]) -> list[dict[str, s
                 "version": version,
                 "market": "hk",
                 "type": str(asset_key),
-                "date_range": _registry_date_range(raw_entry),
+                "date_range": _registry_date_range(entry),
                 "source": DATASET_REGISTRY_SOURCES.get(
                     str(asset_key),
                     "rqdata" if manifest.get("dataset") else "local",
                 ),
                 "records": _registry_records_text(raw_entry),
                 "symbols": _registry_symbols_text(raw_entry),
-                "description": DATASET_REGISTRY_DESCRIPTIONS.get(str(asset_key), f"current HK {asset_key} asset"),
+                "description": DATASET_REGISTRY_DESCRIPTIONS.get(
+                    str(asset_key),
+                    f"current HK {asset_key} asset",
+                ),
                 "path": _registry_path(resolved_path, artifacts_root=artifacts_root),
             }
         )
@@ -357,7 +410,8 @@ def render_dataset_registry_csv(
         "prefer hk_current.json plus each asset manifest for source-of-truth freshness.\n"
     )
     buffer.write(f"# Last updated: {generated.date().isoformat()}\n")
-    writer = csv.DictWriter(buffer, fieldnames=list(DATASET_REGISTRY_COLUMNS), lineterminator="\n")
+    fieldnames: list[str] = list(DATASET_REGISTRY_COLUMNS)
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()
     writer.writerows(build_dataset_registry_rows(contract))
     return buffer.getvalue()
