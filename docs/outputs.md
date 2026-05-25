@@ -71,6 +71,8 @@ artifacts/
 如果你继续执行 `cstree rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
 如果你继续执行 `cstree rqdata build-hk-industry-labels`，默认还会在对应的 `industry_changes` 目录下生成一份本地行业标签文件。
 
+如果外部 HK 数据工具与本仓库共享同一个 `artifacts_root`，也可以在 `artifacts/assets/rqdata/hk/` 下发布额外 manifest-backed asset，例如十档盘口 raw / daily aggregate。当前 `cstree` 主流程不会自动消费这类外部资产；跨项目边界见 `docs/concepts/shared-hk-data-platform.md`。
+
 ## RQData 资产镜像目录
 
 大多数按 symbol 镜像的目录结构：

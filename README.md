@@ -8,6 +8,8 @@
 
 本项目提供一套适用于低频因子研究与实验复现的工作流，核心能力涵盖模型研究、指标评估、历史回测、候选策略治理、特征证据、benchmark 对照、数据资产维护以及持仓快照输出。
 
+HK 数据资产维护能力当前仍内置在本仓库中，但已经按 `artifacts_root`、current contract、dataset registry 和 manifest-backed asset 的方式组织。若要让日线 / PIT / intraday / 十档盘口快照在多个项目之间共享，先看 `docs/concepts/shared-hk-data-platform.md`。
+
 ## 环境准备与安装
 
 运行环境要求 Python 3.12 及以上版本，推荐使用 `uv` 进行依赖管理。
@@ -91,5 +93,6 @@ cstree run --config default
 * 初次接触：直接阅读 `docs/get-started.md` 完成首次跑通。
 * 建立系统认知：阅读 `docs/pipeline-overview.md` 了解架构与数据流向。
 * 开展正式研究：从 `docs/playbooks/README.md` 切入具体的业务路线。
+* 拆分共享数据层：阅读 `docs/concepts/shared-hk-data-platform.md`，再看 `docs/concepts/external-artifacts-root.md`。
 * 日常工作速查：查阅 `docs/cookbook.md` 获取常见任务指南。
 * 查询具体细节：根据开发或排障需求，分别查阅 `docs/cli.md`（命令）、`docs/config.md`（配置）或 `docs/outputs.md`（产物字段）。

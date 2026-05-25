@@ -4,7 +4,7 @@
 本页不解决什么：不展开对象存储、数据平台或多租户发布流程。\
 适合谁：想把数据和代码仓分开存放，但当前仍以单仓研究和复现为主的人。\
 读完你会得到什么：可用入口、优先级规则，以及复现时该保留哪些文件。\
-相关页面：`docs/config.md`、`docs/cli.md`、`docs/outputs.md`
+相关页面：`docs/config.md`、`docs/cli.md`、`docs/outputs.md`、`docs/concepts/shared-hk-data-platform.md`
 
 ## 什么时候需要它
 
@@ -12,6 +12,7 @@
 
 * 仓库放在源码目录，但数据和 run 产物想落到独立磁盘。
 * 你希望多个 checkout 共用一套 provider 资产、metadata 或 standardized 输出。
+* 你希望 `cross-sectional-trees` 和十档盘口快照工具先共享同一套 HK 数据资产，再逐步拆成独立数据平台。
 * 你想重建代码仓，但保留历史 run 和数据镜像。
 
 这一步的目标只是“把默认路径抽出来”，不是把项目升级成独立数据平台。
@@ -102,3 +103,5 @@ cstree run --config configs/presets/hk.yml --artifacts-root /data/cstree-artifac
 * 继续用 `summary.json`、`config.used.yml`、`inputs.lock.json` 做复现
 
 暂时不需要因为“将来可能会有数据湖”就先引入独立 registry、对象存储网关或重型 lineage 平台。
+
+如果目标是把 HK 数据层进一步拆成多个项目共享的数据平台，请把外置 `artifacts_root` 当成第一阶段的共享数据根；具体边界见 `docs/concepts/shared-hk-data-platform.md`。
