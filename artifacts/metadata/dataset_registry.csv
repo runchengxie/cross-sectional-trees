@@ -1,11 +1,14 @@
 # Dataset Registry for current HK research data assets.
 # Auto-generated from artifacts/metadata/current_assets/hk_current.json; prefer hk_current.json plus each asset manifest for source-of-truth freshness.
-# Last updated: 2026-05-24
+# Last updated: 2026-05-25
 dataset_name,version,market,type,date_range,source,records,symbols,description,path
-hk_current_contract,20260522,hk,metadata,as of 2026-05-22,local,19 assets,19,current HK asset contract with resolved aliases and manifest summaries,artifacts/metadata/current_assets/hk_current.json
+hk_current_contract,20260522,hk,metadata,as of 2026-05-22,local,22 assets,22,current HK asset contract with resolved aliases and manifest summaries,artifacts/metadata/current_assets/hk_current.json
 hk_daily,20260522,hk,daily,2000-01-01 to 2026-05-22,rqdata,11041836,3195,current HK raw daily OHLCV asset,artifacts/assets/rqdata/hk/daily/hk_all_2000_20260522_daily_final_refetched_latest
 hk_daily_clean,20260522,hk,daily_clean,2000-01-01 to 2026-05-22,derived,11041836,3195,current HK daily clean layer,artifacts/assets/rqdata/hk/daily/hk_all_2000_20260522_daily_clean_refetched_latest
 hk_intraday,20260522,hk,intraday,2024-05-01 to 2026-05-22,rqdata,88241406,,current HK intraday 5m asset,artifacts/assets/rqdata/hk/intraday/intraday_20240501_20260522_20260523_081127
+hk_tick_depth_raw,20260522,hk,tick_depth_raw,,rqdata,,,current HK raw 10-level tick depth snapshot asset,artifacts/assets/rqdata/hk/tick_depth/hk_tick_depth_latest
+hk_tick_depth_daily,20260522,hk,tick_depth_daily,,derived,,,current HK daily aggregate derived from 10-level tick depth snapshots,artifacts/assets/rqdata/hk/tick_depth_daily/hk_tick_depth_daily_latest
+hk_execution_cost_model,20260522,hk,execution_cost_model,,derived,,,current HK execution cost model calibrated from market microstructure assets,artifacts/assets/rqdata/hk/execution_cost/hk_execution_cost_model_latest
 hk_etf_daily,20260508,hk,etf_daily,2000-01-01 to 2026-05-08,rqdata,631826,494,current HK ETF raw daily asset,artifacts/assets/rqdata/hk/daily/hk_etf_2000_20260508_daily_latest
 hk_etf_daily_clean,20260508,hk,etf_daily_clean,2000-01-01 to 2026-05-08,derived,631826,494,current HK ETF daily clean layer,artifacts/assets/rqdata/hk/daily/hk_etf_2000_20260508_daily_clean_latest
 hk_etf_instruments,20260522,hk,etf_instruments,as of 2026-05-22,rqdata,,,current HK ETF instrument master,artifacts/assets/rqdata/hk/instruments/hk_etf_instruments_20260522.parquet
