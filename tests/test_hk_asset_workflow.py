@@ -396,7 +396,9 @@ def test_hk_asset_workflow_gate_ignores_raw_daily_price_bounds_when_daily_clean_
     assert any(cmd[1:3] == ["-m", "cstree.release_tools.package_assets"] for cmd in calls)
     inspect_index = next(index for index, cmd in enumerate(calls) if "inspect-hk-asset-health" in cmd)
     universe_index = next(
-        index for index, cmd in enumerate(calls) if len(cmd) >= 3 and cmd[1:3] == ["universe", "hk-daily-assets"]
+        index
+        for index, cmd in enumerate(calls)
+        if "universe" in cmd and "hk-daily-assets" in cmd
     )
     package_index = next(
         index for index, cmd in enumerate(calls) if cmd[1:3] == ["-m", "cstree.release_tools.package_assets"]

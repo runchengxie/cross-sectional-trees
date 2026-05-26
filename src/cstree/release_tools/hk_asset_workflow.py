@@ -98,18 +98,7 @@ def _repo_relative(path: Path) -> str:
 
 
 def _cstree_executable() -> list[str]:
-    local = Path(sys.executable).with_name("cstree")
-    if local.exists():
-        return [str(local)]
-    for name in ("cstree", "cstree"):
-        resolved = shutil.which(name)
-        if resolved:
-            return [resolved]
-    return [
-        sys.executable,
-        "-c",
-        "from cstree.cli import main; import sys; raise SystemExit(main(sys.argv[1:]))",
-    ]
+    return [sys.executable, "-m", "cstree"]
 
 
 def _current_snapshot_bundle() -> SnapshotBundle:
