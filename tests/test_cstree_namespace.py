@@ -46,6 +46,7 @@ PUBLIC_ALIAS_MODULES = (
     "data_tools.rqdata_assets",
     "liveops.alloc",
     "liveops.alloc_hk",
+    "liveops.export_targets",
     "liveops.holdings",
     "liveops.snapshot",
     "research.benchmark_ladder",

@@ -24,6 +24,7 @@
 | 生成实盘快照 | `cstree snapshot --config <live.yml>` |
 | 手数分配计算 | `cstree alloc --config <> --source live --top-n 20` |
 | 港股增强手数分配 | `cstree alloc-hk --config <> --source live --top-n 20 --method custom` |
+| 导出交易执行目标 | `cstree export-targets --run-dir <live_run> --out artifacts/exports/targets.json` |
 | 导出配置模板 | `cstree init-config --market default` |
 | 构建港股全市场股票池 | `cstree universe hk-daily-assets --config <> -- <args>` |
 | 刷新数据目录（catalog） | `cstree data catalog` |
@@ -64,6 +65,7 @@ cstree <subcommand> --help
 - `cstree snapshot`
 - `cstree alloc`
 - `cstree alloc-hk`
+- `cstree export-targets`
 - `cstree data catalog`
 - `cstree data materialize`
 - `cstree data query`
@@ -78,7 +80,7 @@ cstree <subcommand> --help
 
 ### 日期 Token 解析
 
-`holdings`、`snapshot`、`alloc` 和 `alloc-hk` 命令支持以下日期格式或占位符：
+`holdings`、`snapshot`、`alloc`、`alloc-hk` 和 `export-targets` 命令支持以下日期格式或占位符：
 
 - 具体日期：`YYYYMMDD` 或 `YYYY-MM-DD`
 - 相对日期：`today` 或 `t-1`
@@ -347,6 +349,30 @@ cstree alloc-hk --config path/to/live.yml --source live --execution-calendar hk_
 - 在多场景分析中，`csv` 会退化为场景总览表；如需查看完整明细，请改用 `json` 或 `xlsx` 格式。
 - `--fail-on-quality` 参数的优先级高于配置文件中的 `quality.fail_on_severity`。若 run summary 已经记录了 preflight 检查结论，`alloc-hk` 会直接读取复用，免去重复运行的开销。
 - `--execution-calendar hk_connect` 会按港股通南向执行日历做 live gate；当 `--require-stock-connect` 生效且执行日南向关闭时，默认阻断正式分配。`--allow-connect-closed` 仅用于研究或报告输出，不应作为正式下单口径。
+
+### cstree export-targets
+
+将已有 live run 中的 long-only 目标持仓导出为 `quant-execution-engine` 的 canonical `targets.json`。该命令只生成执行交接文件，不连接券商、不预演订单、更不会提交订单。
+
+```bash
+cstree export-targets \
+  --run-dir artifacts/live_runs/<run_dir> \
+  --as-of 2026-05-26 \
+  --fail-on-quality warning \
+  --target-source hk-live \
+  --out artifacts/exports/targets_20260526.json
+```
+
+输出：
+
+- `--out` 指定的 JSON 仅包含执行引擎契约字段：`asof`、`source`、`target_gross_exposure`、`targets[]`。
+- 默认同时写出 `<out>.lineage.json`，记录原始 run、持仓文件、数据日期、权重总和、质量门禁和上游审计文件路径；可用 `--lineage-out` 覆盖其位置。
+
+安全边界：
+
+- 只读取已保存的 `live` 持仓，不会隐式运行 pipeline；先使用 `cstree snapshot` 形成待交接 run。
+- 仅接受 long-only 且权重为有限非负值的持仓；short 持仓或权重总和超过 `1.0` 时阻断导出。
+- `--target-gross-exposure` 用于显式调整执行侧总敞口；导出文件可以交给 `qexec rebalance <targets.json> --broker <paper-broker>` 做后续预演。
 
 ## 数据管理命令
 

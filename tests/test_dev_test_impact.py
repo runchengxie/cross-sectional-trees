@@ -38,6 +38,7 @@ def test_test_impact_covers_representative_high_risk_paths():
         "src/cstree/backtest.py": "tests/test_backtest.py",
         "src/cstree/data_tools/rqdata_assets/asset_health.py": "tests/rqdata_assets/",
         "src/cstree/liveops/alloc_core.py": "tests/test_alloc.py",
+        "src/cstree/liveops/export_targets.py": "tests/test_export_targets.py",
         "src/cstree/release_tools/hk_asset_workflow.py": "tests/test_hk_asset_workflow.py",
         "docs/dev.md": "tests/test_docs_contracts.py",
         "scripts/dev/run_tests.sh": "tests/test_run_tests_script.py",

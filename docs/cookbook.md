@@ -125,7 +125,19 @@ cstree snapshot --run-dir artifacts/runs/<run_dir>
 cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
 ```
 
-### 4.3 归档研究数据
+### 4.3 导出执行目标文件
+
+将已经保存的 long-only live 持仓显式导出为交易执行引擎可消费的 canonical
+`targets.json`。该命令只生成目标文件及 lineage sidecar，不触发下单：
+
+```bash
+cstree export-targets \
+  --run-dir artifacts/live_runs/<run_dir> \
+  --fail-on-quality warning \
+  --out artifacts/exports/targets.json
+```
+
+### 4.4 归档研究数据
 
 ```bash
 cstree backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
@@ -143,6 +155,7 @@ cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-ca
 | 查看策略持仓 | `cstree holdings --config <template> --as-of t-1` |
 | 生成实盘快照 | `cstree snapshot --config <live.yml>` 或 `cstree snapshot --run-dir <run_dir>` |
 | 计算手数分配 | `cstree alloc --config <live.yml> --source live --top-n 20 --cash 1000000` |
+| 导出执行目标 | `cstree export-targets --run-dir artifacts/live_runs/<run_dir> --out artifacts/exports/targets.json` |
 | 归档备份数据 | `cstree backup-data --name <name> --config <config>` |
 | 冻结当前 HK 资产快照 | `cstree backup-data --preset hk_current --name <name>` |
 

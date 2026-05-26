@@ -2,6 +2,7 @@ from cstree import cli
 from cstree.liveops import (
     alloc as alloc_tool,
     alloc_hk as alloc_hk_tool,
+    export_targets as export_targets_tool,
     holdings as holdings_tool,
     snapshot as snapshot_tool,
 )
@@ -78,6 +79,14 @@ def test_cli_parses_liveops_commands():
     assert snapshot.command == "snapshot"
     assert snapshot.skip_run is True
     assert snapshot.fail_on_quality == "error"
+
+    export_targets = parser.parse_args(
+        ["export-targets", "--run-dir", "artifacts/live_runs/demo", "--out", "targets.json"]
+    )
+    assert export_targets.command == "export-targets"
+    assert export_targets.target_source == "cross-sectional-trees"
+    assert export_targets.target_gross_exposure == 1.0
+    assert export_targets.out == "targets.json"
 
 
 def test_cli_main_holdings_passes_through_args(monkeypatch):
@@ -422,5 +431,63 @@ def test_cli_main_snapshot_passes_through_args(monkeypatch):
             "csv",
             "--out",
             "artifacts/live/snapshot.csv",
+        ]
+    ]
+
+
+def test_cli_main_export_targets_passes_through_args(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(export_targets_tool, "main", lambda argv: calls.append(argv))
+
+    assert (
+        cli.main(
+            [
+                "export-targets",
+                "--config",
+                "hk",
+                "--run-dir",
+                "artifacts/live_runs/demo",
+                "--artifacts-root",
+                "/data/cstree",
+                "--top-k",
+                "15",
+                "--as-of",
+                "20260526",
+                "--target-source",
+                "hk-live",
+                "--target-gross-exposure",
+                "0.8",
+                "--fail-on-quality",
+                "warning",
+                "--out",
+                "artifacts/exports/targets.json",
+                "--lineage-out",
+                "artifacts/exports/targets.lineage.json",
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        [
+            "--config",
+            "hk",
+            "--run-dir",
+            "artifacts/live_runs/demo",
+            "--artifacts-root",
+            "/data/cstree",
+            "--top-k",
+            "15",
+            "--as-of",
+            "20260526",
+            "--target-source",
+            "hk-live",
+            "--target-gross-exposure",
+            "0.8",
+            "--fail-on-quality",
+            "warning",
+            "--out",
+            "artifacts/exports/targets.json",
+            "--lineage-out",
+            "artifacts/exports/targets.lineage.json",
         ]
     ]

@@ -30,6 +30,7 @@
 | `cstree snapshot` | 运行实盘快照，或从现有的运行结果中导出快照 | 文本 / csv / json |
 | `cstree alloc` | 基于持仓做等权手数分配 | 文本 / csv / json |
 | `cstree alloc-hk` | 基于持仓做港股执行前分配分析（自定义权重、估值分层、二次补仓、资金 × 选股数量场景矩阵） | 文本 / csv / json / xlsx |
+| `cstree export-targets` | 将已保存的 long-only live 持仓显式导出为交易执行引擎 canonical `targets.json` 并记录 lineage | `targets.json`、`targets.json.lineage.json` |
 | `cstree init-config` | 导出仓库预设配置模板 | 本地 YAML 文件 |
 | `cstree backup-data` | 归档本地缓存、股票池、配置以及可选的当前冻结资产集 | `artifacts/snapshots/<name>/` |
 | `cstree data ...` | 元数据目录管理、标准层物化和 DuckDB 查询 | `artifacts/metadata/*` 或 `artifacts/standardized/*` |
@@ -69,7 +70,7 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree rqdata ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree rqdata ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
 | 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_assets`、`python -m cstree.release_tools.release_assets`、`python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
 | 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
@@ -129,6 +130,7 @@
 * 支持配置交易成本、换手缓冲区、持仓权重分配、业绩基准对比以及头寸退出规则。
 * 支持生成历史调仓记录文件、当前最新持仓文件以及当期与上期的调仓差异文件。
 * 支持生成实盘环境下的目标持仓快照。
+* 支持将已确认的 long-only live 持仓导出为 `quant-execution-engine` 可消费的 canonical `targets.json`，同时保留独立 lineage sidecar；此导出不触发下单。
 
 输出的详细字段约定请参阅 `docs/outputs.md`。
 

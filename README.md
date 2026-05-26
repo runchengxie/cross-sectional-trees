@@ -6,7 +6,7 @@
 
 ## 项目定位
 
-本项目提供一套适用于低频因子研究与实验复现的工作流，核心能力涵盖模型研究、指标评估、历史回测、候选策略治理、特征证据、benchmark 对照、数据资产维护以及持仓快照输出。
+本项目提供一套适用于低频因子研究与实验复现的工作流，核心能力涵盖模型研究、指标评估、历史回测、候选策略治理、特征证据、benchmark 对照、数据资产维护、持仓快照输出以及显式的交易执行目标交接。
 
 HK 数据资产维护能力当前仍内置在本仓库中，但已经按 `artifacts_root`、current contract、dataset registry 和 manifest-backed asset 的方式组织。若要让日线 / PIT / intraday / 十档盘口快照在多个项目之间共享，先看 `docs/concepts/shared-hk-data-platform.md`。
 
@@ -33,6 +33,7 @@ cp .env.example .env
 | 运行港股季频特定时间点基本面路线 | `cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml` | `rqdata` | RQData 账号 |
 | 使用 DuckDB 查询标准层数据 | `cstree data query --sql "..."` | `duckdb` | 无 |
 | 导出港股 Excel 分配表 | `cstree alloc-hk --format xlsx --out ...` | `liveops-hk` | 若走实时或服务商路径，需对应数据源凭证 |
+| 导出执行引擎目标持仓 | `cstree export-targets --run-dir ... --out ...` | 无 | 无；仅消费已保存 live 持仓 |
 | 计算包含 P 值的统计检验 | Python 下游分析调用 `summarize_ic` | `stats` | 无 |
 
 CLI 入口使用 `cstree`。
@@ -56,7 +57,7 @@ cstree run --config default
 * 主流程：`cstree run`
 * 研究汇总与参数调优：`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`
 * 研究治理与证据工具：`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence`、`cstree benchmark-ladder`
-* 实盘结果与持仓分配：`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`（包含港股执行前场景矩阵分析）
+* 实盘结果与执行交接：`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`（包含港股执行前场景矩阵分析）、`cstree export-targets`（导出执行引擎 canonical targets 文件）
 * 配置模板与本地备份：`cstree init-config`、`cstree backup-data`
 * 数据与资产运维工具：`cstree rqdata ...`、`cstree universe ...`
 * 数据分层与查询：`cstree data catalog`、`cstree data materialize`、`cstree data query`

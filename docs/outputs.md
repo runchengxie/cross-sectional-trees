@@ -1120,6 +1120,32 @@ artifacts/sweeps/<tag>/
 * `last_sell_signal_date`
 * `pct_1y`、`z_1y`、`valuation`
 
+### `cstree export-targets`
+
+该命令将已保存的 long-only live 持仓导出成交易执行引擎可消费的 canonical `targets.json`，且默认同步写出 lineage sidecar。命令本身不触发券商连接或下单。
+
+执行输入文件 `<out>` 的固定顶层字段：
+
+* `asof`
+* `source`
+* `target_gross_exposure`
+* `targets`
+
+`targets[]` 每行固定写出：
+
+* `symbol`：执行引擎 / 券商侧使用的无市场后缀代码；HK 数字代码会去除前导零，例如研究侧 `00700.HK` 导出为 `700`
+* `market`：执行引擎市场标识，例如 `HK`
+* `target_weight`：从 live 目标持仓读取的非负目标权重
+
+默认 sidecar 路径为 `<out>.lineage.json`，包含：
+
+* `target_contract=quant-execution-engine.targets/v2`
+* `targets_file`、`generated_at`、`target_source`、`target_gross_exposure`
+* `selection`：`as_of`、`entry_date`、`signal_asof`、`data_end_date`、`run_dir`、`positions_file`、`target_count`、`weight_sum`
+* `quality_gate` 与已存在的 `summary.json`、`config.used.yml`、`inputs.lock.json` 路径
+
+导出器会拒绝 short 持仓、无效或负权重、重复标的，以及权重总和超过 `1.0` 的输入。杠杆或主动缩放应通过显式的 `--target-gross-exposure` 表达。
+
 ### `cstree backup-data`：`artifacts/snapshots/<name>/`
 
 目录结构：

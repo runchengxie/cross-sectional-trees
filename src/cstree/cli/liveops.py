@@ -172,6 +172,29 @@ def handle_alloc_hk(args) -> int:
     return 0
 
 
+def handle_export_targets(args) -> int:
+    from ..liveops import export_targets
+
+    argv: list[str] = []
+    append_arg(argv, "--config", getattr(args, "config", None))
+    append_arg(argv, "--run-dir", getattr(args, "run_dir", None))
+    append_arg(argv, "--artifacts-root", getattr(args, "artifacts_root", None))
+    append_arg(argv, "--top-k", getattr(args, "top_k", None), formatter=str)
+    append_arg(argv, "--as-of", getattr(args, "as_of", None))
+    append_arg(argv, "--target-source", getattr(args, "target_source", None))
+    append_arg(
+        argv,
+        "--target-gross-exposure",
+        getattr(args, "target_gross_exposure", None),
+        formatter=str,
+    )
+    append_arg(argv, "--fail-on-quality", getattr(args, "fail_on_quality", None))
+    append_arg(argv, "--out", getattr(args, "out", None))
+    append_arg(argv, "--lineage-out", getattr(args, "lineage_out", None))
+    export_targets.main(argv)
+    return 0
+
+
 def _add_config_arg(parser, *, help_text: str) -> None:
     parser.add_argument(
         "--config",
@@ -544,8 +567,42 @@ def _register_snapshot_command(subparsers) -> None:
     snapshot.set_defaults(func=handle_snapshot)
 
 
+def _register_export_targets_command(subparsers) -> None:
+    export_targets = subparsers.add_parser(
+        "export-targets",
+        help="Export canonical qexec targets JSON from saved live holdings.",
+    )
+    _add_config_arg(export_targets, help_text="Pipeline config path or built-in name.")
+    _add_run_dir_arg(
+        export_targets,
+        help_text="Explicit saved run directory to read (overrides --config).",
+    )
+    _add_artifacts_root_arg(export_targets)
+    _add_top_k_arg(export_targets)
+    _add_as_of_arg(export_targets)
+    export_targets.add_argument(
+        "--target-source",
+        default="cross-sectional-trees",
+        help="Source label written to qexec targets JSON. Default: cross-sectional-trees.",
+    )
+    export_targets.add_argument(
+        "--target-gross-exposure",
+        type=float,
+        default=1.0,
+        help="Target exposure multiplier passed to qexec. Default: 1.0.",
+    )
+    _add_quality_gate_arg(export_targets, command="export-targets")
+    export_targets.add_argument("--out", required=True, help="Output path for canonical targets JSON.")
+    export_targets.add_argument(
+        "--lineage-out",
+        help="Optional lineage sidecar output path. Default: <out>.lineage.json.",
+    )
+    export_targets.set_defaults(func=handle_export_targets)
+
+
 def register_liveops_commands(subparsers) -> None:
     _register_holdings_command(subparsers)
     _register_alloc_command(subparsers)
     _register_alloc_hk_command(subparsers)
     _register_snapshot_command(subparsers)
+    _register_export_targets_command(subparsers)

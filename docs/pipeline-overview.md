@@ -22,7 +22,7 @@
 | 标签与特征 | `label`、`features` | 生成未来收益标签，构造量价和财务特征 | 训练 / 评估用特征矩阵 |
 | 模型训练 | `model` | 拟合 `xgb_regressor` / `xgb_ranker` / `ridge` / `elasticnet` | 预测分数、特征重要度 |
 | 评估与回测 | `eval`、`backtest` | 计算 IC、分位收益、Top-K、walk-forward、回测和 benchmark 对比 | `summary.json`、评估 CSV、持仓文件 |
-| live 导出 | `live` | 从最新 run 读取目标持仓、快照和分配结果 | `positions_current*.csv`、snapshot / alloc 输出 |
+| live 导出 | `live` | 从最新 run 读取目标持仓、快照、分配结果和显式执行目标交接文件 | `positions_current*.csv`、snapshot / alloc 输出、canonical `targets.json` |
 
 ## 配置块分工
 
@@ -75,6 +75,7 @@
 | 特征证据 | `cstree feature-evidence ...` | 生成消融配置、汇总消融结果、计算特征置换重要度和单因子 IC |
 | Benchmark 阶梯 | `cstree benchmark-ladder` | 把策略收益和多组 benchmark 分层对比 |
 | 持仓与分配 | `cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk` | 查看当前持仓、导出快照、做资金和手数分配 |
+| 执行目标交接 | `cstree export-targets` | 将已经保存并通过质量门禁的 long-only live 持仓显式导出为执行引擎 `targets.json`；不会触发下单 |
 | 数据标准层 | `cstree data catalog/materialize/query` | 管理 metadata、物化 standardized layer、用 DuckDB 查询 |
 | RQData 资产 | `cstree rqdata ...`、`cstree universe ...` | 镜像 HK 资产、检查健康度、构建研究股票池 |
 | 发布打包 | `python -m cstree.release_tools.*` | 跨机器共享数据资产或运行结果 |

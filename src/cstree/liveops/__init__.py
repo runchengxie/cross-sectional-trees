@@ -1,5 +1,5 @@
-"""Live operations: snapshot, holdings, and allocation helpers."""
+"""Live operations: snapshot, holdings, allocation, and execution-target export helpers."""
 
-from . import alloc, alloc_hk, holdings, snapshot
+from . import alloc, alloc_hk, export_targets, holdings, snapshot
 
-__all__ = ["snapshot", "holdings", "alloc", "alloc_hk"]
+__all__ = ["snapshot", "holdings", "alloc", "alloc_hk", "export_targets"]

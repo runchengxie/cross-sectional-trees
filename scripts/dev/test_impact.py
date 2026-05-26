@@ -88,7 +88,7 @@ RULES: tuple[ImpactRule, ...] = (
         prefixes=("src/cstree/liveops/",),
         commands=(
             "uv run python -m pytest tests/test_cli_liveops.py tests/test_alloc.py "
-            "tests/test_alloc_hk.py -q",
+            "tests/test_alloc_hk.py tests/test_export_targets.py -q",
         ),
     ),
     ImpactRule(
