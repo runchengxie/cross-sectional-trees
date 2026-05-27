@@ -11,6 +11,7 @@
 本项目当前只支持：
 
 * `data.provider=rqdata`
+* 默认 `data.source_mode=platform_assets`，只读 `market-data-platform` 发布的本地资产
 * `market=hk`
 * 在线 `rqdatac` 访问
 * 本地 HK 资产直读（daily + instruments）
@@ -34,7 +35,7 @@ export RQDATA_PASSWORD=your_password
 3. 用户名别名 `RQDATA_USER`
 
 如果配置了本地 HK 资产，pipeline 默认会跳过在线日线/基础信息初始化，直接读本地文件。
-但如果你同时启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，运行时在遇到 fundamentals cache miss 时仍会按同一套 `data.rqdata.init` / 环境变量口径补做 `rqdatac.init`。
+研究侧临时在线读取需要显式设置 `data.source_mode=provider_online_legacy`。如果你同时启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，运行时在遇到 fundamentals cache miss 时仍会按同一套 `data.rqdata.init` / 环境变量口径补做 `rqdatac.init`。
 
 ## 日期 token
 

@@ -8,11 +8,12 @@
 
 ## 当前结论
 
-当下项目以米筐作为最主要的数据服务商，其他数据服务商的支持待开发
+当下项目以 `market-data-platform` 发布的 RQData 本地资产作为默认研究输入；在线 RQData 只保留为显式 opt-in 的研究侧 legacy 路线。
 
 * `provider=rqdata`
 * `market=hk`
-* 可选本地 HK 资产直读
+* 默认 `data.source_mode=platform_assets`
+* 需要在线读取时显式设置 `data.source_mode=provider_online_legacy`
 
 ## 最短配置
 
@@ -21,30 +22,33 @@ market: hk
 
 data:
   provider: rqdata
+  source_mode: platform_assets
   start_date: "20200101"
   end_date: "20241231"
+  rqdata:
+    daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
+    instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
 ```
 
-环境变量：
+平台资产根目录：
 
 ```bash
-export RQDATA_USERNAME=your_username
-export RQDATA_PASSWORD=your_password
+export DATA_PLATFORM_ROOT=/path/to/market-data-platform/artifacts
 ```
 
 ## 什么时候直接走在线 RQData
 
 适合：
 
-* 刚开始跑 starter
-* 需要快速验证一个实验
-* 只需要日线、基础信息和 HK 日频估值
+* 研究侧临时 probe
+* 需要对照服务商即时返回
+* 本地资产尚未覆盖某个探索字段
 
-优点：
+要求：
 
-* 配置最短
-* 不需要提前准备资产目录
-* 与默认模板一致
+* 显式设置 `data.source_mode=provider_online_legacy`
+* 安装 `--extra rqdata`
+* 配置 RQData 凭证
 
 ## 什么时候切到本地资产模式
 
@@ -59,13 +63,14 @@ export RQDATA_PASSWORD=your_password
 ```yaml
 data:
   provider: rqdata
+  source_mode: platform_assets
   rqdata:
     daily_asset_dir: artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest
     instruments_file: artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet
 ```
 
 这时 pipeline 会直接读本地 daily / instruments 文件，并跳过在线日线 / 基础信息初始化。
-但如果你同时启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，在 fundamentals cache miss 时仍可能 lazy init `rqdatac`。
+但如果你显式启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，在 fundamentals cache miss 时仍可能 lazy init `rqdatac`。
 
 ## 进一步阅读
 

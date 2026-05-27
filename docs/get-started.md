@@ -10,17 +10,18 @@
 
 * Python 3.12 及以上版本
 * `uv` 包管理器
+* 已由 `market-data-platform` 准备好的本地 HK 数据资产
 
 ## 最短跑通
 
 ```bash
 uv venv --seed
-uv sync --extra dev --extra rqdata
-cp .env.example .env
+uv sync --extra dev
+export DATA_PLATFORM_ROOT=/path/to/market-data-platform/artifacts
 cstree run --config default
 ```
 
-请按 `data.provider` 配置好鉴权变量，详情参见 `docs/providers.md` 文件。
+默认入口只读平台资产，不需要 RQData 在线凭证。需要临时在线读取 provider 数据时，显式设置 `data.source_mode=provider_online_legacy` 并安装 `uv sync --extra dev --extra rqdata`；详情参见 `docs/providers.md` 文件。
 
 `cstree` 是当前 CLI 名称。
 

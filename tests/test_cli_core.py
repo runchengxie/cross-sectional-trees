@@ -6,9 +6,8 @@ import pytest
 from cstree import cli
 from cstree import pipeline as pipeline_module
 from cstree.cli import common as cli_common
+from cstree.cli import universe as universe_cli
 from cstree.config_utils import resolve_pipeline_config, resolve_repo_preset_path
-from cstree.data_tools import build_hk_connect_universe as hk_connect_tool
-from cstree.data_tools import build_hk_daily_asset_universe as hk_daily_assets_tool
 
 
 def test_cli_parses_run_command():
@@ -35,6 +34,8 @@ def test_default_builtin_config_is_hk_first():
     resolved = resolve_pipeline_config(None)
     assert resolved.data["market"] == "hk"
     assert resolved.data["data"]["provider"] == "rqdata"
+    assert resolved.data["data"]["source_mode"] == "platform_assets"
+    assert resolved.data["fundamentals"]["source"] == "file"
 
 
 def test_cli_parses_data_commands():
@@ -203,11 +204,13 @@ def test_cli_main_run_forwards_artifacts_root(monkeypatch):
 
 
 def test_cli_main_universe_wrappers_pass_through_args(monkeypatch):
-    hk_connect_calls: list[list[str]] = []
-    hk_daily_calls: list[list[str]] = []
+    calls: list[tuple[str, list[str]]] = []
 
-    monkeypatch.setattr(hk_connect_tool, "main", lambda argv: hk_connect_calls.append(argv))
-    monkeypatch.setattr(hk_daily_assets_tool, "main", lambda argv: hk_daily_calls.append(argv))
+    monkeypatch.setattr(
+        universe_cli,
+        "_run_market_data_platform_universe_builder",
+        lambda module_name, argv: calls.append((module_name, argv)),
+    )
 
     assert (
         cli.main(
@@ -243,25 +246,29 @@ def test_cli_main_universe_wrappers_pass_through_args(monkeypatch):
         == 0
     )
 
-    assert hk_connect_calls == [
-        [
-            "--config",
-            "configs/presets/universe/hk_connect.yml",
-            "--mode",
-            "daily",
-            "--start-date",
-            "20250101",
-        ]
-    ]
-    assert hk_daily_calls == [
-        [
-            "--config",
-            "configs/presets/universe/hk_all_assets.yml",
-            "--start-date",
-            "20000104",
-            "--end-date",
-            "20251231",
-        ]
+    assert calls == [
+        (
+            "build_hk_connect_universe",
+            [
+                "--config",
+                "configs/presets/universe/hk_connect.yml",
+                "--mode",
+                "daily",
+                "--start-date",
+                "20250101",
+            ],
+        ),
+        (
+            "build_hk_daily_asset_universe",
+            [
+                "--config",
+                "configs/presets/universe/hk_all_assets.yml",
+                "--start-date",
+                "20000104",
+                "--end-date",
+                "20251231",
+            ],
+        ),
     ]
 
 

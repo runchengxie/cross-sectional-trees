@@ -11,8 +11,8 @@ HK daily、PIT、valuation、industry、intraday、current contract、health、a
 
 `cross-sectional-trees` 的定位是研究消费者：
 
-* 读取 provider 在线数据。
-* 读取外部数据平台生成的本地 daily asset、instrument file、PIT flat file 或 standardized layer。
+* 默认读取外部数据平台生成的本地 daily asset、instrument file、PIT flat file 或 standardized layer。
+* 在显式 `data.source_mode=provider_online_legacy` 的研究配置中读取 provider 在线数据。
 * 构建研究股票池、特征、模型、回测和 live/export 产物。
 
 ## 研究侧配置
@@ -21,6 +21,7 @@ HK daily、PIT、valuation、industry、intraday、current contract、health、a
 
 * `data.rqdata.daily_asset_dir`
 * `data.rqdata.instruments_file`
+* `data.source_mode=platform_assets`
 * `fundamentals.source=file`
 * `fundamentals.file`
 * `universe.by_date_file`

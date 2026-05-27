@@ -1,8 +1,8 @@
 # cross-sectional-trees
 
-本项目使用 RQData 日线数据进行港股截面树模型研究、benchmark 对照、模型评估、回测、持仓快照和研究证据管理。当前正式支持的数据输入与研究主线边界为 `market=hk` 结合 `data.provider=rqdata`，同时支持可选的本地港股资产直读功能。
+本项目使用 RQData 日线数据进行港股截面树模型研究、benchmark 对照、模型评估、回测、持仓快照和研究证据管理。当前正式支持的数据输入与研究主线边界为 `market=hk` 结合 `data.provider=rqdata`、`data.source_mode=platform_assets`，默认只读 `market-data-platform` 发布的本地资产。
 
-本地港股资产直读主要覆盖日线和合约信息。在同一配置下，若启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，当基本面缓存未命中时，系统依然会延迟加载 `rqdatac` 以补充拉取服务商数据。
+本地港股资产直读主要覆盖日线和合约信息。若确实需要研究侧临时在线读取 provider 数据，配置必须显式设置 `data.source_mode=provider_online_legacy`；启用 `fundamentals.source=provider` 或 `fundamentals.provider_overlay` 时，基本面缓存未命中仍可能延迟加载 `rqdatac`。
 
 ## 项目定位
 
@@ -29,8 +29,8 @@ cp .env.example .env
 
 | 任务 | 典型命令 | 所需附加依赖 | 额外凭证 |
 | --- | --- | --- | --- |
-| 运行默认港股入门模板 | `cstree run --config default` | `rqdata` | RQData 账号 |
-| 运行港股季频特定时间点基本面路线 | `cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml` | `rqdata` | RQData 账号 |
+| 运行默认港股入门模板 | `cstree run --config default` | 无 | 已准备 `market-data-platform` 本地资产 |
+| 运行港股季频特定时间点基本面路线 | `cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml` | 无 | 已准备 PIT / daily 等本地资产 |
 | 使用 DuckDB 查询标准层数据 | `cstree data query --sql "..."` | `duckdb` | 无 |
 | 导出港股 Excel 分配表 | `cstree alloc-hk --format xlsx --out ...` | `liveops-hk` | 若走实时或服务商路径，需对应数据源凭证 |
 | 导出执行引擎目标持仓 | `cstree export-targets --run-dir ... --out ...` | 无 | 无；仅消费已保存 live 持仓 |
@@ -48,7 +48,7 @@ CLI 入口使用 `cstree`。
 cstree run --config default
 ```
 
-内置别名 `default` 当前指向港股入门模板，默认配置为 `data.provider=rqdata`。首次运行 `default` 或 `hk` 别名前，请务必先执行 `uv sync --extra dev --extra rqdata` 安装所需的依赖；若同时需要港股 Excel 分配表，请使用 `uv sync --extra dev --extra rqdata --extra liveops-hk`。
+内置别名 `default` 当前指向港股入门模板，默认配置为 `data.provider=rqdata` 且 `data.source_mode=platform_assets`。首次运行 `default` 或 `hk` 前，请先在 `market-data-platform` 准备本地资产，并设置 `DATA_PLATFORM_ROOT` 或 `HK_DATA_PLATFORM_ROOT`。只有显式走在线 provider legacy 路线时才需要安装 `--extra rqdata`；若同时需要港股 Excel 分配表，请使用 `uv sync --extra dev --extra liveops-hk`。
 
 ## 核心入口清单
 

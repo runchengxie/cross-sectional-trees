@@ -9,6 +9,7 @@ description = "Hong Kong cross-sectional tree-model research with linear benchma
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "market-data-platform>=0.1.0",
   "numpy>=1.23",
   "pandas>=2.0",
   "pandas-ta>=0.3.14b0",
@@ -96,6 +97,9 @@ combine-as-imports = true
 # Setuptools removed `pkg_resources` in v82, so constrain build-time
 # setuptools until upstream fixes its packaging metadata.
 build-constraint-dependencies = ["setuptools<82"]
+
+[tool.uv.sources]
+market-data-platform = { path = "../market-data-platform", editable = true }
 
 [tool.uv.extra-build-dependencies]
 rqsdk = ["setuptools"]

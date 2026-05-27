@@ -463,7 +463,7 @@ cstree init-config --market hk --out ./custom_hk.yml --force
 
 `cstree rqdata ...` 已从本仓库 sunset。RQData 账号检查、HK 日线、PIT、估值、行业、intraday、current contract health、asset audit 和 release 相关能力由 `market-data-platform` 承载。
 
-研究侧若需要本地数据，先在数据平台生成对应资产或标准层，再通过本仓库的 `data.provider=rqdata`、`fundamentals.source=file`、`cstree data ...` 或 `cstree universe ...` 消费。
+研究侧若需要本地数据，先在数据平台生成对应资产或标准层，再通过本仓库的 `data.provider=rqdata`、`data.source_mode=platform_assets`、`fundamentals.source=file` 或 `cstree data ...` 消费。需要在线 provider 读取时，必须在研究配置中显式设置 `data.source_mode=provider_online_legacy`。
 
 ## 股票池生成命令
 

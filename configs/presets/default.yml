@@ -2,6 +2,7 @@ market: hk
 
 data:
   provider: "rqdata"
+  source_mode: "platform_assets"
   start_years: 5
   end_date: "today"
   cache_dir: "artifacts/cache"
@@ -19,6 +20,9 @@ data:
     frequency: "1d"
     skip_suspended: true
     fields: ["close", "volume", "total_turnover"]
+    daily_asset_dir: "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest"
+    instruments_file: "artifacts/assets/rqdata/hk/instruments/hk_all_instruments_latest.parquet"
+    ex_factors_dir: "artifacts/assets/rqdata/hk/ex_factors/hk_all_ex_factors_latest"
   column_map:
     trade_date: trade_date
     symbol: ts_code
@@ -28,13 +32,14 @@ data:
 
 fundamentals:
   enabled: true
-  source: "provider"
-  file: null
+  source: "file"
+  file: "artifacts/assets/rqdata/hk/pit_financials/hk_all_2000_2025_full_market_latest/pipeline_fundamentals.parquet"
   endpoint: "get_factor"
   fields:
-    - "hk_total_market_val"
-    - "pe_ratio_ttm"
-    - "pb_ratio_ttm"
+    - "revenue"
+    - "operating_revenue"
+    - "net_profit"
+    - "basic_earnings_per_share"
   symbol_param: "symbol"
   start_param: "start_date"
   end_param: "end_date"
@@ -42,20 +47,20 @@ fundamentals:
   column_map:
     trade_date: trade_date
     symbol: ts_code
-    market_cap: hk_total_market_val
-    pe_ttm: pe_ratio_ttm
-    pb: pb_ratio_ttm
+    revenue: revenue
+    operating_revenue: operating_revenue
+    net_profit: net_profit
+    basic_earnings_per_share: basic_earnings_per_share
   features:
-    - market_cap
-    - pe_ttm
-    - pb
-    - log_mcap
+    - sales
+    - net_profit
+    - basic_earnings_per_share
   auto_add_features: true
   allow_missing_features: true
   required: false
   ffill: true
   ffill_limit: null
-  log_market_cap: true
+  log_market_cap: false
   market_cap_col: "market_cap"
   log_market_cap_col: "log_mcap"
 

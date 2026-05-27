@@ -7,9 +7,8 @@
 ## current HK starter PIT asset. If you mirror richer balance-sheet coverage,
 ## you can extend this template with debt / asset-structure ratios.
 ##
-## Prepare the file first:
-## 1) cstree rqdata mirror-hk-pit-financials --name hk_selected_pit_2011_2025_latest ...
-## 2) cstree rqdata build-hk-pit-fundamentals --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest ...
+## Prepare the file in market-data-platform first, then point this research
+## config at the generated pipeline_fundamentals.parquet.
 market: hk
 data:
   provider: rqdata

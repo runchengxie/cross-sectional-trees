@@ -11,7 +11,7 @@ HK 数据生命周期已经不属于 `cross-sectional-trees`。HK daily、PIT、
 
 `cross-sectional-trees` 的职责是研究消费：
 
-* 读取 provider 在线数据或数据平台发布的本地文件。
+* 默认读取数据平台发布的本地文件；provider 在线读取只作为显式 opt-in 的研究侧 legacy 路线。
 * 构建 universe、features、labels、models、backtests、live positions 和 execution targets。
 * 记录 run 级别复现信息，例如 `inputs.lock.json`、`config.used.yml` 和 `summary.json`。
 
