@@ -29,7 +29,6 @@ EXPECTED_CAPABILITY_TOKENS = [
     "`cstree init-config`",
     "`cstree backup-data`",
     "`cstree data ...`",
-    "`cstree rqdata ...`",
     "`cstree universe ...`",
 ]
 EXPECTED_TEST_WORKFLOW_JOBS = {
@@ -63,7 +62,6 @@ EXPECTED_DEV_TEST_MATRIX_TOKENS = [
 EXPECTED_DEV_CHANGE_MAP_TOKENS = [
     "## 修改模块与对应测试指南",
     "`tests/test_data_warehouse.py`",
-    "`tests/test_asset_release_scripts.py`",
     "`tests/test_run_release_scripts.py`",
     "`tests/test_hk_intraday_download.py`",
 ]
@@ -86,7 +84,6 @@ EXPECTED_README_PUBLIC_CLI_TOKENS = [
     "`cstree init-config`",
     "`cstree backup-data`",
     "cstree data",
-    "cstree rqdata",
     "cstree universe",
 ]
 EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
@@ -94,7 +91,7 @@ EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "## 命名空间策略",
     "公开主线 CLI",
     "公开但非 CLI 模块工具",
-    "`python -m cstree.release_tools.package_assets`",
+    "`python -m cstree.release_tools.package_runs`",
     "`python -m cstree.research.hk_financial_details`",
     "`python -m cstree.research.hk_intraday_download`",
     "`CSTREE_*`",

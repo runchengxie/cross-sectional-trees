@@ -10,7 +10,7 @@
 
 给定一份配置，`cstree run` 会完成数据读取、股票池处理、标签生成、特征构建、模型训练、评估和回测，并将结果写到 `artifacts/` 目录下。
 
-主流程之外，仓库还提供结果汇总、候选策略晋升检查、固定分数组合层比较、特征证据、benchmark 阶梯、数据资产运维和发布打包工具。完整参数见 `docs/cli.md`。如果要把 HK 数据层拆成多个项目共享的数据平台，请先看 `docs/concepts/shared-hk-data-platform.md`。
+主流程之外，仓库还提供结果汇总、候选策略晋升检查、固定分数组合层比较、特征证据、benchmark 阶梯、股票池工具、标准层查询和运行结果发布打包工具。HK 数据资产生产、检查和发布已经移交给 `market-data-platform`；完整参数见 `docs/cli.md`，边界说明见 `docs/concepts/shared-hk-data-platform.md`。
 
 ## 用户可见入口
 
@@ -34,16 +34,14 @@
 | `cstree init-config` | 导出仓库预设配置模板 | 本地 YAML 文件 |
 | `cstree backup-data` | 归档本地缓存、股票池、配置以及可选的当前冻结资产集 | `artifacts/snapshots/<name>/` |
 | `cstree data ...` | 元数据目录管理、标准层物化和 DuckDB 查询 | `artifacts/metadata/*` 或 `artifacts/standardized/*` |
-| `cstree rqdata ...` | RQData 账号、配额、港股财报资产与合约元数据工具 | 账号信息或资产目录 |
 | `cstree universe ...` | 股票池构建工具（港股通或港股全市场日线资产） | 股票池文件 |
 
 参数细节请参阅 `docs/cli.md`。
 
 `cstree` 是当前 CLI 名称。
 
-仓库另外还提供两组模块级的分发工具：
+仓库另外还提供一组模块级的运行结果分发工具：
 
-* `python -m cstree.release_tools.package_assets` 与 `python -m cstree.release_tools.release_assets`：将港股数据资产按模块打包并上传至 GitHub Releases；`hk_current` 默认覆盖 current contract 中的核心、分钟、ETF、参考、汇率、南向、financial_details、行业和 universe 分层，也支持显式附加公告（`announcement`）等补充层。
 * `python -m cstree.release_tools.package_runs` 与 `python -m cstree.release_tools.release_runs`：将历史运行结果按次拆包并上传至 GitHub Releases，支持轻量、里程碑、完整（`light` / `milestone` / `full`）这三档配置。
 
 它们主要用于公开分享、跨机器搬运以及正式版本分发，而非个人的私有备份。
@@ -60,8 +58,8 @@
 
 | 分类 | 入口 |
 | --- | --- |
-| 公开 release 工具 | `python -m cstree.release_tools.package_assets`、`python -m cstree.release_tools.release_assets`、`python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` |
-| Playbook / 专题研究工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_intraday_slippage_report`、`python -m cstree.research.hk_asset_patch_merge`、`python -m cstree.research.hk_connect_cap_weight_benchmark`、`python -m cstree.research.hk_benchmark_attribution`、`python -m cstree.research.hk_monthly_run_compare` |
+| 公开 release 工具 | `python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` |
+| Playbook / 专题研究工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_intraday_slippage_report`、`python -m cstree.research.hk_connect_cap_weight_benchmark`、`python -m cstree.research.hk_benchmark_attribution`、`python -m cstree.research.hk_monthly_run_compare` |
 | 内部 / 测试面 | `src/cstree/` 内部导入、`scripts/internal/` driver、测试里的直接 `cstree` import |
 
 ## 入口分层与稳定性
@@ -70,9 +68,9 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree rqdata ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
-| 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_assets`、`python -m cstree.release_tools.release_assets`、`python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
-| 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_asset_patch_merge` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
+| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
+| 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
 
 ### 入口变更要求
@@ -96,7 +94,7 @@
 * 当前的核心工作流即为港股加 RQData 的入门路线。
 * 本地资产直读归在 RQData provider 的离线资产模式下，配置仍使用 `data.provider=rqdata`。
 * 支持数据缓存、失败重试、相对日期与绝对日期标识。
-* 数据资产运维工具当前内置在 `cstree rqdata ...` 下；若外部项目需要复用，优先通过外置 `artifacts_root`、`hk_current.json`、`dataset_registry.csv` 和 asset `manifest.yml` 交互，不通过跨仓库 import 交互。
+* 数据资产生产、检查和发布已由 `market-data-platform` 承担。本仓库只读取 provider、本地资产、标准层和 `market-data-platform` 产物，不再提供 `cstree rqdata ...` 维护入口。
 
 关于数据服务商的差异说明，请参阅 `docs/providers.md`。
 
@@ -111,7 +109,7 @@
 
 * 支持通过服务商在线获取（`fundamentals.source=provider`）以及从本地文件读取（`fundamentals.source=file`）基本面数据。
 * 支持港股加 RQData 组合的服务商基本面抓取。
-* 支持将 RQData 港股特定时间点（`pit`）财报镜像固化为独立的资产目录，然后再转换为流水线可读的基本面文件。
+* 支持读取由外部数据平台生成的 PIT 平面基本面文件。
 * 支持数据向前填充（`ffill`）、列名映射、缺失值填补与缺失情况标记。
 
 ### 建模与评估

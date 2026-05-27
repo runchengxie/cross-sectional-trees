@@ -8,13 +8,10 @@ import pytest
 
 
 DOCUMENTED_RELEASE_MODULES = (
-    "release_tools.package_assets",
-    "release_tools.release_assets",
     "release_tools.package_runs",
     "release_tools.release_runs",
 )
 DOCUMENTED_RESEARCH_MODULES = (
-    "research.hk_asset_patch_merge",
     "research.hk_benchmark_attribution",
     "research.hk_connect_cap_weight_benchmark",
     "research.hk_financial_details",
@@ -24,7 +21,7 @@ DOCUMENTED_RESEARCH_MODULES = (
     "research.hk_selected_provider_valuation_audit",
 )
 DOCUMENTED_MODULES = DOCUMENTED_RELEASE_MODULES + DOCUMENTED_RESEARCH_MODULES
-MAINTENANCE_MODULES = ("release_tools.hk_asset_workflow",)
+MAINTENANCE_MODULES = ()
 CSTREE_MODULE_EXECUTION_PATHS = DOCUMENTED_MODULES + MAINTENANCE_MODULES
 PUBLIC_ALIAS_MODULES = (
     "artifacts",
@@ -43,7 +40,6 @@ PUBLIC_ALIAS_MODULES = (
     "data_tools.build_hk_connect_universe",
     "data_tools.build_hk_daily_asset_universe",
     "data_tools.data_warehouse",
-    "data_tools.rqdata_assets",
     "liveops.alloc",
     "liveops.alloc_hk",
     "liveops.export_targets",
@@ -115,7 +111,7 @@ def test_legacy_csml_module_execution_is_removed():
     )
 
     result = subprocess.run(
-        [sys.executable, "-m", "csml.release_tools.package_assets", "--help"],
+        [sys.executable, "-m", "csml.release_tools.package_runs", "--help"],
         check=False,
         capture_output=True,
         text=True,

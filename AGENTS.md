@@ -113,11 +113,7 @@ uv sync --extra dev --extra rqdata
 ## 大数据检查约定
 
 * 对 `artifacts/assets/`、`artifacts/cache/` 下的大型 parquet / `.parts/` 目录，默认不要让代理直接做整块读取后再在会话里展开结果。
-* 优先使用仓库内置健康检查入口落结构化报告，再读取小型 JSON / text 结果：
-  * `cstree rqdata inspect-hk-current-health`
-  * `cstree rqdata inspect-hk-asset-health`
-  * `cstree rqdata inspect-hk-intraday-health`
-  * `cstree rqdata inspect-hk-pit-coverage --include-health`
+* HK 数据资产健康检查、PIT coverage、current contract 审计和 asset release 已迁到 `market-data-platform`；本仓库只读取其产出的报告或数据文件。
 * 对 intraday 数据，优先把正式资产目录或同名 `.parts/` 目录传给检查命令，不要默认直扫合并后的超大 parquet。
 * 需要保留检查痕迹时，优先使用 `--format json --out artifacts/reports/<name>.json`，并额外把 stdout / stderr 重定向到日志文件，避免只在交互上下文里看结果。
 * 如果检查预计会扫描大量数据或运行很久，优先由用户本地执行命令并把 `artifacts/reports/*.json` 与对应 log 提供给代理复核；不要默认在代理会话里直接重跑整套重 I/O 检查。
@@ -143,7 +139,7 @@ uv sync --extra dev --extra rqdata
 * 文档、脚本说明或测试入口改动，优先跑：`uv run python -m pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q`。
 * 如需在本地提前拦住文档 / 路径 / 快回归问题，可安装仓库内置 git hooks：`./scripts/dev/install_git_hooks.sh`。
 * 代码改动后，运行与改动范围匹配的测试。
-* HK + RQData 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/rqdata_assets/`、`tests/test_data_providers_cache.py`。
+* HK + RQData research provider 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py`。
 
 ## 说明
 

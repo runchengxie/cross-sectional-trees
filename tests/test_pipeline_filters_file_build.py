@@ -8,7 +8,6 @@ import yaml
 
 from cstree import pipeline
 from cstree.data_interface import DataInterface
-from cstree.data_tools import rqdata_assets
 from cstree.pipeline.fundamentals_enrichment import apply_fundamentals_enrichment
 from tests._pipeline_test_utils import _build_frames, _run_pipeline
 
@@ -19,80 +18,16 @@ def test_pipeline_hk_file_fundamentals_built_from_pit_asset(tmp_path, monkeypatc
     repo_root.mkdir()
     monkeypatch.chdir(repo_root)
 
-    asset_dir = repo_root / "artifacts" / "assets" / "rqdata" / "hk" / "pit_financials" / "pit_demo"
-    data_dir = asset_dir / "data"
-    data_dir.mkdir(parents=True)
-    (asset_dir / "manifest.yml").write_text(
-        yaml.safe_dump(
-            {
-                "dataset": "pit_financials",
-                "query": {"fields": ["revenue", "net_profit"]},
-                "columns": [
-                    "quarter",
-                    "info_date",
-                    "fiscal_year",
-                    "standard",
-                    "if_adjusted",
-                    "rice_create_tm",
-                    "revenue",
-                    "net_profit",
-                    "order_book_id",
-                    "symbol",
-                ],
-            },
-            sort_keys=False,
-            allow_unicode=True,
-        ),
-        encoding="utf-8",
-    )
-    pd.DataFrame(
-        {
-            "quarter": ["2024q4"],
-            "info_date": pd.to_datetime(["2025-03-20"]),
-            "fiscal_year": pd.to_datetime(["2024-12-31"]),
-            "standard": ["IFRS"],
-            "if_adjusted": [0],
-            "rice_create_tm": pd.to_datetime(["2025-03-20 09:00:00"]),
-            "revenue": [100.0],
-            "net_profit": [10.0],
-            "order_book_id": ["00005.XHKG"],
-            "symbol": ["00005.HK"],
-        }
-    ).to_parquet(data_dir / "00005.HK.parquet", index=False)
-    pd.DataFrame(
-        {
-            "quarter": ["2025q1"],
-            "info_date": pd.to_datetime(["2025-03-24"]),
-            "fiscal_year": pd.to_datetime(["2025-12-31"]),
-            "standard": ["IFRS"],
-            "if_adjusted": [0],
-            "rice_create_tm": pd.to_datetime(["2025-03-24 09:00:00"]),
-            "revenue": [220.0],
-            "net_profit": [22.0],
-            "order_book_id": ["00011.XHKG"],
-            "symbol": ["00011.HK"],
-        }
-    ).to_parquet(data_dir / "00011.HK.parquet", index=False)
-
     fundamentals_path = repo_root / "artifacts" / "assets" / "fundamentals" / "pit_fundamentals.parquet"
-    assert (
-        rqdata_assets.build_hk_pit_fundamentals_file(
-            type(
-                "Args",
-                (),
-                {
-                    "asset_dir": str(asset_dir),
-                    "field": [],
-                    "fields_file": [],
-                    "out": str(fundamentals_path),
-                    "keep_meta": False,
-                    "duplicate_policy": "keep-last",
-                    "force": False,
-                },
-            )()
-        )
-        == 0
-    )
+    fundamentals_path.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(["2025-03-20", "2025-03-24"]),
+            "symbol": ["00005.HK", "00011.HK"],
+            "revenue": [100.0, 220.0],
+            "net_profit": [10.0, 22.0],
+        }
+    ).to_parquet(fundamentals_path, index=False)
 
     dates = pd.date_range("2025-03-10", periods=25, freq="B")
     symbols = ["00005.HK", "00011.HK"]

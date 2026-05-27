@@ -1,17 +1,17 @@
 # HK Quarterly PIT Provider Coverage Caveat（2026-04-11）
 
-> 状态提示：本页属于 implementation caveat，用于解释 quarterly PIT freshness warning 的成因，以及为什么仓库里新增了 `provider_dense` 变体。当前默认研究入口仍是 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
+> 状态提示：本页属于 historical implementation caveat，用于解释 2026-04-11 前后 quarterly PIT freshness warning 的成因，以及为什么仓库里新增了 `provider_dense` 变体。HK PIT coverage 实现已经迁到 `market-data-platform`；当前默认研究入口仍是 [`hk-quarterly-current-state-20260329.md`](./hk-quarterly-current-state-20260329.md)。
 
 本页解决什么：说明这轮 quarterly PIT freshness warning 为什么更像 provider coverage 问题，而不是本地 build / dedup bug，并给出 `provider_dense` 变体的正确定位。  
 本页不解决什么：不替代 `docs/concepts/pit-coverage.md` 的通用解读，也不把 `provider_dense` 写成新的 quarterly 默认基线。  
-适合谁：需要处理 `inspect-hk-pit-coverage --include-health` 告警、或想理解 `provider_dense` 变体为什么存在的人。  
+适合谁：需要理解历史 `inspect-hk-pit-coverage --include-health` 告警、或想理解 `provider_dense` 变体为什么存在的人。  
 读完你会得到什么：warning 的更准确解释、受影响字段的共性、`provider_dense` 的定位，以及什么时候才值得切到这份变体。  
 相关页面：`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/concepts/pit-coverage.md`、`docs/playbooks/hk-data-assets.md`、`docs/rqdata/hk-health-checks.md`
 
 页面性质：`research-note`  
-状态：`implementation caveat`，这页只保留 quarterly PIT coverage / freshness warning 的背景和变体定位，不作为默认研究入口  
-最后核对时间：`2026-04-11`  
-权威来源：`configs/presets/hk_quarterly_pit_hybrid.yml`、`src/cstree/data_tools/rqdata_assets/build.py`、`src/cstree/data_tools/rqdata_assets/coverage.py`、本地 `artifacts/reports/hk_pit_health_20260409.json`、本地 raw PIT 资产抽样
+状态：`historical implementation caveat`，这页只保留 quarterly PIT coverage / freshness warning 的背景和变体定位，不作为默认研究入口  
+最后核对时间：`2026-05-27`  
+权威来源：`configs/presets/hk_quarterly_pit_hybrid.yml`、历史本地 `artifacts/reports/hk_pit_health_20260409.json`、历史 raw PIT 资产抽样；新的 coverage 实现以 `market-data-platform` 为准
 冲突优先级：如果与代码、health 报告或更晚的资产检查结果冲突，以更晚代码和检查结果为准；如果与具体 run 的 `summary.json` / `config.used.yml` 冲突，以 run 产物为准
 
 ## 1. 先说结论

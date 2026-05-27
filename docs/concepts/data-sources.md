@@ -70,6 +70,6 @@ data:
 ## 进一步阅读
 
 * 想看 provider 细节：`docs/providers.md`
-* 想看本地 HK 资产准备顺序：`docs/playbooks/hk-data-assets.md`
-* 想看 RQData 权限失效前的冻结清单：`docs/playbooks/hk-data-assets.md#rqdata-权限失效前冻结清单`
+* 想看本地 HK 资产消费边界：`docs/playbooks/hk-data-assets.md`
+* 想维护或冻结 HK 数据资产：使用 `market-data-platform`
 * 想看配置键：`docs/config.md`

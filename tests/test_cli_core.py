@@ -123,7 +123,7 @@ def test_init_rqdatac_applies_adjust_price_patch(monkeypatch):
 
     assert result is fake_rqdatac
     assert init_calls == [{}]
-    assert patch_calls == ["cstree.cli.rqdata"]
+    assert patch_calls == ["cstree.rqdata_runtime"]
 
 
 def test_cli_parses_init_config_and_universe():

@@ -16,7 +16,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ROOTS = ("src", "scripts", "tests")
 DEFAULT_LIMIT = 10
-PUBLIC_API_PATH = Path("src/cstree/data_tools/rqdata_assets/public_api.py")
 PYPROJECT_PATH = Path("pyproject.toml")
 
 
@@ -46,7 +45,6 @@ class Metrics:
     functions_over_250: int
     functions_over_500: int
     c901_file_ignores: int
-    rqdata_public_api_all: int | None
     largest_files: list[FileMetric]
     largest_functions: list[FunctionMetric]
 
@@ -220,7 +218,6 @@ def collect_metrics(
         functions_over_250=sum(1 for item in function_metrics if item.lines > 250),
         functions_over_500=sum(1 for item in function_metrics if item.lines > 500),
         c901_file_ignores=_c901_file_ignore_count(repo_root),
-        rqdata_public_api_all=_literal_all_count(repo_root, PUBLIC_API_PATH),
         largest_files=largest_files,
         largest_functions=largest_functions,
     )
@@ -238,9 +235,6 @@ def format_markdown(metrics: Metrics) -> str:
         f"| Functions over 500 lines | {metrics.functions_over_500} |",
         f"| C901 file ignores | {metrics.c901_file_ignores} |",
     ]
-    if metrics.rqdata_public_api_all is not None:
-        lines.append(f"| rqdata public_api __all__ | {metrics.rqdata_public_api_all} |")
-
     lines.extend(["", "Largest functions:", ""])
     lines.extend([
         "| Lines | Function | Path |",
@@ -261,9 +255,6 @@ def format_text(metrics: Metrics) -> str:
         ("functions_over_500", metrics.functions_over_500),
         ("c901_file_ignores", metrics.c901_file_ignores),
     ]
-    if metrics.rqdata_public_api_all is not None:
-        rows.append(("rqdata_public_api_all", metrics.rqdata_public_api_all))
-
     lines = ["Maintainability metrics:"]
     lines.extend(f"- {name}: {value}" for name, value in rows)
     lines.extend(["", "Largest functions:"])

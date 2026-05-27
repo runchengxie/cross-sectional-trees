@@ -10,7 +10,7 @@
 
 `config` 定义研究口径。`cstree run` 按这个口径读取 `data/universe/fundamentals`，构建 `label/features`，训练 `model`，产出 `eval/backtest/live` 结果，最后把关键产物写到 `artifacts/`。
 
-这页讲的是主流程。项目还包含结果汇总、候选晋升检查、构造层网格、特征证据、benchmark 阶梯、RQData 资产运维、数据标准层和发布打包工具；这些能力见本页后面的“主流程之外”。
+这页讲的是主流程。项目还包含结果汇总、候选晋升检查、构造层网格、特征证据、benchmark 阶梯、股票池工具、数据标准层和运行结果发布打包工具；这些能力见本页后面的“主流程之外”。HK 数据资产生产、检查和发布已经由 `market-data-platform` 承载。
 
 ## 主流程
 
@@ -77,8 +77,8 @@
 | 持仓与分配 | `cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk` | 查看当前持仓、导出快照、做资金和手数分配 |
 | 执行目标交接 | `cstree export-targets` | 将已经保存并通过质量门禁的 long-only live 持仓显式导出为执行引擎 `targets.json`；不会触发下单 |
 | 数据标准层 | `cstree data catalog/materialize/query` | 管理 metadata、物化 standardized layer、用 DuckDB 查询 |
-| RQData 资产 | `cstree rqdata ...`、`cstree universe ...` | 镜像 HK 资产、检查健康度、构建研究股票池 |
-| 发布打包 | `python -m cstree.release_tools.*` | 跨机器共享数据资产或运行结果 |
+| 股票池工具 | `cstree universe ...` | 构建研究股票池 |
+| 运行结果发布打包 | `python -m cstree.release_tools.*` | 跨机器共享运行结果 |
 
 命令参数以 `docs/cli.md` 为准。能力边界和稳定性分层见 `docs/capabilities.md`。
 

@@ -102,7 +102,8 @@ jobs:
       - name: Smoke rqdata extra
         run: |
           uv run python -c "import rqdatac; print(rqdatac.__name__)"
-          uv run cstree rqdata --help > /dev/null
+          uv run python -c "from cstree import rqdata_runtime; print(rqdata_runtime.__name__)"
+          uv run cstree --help > /dev/null
 
   duckdb-extra-smoke:
     runs-on: ubuntu-latest

@@ -6,7 +6,6 @@ from .core import register_core_commands
 from .data import register_data_command
 from .liveops import register_liveops_commands
 from .research import register_research_commands
-from .rqdata import register_rqdata_command
 from .universe import register_universe_command
 
 
@@ -18,7 +17,6 @@ def build_parser(*, prog: str | None = "cstree") -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     register_core_commands(subparsers)
-    register_rqdata_command(subparsers)
     register_data_command(subparsers)
     register_universe_command(subparsers)
     register_research_commands(subparsers)

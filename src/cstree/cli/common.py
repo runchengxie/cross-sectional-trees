@@ -189,7 +189,7 @@ def init_rqdatac(args) -> object:
         data_cfg=data_cfg,
         username=getattr(args, "username", None),
         password=getattr(args, "password", None),
-        logger=logging.getLogger("cstree.cli.rqdata"),
+        logger=logging.getLogger("cstree.rqdata_runtime"),
         load_env=False,
         error_cls=SystemExit,
         import_error_message="rqdatac is not installed. Install with: pip install '.[rqdata]'",

@@ -244,7 +244,7 @@ live:
 
 ### 质量闸门配置 (`quality`)
 
-系统目前在主流程及 liveops 环节支持可选的质量闸门。当前版本重点约束 “HK + RQData + `fundamentals.source=file`” 的本地 PIT 场景。运行 `cstree run` 前会触发 `inspect-hk-pit-coverage` 健康度检测，结论会写入 `summary.json -> quality.preflight`。
+系统目前在 liveops 环节支持读取已保存的质量闸门摘要。HK PIT 覆盖率和健康度检测已经迁到 `market-data-platform`；`cstree run` 不再内置执行新的 PIT coverage preflight。研究侧应先在数据平台完成检查，再运行本仓库流程。
 
 ```yaml
 quality:
@@ -257,8 +257,8 @@ quality:
 
 补充说明：
 
-* `fail_on_severity` 作为核心开关：设定为 `none` 时仅作日志留存，不阻断流程；设定为其他阈值时，一旦命中相应严重等级的错误，`cstree run`、`cstree snapshot` 或 `cstree alloc-hk` 将触发 fail-fast 机制立即报错退出。
-* 当配置了 `save_report=true`，系统会将详细的质检报告保存在 `<run_dir>/quality/`。对于实盘或后置节点（liveops）来说，工具会优先复用 `summary.json` 中已有的检测结论，规避繁重的重复计算。
+* `fail_on_severity` 作为后置质量摘要的阈值：设定为 `none` 时不阻断流程；设定为其他阈值时，`cstree snapshot` 或 `cstree alloc-hk` 会根据 `summary.json` 中已有检测结论 fail-fast。
+* `save_report=true` 保留为兼容配置；新的 PIT 质检报告由 `market-data-platform` 生成。
 * 若在命令行尾缀 `--fail-on-quality ...` 参数，同样会覆盖此处的默认行为。
 
 ### 日志输出配置 (`logging`)

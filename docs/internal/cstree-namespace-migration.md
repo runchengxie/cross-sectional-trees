@@ -36,7 +36,6 @@
 | `csml alloc ...` | `cstree alloc ...` |
 | `csml alloc-hk ...` | `cstree alloc-hk ...` |
 | `csml data ...` | `cstree data ...` |
-| `csml rqdata ...` | `cstree rqdata ...` |
 | `csml universe ...` | `cstree universe ...` |
 | `python -m csml.release_tools.<tool>` | `python -m cstree.release_tools.<tool>` |
 | `python -m csml.research.<tool>` | `python -m cstree.research.<tool>` |

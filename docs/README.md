@@ -23,8 +23,8 @@
 | 我想查输出目录、文件和字段 | `docs/outputs.md` |
 | 我想查服务商差异、凭证和日期标识符 | `docs/providers.md` |
 | 我想查开发测试命令和仓库脚本入口 | `docs/dev.md`、`scripts/README.md` |
-| 我想批量跑港股或 RQData 本地资产健康检查，并把结果保存成报告或日志 | `docs/rqdata/hk-health-checks.md` |
-| 我想看港股五分钟线快照、配额量级和滑点校准文件 | `docs/playbooks/hk-intraday-assets.md` |
+| 我想维护港股或 RQData 本地资产健康检查 | 先去 `market-data-platform`；本仓库的 `docs/rqdata/hk-health-checks.md` 只保留 sunset 说明 |
+| 我想用港股五分钟线做滑点校准 | `docs/playbooks/hk-intraday-assets.md` |
 | 我想理解为什么当前只保留四个模型，以及别的算法何时值得引入 | `docs/concepts/model-landscape.md` |
 | 我想查港股或 RQData 专题资料 | `docs/rqdata/README.md` |
 | 我想看研究笔记和当前结论状态 | `docs/research/README.md` |

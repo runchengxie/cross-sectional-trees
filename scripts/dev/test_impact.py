@@ -76,14 +76,6 @@ RULES: tuple[ImpactRule, ...] = (
         ),
     ),
     ImpactRule(
-        name="rqdata-assets",
-        prefixes=(
-            "src/cstree/data_tools/rqdata_assets/",
-            "tests/rqdata_assets/",
-        ),
-        commands=("uv run python -m pytest tests/rqdata_assets/ tests/test_cli_rqdata.py -q",),
-    ),
-    ImpactRule(
         name="liveops",
         prefixes=("src/cstree/liveops/",),
         commands=(
@@ -95,8 +87,7 @@ RULES: tuple[ImpactRule, ...] = (
         name="release-tools",
         prefixes=("src/cstree/release_tools/", "scripts/internal/"),
         commands=(
-            "uv run python -m pytest tests/test_hk_asset_workflow.py "
-            "tests/test_run_release_scripts.py tests/test_asset_release_scripts.py -q",
+            "uv run python -m pytest tests/test_run_release_scripts.py -q",
         ),
     ),
     ImpactRule(

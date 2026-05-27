@@ -183,7 +183,7 @@ CI 配置在 `.github/workflows/tests.yml`。默认拆成八个 job：
 2. `slow`：运行 `scripts/dev/run_tests.sh slow`。
 3. `integration`：运行 `scripts/dev/run_tests.sh integration`。
 4. `typecheck`：运行 `scripts/dev/run_tests.sh typecheck`。
-5. `rqdata-extra-smoke`：安装 `--extra rqdata`，验证导入和 `cstree rqdata --help`。
+5. `rqdata-extra-smoke`：安装 `--extra rqdata`，验证 `rqdatac` 与 research 侧 RQData runtime 可导入。
 6. `duckdb-extra-smoke`：安装 `--extra duckdb`，验证最小 DuckDB query 执行。
 7. `liveops-hk-extra-smoke`：安装 `--extra liveops-hk`，验证 xlsx 文件的基本写入能力。
 8. `stats-extra-smoke`：安装 `--extra stats`，验证 `scipy` 和 `summarize_ic`。
@@ -196,7 +196,8 @@ CI 配置在 `.github/workflows/tests.yml`。默认拆成八个 job：
 # rqdata-extra-smoke
 uv sync --locked --extra dev --extra rqdata
 uv run python -c "import rqdatac; print(rqdatac.__name__)"
-uv run cstree rqdata --help > /dev/null
+uv run python -c "from cstree import rqdata_runtime; print(rqdata_runtime.__name__)"
+uv run cstree --help > /dev/null
 
 # duckdb-extra-smoke
 uv sync --locked --extra dev --extra duckdb
@@ -214,190 +215,23 @@ uv run python -c "import scipy; print(scipy.__version__)"
 uv run python -c "import pandas as pd; from cstree.metrics import summarize_ic; series = pd.Series([0.1, -0.1, 0.2]); stats = summarize_ic(series); assert 'p_value' in stats and stats['p_value'] == stats['p_value']"
 ```
 
-## HK 资产健康检查脚本
+## HK 数据资产维护边界
 
-这一节面向维护 HK current 资产的人。普通代码开发通常不需要跑这些命令。
+HK 数据资产下载、检查、修复、current contract 审计和 release 已从本仓库 sunset。相关能力由 `market-data-platform` 统一承载；本仓库只保留研究侧 provider runtime、本地资产消费、标准层查询和股票池构建。
 
-日常维护优先用轻量封装脚本：
-
-```bash
-bash scripts/dev/refresh_hk_current.sh --target-date 20260410
-```
-
-默认行为：
-
-* 只执行刷新和检查，不会自动打包或发布 GitHub Release。
-* 使用 `--refresh-mode patch`，也就是只抓尾部增量窗口，再在本地合并。
-* 默认带上 `--resume`、`--gate-on-severity warning` 和 `--inspect-fail-on-severity none`。
-* 检查结果达到阻断阈值时，底层 workflow 会阻止 `latest/current` 别名放行，并以非零状态退出。
-
-常见变体：
-
-```bash
-# 检查通过后，额外打包当前资产 parts
-bash scripts/dev/refresh_hk_current.sh --target-date 20260410 --with-package
-
-# 重要时间点，把 current 状态冻结为本地备份
-bash scripts/dev/refresh_hk_current.sh \
-  --target-date 20260410 \
-  --backup-name hk_current_frozen_20260410
-
-# 只刷新支持 patch 模式的部分资产
-bash scripts/dev/refresh_hk_current.sh \
-  --target-date 20260410 \
-  -- --refresh-asset daily --refresh-asset valuation
-```
-
-这个脚本是 `scripts/internal/run_hk_asset_workflow.py` 的保守封装。需要完整重拉、修复、release 发布或细分 parts 控制时，再直接调用维护者 driver。
-
-只想把 HK 与 RQData 健康检查跑完并归档到 `artifacts/reports/` 时，用：
-
-```bash
-bash scripts/dev/run_hk_health_checks.sh --target-date 20260409
-```
-
-常见变体：
-
-```bash
-# 加跑 intraday 分钟线检查
-bash scripts/dev/run_hk_health_checks.sh --target-date 20260409 --with-intraday
-
-# 额外生成维护者视角的 workflow inspect report
-bash scripts/dev/run_hk_health_checks.sh --target-date 20260409 --with-workflow-inspect
-```
-
-说明：
-
-* 这些脚本是本地运维和调试工具，不是面向最终用户的 `cstree` CLI 功能。
-* 脚本会从 `artifacts/metadata/current_assets/hk_current.json` 读取当前 `daily_clean`、`valuation`、`pit`、`intraday` 路径。
-* 默认生成 `current`、`daily_clean`、`valuation`、`pit` 四份 JSON 健康报告。
-* 默认 PIT 检查直接对 current contract 指向的 flat file 和核心字段运行；只有显式传入 `--pit-config` 时才切换到配置入口。
-* stdout 和 stderr 日志会放在 `artifacts/reports/health_logs/`。
-* 手动命令和报告阅读顺序见 `docs/rqdata/hk-health-checks.md`。
-
-综合审计 current contract 时，用：
-
-```bash
-bash scripts/dev/run_hk_data_asset_audit.sh --target-date 20260410
-```
-
-它会做资产清单、数据新鲜度、修复候选和删除预演审计。默认只读、dry-run，不会刷新、修复或删除实体数据。
-
-如果确实要联动 patch refresh，先加 `--run-refresh` 保持 dry-run；确认无误后再加 `--refresh-execute` 执行实质变更。
-
-## HK 资产维护 Driver
-
-这一节面向 HK 市场与 RQData 数据资产维护者。它比上一节脚本更底层，也更容易触发重 I/O 操作。
-
-基础命令：
-
-```bash
-python scripts/internal/run_hk_asset_workflow.py --target-date 20260402
-```
-
-默认包含三阶段：
-
-* `refresh`：刷新 `instruments / daily / daily_clean / valuation / ex_factors / dividends / shares / industry_changes / southbound` 等资产。
-* `inspect`：运行健康诊断，并把报告写入 `artifacts/reports/`。
-* `package`：把本次 resolved snapshot 交给 `cstree.release_tools.package_assets` 打包。
-
-常见变体：
-
-```bash
-# 只预览执行计划
-python scripts/internal/run_hk_asset_workflow.py --target-date 20260402 --dry-run
-
-# 从中断处继续镜像拉取，跳过检查和打包
-python scripts/internal/run_hk_asset_workflow.py --phase refresh --target-date 20260402 --resume
-
-# 日常增量刷新：只抓尾部窗口，再合并为新的 snapshot
-python scripts/internal/run_hk_asset_workflow.py --phase refresh --target-date 20260402 --refresh-mode patch --resume
-
-# 使用上一轮 inspect 的 repair_candidates，重拉 warning/error 子集
-python scripts/internal/run_hk_asset_workflow.py --phase repair --target-date 20260402 --repair-asset daily
-
-# 关闭严重级别门控，只记录 inspect 报告
-python scripts/internal/run_hk_asset_workflow.py --target-date 20260402 --gate-on-severity none
-
-# 基于现有 package 追加 GitHub release 发布
-python scripts/internal/run_hk_asset_workflow.py --phase release --target-date 20260402 --repo owner/name --prerelease
-```
-
-关键概念：
-
-* 维护者 driver 不是公开业务 CLI。
-* 它主要负责编排；真实抓取、检查、打包和发布逻辑仍落在各自独立命令里。
-* `refresh` 成功后，默认会把 `latest` alias 指向新资产。只想保留 dated snapshot 时，加 `--no-repoint-latest`。
-* `--refresh-mode full` 表示整包重拉。
-* `--refresh-mode patch` 表示增量补丁刷新（patch refresh）：先拉近期数据补丁，再用补丁合并（patch merge）生成新的 canonical snapshot。
-* patch 默认回溯：`daily` 20 个日历日，其他支持增量的 dated assets 40 个日历日。可用 `--daily-patch-lookback-days` 和 `--dated-patch-lookback-days` 调整。
-* valuation inspect 默认只对最近 370 个自然日做历史停滞检查，并设置 600 秒历史扫描预算；用 `--valuation-history-tail-days 0` 可恢复全历史扫描，或用 `--valuation-history-timeout-seconds` / `--valuation-history-progress-every-symbols` 调整。
-* 默认刷新链路会在 `daily_clean` 通过 inspect gate 后重建 `artifacts/assets/universe/hk_all_full_*`。如需只产出 dated snapshot 或保留旧 universe，传 `--no-refresh-universe`；`--no-repoint-latest` 也会自动跳过该后处理。
-* ETF 日线有独立刷新分支：workflow 会先导出 ETF instruments 和 symbols 文件，再对 `mirror-hk-daily` 启用权限 preflight。若 RQData 账号没有 ETF day bar 权限，该分支会标记为 non-actionable provider gap，跳过 ETF daily merge/clean，且不更新 ETF daily alias。
-* 非 dry-run 执行会写结构化 workflow report，默认路径是 `artifacts/reports/hk_asset_refresh_<target_date>.json`。
-* 非 dry-run workflow 还会刷新 `artifacts/metadata/current_assets/hk_current.json`，记录当前 alias、resolved snapshot、manifest 摘要和 `as_of`，并从该 contract 自动生成 `artifacts/metadata/dataset_registry.csv`。
-* 仓库搬迁后，若 metadata 中仍保留旧绝对路径，先用 `cstree rqdata rebase-hk-asset-metadata --from-prefix <old-root>` dry-run 审核影响范围，再加 `--execute` 修订 live metadata 并重建 current contract / registry。
-* 如需在 patch merge 成功后删除本轮生成的 `__patch` / `__repair` 中间目录，显式传 `--prune-successful-patches`；默认仅保留，由后续 audit/prune 报告给出清理建议。
-* audit/prune 只把 current contract 当作硬保护；历史 release / report 里出现过的路径会作为软引用写入报告，但不再单独阻止自动 prune 候选生成。
-* audit 对落后的 ETF 日线生成的 patch refresh 候选只刷新 `etf_daily` 与 `etf_daily_clean`；provider 权限阻断 patch 作为证据保留，不纳入自动删除候选。
-* 默认 `--gate-on-severity warning`。如果 inspect 达到阈值，`latest` alias 重新指派、package 和 release 会被拦截。
-* 单独跑 `inspect` 时，通常只生成报告，不触发后续门控推进。
-* `repair` 会读取 workflow report 中的 `inspect.assets.<asset>.repair_candidates`，按 `symbol/date` 精简后重拉问题子集，并执行 patch merge。
-* `repair` 默认处理 `warning` 和 `error`。需要包含 `info` 时，用 `--repair-min-severity`。
-* `repair` 默认会跑 `post_repair` 复检。后续是否放行 alias、package 或 release，以复检结果为准。
-* `repair` 会额外写两份简明 JSON：`artifacts/reports/hk_asset_repair_queue_<target_date>.json` 和 `artifacts/reports/hk_asset_remaining_repair_candidates_<target_date>.json`。
-* 只处理上一轮 repair 后仍未解决的候选项时，用 `--repair-only-unresolved`。
-
-推荐排障顺序：
-
-1. 先跑一轮包含 `inspect` 的 workflow，拿到完整 report。
-2. 再单独跑 `--phase repair`，按报告里的候选项修复。
-3. 等 `post_repair` 复检通过后，再考虑 alias、package 或 release。
+旧 RQData asset CLI、HK current refresh shell wrappers、HK health shell wrappers、HK asset workflow driver、asset package 模块和 asset release 模块不再属于本仓库。需要准备或校验 HK daily、PIT、valuation、industry、intraday、current contract 或 release 资产时，先在 `market-data-platform` 执行数据平台命令，再把生成的文件路径写入本仓库配置。
 
 ## HK + RQData 高频回归
 
-涉及 HK + RQData 重构时，建议至少覆盖：
+涉及 HK + RQData research provider、PIT flat file 消费或 universe 逻辑时，建议至少覆盖：
 
 ```bash
-scripts/dev/run_tests.sh all \
-  tests/test_pipeline_validation.py \
-  tests/test_summarize_runs.py \
-  tests/test_pipeline_filters_*.py \
-  tests/test_fundamentals_providers.py \
-  tests/rqdata_assets/ \
-  tests/test_universe_tools.py \
-  tests/test_cli_core.py \
-  tests/test_cli_rqdata.py \
-  tests/test_cli_research.py \
-  tests/test_cli_liveops.py \
-  tests/test_linear_sweep.py \
-  tests/test_data_providers_cache.py \
-  -q
+scripts/dev/run_tests.sh all tests/test_pipeline_validation.py tests/test_summarize_runs.py tests/test_pipeline_filters_*.py tests/test_fundamentals_providers.py tests/test_universe_tools.py tests/test_cli_core.py tests/test_cli_research.py tests/test_cli_liveops.py tests/test_linear_sweep.py tests/test_data_providers_cache.py -q
 ```
 
 ### 季度 provider 与 PIT 路线测试重点
 
-如果修改这些配置或底层 pipeline 逻辑，需要重点关注下列测试：
-
-* `configs/experiments/baseline/hk_selected__quarterly_price_only.yml`
-* `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`
-* `configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml`
-* `configs/experiments/variants/hk_selected__quarterly_pit_core_hybrid_*.yml`
-* `configs/experiments/variants/hk_selected__pit_quarterly_financial_ml.yml`
-* `configs/experiments/variants/hk_selected__pit_quarterly_financial_linear.yml`
-* `configs/experiments/variants/hk_selected__pit_quarterly_hybrid.yml`
-
-测试说明：
-
-1. `tests/test_pipeline_validation.py`：校验季度模板中 `label/eval/backtest.rebalance_frequency` 是否一致，以及 `fundamentals.source` 是否设置正确。
-2. `tests/` 下的 `test_pipeline_filters_*.py`：覆盖 provider/file 基本面合并、PIT 文件读取、披露日后 `ffill`、慢财报派生因子。
-3. `tests/test_fundamentals_providers.py`：验证 HK + RQData provider 基本面抓取、标准化和缓存键。
-4. `tests/rqdata_assets/`：验证 `mirror-hk-pit-financials`、`build-hk-pit-fundamentals`、覆盖率和健康检查预处理。
-5. `tests/test_universe_tools.py`：验证港股通 universe 的日期 token、输出路径和流动性筛选边界。
-6. `tests/test_cli_rqdata.py` 和 `tests/test_cli_research.py`：验证 PIT 资产命令和 `sweep-linear` 参数解析。
-7. `tests/test_linear_sweep.py`：验证季度 PIT 线性 sweep 配置读取，以及生成 jobs 和 base config。
-8. `tests/test_data_providers_cache.py`：验证 RQData 日线缓存、上市日裁剪和空区间处理。
-9. `tests/test_summarize_runs.py`：验证 `summary.json` 下游汇总字段，尤其是 `backtest.active` benchmark 指标能否进入 `runs_summary.csv`。
+如果修改季度 PIT 配置或底层 pipeline 逻辑，重点关注：`tests/test_pipeline_validation.py`、`tests/test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/test_universe_tools.py`、`tests/test_cli_research.py`、`tests/test_linear_sweep.py`、`tests/test_data_providers_cache.py` 和 `tests/test_summarize_runs.py`。
 
 ## 修改模块与对应测试指南
 
@@ -406,19 +240,19 @@ scripts/dev/run_tests.sh all \
 
 ```bash
 python scripts/dev/test_impact.py src/cstree/pipeline/runner.py docs/dev.md
-python scripts/dev/test_impact.py --json src/cstree/data_tools/rqdata_assets/asset_health.py
+python scripts/dev/test_impact.py --json src/cstree/release_tools/package_runs.py
 ```
 
 | 修改范围 | 提交前至少运行 | 建议补充 |
 | --- | --- | --- |
-| CLI 命令行、参数解析、wrapper 转发 | `tests/test_cli_core.py`、`tests/test_cli_rqdata.py`、`tests/test_cli_research.py`、`tests/test_cli_liveops.py` | `scripts/dev/run_tests.sh fast` |
+| CLI 命令行、参数解析、wrapper 转发 | `tests/test_cli_core.py`、`tests/test_cli_research.py`、`tests/test_cli_liveops.py` | `scripts/dev/run_tests.sh fast` |
 | 文档、README.md、docs/、workflow 说明 | `tests/test_docs_contracts.py`、`tests/test_repo_path_references.py`、`tests/test_run_tests_script.py` | `scripts/dev/run_tests.sh fast` |
 | `scripts/dev/run_tests.sh`、CI 测试入口 | `tests/test_run_tests_script.py`、`tests/test_docs_contracts.py` | `fast` / `slow` / `integration`，或相关 smoke 测试 |
-| release_tools 打包或 Release 预演 | `tests/test_asset_release_scripts.py`、`tests/test_run_release_scripts.py` | 相关脚本的最小打包 smoke 测试 |
+| release_tools 打包或 Release 预演 | `tests/test_run_release_scripts.py` | 运行结果打包 / 发布脚本的最小 smoke 测试 |
 | `cstree data query`、metadata catalog、standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py` | `cstree data query --sql "select 1 as value"` |
 | alloc-hk、liveops-hk、xlsx 输出 | `tests/test_alloc_hk.py`、`tests/test_cli_liveops.py` | 安装 `uv sync --extra dev --extra liveops-hk` 后跑 xlsx 最小 smoke |
-| HK + RQData provider、PIT fundamentals、universe | `tests/test_pipeline_validation.py`、`tests/test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/rqdata_assets/`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
-| intraday、patch merge、provider overlay audit、financial details | `tests/test_hk_intraday_download.py`、`tests/test_hk_intraday_tools.py`、`tests/test_hk_asset_patch_merge.py`、`tests/test_audit_provider_valuation.py`、`tests/test_hk_financial_details_analysis.py` | 按对应 playbook 跑最小 smoke |
+| HK + RQData provider、PIT fundamentals、universe | `tests/test_pipeline_validation.py`、`tests/test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
+| intraday 研究、provider overlay audit、financial details | `tests/test_hk_intraday_download.py`、`tests/test_audit_provider_valuation.py`、`tests/test_hk_financial_details_analysis.py` | 按对应 playbook 跑最小 smoke |
 
 ## 提交前检查建议
 

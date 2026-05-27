@@ -51,7 +51,7 @@ artifacts/
 
 `artifacts/reports/`
 
-常见来源包括 `cstree rqdata inspect-hk-*`、intraday slippage / health 分析，以及维护脚本串联后的健康检查输出。
+常见来源包括研究分析、intraday slippage 报告，以及从 `market-data-platform` 复制或引用的数据健康检查输出。
 
 当前 `dataset` 包括：
 
@@ -69,9 +69,7 @@ artifacts/
 * `instrument_industry`
 * `industry_changes`
 
-这类目录由 `cstree rqdata mirror-hk-daily`、`cstree rqdata build-hk-intraday-asset`、`cstree rqdata mirror-hk-pit-financials`、`cstree rqdata mirror-hk-financial-details`、`cstree rqdata mirror-hk-ex-factors`、`cstree rqdata mirror-hk-dividends`、`cstree rqdata mirror-hk-shares`、`cstree rqdata mirror-hk-valuation`、`cstree rqdata mirror-hk-exchange-rate`、`cstree rqdata mirror-hk-announcement`、`cstree rqdata mirror-hk-southbound`、`cstree rqdata mirror-hk-instrument-industry` 和 `cstree rqdata mirror-hk-industry-changes` 生成。
-如果你继续执行 `cstree rqdata build-hk-pit-fundamentals`，默认还会在对应的 `pit_financials` 目录下生成一份平面 fundamentals 文件。
-如果你继续执行 `cstree rqdata build-hk-industry-labels`，默认还会在对应的 `industry_changes` 目录下生成一份本地行业标签文件。
+这类目录现在由 `market-data-platform` 生成和维护。本仓库只消费这些目录中的 manifest-backed asset、flat file 或 standardized layer。
 
 如果外部 HK 数据工具与本仓库共享同一个 `artifacts_root`，也可以在 `artifacts/assets/rqdata/hk/` 下发布额外 manifest-backed asset，例如十档盘口 raw / daily aggregate。当前 `cstree` 主流程不会自动消费这类外部资产；跨项目边界见 `docs/concepts/shared-hk-data-platform.md`。
 
@@ -191,9 +189,9 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 * `catalog.sqlite` 是控制面，不存行情本体。
 * `catalog_summary.csv` 是给人看和临时筛选的平面导出，不替代 SQLite。
-* `current_assets/hk_current.json` 是一份轻量 current contract，记录当前 HK 资产 alias 的 resolved snapshot/file、manifest 摘要和 `as_of`；`package_assets --preset hk_current` 与 run 侧 `inputs.lock.json` 会优先消费它，审计时不直接依赖 `latest` alias。
+* `current_assets/hk_current.json` 是一份轻量 current contract，记录当前 HK 资产 alias 的 resolved snapshot/file、manifest 摘要和 `as_of`；当前由 `market-data-platform` 维护，run 侧 `inputs.lock.json` 会优先消费它，审计时不直接依赖 `latest` alias。
 * `dataset_registry.csv` 从 current contract 派生，避免手工维护时落后于 alias；source-of-truth 仍是 `hk_current.json` 和各资产的 `manifest.yml`。
-* 仓库位置迁移后，如上述 metadata 内嵌的绝对路径已失效，使用 `cstree rqdata rebase-hk-asset-metadata` 先生成 dry-run 报告，再显式执行改写并重建 current contract / registry。
+* 仓库位置迁移后，如上述 metadata 内嵌的绝对路径已失效，在 `market-data-platform` 中重写 metadata 并重建 current contract / registry。
 
 ## Standardized Layer
 
@@ -246,7 +244,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 `artifacts/assets/rqdata/hk/pit_financials/<snapshot>/pipeline_fundamentals.parquet`
 
-这类文件由 `cstree rqdata build-hk-pit-fundamentals` 生成，也可以通过 `--out` 写到其他位置。
+这类文件由 `market-data-platform` 生成，也可以复制或软链接到其他位置供研究配置读取。
 
 配套文件：
 
@@ -273,7 +271,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 `artifacts/assets/rqdata/hk/industry_changes/<snapshot>/industry_labels_<freq>.parquet`
 
-这类文件由 `cstree rqdata build-hk-industry-labels` 生成，也可以通过 `--out` 写到其他位置。
+这类文件由 `market-data-platform` 生成，也可以复制或软链接到其他位置供研究配置读取。
 
 配套文件：
 
@@ -1205,7 +1203,7 @@ artifacts/snapshots/<name>/
 
 1. 它会把每个 `<run_dir>/` 分别打成一个 tar.gz。
 1. 然后在同一个 GitHub Release tag 下上传多份 run asset。
-1. 这条链路和 `python -m cstree.release_tools.release_assets` 分开；前者是研究结果备份，后者是数据资产备份。
+1. 这条链路只负责研究结果备份；数据资产备份和发布由 `market-data-platform` 负责。
 
 ### 旧目录升级说明
 

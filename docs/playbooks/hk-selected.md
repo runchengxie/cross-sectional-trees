@@ -221,7 +221,7 @@ cstree run --config configs/experiments/baseline/hk_selected.yml
 如果你的目标是正式做财报驱动研究，推荐按下面顺序走：
 
 1. 准备 `pipeline_fundamentals.parquet`
-2. 运行 `cstree rqdata inspect-hk-pit-coverage`
+2. 在 `market-data-platform` 运行 PIT coverage / health 检查
 3. 先看 `Fill Dependence`、`Worst Features`、`Complete Case`
 4. 覆盖率达标后，按顺序跑三条基线：
    `quarterly_price_only -> quarterly_pit_core -> quarterly_pit_core_hybrid`
@@ -253,13 +253,7 @@ cstree run --config configs/experiments/baseline/hk_selected.yml
 
 ### 5.3 覆盖率体检怎么过关
 
-体检命令：
-
-```bash
-cstree rqdata inspect-hk-pit-coverage \
-  --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
-  --mode both
-```
+体检命令已经迁到 `market-data-platform`。本仓库只消费通过检查后的 `pipeline_fundamentals.parquet` 和 by-date universe 文件。
 
 看 `Fill Dependence` 时，按下面这套门槛判断：
 
@@ -361,30 +355,7 @@ cstree summarize \
 * `fundamentals.enabled=false`：不需要本地 PIT 文件
 * `fundamentals.source=file`：需要本地 PIT 文件
 
-最短准备流程：
-
-```bash
-cstree rqdata mirror-hk-pit-financials \
-  --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
-  --name hk_selected_pit_2011_2025_latest \
-  --fields-file configs/field_profiles/hk_financial_fields_starter.txt \
-  --start-quarter 2011q1 \
-  --end-quarter 2025q4 \
-  --date 20260312
-
-cstree rqdata build-hk-pit-fundamentals \
-  --asset-dir artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest \
-  --out artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet \
-  --source-universe-by-date artifacts/assets/universe/hk_connect_full_by_date.csv \
-  --universe-by-date-out artifacts/assets/universe/hk_selected_pit_research_by_date.csv \
-  --max-latest-report-age-days 365
-
-cstree rqdata inspect-hk-pit-coverage \
-  --config configs/experiments/baseline/hk_selected__quarterly_pit_core_hybrid.yml \
-  --mode both
-```
-
-更完整的资产准备顺序，看 [hk-data-assets.md](./hk-data-assets.md)。
+最短准备流程：在 `market-data-platform` 生成 PIT flat file 和 by-date universe，完成 coverage / health 检查，然后把生成路径写入本仓库配置。研究侧消费边界看 [hk-data-assets.md](./hk-data-assets.md)。
 
 ## 9. 进阶路线：`provider valuation overlay`
 

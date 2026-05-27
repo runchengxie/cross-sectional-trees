@@ -6,9 +6,9 @@
 
 ## 项目定位
 
-本项目提供一套适用于低频因子研究与实验复现的工作流，核心能力涵盖模型研究、指标评估、历史回测、候选策略治理、特征证据、benchmark 对照、数据资产维护、持仓快照输出以及显式的交易执行目标交接。
+本项目提供一套适用于低频因子研究与实验复现的工作流，核心能力涵盖模型研究、指标评估、历史回测、候选策略治理、特征证据、benchmark 对照、持仓快照输出以及显式的交易执行目标交接。
 
-HK 数据资产维护能力当前仍内置在本仓库中，但已经按 `artifacts_root`、current contract、dataset registry 和 manifest-backed asset 的方式组织。若要让日线 / PIT / intraday / 十档盘口快照在多个项目之间共享，先看 `docs/concepts/shared-hk-data-platform.md`。
+HK 数据资产维护能力已从本仓库 sunset。日线、PIT、估值、行业、intraday、current contract、release 和十档盘口快照的下载、检查、清洗、发布入口由 `market-data-platform` 承载；本仓库只消费它产出的本地资产、标准层或服务商在线数据。若要理解拆分边界，先看 `docs/concepts/shared-hk-data-platform.md`。
 
 ## 环境准备与安装
 
@@ -59,7 +59,7 @@ cstree run --config default
 * 研究治理与证据工具：`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence`、`cstree benchmark-ladder`
 * 实盘结果与执行交接：`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`（包含港股执行前场景矩阵分析）、`cstree export-targets`（导出执行引擎 canonical targets 文件）
 * 配置模板与本地备份：`cstree init-config`、`cstree backup-data`
-* 数据与资产运维工具：`cstree rqdata ...`、`cstree universe ...`
+* 股票池工具：`cstree universe ...`
 * 数据分层与查询：`cstree data catalog`、`cstree data materialize`、`cstree data query`
 
 完整的能力地图请参考 `docs/capabilities.md` 文件。
@@ -70,8 +70,8 @@ cstree run --config default
 
 | 层级 | 典型入口 | 当前定位 |
 | --- | --- | --- |
-| 公开主线命令行 | `cstree run`、研究汇总、研究治理、持仓分配、数据资产和标准层命令 | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
-| 公开附属模块工具 | 打包与分发相关模块 | 已经在文档中公开的打包与分发工具。它们属于独立可复用模块，不作为 `cstree` 的直接子命令调用。 |
+| 公开主线命令行 | `cstree run`、研究汇总、研究治理、持仓分配、股票池和标准层命令 | 当前正式对外发布、包含完整文档说明并持续维护的用户级命令入口。 |
+| 公开附属模块工具 | 运行结果打包与分发相关模块 | 已经在文档中公开的运行结果打包与分发工具。它们属于独立可复用模块，不作为 `cstree` 的直接子命令调用。 |
 | 研究与专题模块工具 | 针对特定专题的模块 | 针对特定操作手册或专题场景使用的工具。具备复用价值，排除在新手默认主线之外。 |
 | 维护与开发辅助 | 测试与内部脚本 | 前者服务于日常开发与持续集成；后者属于仓库维护者的私有工具，不计入公开的研究工作流。 |
 

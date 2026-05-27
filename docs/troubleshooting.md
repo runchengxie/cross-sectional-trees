@@ -34,8 +34,8 @@
 快速验证：
 
 ```bash
-cstree rqdata info
-cstree rqdata quota --pretty
+python -c "import rqdatac; print(rqdatac.__name__)"
+cstree --help
 ```
 
 ## 2. `last_trading_day` 看起来像自然日
@@ -49,7 +49,7 @@ cstree rqdata quota --pretty
 建议：
 
 * 需要强复现时，直接写绝对日期，如 `20260131`
-* 需要严格交易日时，优先确认 `cstree rqdata info` 正常
+* 需要严格交易日时，优先确认 `rqdatac` 依赖和凭证可用；服务商账号、quota 和数据资产检查在 `market-data-platform` 里处理
 
 ## 3. 回测结果为空或样本很少
 
@@ -100,11 +100,7 @@ cstree rqdata quota --pretty
 
 建议：
 
-* 如果是季度 PIT 配置，先跑：
-
-```bash
-cstree rqdata inspect-hk-pit-coverage --config <your-config> --mode both
-```
+* 如果是季度 PIT 配置，先在 `market-data-platform` 跑 PIT coverage / health 检查，再把通过检查的 flat file 配到本仓库。
 
 * 优先删掉最拖后腿的特征，而不是先改 `test_size`
 * 对 coverage 很差的资产负债表字段，先做 lite probe，再考虑完整 debt ratio 版本
