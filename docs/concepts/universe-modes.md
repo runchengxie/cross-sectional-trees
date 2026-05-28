@@ -70,6 +70,9 @@ trade_date,symbol,stock_ticker
 
 ## 生成 PIT 股票池
 
+HK universe asset builder 的实现和资产归属在 `market-data-platform`。下面的
+`cstree universe hk-*` 只是兼容 wrapper，旧脚本可以继续过渡；新资产流程优先在平台侧执行。
+
 ### 港股通
 
 ```bash

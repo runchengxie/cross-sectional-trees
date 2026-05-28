@@ -24,7 +24,7 @@ def test_c901_debt_registry_covers_pyproject_ignores():
     c901_paths = module.load_c901_ignore_paths()
     registry_paths = module.load_registry_paths()
 
-    assert len(c901_paths) == 11
+    assert len(c901_paths) == 10
     assert module.missing_registry_entries(c901_paths, registry_paths) == []
 
 

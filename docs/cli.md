@@ -26,7 +26,7 @@
 | 港股增强手数分配 | `cstree alloc-hk --config <> --source live --top-n 20 --method custom` |
 | 导出交易执行目标 | `cstree export-targets --run-dir <live_run> --out artifacts/exports/targets.json` |
 | 导出配置模板 | `cstree init-config --market default` |
-| 构建港股全市场股票池 | `cstree universe hk-daily-assets --config <> -- <args>` |
+| HK universe 兼容入口 | `cstree universe hk-daily-assets --config <> -- <args>` |
 | 刷新数据目录（catalog） | `cstree data catalog` |
 | 物化标准数据层 | `cstree data materialize --name <> ...` |
 | 通过 DuckDB 查询标准层 | `cstree data query --sql <>` |
@@ -467,9 +467,11 @@ cstree init-config --market hk --out ./custom_hk.yml --force
 
 ## 股票池生成命令
 
+`cstree universe hk-*` 现在只是兼容 wrapper；HK universe asset builder 的实现和数据资产归属在 `market-data-platform`。新流程优先使用平台侧命令或模块，cross 侧仅保留短期兼容入口，方便旧脚本过渡。
+
 ### cstree universe hk-connect
 
-生成港股通相关的 PIT 数据池。
+兼容入口，转发到 `market-data-platform` 的港股通 PIT universe builder。
 
 ```bash
 cstree universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
@@ -477,7 +479,7 @@ cstree universe hk-connect --config configs/presets/universe/hk_connect.yml -- -
 
 ### cstree universe hk-daily-assets
 
-通过本地历史行情数据，生成适用于全港股市场的可分析股票资产池。
+兼容入口，转发到 `market-data-platform` 的港股全市场 universe builder。
 
 ```bash
 cstree universe hk-daily-assets --config configs/presets/universe/hk_all_assets.yml -- --end-date 20251231

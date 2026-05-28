@@ -13,7 +13,7 @@ HK daily、PIT、valuation、industry、intraday、current contract、health、a
 
 * 默认读取外部数据平台生成的本地 daily asset、instrument file、PIT flat file 或 standardized layer。
 * 在显式 `data.source_mode=provider_online_legacy` 的研究配置中读取 provider 在线数据。
-* 构建研究股票池、特征、模型、回测和 live/export 产物。
+* 消费平台或研究配置指定的股票池文件，构建特征、模型、回测和 live/export 产物。
 
 ## 研究侧配置
 
@@ -31,3 +31,12 @@ HK daily、PIT、valuation、industry、intraday、current contract、health、a
 ## 操作边界
 
 需要新增、刷新、检查或发布 HK 数据资产时，先在 `market-data-platform` 完成数据生命周期操作，再把产物路径写入本仓库配置。需要在本仓库冻结当前研究环境时，使用 `cstree backup-data` 保存配置、缓存和已解析的本地输入。
+
+历史留在本仓库 `artifacts/` 下的数据平台文件可以复制回 MDP：
+
+```bash
+marketdata migration import-cross-artifacts --artifacts-root "$DATA_PLATFORM_ROOT" --json
+marketdata migration import-cross-artifacts --artifacts-root "$DATA_PLATFORM_ROOT" --apply
+```
+
+该流程只迁移平台归属的 assets、metadata、intraday cache、release 和 HK health/audit 报告；研究 runs、sweeps、live/export、benchmark 和 slippage 报告继续留在 cross。

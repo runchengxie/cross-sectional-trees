@@ -67,7 +67,7 @@ def test_repo_metrics_include_c901_and_public_api_counts():
 
     metrics = module.collect_metrics(_repo_root(), limit=3)
 
-    assert metrics.c901_file_ignores == 11
+    assert metrics.c901_file_ignores == 10
     assert metrics.python_files >= 200
     assert metrics.functions_over_500 == 0
 
@@ -90,7 +90,7 @@ def test_maintainability_metrics_cli_outputs_json():
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["c901_file_ignores"] == 11
+    assert payload["c901_file_ignores"] == 10
     assert len(payload["largest_functions"]) == 2
 
 

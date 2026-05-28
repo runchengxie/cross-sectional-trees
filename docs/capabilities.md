@@ -34,7 +34,7 @@
 | `cstree init-config` | 导出仓库预设配置模板 | 本地 YAML 文件 |
 | `cstree backup-data` | 归档本地缓存、股票池、配置以及可选的当前冻结资产集 | `artifacts/snapshots/<name>/` |
 | `cstree data ...` | 元数据目录管理、标准层物化和 DuckDB 查询 | `artifacts/metadata/*` 或 `artifacts/standardized/*` |
-| `cstree universe ...` | 股票池构建工具（港股通或港股全市场日线资产） | 股票池文件 |
+| `cstree universe ...` | HK universe 兼容 wrapper，实际实现和资产归属在 `market-data-platform` | 股票池文件 |
 
 参数细节请参阅 `docs/cli.md`。
 
@@ -68,7 +68,8 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`cstree backup-data`、`cstree data ...`、`cstree universe ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`cstree backup-data`、`cstree data ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 兼容迁移 CLI | `cstree universe ...` | HK universe asset builder 的过渡入口，转发到 `market-data-platform` |
 | 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
 | 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
@@ -103,7 +104,7 @@
 * 支持自动（`auto`）、特定时间点（`pit`）以及静态（`static`）三种股票池模式。
 * 支持读取按日期配置的股票池文件。
 * 支持停牌处理、最小样本数控制和流动性过滤机制。
-* 提供港股通和港股全市场日线资产的股票池构建工具。
+* HK universe asset builder 已由 `market-data-platform` 承担；本仓库只保留兼容 wrapper 和研究侧读取逻辑。
 
 ### 基本面
 

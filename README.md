@@ -59,7 +59,7 @@ cstree run --config default
 * 研究治理与证据工具：`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence`、`cstree benchmark-ladder`
 * 实盘结果与执行交接：`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`（包含港股执行前场景矩阵分析）、`cstree export-targets`（导出执行引擎 canonical targets 文件）
 * 配置模板与本地备份：`cstree init-config`、`cstree backup-data`
-* 股票池工具：`cstree universe ...`
+* 股票池兼容入口：`cstree universe ...`（转发到 `market-data-platform`）
 * 数据分层与查询：`cstree data catalog`、`cstree data materialize`、`cstree data query`
 
 完整的能力地图请参考 `docs/capabilities.md` 文件。
