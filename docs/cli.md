@@ -394,7 +394,7 @@ cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-ca
 
 ### cstree data catalog
 
-扫描产物根目录下的 manifest 资产，并将信息登记至 SQLite 格式的 metadata catalog 中。
+兼容入口，实际实现由 `market-data-platform` 的 `marketdata data catalog` 承载。扫描产物根目录下的 manifest 资产，并将信息登记至 SQLite 格式的 metadata catalog 中。
 
 ```bash
 cstree data catalog
@@ -411,7 +411,7 @@ cstree data catalog --artifacts-root /data/cstree-artifacts
 
 ### cstree data materialize
 
-将原始镜像（raw mirror）或派生的平面文件物化为可供分析查询的标准数据层（analysis-ready standardized layer）。
+兼容入口，实际实现由 `market-data-platform` 的 `marketdata data materialize` 承载。将原始镜像（raw mirror）或派生的平面文件物化为可供分析查询的标准数据层（analysis-ready standardized layer）。
 
 ```bash
 cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
@@ -432,7 +432,7 @@ cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir 
 
 ### cstree data query
 
-借助 DuckDB 引擎查询已物化的标准数据层。首次使用前请先安装 DuckDB 依赖：
+兼容入口，实际实现由 `market-data-platform` 的 `marketdata data query` 承载。借助 DuckDB 引擎查询已物化的标准数据层。首次使用前请先安装 DuckDB 依赖：
 
 ```bash
 uv sync --extra dev --extra duckdb

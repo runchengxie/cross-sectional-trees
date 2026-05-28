@@ -33,7 +33,7 @@
 | `cstree export-targets` | 将已保存的 long-only live 持仓显式导出为交易执行引擎 canonical `targets.json` 并记录 lineage | `targets.json`、`targets.json.lineage.json` |
 | `cstree init-config` | 导出仓库预设配置模板 | 本地 YAML 文件 |
 | `cstree backup-data` | 归档本地缓存、股票池、配置以及可选的当前冻结资产集 | `artifacts/snapshots/<name>/` |
-| `cstree data ...` | 元数据目录管理、标准层物化和 DuckDB 查询 | `artifacts/metadata/*` 或 `artifacts/standardized/*` |
+| `cstree data ...` | 兼容入口，实际实现由 `market-data-platform` 的 `marketdata data ...` 承载 | `artifacts/metadata/*` 或 `artifacts/standardized/*` |
 | `cstree universe ...` | HK universe 兼容 wrapper，实际实现和资产归属在 `market-data-platform` | 股票池文件 |
 
 参数细节请参阅 `docs/cli.md`。
@@ -51,7 +51,7 @@
 当前公开命名空间为 `cstree`：
 
 * 示例使用 `cstree` CLI、`python -m cstree...` 模块路径、`import cstree...` 和 `CSTREE_*` 环境变量。
-* `src/cstree/` 是实现所有权所在的包。
+* `src/cstree/` 是研究侧实现所有权所在的包；数据平台能力会通过兼容 wrapper 转发到 `market-data-platform`。
 * `csml` CLI、`python -m csml...`、`import csml` 和 `CSML_*` 环境变量不再属于公开兼容面。
 
 模块级入口 inventory：
@@ -68,8 +68,8 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`cstree backup-data`、`cstree data ...` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
-| 兼容迁移 CLI | `cstree universe ...` | HK universe asset builder 的过渡入口，转发到 `market-data-platform` |
+| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`cstree backup-data` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 兼容迁移 CLI | `cstree data ...`、`cstree universe ...` | 标准层查询和 HK universe asset builder 的过渡入口，转发到 `market-data-platform` |
 | 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
 | 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
