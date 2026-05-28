@@ -11,12 +11,23 @@ concurrency:
 env:
   UV_LOCKED: "true"
 
+defaults:
+  run:
+    working-directory: cross-sectional-trees
+
 jobs:
   fast:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: cross-sectional-trees
+      - uses: actions/checkout@v6
+        with:
+          repository: runchengxie/hk-data-platform
+          token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
+          path: market-data-platform
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -35,6 +46,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: cross-sectional-trees
+      - uses: actions/checkout@v6
+        with:
+          repository: runchengxie/hk-data-platform
+          token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
+          path: market-data-platform
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -53,6 +71,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: cross-sectional-trees
+      - uses: actions/checkout@v6
+        with:
+          repository: runchengxie/hk-data-platform
+          token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
+          path: market-data-platform
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -71,6 +96,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: cross-sectional-trees
+      - uses: actions/checkout@v6
+        with:
+          repository: runchengxie/hk-data-platform
+          token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
+          path: market-data-platform
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -89,6 +121,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: cross-sectional-trees
+      - uses: actions/checkout@v6
+        with:
+          repository: runchengxie/hk-data-platform
+          token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
+          path: market-data-platform
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -110,6 +149,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: cross-sectional-trees
+      - uses: actions/checkout@v6
+        with:
+          repository: runchengxie/hk-data-platform
+          token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
+          path: market-data-platform
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -130,6 +176,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: cross-sectional-trees
+      - uses: actions/checkout@v6
+        with:
+          repository: runchengxie/hk-data-platform
+          token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
+          path: market-data-platform
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -150,6 +203,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: cross-sectional-trees
+      - uses: actions/checkout@v6
+        with:
+          repository: runchengxie/hk-data-platform
+          token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
+          path: market-data-platform
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
