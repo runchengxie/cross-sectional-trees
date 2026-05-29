@@ -10,6 +10,7 @@ concurrency:
 
 env:
   UV_LOCKED: "true"
+  HK_DATA_PLATFORM_REF: "aea314956eb1d4df0b6bdb5aac2d63e26a74a91b"
 
 defaults:
   run:
@@ -26,6 +27,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: runchengxie/hk-data-platform
+          ref: ${{ env.HK_DATA_PLATFORM_REF }}
           token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
           path: market-data-platform
       - uses: actions/setup-python@v6
@@ -51,6 +53,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: runchengxie/hk-data-platform
+          ref: ${{ env.HK_DATA_PLATFORM_REF }}
           token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
           path: market-data-platform
       - uses: actions/setup-python@v6
@@ -76,6 +79,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: runchengxie/hk-data-platform
+          ref: ${{ env.HK_DATA_PLATFORM_REF }}
           token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
           path: market-data-platform
       - uses: actions/setup-python@v6
@@ -101,6 +105,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: runchengxie/hk-data-platform
+          ref: ${{ env.HK_DATA_PLATFORM_REF }}
           token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
           path: market-data-platform
       - uses: actions/setup-python@v6
@@ -126,6 +131,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: runchengxie/hk-data-platform
+          ref: ${{ env.HK_DATA_PLATFORM_REF }}
           token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
           path: market-data-platform
       - uses: actions/setup-python@v6
@@ -154,6 +160,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: runchengxie/hk-data-platform
+          ref: ${{ env.HK_DATA_PLATFORM_REF }}
           token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
           path: market-data-platform
       - uses: actions/setup-python@v6
@@ -181,6 +188,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: runchengxie/hk-data-platform
+          ref: ${{ env.HK_DATA_PLATFORM_REF }}
           token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
           path: market-data-platform
       - uses: actions/setup-python@v6
@@ -208,6 +216,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: runchengxie/hk-data-platform
+          ref: ${{ env.HK_DATA_PLATFORM_REF }}
           token: ${{ secrets.HK_DATA_PLATFORM_READ_TOKEN || github.token }}
           path: market-data-platform
       - uses: actions/setup-python@v6

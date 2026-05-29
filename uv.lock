@@ -474,6 +474,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.0" },
     { name = "numpy", specifier = ">=1.23" },
     { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.2" },
     { name = "pandas", marker = "extra == 'hk-depth'", specifier = ">=2.2" },
@@ -495,7 +496,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
     { name = "tushare", marker = "extra == 'tushare'", specifier = ">=1.4" },
 ]
-provides-extras = ["dev", "hk-depth", "rqdata", "tushare"]
+provides-extras = ["dev", "duckdb", "hk-depth", "rqdata", "tushare"]
 
 [[package]]
 name = "msgpack"
