@@ -71,6 +71,7 @@ def test_run_tests_script_help_lists_supported_modes():
     assert "Real provider integration uses CSTREE_RUN_PROVIDER_INTEGRATION=1" in result.stdout
     assert "it is not the full CI matrix" in result.stdout
     assert "c901-debt" in result.stdout
+    assert "data-ops-boundary" in result.stdout
     assert "maintainability" in result.stdout
 
 
@@ -81,7 +82,9 @@ def test_run_tests_script_lint_ratchet_mentions_high_signal_rules():
     assert "--select I,F401,F841,B023" in script
     assert "check_added_c901_ignores" in script
     assert "check_c901_debt_registry" in script
+    assert "check_data_ops_boundary" in script
     assert "scripts/dev/check_c901_debt.py" in script
+    assert "scripts/dev/data_ops_boundary.py" in script
     assert "scripts/dev/maintainability_metrics.py" in script
     assert "maintenance-debt-inventory.md" in script
 
@@ -156,6 +159,19 @@ def test_run_tests_script_c901_debt_mode_runs_validator():
     assert result.returncode == 0, result.stderr
 
 
+def test_run_tests_script_data_ops_boundary_mode_runs_validator():
+    repo_root = _repo_root()
+    result = subprocess.run(
+        ["bash", "scripts/dev/run_tests.sh", "data-ops-boundary"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_run_tests_script_maintainability_mode_outputs_metrics():
     repo_root = _repo_root()
     result = subprocess.run(
@@ -167,4 +183,4 @@ def test_run_tests_script_maintainability_mode_outputs_metrics():
     )
 
     assert result.returncode == 0, result.stderr
-    assert '"c901_file_ignores": 10' in result.stdout
+    assert '"c901_file_ignores": 9' in result.stdout

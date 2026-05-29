@@ -83,7 +83,6 @@ combine-as-imports = true
 "src/cstree/commands/linear_sweep.py" = ["C901"]
 "src/cstree/commands/run_grid.py" = ["C901"]
 "src/cstree/commands/tune.py" = ["C901"]
-"src/cstree/data_providers.py" = ["C901"]
 "src/cstree/liveops/alloc_hk_allocation.py" = ["C901"]
 "src/cstree/liveops/holdings.py" = ["C901"]
 "src/cstree/pipeline/config_eval.py" = ["C901"]

@@ -14,7 +14,7 @@ LINT_COMMAND = "scripts/dev/run_tests.sh lint"
 
 DOCS_COMMAND = (
     "uv run python -m pytest tests/test_docs_contracts.py tests/test_repo_path_references.py "
-    "tests/test_run_tests_script.py -q"
+    "tests/test_run_tests_script.py tests/test_data_ops_boundary.py -q"
 )
 
 
@@ -88,6 +88,22 @@ RULES: tuple[ImpactRule, ...] = (
         prefixes=("src/cstree/release_tools/", "scripts/internal/"),
         commands=(
             "uv run python -m pytest tests/test_run_release_scripts.py -q",
+        ),
+    ),
+    ImpactRule(
+        name="data-ops-boundary",
+        prefixes=(
+            "src/cstree/cli/data.py",
+            "src/cstree/cli/universe.py",
+            "src/cstree/data_tools/",
+            "src/cstree/research/hk_intraday_download.py",
+            "scripts/dev/data_ops_boundary.py",
+            "docs/internal/data-ops-boundary-inventory.md",
+        ),
+        commands=(
+            "uv run python -m pytest tests/test_data_ops_boundary.py "
+            "tests/test_data_warehouse.py tests/test_universe_tools.py "
+            "tests/test_hk_intraday_download.py -q",
         ),
     ),
     ImpactRule(

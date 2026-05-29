@@ -11,7 +11,7 @@
 | --- | --- |
 | 本地改代码并跑回归 | 环境准备、测试框架与命令、修改模块与对应测试 |
 | 改 CLI、pipeline、配置解析 | 测试框架与命令、季度 provider 与 PIT 路线测试重点 |
-| 维护 HK / RQData 本地资产 | HK 资产健康检查脚本、HK 资产维护 Driver |
+| 维护 HK / RQData 本地资产 | 进入 `market-data-platform/docs/hk-assets.md` 和 `marketdata rqdata ...` |
 | 排查 GitHub Actions | GitHub Actions CI 架构 |
 | 提交前自检 | 本地 Git Hooks、提交前检查建议 |
 
@@ -101,6 +101,9 @@ scripts/dev/run_tests.sh typecheck
 # 轻量校验 C901 豁免是否登记在维护债 inventory
 scripts/dev/run_tests.sh c901-debt
 
+# 校验共享数据运维能力没有回流到研究仓库
+scripts/dev/run_tests.sh data-ops-boundary
+
 # 输出维护债静态指标；可加 --json 或 --markdown
 scripts/dev/run_tests.sh maintainability
 
@@ -149,6 +152,7 @@ scripts/dev/run_tests.sh maintainability --json --limit 20
 * 历史 import 和 format 遗留问题可用 `imports`、`format-all` 单独盘点。
 * 已知复杂度历史债务记录在 `pyproject.toml` 的 `per-file-ignores`，并在内部维护债清单里按 owner area、原因、验证命令和退出条件登记。完成拆分优化后，应逐个撤销豁免。
 * 触碰 Python 文件时，不要新增超过 100 字符的代码行或新的 `C901` 文件级豁免；如果豁免仍不能撤销，要在内部维护债清单里记录原因。`lint` 会在新增 `C901` ignore 但未同步维护债清单时失败，并额外校验当前豁免是否都在维护债清单登记。
+* 触碰数据下载、健康检查、current contract、registry、universe asset builder 或 release 相关路径时，先看 `docs/internal/data-ops-boundary-inventory.md`。`lint` 会运行 `scripts/dev/data_ops_boundary.py --check`，防止共享数据运维实现回流到本仓库。
 * 全仓库严格规则可用诊断命令盘点，不默认作为 gate：`.venv/bin/ruff check src tests --select E,F,W,I,B,UP,SIM,RUF --ignore E501 --statistics`。
 * 全仓库 import sorting、unused import、pyupgrade 或 `SIM/RUF` 批量清理应作为单独机械改动处理，不和行为保持 refactor 或功能改动混做。
 * `tests/test_docs_contracts.py` 只接受指向仓库内受版本控制文件的 Markdown 相对链接。引用本地 `artifacts/...` 运行产物时，用代码文本记录，不要写成可点击相对链接。
@@ -246,10 +250,11 @@ python scripts/dev/test_impact.py --json src/cstree/release_tools/package_runs.p
 | 修改范围 | 提交前至少运行 | 建议补充 |
 | --- | --- | --- |
 | CLI 命令行、参数解析、wrapper 转发 | `tests/test_cli_core.py`、`tests/test_cli_research.py`、`tests/test_cli_liveops.py` | `scripts/dev/run_tests.sh fast` |
-| 文档、README.md、docs/、workflow 说明 | `tests/test_docs_contracts.py`、`tests/test_repo_path_references.py`、`tests/test_run_tests_script.py` | `scripts/dev/run_tests.sh fast` |
+| 文档、README.md、docs/、workflow 说明 | `tests/test_docs_contracts.py`、`tests/test_repo_path_references.py`、`tests/test_run_tests_script.py`、`tests/test_data_ops_boundary.py` | `scripts/dev/run_tests.sh fast` |
 | `scripts/dev/run_tests.sh`、CI 测试入口 | `tests/test_run_tests_script.py`、`tests/test_docs_contracts.py` | `fast` / `slow` / `integration`，或相关 smoke 测试 |
 | release_tools 打包或 Release 预演 | `tests/test_run_release_scripts.py` | 运行结果打包 / 发布脚本的最小 smoke 测试 |
 | `cstree data query`、metadata catalog、standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py`；平台本体看 market-data-platform 的 `tests/test_data_warehouse.py` | `cstree data query --sql "select 1 as value"` |
+| 数据运维边界、platform wrapper、HK universe wrapper | `tests/test_data_ops_boundary.py`、`tests/test_data_warehouse.py`、`tests/test_universe_tools.py`、`tests/test_hk_intraday_download.py` | `scripts/dev/run_tests.sh data-ops-boundary` |
 | alloc-hk、liveops-hk、xlsx 输出 | `tests/test_alloc_hk.py`、`tests/test_cli_liveops.py` | 安装 `uv sync --extra dev --extra liveops-hk` 后跑 xlsx 最小 smoke |
 | HK + RQData provider、PIT fundamentals、universe | `tests/test_pipeline_validation.py`、`tests/test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
 | intraday 研究、provider overlay audit、financial details | `tests/test_hk_intraday_download.py`、`tests/test_audit_provider_valuation.py`、`tests/test_hk_financial_details_analysis.py` | 按对应 playbook 跑最小 smoke |

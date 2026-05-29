@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|typecheck|imports|format|format-all|c901-debt|maintainability] [args...]
+Usage: scripts/dev/run_tests.sh [all|fast|unit|slow|integration|coverage|lint|typecheck|imports|format|format-all|c901-debt|data-ops-boundary|maintainability] [args...]
 
 Modes:
   all          Run the main pytest suite without coverage.
@@ -20,6 +20,8 @@ Modes:
   format       Check Ruff formatting on changed Python files.
   format-all   Check Ruff formatting across src, tests, and scripts.
   c901-debt    Validate that C901 file ignores are documented in the debt inventory.
+  data-ops-boundary
+               Validate that shared market-data operations stay in market-data-platform.
   maintainability
                Print static maintainability metrics for src, tests, and scripts.
 EOF
@@ -128,6 +130,10 @@ check_c901_debt_registry() {
   python scripts/dev/check_c901_debt.py --quiet
 }
 
+check_data_ops_boundary() {
+  python scripts/dev/data_ops_boundary.py --check
+}
+
 mode="${1:-all}"
 if [[ $# -gt 0 ]]; then
   shift
@@ -158,6 +164,7 @@ case "$mode" in
     check_added_python_long_lines
     check_added_c901_ignores
     check_c901_debt_registry
+    check_data_ops_boundary
     ;;
   typecheck)
     exec uv run --extra dev pyright "$@"
@@ -178,6 +185,9 @@ case "$mode" in
     ;;
   c901-debt)
     check_c901_debt_registry
+    ;;
+  data-ops-boundary)
+    check_data_ops_boundary
     ;;
   maintainability)
     python scripts/dev/maintainability_metrics.py "$@"
