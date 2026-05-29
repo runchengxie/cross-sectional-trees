@@ -10,7 +10,7 @@ concurrency:
 
 env:
   UV_LOCKED: "true"
-  HK_DATA_PLATFORM_REF: "aea314956eb1d4df0b6bdb5aac2d63e26a74a91b"
+  HK_DATA_PLATFORM_REF: "42b5765ed863b3dc097d9f87a76d428495debf98"
 
 defaults:
   run:
