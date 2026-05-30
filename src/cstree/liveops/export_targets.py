@@ -5,7 +5,7 @@ import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -68,7 +68,6 @@ def _execution_symbol(symbol: object, market: object | None) -> tuple[str, str]:
     requested_market = _market_code(market)
     for suffix, suffix_market in MARKET_SUFFIXES.items():
         if text.endswith(suffix):
-            base = text[: -len(suffix)]
             if requested_market and requested_market != suffix_market:
                 raise SystemExit(
                     f"Execution target symbol {text!r} conflicts with market {requested_market!r}."
@@ -89,7 +88,8 @@ def _target_entries(payload: dict[str, Any]) -> tuple[list[dict[str, object]], f
     if "weight" not in selection.columns:
         raise SystemExit("Invalid holdings payload: missing weight column.")
 
-    sides = set(selection.get("side", pd.Series(["long"] * len(selection))).astype(str).str.lower())
+    side_values = selection["side"] if "side" in selection.columns else pd.Series(["long"] * len(selection))
+    sides = set(side_values.astype(str).str.lower())
     unsupported_sides = sorted(side for side in sides if side != "long")
     if unsupported_sides:
         raise SystemExit(
@@ -97,7 +97,7 @@ def _target_entries(payload: dict[str, Any]) -> tuple[list[dict[str, object]], f
             f"are non-negative positions; found side(s): {', '.join(unsupported_sides)}."
         )
 
-    weights = pd.to_numeric(selection["weight"], errors="coerce")
+    weights = cast(pd.Series, pd.to_numeric(selection["weight"], errors="coerce"))
     if weights.isna().any() or any(not math.isfinite(float(value)) for value in weights):
         raise SystemExit("Execution targets require finite numeric weights for every holding.")
     if (weights < 0).any():

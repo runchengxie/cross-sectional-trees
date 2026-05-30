@@ -808,7 +808,12 @@ def compute_backtest_exposure_analysis(
     industry_columns: Sequence[str] | None = None,
     industry_source_data: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    if scored_data is None or scored_data.empty or positions_by_rebalance is None or positions_by_rebalance.empty:
+    if (
+        scored_data is None
+        or scored_data.empty
+        or positions_by_rebalance is None
+        or positions_by_rebalance.empty
+    ):
         return {
             "style": pd.DataFrame(),
             "style_summary": _empty_style_summary(),
@@ -885,7 +890,9 @@ def compute_backtest_exposure_analysis(
         style_rows.append(
             _style_exposure_row(
                 "size",
-                values=size_values if size_values is not None else pd.Series(np.nan, index=day.index),
+                values=(
+                    size_values if size_values is not None else pd.Series(np.nan, index=day.index)
+                ),
                 positions=pos_day,
                 day=day,
                 market_cap_col=market_cap_col,
@@ -900,7 +907,9 @@ def compute_backtest_exposure_analysis(
         style_rows.append(
             _style_exposure_row(
                 "value",
-                values=value_values if value_values is not None else pd.Series(np.nan, index=day.index),
+                values=(
+                    value_values if value_values is not None else pd.Series(np.nan, index=day.index)
+                ),
                 positions=pos_day,
                 day=day,
                 market_cap_col=market_cap_col,
@@ -915,7 +924,11 @@ def compute_backtest_exposure_analysis(
         style_rows.append(
             _style_exposure_row(
                 "quality",
-                values=quality_values if quality_values is not None else pd.Series(np.nan, index=day.index),
+                values=(
+                    quality_values
+                    if quality_values is not None
+                    else pd.Series(np.nan, index=day.index)
+                ),
                 positions=pos_day,
                 day=day,
                 market_cap_col=market_cap_col,
@@ -934,7 +947,11 @@ def compute_backtest_exposure_analysis(
         style_rows.append(
             _style_exposure_row(
                 "momentum",
-                values=momentum_values if momentum_values is not None else pd.Series(np.nan, index=day.index),
+                values=(
+                    momentum_values
+                    if momentum_values is not None
+                    else pd.Series(np.nan, index=day.index)
+                ),
                 positions=pos_day,
                 day=day,
                 market_cap_col=market_cap_col,
@@ -953,7 +970,11 @@ def compute_backtest_exposure_analysis(
         style_rows.append(
             _style_exposure_row(
                 "low_vol",
-                values=low_vol_values if low_vol_values is not None else pd.Series(np.nan, index=day.index),
+                values=(
+                    low_vol_values
+                    if low_vol_values is not None
+                    else pd.Series(np.nan, index=day.index)
+                ),
                 positions=pos_day,
                 day=day,
                 market_cap_col=market_cap_col,
@@ -972,7 +993,9 @@ def compute_backtest_exposure_analysis(
         style_rows.append(
             _style_exposure_row(
                 "beta",
-                values=beta_values if beta_values is not None else pd.Series(np.nan, index=day.index),
+                values=(
+                    beta_values if beta_values is not None else pd.Series(np.nan, index=day.index)
+                ),
                 positions=pos_day,
                 day=day,
                 market_cap_col=market_cap_col,

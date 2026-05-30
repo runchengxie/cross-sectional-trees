@@ -30,6 +30,21 @@ class ExecutionSimResult:
     fills: pd.DataFrame
 
 
+@dataclass(frozen=True)
+class _ExecutionTables:
+    trade_dates: list[pd.Timestamp]
+    date_to_idx: dict[pd.Timestamp, int]
+    price_table: pd.DataFrame
+    tradable_table: pd.DataFrame | None
+    liquidity_tables: dict[str, pd.DataFrame]
+
+
+@dataclass(frozen=True)
+class _OrderSink:
+    order_rows: list[dict[str, Any]]
+    fill_rows: list[dict[str, Any]]
+
+
 def build_execution_sim_config(
     sim_cfg: object,
     *,
@@ -171,32 +186,25 @@ def simulate_capacity_execution(
             extra={"missing_pricing_columns": missing_cols},
         )
 
-    trade_dates = sorted(pd.to_datetime(pricing["trade_date"].unique()))
-    if not trade_dates:
+    execution_tables = _build_execution_tables(
+        pricing,
+        config,
+        price_col=price_col,
+        tradable_col=tradable_col,
+    )
+    if not execution_tables.trade_dates:
         return _empty_result(config, status="no_trade_dates")
-    date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
-    price_table = pricing.pivot(index="trade_date", columns="symbol", values=price_col)
-    tradable_table = None
-    if tradable_col and tradable_col in pricing.columns:
-        tradable_table = (
-            pricing.pivot(index="trade_date", columns="symbol", values=tradable_col)
-            .fillna(False)
-            .astype(bool)
-        )
-    liquidity_tables = {
-        col: pricing.pivot(index="trade_date", columns="symbol", values=col)
-        for col in config.liquidity_cols
-    }
 
     targets_by_rebalance = _build_targets_by_rebalance(work_positions)
     current_weights: dict[str, float] = {}
     cash_weight = 1.0
     order_rows: list[dict[str, Any]] = []
     fill_rows: list[dict[str, Any]] = []
+    order_sink = _OrderSink(order_rows=order_rows, fill_rows=fill_rows)
 
     for idx, (rebalance_date, target_info) in enumerate(targets_by_rebalance):
         entry_date = target_info["entry_date"]
-        if entry_date not in date_to_idx:
+        if entry_date not in execution_tables.date_to_idx:
             continue
         next_entry_date = (
             targets_by_rebalance[idx + 1][1]["entry_date"]
@@ -219,17 +227,15 @@ def simulate_capacity_execution(
                 current_weights=current_weights,
                 cash_weight=cash_weight,
                 config=config,
-                trade_dates=trade_dates,
-                date_to_idx=date_to_idx,
-                price_table=price_table,
-                tradable_table=tradable_table,
-                liquidity_tables=liquidity_tables,
-                order_rows=order_rows,
-                fill_rows=fill_rows,
+                tables=execution_tables,
+                sink=order_sink,
             )
 
         buy_requests = {
-            symbol: max(float(target_weights.get(symbol, 0.0) - current_weights.get(symbol, 0.0)), 0.0)
+            symbol: max(
+                float(target_weights.get(symbol, 0.0) - current_weights.get(symbol, 0.0)),
+                0.0,
+            )
             for symbol in target_weights
         }
         buy_requests = {symbol: amount for symbol, amount in buy_requests.items() if amount > 1e-12}
@@ -241,13 +247,8 @@ def simulate_capacity_execution(
                 current_weights=current_weights,
                 cash_weight=cash_weight,
                 config=config,
-                trade_dates=trade_dates,
-                date_to_idx=date_to_idx,
-                price_table=price_table,
-                tradable_table=tradable_table,
-                liquidity_tables=liquidity_tables,
-                order_rows=order_rows,
-                fill_rows=fill_rows,
+                tables=execution_tables,
+                sink=order_sink,
             )
 
     orders = pd.DataFrame(order_rows, columns=_order_columns())
@@ -263,6 +264,43 @@ def simulate_capacity_execution(
     return ExecutionSimResult(summary=summary, orders=orders, fills=fills)
 
 
+def _build_execution_tables(
+    pricing: pd.DataFrame,
+    config: ExecutionSimConfig,
+    *,
+    price_col: str,
+    tradable_col: str | None,
+) -> _ExecutionTables:
+    trade_dates = sorted(pd.to_datetime(pricing["trade_date"].unique()))
+    date_to_idx = {date: idx for idx, date in enumerate(trade_dates)}
+    price_table = pricing.pivot(index="trade_date", columns="symbol", values=price_col)
+    tradable_table = _build_tradable_table(pricing, tradable_col)
+    liquidity_tables = {
+        col: pricing.pivot(index="trade_date", columns="symbol", values=col)
+        for col in config.liquidity_cols
+    }
+    return _ExecutionTables(
+        trade_dates=trade_dates,
+        date_to_idx=date_to_idx,
+        price_table=price_table,
+        tradable_table=tradable_table,
+        liquidity_tables=liquidity_tables,
+    )
+
+
+def _build_tradable_table(
+    pricing: pd.DataFrame,
+    tradable_col: str | None,
+) -> pd.DataFrame | None:
+    if not tradable_col or tradable_col not in pricing.columns:
+        return None
+    return (
+        pricing.pivot(index="trade_date", columns="symbol", values=tradable_col)
+        .fillna(False)
+        .astype(bool)
+    )
+
+
 def _execute_sell_orders(
     *,
     rebalance_date: pd.Timestamp,
@@ -272,13 +310,8 @@ def _execute_sell_orders(
     current_weights: dict[str, float],
     cash_weight: float,
     config: ExecutionSimConfig,
-    trade_dates: list[pd.Timestamp],
-    date_to_idx: dict[pd.Timestamp, int],
-    price_table: pd.DataFrame,
-    tradable_table: pd.DataFrame | None,
-    liquidity_tables: dict[str, pd.DataFrame],
-    order_rows: list[dict[str, Any]],
-    fill_rows: list[dict[str, Any]],
+    tables: _ExecutionTables,
+    sink: _OrderSink,
 ) -> float:
     remaining = dict(requests)
     states = _build_order_states(requests)
@@ -286,8 +319,8 @@ def _execute_sell_orders(
         entry_date,
         max_days=config.sell_max_days,
         next_entry_date=next_entry_date,
-        trade_dates=trade_dates,
-        date_to_idx=date_to_idx,
+        trade_dates=tables.trade_dates,
+        date_to_idx=tables.date_to_idx,
     )
     for day_number, trade_date in enumerate(window_dates, start=1):
         for symbol in sorted(list(remaining)):
@@ -296,9 +329,9 @@ def _execute_sell_orders(
                 symbol,
                 trade_date,
                 config=config,
-                price_table=price_table,
-                tradable_table=tradable_table,
-                liquidity_tables=liquidity_tables,
+                price_table=tables.price_table,
+                tradable_table=tables.tradable_table,
+                liquidity_tables=tables.liquidity_tables,
             )
             fill = min(before, capacity)
             if fill > 1e-12:
@@ -308,7 +341,7 @@ def _execute_sell_orders(
                     current_weights.pop(symbol, None)
                 cash_weight += fill
                 _record_fill(
-                    fill_rows,
+                    sink.fill_rows,
                     rebalance_date=rebalance_date,
                     entry_date=entry_date,
                     trade_date=trade_date,
@@ -326,7 +359,7 @@ def _execute_sell_orders(
         if not remaining:
             break
     _append_order_rows(
-        order_rows,
+        sink.order_rows,
         rebalance_date=rebalance_date,
         entry_date=entry_date,
         side="sell",
@@ -348,13 +381,8 @@ def _execute_buy_orders(
     current_weights: dict[str, float],
     cash_weight: float,
     config: ExecutionSimConfig,
-    trade_dates: list[pd.Timestamp],
-    date_to_idx: dict[pd.Timestamp, int],
-    price_table: pd.DataFrame,
-    tradable_table: pd.DataFrame | None,
-    liquidity_tables: dict[str, pd.DataFrame],
-    order_rows: list[dict[str, Any]],
-    fill_rows: list[dict[str, Any]],
+    tables: _ExecutionTables,
+    sink: _OrderSink,
 ) -> float:
     remaining = dict(requests)
     states = _build_order_states(requests)
@@ -363,8 +391,8 @@ def _execute_buy_orders(
         entry_date,
         max_days=config.buy_max_days,
         next_entry_date=None,
-        trade_dates=trade_dates,
-        date_to_idx=date_to_idx,
+        trade_dates=tables.trade_dates,
+        date_to_idx=tables.date_to_idx,
     )
     for day_number, trade_date in enumerate(window_dates, start=1):
         daily_fills: dict[str, tuple[float, float]] = {}
@@ -376,9 +404,9 @@ def _execute_buy_orders(
                 symbol,
                 trade_date,
                 config=config,
-                price_table=price_table,
-                tradable_table=tradable_table,
-                liquidity_tables=liquidity_tables,
+                price_table=tables.price_table,
+                tradable_table=tables.tradable_table,
+                liquidity_tables=tables.liquidity_tables,
             )
             fill = min(before, capacity)
             daily_fills[symbol] = (capacity, fill)
@@ -399,7 +427,7 @@ def _execute_buy_orders(
                 current_weights[symbol] = current_weights.get(symbol, 0.0) + fill
                 cash_weight = max(cash_weight - fill, 0.0)
                 _record_fill(
-                    fill_rows,
+                    sink.fill_rows,
                     rebalance_date=rebalance_date,
                     entry_date=entry_date,
                     trade_date=trade_date,
@@ -429,7 +457,7 @@ def _execute_buy_orders(
             break
 
     _append_order_rows(
-        order_rows,
+        sink.order_rows,
         rebalance_date=rebalance_date,
         entry_date=entry_date,
         side="buy",

@@ -105,8 +105,9 @@ rqdatac-fund = ["setuptools"]
 
 [tool.pyright]
 include = [
-  "src/cstree/current_assets.py",
-  "src/cstree/repo_paths.py",
+  "src/cstree/pipeline/contracts.py",
+  "src/cstree/pipeline/output_context.py",
+  "src/cstree/liveops/export_targets.py",
 ]
 exclude = [
   ".venv",
