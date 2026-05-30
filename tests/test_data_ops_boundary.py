@@ -24,9 +24,8 @@ def test_current_data_ops_boundary_inventory_has_no_issues():
     report = module.build_report(_repo_root())
 
     assert report["issues"] == []
-    paths = {entry["path"] for entry in report["entries"]}
-    assert "src/cstree/cli/data.py" in paths
-    assert "src/cstree/research/hk_selected_provider_valuation_merge.py" in paths
+    assert "src/cstree/cli/data.py" in report["removed_wrappers"]
+    assert "src/cstree/research/hk_selected_provider_valuation_merge.py" in report["research_owned_paths"]
 
 
 def test_boundary_check_flags_unclassified_data_ops_source(tmp_path):
@@ -38,32 +37,29 @@ def test_boundary_check_flags_unclassified_data_ops_source(tmp_path):
     docs.mkdir(parents=True)
     inventory = docs / "data-ops-boundary-inventory.md"
     inventory.write_text(
-        "\n".join(f"`{entry.path}`" for entry in module.BOUNDARY_ENTRIES),
+        "must not exist\n" + "\n".join(
+            f"`{entry}`" for entry in module.REMOVED_WRAPPER_PATHS
+        ) + "\n" + "\n".join(
+            f"`{entry}`" for entry in module.RESEARCH_OWNED_PATHS
+        ),
         encoding="utf-8",
     )
-    for entry in module.BOUNDARY_ENTRIES:
-        path = tmp_path / entry.path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("\n".join(entry.required_tokens), encoding="utf-8")
 
     issues = module.source_boundary_issues(tmp_path)
 
     assert any("rqdata_asset_refresh.py" in issue for issue in issues)
 
 
-def test_boundary_check_requires_wrapper_evidence(tmp_path):
+def test_boundary_check_requires_removed_wrappers_to_stay_deleted(tmp_path):
     module = _load_boundary_module()
-    for entry in module.BOUNDARY_ENTRIES:
-        path = tmp_path / entry.path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("\n".join(entry.required_tokens), encoding="utf-8")
     wrapper = tmp_path / "src" / "cstree" / "data_providers.py"
-    wrapper.write_text("# missing platform delegation\n", encoding="utf-8")
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    wrapper.write_text("# resurrected wrapper\n", encoding="utf-8")
 
     issues = module.source_boundary_issues(tmp_path)
 
     assert any(
-        "data_providers.py" in issue and "missing wrapper evidence" in issue for issue in issues
+        "data_providers.py" in issue and "must not exist" in issue for issue in issues
     )
 
 

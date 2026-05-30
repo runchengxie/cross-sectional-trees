@@ -140,8 +140,8 @@ cstree export-targets \
 ### 4.4 归档研究数据
 
 ```bash
-cstree backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
-cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
+marketdata backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
+marketdata backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
 ```
 
 ## 常见任务速查表
@@ -156,8 +156,8 @@ cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-ca
 | 生成实盘快照 | `cstree snapshot --config <live.yml>` 或 `cstree snapshot --run-dir <run_dir>` |
 | 计算手数分配 | `cstree alloc --config <live.yml> --source live --top-n 20 --cash 1000000` |
 | 导出执行目标 | `cstree export-targets --run-dir artifacts/live_runs/<run_dir> --out artifacts/exports/targets.json` |
-| 归档备份数据 | `cstree backup-data --name <name> --config <config>` |
-| 冻结当前 HK 资产快照 | `cstree backup-data --preset hk_current --name <name>` |
+| 归档备份数据 | `marketdata backup-data --name <name> --config <config>` |
+| 冻结当前 HK 资产快照 | `marketdata backup-data --preset hk_current --name <name>` |
 
 ## 相关参考文档
 

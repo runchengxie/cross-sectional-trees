@@ -8,9 +8,9 @@ from typing import Any
 
 import pandas as pd
 
-from ..artifacts import resolve_data_input_path
+from market_data_platform.artifacts import resolve_data_input_path
 from ..data_interface import DataInterface
-from ..data_providers import fundamentals_provider_supported
+from market_data_platform.data_providers import fundamentals_provider_supported
 from .config import (
     normalize_eval_settings,
     normalize_universe_filters,

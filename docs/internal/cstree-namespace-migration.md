@@ -35,8 +35,8 @@
 | `csml snapshot ...` | `cstree snapshot ...` |
 | `csml alloc ...` | `cstree alloc ...` |
 | `csml alloc-hk ...` | `cstree alloc-hk ...` |
-| `csml data ...` | `cstree data ...` |
-| `csml universe ...` | `cstree universe ...` |
+| `csml data ...` | removed; use `marketdata data ...` |
+| `csml universe ...` | removed; use `marketdata rqdata hk-assets ...` |
 | `python -m csml.release_tools.<tool>` | `python -m cstree.release_tools.<tool>` |
 | `python -m csml.research.<tool>` | `python -m cstree.research.<tool>` |
 | `import csml.<module>` | `import cstree.<module>` |

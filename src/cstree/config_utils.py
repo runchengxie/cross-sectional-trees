@@ -7,7 +7,7 @@ from typing import Any, Mapping, Optional
 
 import yaml
 
-from .repo_paths import find_repo_root
+from market_data_platform.repo_paths import find_repo_root
 
 EXTENDS_KEY = "extends"
 LEGACY_UNIVERSE_KEY = "universe"

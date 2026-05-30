@@ -32,9 +32,9 @@
 | `cstree alloc-hk` | 基于持仓做港股执行前分配分析（自定义权重、估值分层、二次补仓、资金 × 选股数量场景矩阵） | 文本 / csv / json / xlsx |
 | `cstree export-targets` | 将已保存的 long-only live 持仓显式导出为交易执行引擎标准 `targets.json` 并记录来源 | `targets.json`、`targets.json.lineage.json` |
 | `cstree init-config` | 导出仓库预设配置模板 | 本地 YAML 文件 |
-| `cstree backup-data` | 归档本地缓存、股票池、配置以及可选的当前冻结资产集 | `artifacts/snapshots/<name>/` |
-| `cstree data ...` | 兼容入口，实际实现由 `market-data-platform` 的 `marketdata data ...` 承载 | `artifacts/metadata/*` 或 `artifacts/standardized/*` |
-| `cstree universe ...` | HK universe 兼容 wrapper，实际实现和资产归属在 `market-data-platform` | 股票池文件 |
+| `marketdata backup-data` | 归档本地缓存、股票池、配置以及可选的当前冻结资产集 | `artifacts/snapshots/<name>/` |
+| `marketdata data ...` | MDP 入口，实际实现由 `market-data-platform` 的 `marketdata data ...` 承载 | `artifacts/metadata/*` 或 `artifacts/standardized/*` |
+| `marketdata rqdata hk-assets ...` | HK universe 已删除的旧入口，实际实现和资产归属在 `market-data-platform` | 股票池文件 |
 
 参数细节请参阅 `docs/cli.md`。
 
@@ -51,7 +51,7 @@
 当前公开命名空间为 `cstree`：
 
 * 示例使用 `cstree` CLI、`python -m cstree...` 模块路径、`import cstree...` 和 `CSTREE_*` 环境变量。
-* `src/cstree/` 是研究侧实现所有权所在的包；数据平台能力会通过兼容 wrapper 转发到 `market-data-platform`。
+* `src/cstree/` 是研究侧实现所有权所在的包；数据平台能力会通过已删除的旧入口 改用 `market-data-platform`。
 * `csml` CLI、`python -m csml...`、`import csml` 和 `CSML_*` 环境变量不再属于公开兼容面。
 
 模块级入口 inventory：
@@ -59,7 +59,7 @@
 | 分类 | 入口 |
 | --- | --- |
 | 公开 release 工具 | `python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` |
-| Playbook / 专题研究工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download`、`python -m cstree.research.hk_intraday_slippage_report`、`python -m cstree.research.hk_connect_cap_weight_benchmark`、`python -m cstree.research.hk_benchmark_attribution`、`python -m cstree.research.hk_monthly_run_compare` |
+| Playbook / 专题研究工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`marketdata rqdata refresh-hk-intraday`、`python -m cstree.research.hk_intraday_slippage_report`、`python -m cstree.research.hk_connect_cap_weight_benchmark`、`python -m cstree.research.hk_benchmark_attribution`、`python -m cstree.research.hk_monthly_run_compare` |
 | 内部 / 测试面 | `src/cstree/` 内部导入、`scripts/internal/` driver、测试里的直接 `cstree` import |
 
 ## 入口分层与稳定性
@@ -68,10 +68,10 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`cstree backup-data` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
-| 兼容迁移 CLI | `cstree data ...`、`cstree universe ...` | 标准层查询和 HK universe asset builder 的过渡入口，转发到 `market-data-platform` |
+| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`marketdata backup-data` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 兼容迁移 CLI | `marketdata data ...`、`marketdata rqdata hk-assets ...` | 标准层查询和 HK universe asset builder 的过渡入口，改用 `market-data-platform` |
 | 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
-| 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`python -m cstree.research.hk_intraday_download` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
+| 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`marketdata rqdata refresh-hk-intraday` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |
 | 维护与开发辅助 | `scripts/dev/run_tests.sh`、`scripts/internal/` | 测试脚本服务于日常开发与持续集成；内部目录属于维护者的私有工具 |
 
 ### 入口变更要求
@@ -81,7 +81,7 @@
 | 公开主线 CLI | 改命令、参数、默认行为、输出字段或 provider 语义时，同步更新 `docs/cli.md`、相关配置 / 输出文档和 focused tests。破坏兼容需要另开迁移说明。 |
 | 公开但非 CLI 模块工具 | 保持模块路径、参数和 release artifact contract 稳定；改动时同步 release 工具文档和打包 / 发布测试。 |
 | 研究 / 专题模块工具 | 可以按研究需要小步调整，但要保留可复现实验入口；不因低频使用直接删除，删除前先做 repo-local 引用审计。 |
-| 维护与开发辅助 | 可以服务维护效率而收口，但涉及 hooks、测试入口或维护者 wrapper 时，必须同步脚本文档和对应测试。 |
+| 维护与开发辅助 | 可以服务维护效率而收口，但涉及 hooks、测试入口或维护者 旧入口 时，必须同步脚本文档和对应测试。 |
 
 内部 helper 不因为被 facade、命令 registry 或 package `__all__` 导出就自动成为稳定 API。
 如需对外暴露，应先补文档和测试；否则应留在 owning module 内测试，避免扩大兼容面。
@@ -104,7 +104,7 @@
 * 支持自动（`auto`）、特定时间点（`pit`）以及静态（`static`）三种股票池模式。
 * 支持读取按日期配置的股票池文件。
 * 支持停牌处理、最小样本数控制和流动性过滤机制。
-* HK universe asset builder 已由 `market-data-platform` 承担；本仓库只保留兼容 wrapper 和研究侧读取逻辑。
+* HK universe asset builder 已由 `market-data-platform` 承担；本仓库只保留已删除的旧入口 和研究侧读取逻辑。
 
 ### 基本面
 

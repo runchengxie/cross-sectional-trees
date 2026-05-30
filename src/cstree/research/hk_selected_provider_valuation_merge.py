@@ -10,9 +10,9 @@ from dotenv import load_dotenv
 
 from cstree import data_providers
 from cstree.config_utils import resolve_pipeline_config
-from cstree.data_tools.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
-from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
-from cstree.rqdata_runtime import init_rqdatac as _init_rqdatac_runtime
+from market_data_platform.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
+from market_data_platform.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from market_data_platform.rqdata_runtime import init_rqdatac as _init_rqdatac_runtime
 
 REPO_ROOT = find_repo_root(__file__)
 

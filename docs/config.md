@@ -81,8 +81,8 @@ paths:
 补充说明：
 
 * `paths.artifacts_root` 仅修改默认派生基础路径。若在配置文件中已明确指定了具体路径（如 `eval.output_dir`、`data.cache_dir`、`fundamentals.file`、`data.rqdata.daily_asset_dir` 等），这些显式路径将保持不变。
-* 当 `metadata_db_path` 留空时，`cstree data catalog` 命令默认将数据写入 `<artifacts_root>/metadata/catalog.sqlite`。
-* 当 `warehouse_db_path` 留空时，`cstree data query` 命令默认将数据写入 `<artifacts_root>/metadata/warehouse.duckdb`。
+* 当 `metadata_db_path` 留空时，`marketdata data catalog` 命令默认将数据写入 `<artifacts_root>/metadata/catalog.sqlite`。
+* 当 `warehouse_db_path` 留空时，`marketdata data query` 命令默认将数据写入 `<artifacts_root>/metadata/warehouse.duckdb`。
 * 命令行参数 `--artifacts-root` 的优先级高于环境变量和此处的 YAML 配置。
 * 环境变量 `CSTREE_ARTIFACTS_ROOT`、`CSTREE_METADATA_DB_PATH`、`CSTREE_WAREHOUSE_DB_PATH` 是当前推荐的全局默认覆盖手段。
 * 如果只想把 HK 输入数据迁到共享数据平台，而让本仓库继续把 run/cache/report 写在自己的产物根目录下，设置 `HK_DATA_PLATFORM_ROOT`。它只会重定向形如 `artifacts/assets/...`、`artifacts/metadata/...`、`artifacts/standardized/...` 的数据输入路径，不会覆盖 `paths.artifacts_root`。
@@ -132,7 +132,7 @@ research_universe:
 补充说明：
 
 * 历史配置键 `universe` 仍获向下兼容，但在新的内置模板与生成的 `config.used.yml` 中，将统一规范输出为 `research_universe`。
-* 兼容入口只用于读取历史配置；新增模板和文档示例应继续使用 `research_universe`。
+* MDP 入口只用于读取历史配置；新增模板和文档示例应继续使用 `research_universe`。
 * 旧文档或历史配置里的 `universe.by_date_file` 对应当前规范键 `research_universe.by_date_file`。
 
 ### 模型配置 (`model`)

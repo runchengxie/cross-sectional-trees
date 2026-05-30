@@ -8,9 +8,9 @@ from typing import Any
 
 import pandas as pd
 
-from ..artifacts import CACHE_DIR as DEFAULT_CACHE_DIR, resolve_repo_path
+from market_data_platform.artifacts import CACHE_DIR as DEFAULT_CACHE_DIR, resolve_repo_path
 from ..data_interface import DataInterface
-from ..data_providers import normalize_market
+from market_data_platform.data_providers import normalize_market
 
 logger = logging.getLogger("cstree")
 

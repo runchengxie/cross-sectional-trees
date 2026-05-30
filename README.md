@@ -31,7 +31,7 @@ cp .env.example .env
 | --- | --- | --- | --- |
 | 运行默认港股入门模板 | `cstree run --config default` | 无 | 已准备 `market-data-platform` 本地资产 |
 | 运行港股季频特定时间点基本面路线 | `cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml` | 无 | 已准备 PIT / daily 等本地资产 |
-| 使用 DuckDB 查询标准层数据 | `cstree data query --sql "..."` | `duckdb` | 无 |
+| 使用 DuckDB 查询标准层数据 | `marketdata data query --sql "..."` | `duckdb` | 已安装并配置 `market-data-platform` |
 | 导出港股 Excel 分配表 | `cstree alloc-hk --format xlsx --out ...` | `liveops-hk` | 若走实时或服务商路径，需对应数据源凭证 |
 | 导出执行引擎目标持仓 | `cstree export-targets --run-dir ... --out ...` | 无 | 无；仅消费已保存 live 持仓 |
 | 计算包含 P 值的统计检验 | Python 下游分析调用 `summarize_ic` | `stats` | 无 |
@@ -58,9 +58,8 @@ cstree run --config default
 * 研究汇总与参数调优：`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`
 * 研究治理与证据工具：`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence`、`cstree benchmark-ladder`
 * 实盘结果与执行交接：`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`（包含港股执行前场景矩阵分析）、`cstree export-targets`（导出执行引擎标准 targets 文件）
-* 配置模板与本地备份：`cstree init-config`、`cstree backup-data`
-* 股票池兼容入口：`cstree universe ...`（转发到 `market-data-platform`）
-* 数据分层与查询：`cstree data catalog`、`cstree data materialize`、`cstree data query`（兼容入口，实际实现归属 `market-data-platform`）
+* 配置模板：`cstree init-config`
+* 数据平台操作：标准层查询、HK universe 构建和本地数据备份统一使用 `marketdata data ...`、`marketdata rqdata hk-assets ...` 和 `marketdata backup-data`，本仓库不再提供对应 `cstree` 子命令。
 
 完整的能力地图请参考 `docs/capabilities.md` 文件。
 

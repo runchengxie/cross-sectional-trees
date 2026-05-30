@@ -10,12 +10,12 @@ import numpy as np
 import pandas as pd
 
 from ..data_interface import DataInterface
-from ..data_tools.symbols import (
+from market_data_platform.symbols import (
     DEFAULT_SYMBOL_PRIORITY,
     PROVIDER_SYMBOL_PRIORITY,
     normalize_symbol_standard_name,
 )
-from ..pit_feature_stats import (
+from market_data_platform.pit_feature_stats import (
     compute_calendar_cagr,
     compute_trailing_calendar_window_stat,
 )

@@ -168,7 +168,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 * `artifacts/metadata/current_assets/hk_current.json`
 * `artifacts/metadata/dataset_registry.csv`
 
-其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `cstree data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新；`dataset_registry.csv` 也由 workflow 从 `hk_current.json` 自动生成，是面向人工盘点的紧凑索引。
+其中 `catalog.sqlite` 和 `catalog_summary.csv` 由 `marketdata data catalog` 生成；`current_assets/hk_current.json` 由 HK 资产维护 workflow 刷新；`dataset_registry.csv` 也由 workflow 从 `hk_current.json` 自动生成，是面向人工盘点的紧凑索引。
 
 如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认路径会随新的产物根目录一起派生；只有显式传了 `--db-path` / `--summary-out` 时才会覆盖。设置 `HK_DATA_PLATFORM_ROOT` 时，run 侧的输入锁会优先从共享数据平台根目录读取 `current_assets/hk_current.json`，但不会改变 metadata catalog 的默认写入位置。
 
@@ -199,7 +199,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 
 `artifacts/standardized/<market>/<dataset>/<name>/`
 
-这类目录由 `cstree data materialize` 生成，目标是把 raw / derived 输入转成更适合横截面查询和聚合的分析层。
+这类目录由 `marketdata data materialize` 生成，目标是把 raw / derived 输入转成更适合横截面查询和聚合的分析层。
 
 如果改了 `paths.artifacts_root`、`CSTREE_ARTIFACTS_ROOT` 或命令行 `--artifacts-root`，默认输出根目录会随新的产物根目录一起派生；只有显式传了 `--out-root` 时才会覆盖。
 
@@ -236,7 +236,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 * 原始 replay、审计和复现继续看 `artifacts/assets/`。
 * 横截面覆盖分析、聚合、筛选和 SQL 查询优先读 `artifacts/standardized/`。
-* `cstree data materialize` 的常用 preset 已默认把 `symbol` 当输入标准列；历史 `ts_code` / `stock_ticker` / `order_book_id` 文件仍会自动归一到 `symbol`。
+* `marketdata data materialize` 的常用 preset 已默认把 `symbol` 当输入标准列；历史 `ts_code` / `stock_ticker` / `order_book_id` 文件仍会自动归一到 `symbol`。
 
 ## PIT fundamentals 平面文件
 
@@ -583,7 +583,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 
 1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/quality/fundamentals/industry/walk_forward`）。
 1. 研究主链路内部标准标的列是 `symbol`；新生成的 run artifacts / CLI 输出默认只写 `symbol`。
-1. `cstree universe hk-connect` 和 `cstree universe hk-daily-assets` 新生成的 universe CSV 也默认只写 `symbol`，不再主动补 `ts_code` / `stock_ticker`。
+1. `marketdata rqdata hk-assets hk-connect` 和 `marketdata rqdata hk-assets hk-daily-assets` 新生成的 universe CSV 也默认只写 `symbol`，不再主动补 `ts_code` / `stock_ticker`。
 1. 旧输入文件里的 `ts_code`、`stock_ticker`、`order_book_id` 仍会在读取时自动映射到 `symbol`。
 1. 新增输出路径不应把 legacy alias 重新写回主研究链路；需要保留 provider 原生标识时，优先放在边界层元数据列。
 1. 持仓主键列语义：`trade_date`、`entry_date`、`symbol`、`weight`、`signal`、`rank`、`side`。
@@ -1144,7 +1144,7 @@ artifacts/sweeps/<tag>/
 
 导出器会拒绝 short 持仓、无效或负权重、重复标的，以及权重总和超过 `1.0` 的输入。杠杆或主动缩放应通过显式的 `--target-gross-exposure` 表达。
 
-### `cstree backup-data`：`artifacts/snapshots/<name>/`
+### `marketdata backup-data`：`artifacts/snapshots/<name>/`
 
 目录结构：
 

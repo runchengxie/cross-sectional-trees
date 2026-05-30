@@ -8,10 +8,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..artifacts import resolve_configured_artifacts_root, resolve_repo_path, runs_dir_for
+from market_data_platform.artifacts import resolve_configured_artifacts_root, resolve_repo_path, runs_dir_for
 from ..config_utils import resolve_pipeline_config
-from ..data_providers import normalize_market, resolve_provider
-from ..data_tools.symbols import canonicalize_symbol_columns, normalize_symbol_for_market
+from market_data_platform.data_providers import normalize_market, resolve_provider
+from market_data_platform.symbols import canonicalize_symbol_columns, normalize_symbol_for_market
 from ..date_utils import resolve_date_token
 
 

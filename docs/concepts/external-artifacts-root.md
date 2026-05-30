@@ -61,9 +61,9 @@ export HK_DATA_PLATFORM_ROOT=/data/hk-data-platform
 * `cstree snapshot`
 * `cstree alloc`
 * `cstree alloc-hk`
-* `cstree data catalog`
-* `cstree data materialize`
-* `cstree data query`
+* `marketdata data catalog`
+* `marketdata data materialize`
+* `marketdata data query`
 
 例如：
 

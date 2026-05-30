@@ -7,7 +7,7 @@
 
 ## 当前状态
 
-HK daily、PIT、valuation、industry、intraday、current contract、health、asset audit 和 release 已由 `market-data-platform` 统一承载。本仓库不再提供 `cstree rqdata ...`、HK asset workflow wrapper 或数据资产 release 模块。
+HK daily、PIT、valuation、industry、intraday、current contract、health、asset audit 和 release 已由 `market-data-platform` 统一承载。本仓库不再提供 `cstree rqdata ...`、HK asset workflow 旧入口 或数据资产 release 模块。
 
 `cross-sectional-trees` 的定位是研究消费者：
 
@@ -30,7 +30,7 @@ HK daily、PIT、valuation、industry、intraday、current contract、health、a
 
 ## 操作边界
 
-需要新增、刷新、检查或发布 HK 数据资产时，先在 `market-data-platform` 完成数据生命周期操作，再把产物路径写入本仓库配置。需要在本仓库冻结当前研究环境时，使用 `cstree backup-data` 保存配置、缓存和已解析的本地输入。
+需要新增、刷新、检查或发布 HK 数据资产时，先在 `market-data-platform` 完成数据生命周期操作，再把产物路径写入本仓库配置。需要在本仓库冻结当前研究环境时，使用 `marketdata backup-data` 保存配置、缓存和已解析的本地输入。
 
 历史留在本仓库 `artifacts/` 下的数据平台文件可以复制回 MDP：
 

@@ -71,12 +71,12 @@ trade_date,symbol,stock_ticker
 ## 生成 PIT 股票池
 
 HK universe asset builder 的实现和资产归属在 `market-data-platform`。下面的
-`cstree universe hk-*` 只是兼容 wrapper，旧脚本可以继续过渡；新资产流程优先在平台侧执行。
+`marketdata rqdata hk-assets hk-*` 只是已删除的旧入口，旧脚本可以继续过渡；新资产流程优先在平台侧执行。
 
 ### 港股通
 
 ```bash
-cstree universe hk-connect \
+marketdata rqdata hk-assets hk-connect \
   --config configs/presets/universe/hk_connect.yml \
   -- --mode daily
 ```
@@ -84,7 +84,7 @@ cstree universe hk-connect \
 ### HK 全市场日线资产
 
 ```bash
-cstree universe hk-daily-assets \
+marketdata rqdata hk-assets hk-daily-assets \
   --config configs/presets/universe/hk_all_assets.yml \
   -- --end-date 20251231
 ```

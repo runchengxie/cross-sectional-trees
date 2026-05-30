@@ -8,7 +8,6 @@ from cstree.config_utils import (
     resolve_pipeline_config,
     resolve_pipeline_filename,
 )
-from cstree.data_tools import build_hk_connect_universe, build_hk_daily_asset_universe
 
 
 def test_resolve_pipeline_config_supports_repo_relative_extends_outside_repo_root(
@@ -56,15 +55,6 @@ def test_resolve_pipeline_config_allows_shared_base_dag(tmp_path):
 
     assert resolved == {"base": 1, "left": 1, "right": 1, "top": 1}
 
-
-def test_universe_config_defaults_resolve_outside_repo_root(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-    hk_connect = build_hk_connect_universe.load_yaml_config(None)
-    hk_all_assets = build_hk_daily_asset_universe.load_yaml_config(None)
-
-    assert hk_connect["hk_connect_universe"]["rebalance_frequency"] == "M"
-    assert hk_all_assets["hk_daily_asset_universe"]["rebalance_frequency"] == "M"
 
 
 def test_linear_provider_overlay_validate_variants_do_not_inherit_xgb_params():

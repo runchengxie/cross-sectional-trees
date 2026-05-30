@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .data_tools.symbols import canonicalize_symbol_columns
+from market_data_platform.symbols import canonicalize_symbol_columns
 from .portfolio import apply_rebalance_buffer
 
 try:

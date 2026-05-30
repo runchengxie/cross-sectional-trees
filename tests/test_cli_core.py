@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from cstree import cli, pipeline as pipeline_module
-from cstree.cli import common as cli_common, universe as universe_cli
+from cstree.cli import common as cli_common
 from cstree.config_utils import resolve_pipeline_config, resolve_repo_preset_path
 
 
@@ -34,61 +34,14 @@ def test_default_builtin_config_is_hk_first():
     assert resolved.data["data"]["provider"] == "rqdata"
     assert resolved.data["data"]["source_mode"] == "platform_assets"
     assert resolved.data["fundamentals"]["source"] == "file"
-
-
-def test_cli_parses_data_commands():
+def test_cli_rejects_removed_data_and_universe_commands():
     parser = cli.build_parser()
 
-    catalog = parser.parse_args(
-        [
-            "data",
-            "catalog",
-            "--artifacts-root",
-            "artifacts",
-            "--db-path",
-            "artifacts/metadata/catalog.sqlite",
-        ]
-    )
-    assert catalog.command == "data"
-    assert catalog.data_command == "catalog"
-    assert catalog.db_path == "artifacts/metadata/catalog.sqlite"
-    assert callable(catalog.func)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["data", "query", "--sql", "select 1"])
 
-    materialize = parser.parse_args(
-        [
-            "data",
-            "materialize",
-            "--name",
-            "hk_daily_panel",
-            "--preset",
-            "rqdata-daily",
-            "--asset-dir",
-            "artifacts/assets/rqdata/hk/daily/hk_all_daily_latest",
-            "--frequency",
-            "M",
-        ]
-    )
-    assert materialize.command == "data"
-    assert materialize.data_command == "materialize"
-    assert materialize.name == "hk_daily_panel"
-    assert materialize.preset == "rqdata-daily"
-    assert materialize.frequency == "M"
-    assert callable(materialize.func)
-
-    query = parser.parse_args(
-        [
-            "data",
-            "query",
-            "--sql",
-            "select * from standardized.hk_daily_panel limit 5",
-            "--format",
-            "json",
-        ]
-    )
-    assert query.command == "data"
-    assert query.data_command == "query"
-    assert query.format == "json"
-    assert callable(query.func)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["universe", "hk-connect", "--config", "configs/presets/universe/hk_connect.yml"])
 
 
 def test_append_passthrough_strips_leading_separator():
@@ -122,10 +75,8 @@ def test_init_rqdatac_applies_adjust_price_patch(monkeypatch):
 
     assert result is fake_rqdatac
     assert init_calls == [{}]
-    assert patch_calls == ["cstree.rqdata_runtime"]
-
-
-def test_cli_parses_init_config_and_universe():
+    assert patch_calls == ["market_data_platform.rqdata_runtime"]
+def test_cli_parses_init_config():
     parser = cli.build_parser()
 
     init_cfg = parser.parse_args(
@@ -136,44 +87,6 @@ def test_cli_parses_init_config_and_universe():
     assert init_cfg.out == "configs/presets/"
     assert init_cfg.force is True
     assert callable(init_cfg.func)
-
-    hk_connect = parser.parse_args(
-        [
-            "universe",
-            "hk-connect",
-            "--config",
-            "configs/presets/universe/hk_connect.yml",
-            "--",
-            "--mode",
-            "daily",
-            "--start-date",
-            "20250101",
-        ]
-    )
-    assert hk_connect.command == "universe"
-    assert hk_connect.uni_command == "hk-connect"
-    assert hk_connect.config == "configs/presets/universe/hk_connect.yml"
-    assert hk_connect.args == ["--", "--mode", "daily", "--start-date", "20250101"]
-    assert callable(hk_connect.func)
-
-    hk_daily_assets = parser.parse_args(
-        [
-            "universe",
-            "hk-daily-assets",
-            "--config",
-            "configs/presets/universe/hk_all_assets.yml",
-            "--",
-            "--start-date",
-            "20000104",
-            "--end-date",
-            "20251231",
-        ]
-    )
-    assert hk_daily_assets.command == "universe"
-    assert hk_daily_assets.uni_command == "hk-daily-assets"
-    assert hk_daily_assets.config == "configs/presets/universe/hk_all_assets.yml"
-    assert hk_daily_assets.args == ["--", "--start-date", "20000104", "--end-date", "20251231"]
-    assert callable(hk_daily_assets.func)
 
 
 def test_cli_main_run_calls_pipeline(monkeypatch):
@@ -199,77 +112,6 @@ def test_cli_main_run_forwards_artifacts_root(monkeypatch):
 
     assert cli.main(["run", "--config", "hk", "--artifacts-root", "/tmp/cstree-artifacts"]) == 0
     assert calls == [("hk", None, "/tmp/cstree-artifacts")]
-
-
-def test_cli_main_universe_wrappers_pass_through_args(monkeypatch):
-    calls: list[tuple[str, list[str]]] = []
-
-    monkeypatch.setattr(
-        universe_cli,
-        "_run_market_data_platform_universe_builder",
-        lambda module_name, argv: calls.append((module_name, argv)),
-    )
-
-    assert (
-        cli.main(
-            [
-                "universe",
-                "hk-connect",
-                "--config",
-                "configs/presets/universe/hk_connect.yml",
-                "--",
-                "--mode",
-                "daily",
-                "--start-date",
-                "20250101",
-            ]
-        )
-        == 0
-    )
-
-    assert (
-        cli.main(
-            [
-                "universe",
-                "hk-daily-assets",
-                "--config",
-                "configs/presets/universe/hk_all_assets.yml",
-                "--",
-                "--start-date",
-                "20000104",
-                "--end-date",
-                "20251231",
-            ]
-        )
-        == 0
-    )
-
-    assert calls == [
-        (
-            "build_hk_connect_universe",
-            [
-                "--config",
-                "configs/presets/universe/hk_connect.yml",
-                "--mode",
-                "daily",
-                "--start-date",
-                "20250101",
-            ],
-        ),
-        (
-            "build_hk_daily_asset_universe",
-            [
-                "--config",
-                "configs/presets/universe/hk_all_assets.yml",
-                "--start-date",
-                "20000104",
-                "--end-date",
-                "20251231",
-            ],
-        ),
-    ]
-
-
 def test_cli_main_init_config_writes_default_configs_dir(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 

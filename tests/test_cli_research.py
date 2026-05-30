@@ -1,6 +1,5 @@
 from cstree import cli
 from cstree.commands import linear_sweep as sweep_tool, run_grid as grid_tool, tune as tune_tool
-from cstree.data_tools import backup_data as backup_data_tool
 from cstree.research import (
     benchmark_ladder as benchmark_ladder_tool,
     construction_grid as construction_grid_tool,
@@ -210,29 +209,6 @@ def test_cli_parses_research_commands():
     assert cpcv.out == "artifacts/reports/cpcv_hk_selected"
     assert cpcv.include_final_oos is True
 
-    backup = parser.parse_args(
-        [
-            "backup-data",
-            "--preset",
-            "hk_current",
-            "--out-root",
-            "artifacts/snapshots",
-            "--name",
-            "hk_frozen",
-            "--config",
-            "configs/presets/hk.yml",
-            "--include-path",
-            "artifacts/assets/universe",
-            "--skip-missing",
-        ]
-    )
-    assert backup.command == "backup-data"
-    assert backup.preset == "hk_current"
-    assert backup.out_root == "artifacts/snapshots"
-    assert backup.name == "hk_frozen"
-    assert backup.config == ["configs/presets/hk.yml"]
-    assert backup.include_path == ["artifacts/assets/universe"]
-    assert backup.skip_missing is True
 
 
 def test_cli_main_grid_passes_through_args(monkeypatch):
@@ -503,47 +479,5 @@ def test_cli_main_tune_passes_through_args(monkeypatch):
             "artifacts/sweeps/exp_tune/runs_summary.csv",
             "--log-level",
             "DEBUG",
-        ]
-    ]
-
-
-def test_cli_main_backup_data_passes_through_args(monkeypatch):
-    calls: list[list[str]] = []
-    monkeypatch.setattr(backup_data_tool, "main", lambda argv: calls.append(argv))
-
-    assert (
-        cli.main(
-            [
-                "backup-data",
-                "--preset",
-                "hk_current",
-                "--out-root",
-                "artifacts/snapshots",
-                "--name",
-                "hk_frozen",
-                "--config",
-                "configs/presets/hk.yml",
-                "--include-path",
-                "artifacts/assets/universe",
-                "--no-cache",
-                "--skip-missing",
-            ]
-        )
-        == 0
-    )
-    assert calls == [
-        [
-            "--preset",
-            "hk_current",
-            "--out-root",
-            "artifacts/snapshots",
-            "--name",
-            "hk_frozen",
-            "--config",
-            "configs/presets/hk.yml",
-            "--include-path",
-            "artifacts/assets/universe",
-            "--no-cache",
-            "--skip-missing",
         ]
     ]

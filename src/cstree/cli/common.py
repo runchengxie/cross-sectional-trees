@@ -5,7 +5,7 @@ import logging
 from dotenv import load_dotenv
 
 from ..config_utils import resolve_pipeline_config
-from ..rqdata_runtime import (
+from market_data_platform.rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
 )
@@ -189,7 +189,7 @@ def init_rqdatac(args) -> object:
         data_cfg=data_cfg,
         username=getattr(args, "username", None),
         password=getattr(args, "password", None),
-        logger=logging.getLogger("cstree.rqdata_runtime"),
+        logger=logging.getLogger("market_data_platform.rqdata_runtime"),
         load_env=False,
         error_cls=SystemExit,
         import_error_message="rqdatac is not installed. Install with: pip install '.[rqdata]'",

@@ -4,7 +4,7 @@ from typing import Literal
 
 import pandas as pd
 
-from ..data_tools.symbols import canonicalize_symbol_columns
+from market_data_platform.symbols import canonicalize_symbol_columns
 from ..execution import (
     BpsCostModel,
     EntryPolicy,

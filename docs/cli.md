@@ -26,10 +26,10 @@
 | 港股增强手数分配 | `cstree alloc-hk --config <> --source live --top-n 20 --method custom` |
 | 导出交易执行目标 | `cstree export-targets --run-dir <live_run> --out artifacts/exports/targets.json` |
 | 导出配置模板 | `cstree init-config --market default` |
-| HK universe 兼容入口 | `cstree universe hk-daily-assets --config <> -- <args>` |
-| 刷新数据目录（catalog） | `cstree data catalog` |
-| 物化标准数据层 | `cstree data materialize --name <> ...` |
-| 通过 DuckDB 查询标准层 | `cstree data query --sql <>` |
+| HK universe MDP 入口 | `marketdata rqdata hk-assets hk-daily-assets --config <> -- <args>` |
+| 刷新数据目录（catalog） | `marketdata data catalog` |
+| 物化标准数据层 | `marketdata data materialize --name <> ...` |
+| 通过 DuckDB 查询标准层 | `marketdata data query --sql <>` |
 
 ## 查看帮助信息
 
@@ -66,9 +66,9 @@ cstree <subcommand> --help
 - `cstree alloc`
 - `cstree alloc-hk`
 - `cstree export-targets`
-- `cstree data catalog`
-- `cstree data materialize`
-- `cstree data query`
+- `marketdata data catalog`
+- `marketdata data materialize`
+- `marketdata data query`
 
 优先级顺序：`--artifacts-root` 最高，其次为环境变量 `CSTREE_ARTIFACTS_ROOT`，再其次为配置文件中的 `paths.artifacts_root`，最后退回默认值 `artifacts/`。
 
@@ -101,12 +101,12 @@ cstree <subcommand> --help
 
 ### 透传参数机制
 
-`cstree universe ...` 会优先解析封装层自身的参数（例如 `--config`），随后将剩余参数透传给底层执行脚本。
+`marketdata rqdata hk-assets ...` 会优先解析封装层自身的参数（例如 `--config`），随后将剩余参数透传给底层执行脚本。
 
 在传递底层脚本专属参数时，建议显式添加 `--` 作为分隔符。例如：
 
 ```bash
-cstree universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
+marketdata rqdata hk-assets hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
 ```
 
 ## 主流程命令
@@ -376,13 +376,13 @@ cstree export-targets \
 
 ## 数据管理命令
 
-### cstree backup-data
+### marketdata backup-data
 
 归档本地数据环境。
 
 ```bash
-cstree backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
-cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
+marketdata backup-data --name hk_frozen_20251231 --config configs/experiments/variants/hk_selected__xgb_regressor.yml
+marketdata backup-data --preset hk_current --name hk_current_frozen_20260410 --no-cache
 ```
 
 说明：
@@ -392,14 +392,14 @@ cstree backup-data --preset hk_current --name hk_current_frozen_20260410 --no-ca
 - `hk_current` preset 复制的内容为 contract 解析后的 resolved snapshot 或 file，它绕过了单纯的 `latest` 别名，确保获取真实的依赖快照作为最终审计依据。
 - 该工具提供的是本地私有数据冻结方案，执行时不会向 provider 重新请求数据。跨机器共享 HK 数据资产请使用 `market-data-platform` 的 release 工具；本仓库只保留运行结果打包发布入口。
 
-### cstree data catalog
+### marketdata data catalog
 
-兼容入口，实际实现由 `market-data-platform` 的 `marketdata data catalog` 承载。扫描产物根目录下的 manifest 资产，并将信息登记至 SQLite 格式的 metadata catalog 中。
+MDP 入口，实际实现由 `market-data-platform` 的 `marketdata data catalog` 承载。扫描产物根目录下的 manifest 资产，并将信息登记至 SQLite 格式的 metadata catalog 中。
 
 ```bash
-cstree data catalog
-cstree data catalog --db-path artifacts/metadata/catalog.sqlite
-cstree data catalog --artifacts-root /data/cstree-artifacts
+marketdata data catalog
+marketdata data catalog --db-path artifacts/metadata/catalog.sqlite
+marketdata data catalog --artifacts-root /data/cstree-artifacts
 ```
 
 默认输出路径：
@@ -409,14 +409,14 @@ cstree data catalog --artifacts-root /data/cstree-artifacts
 
 如果传入了 `--artifacts-root`，默认输出路径将随之变更；如果显式传入了 `--db-path` 或 `--summary-out` 参数，则以显式参数指定的路径为准。
 
-### cstree data materialize
+### marketdata data materialize
 
-兼容入口，实际实现由 `market-data-platform` 的 `marketdata data materialize` 承载。将原始镜像（raw mirror）或派生的平面文件物化为可供分析查询的标准数据层（analysis-ready standardized layer）。
+MDP 入口，实际实现由 `market-data-platform` 的 `marketdata data materialize` 承载。将原始镜像（raw mirror）或派生的平面文件物化为可供分析查询的标准数据层（analysis-ready standardized layer）。
 
 ```bash
-cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
-cstree data materialize --name hk_pit_panel --preset pit-fundamentals --file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
-cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir /data/cstree-artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --artifacts-root /data/cstree-artifacts
+marketdata data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --frequency M
+marketdata data materialize --name hk_pit_panel --preset pit-fundamentals --file artifacts/assets/rqdata/hk/pit_financials/hk_selected_pit_2011_2025_latest/pipeline_fundamentals.parquet
+marketdata data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir /data/cstree-artifacts/assets/rqdata/hk/daily/hk_all_daily_latest --artifacts-root /data/cstree-artifacts
 ```
 
 说明：
@@ -430,9 +430,9 @@ cstree data materialize --name hk_daily_panel --preset rqdata-daily --asset-dir 
 
 当提供 `--artifacts-root` 参数时，默认输出根目录将同步变更；显式传入 `--out-root` 时以显式参数为准。
 
-### cstree data query
+### marketdata data query
 
-兼容入口，实际实现由 `market-data-platform` 的 `marketdata data query` 承载。借助 DuckDB 引擎查询已物化的标准数据层。首次使用前请先安装 DuckDB 依赖：
+MDP 入口，实际实现由 `market-data-platform` 的 `marketdata data query` 承载。借助 DuckDB 引擎查询已物化的标准数据层。首次使用前请先安装 DuckDB 依赖：
 
 ```bash
 uv sync --extra dev --extra duckdb
@@ -441,9 +441,9 @@ uv sync --extra dev --extra duckdb
 示例操作：
 
 ```bash
-cstree data query --sql "select symbol, trade_date, close from standardized.hk_daily_panel limit 5"
-cstree data query --sql-file queries/top_names.sql --format csv --out artifacts/metadata/top_names.csv
-cstree data query --sql "select count(*) from standardized.hk_daily_panel" --artifacts-root /data/cstree-artifacts
+marketdata data query --sql "select symbol, trade_date, close from standardized.hk_daily_panel limit 5"
+marketdata data query --sql-file queries/top_names.sql --format csv --out artifacts/metadata/top_names.csv
+marketdata data query --sql "select count(*) from standardized.hk_daily_panel" --artifacts-root /data/cstree-artifacts
 ```
 
 ## 配置模板命令
@@ -463,26 +463,26 @@ cstree init-config --market hk --out ./custom_hk.yml --force
 
 `cstree rqdata ...` 已从本仓库 sunset。RQData 账号检查、HK 日线、PIT、估值、行业、intraday、current contract health、asset audit 和 release 相关能力由 `market-data-platform` 承载。
 
-研究侧若需要本地数据，先在数据平台生成对应资产或标准层，再通过本仓库的 `data.provider=rqdata`、`data.source_mode=platform_assets`、`fundamentals.source=file` 或 `cstree data ...` 消费。需要在线 provider 读取时，必须在研究配置中显式设置 `data.source_mode=provider_online_legacy`。
+研究侧若需要本地数据，先在数据平台生成对应资产或标准层，再通过本仓库的 `data.provider=rqdata`、`data.source_mode=platform_assets`、`fundamentals.source=file` 或 `marketdata data ...` 消费。需要在线 provider 读取时，必须在研究配置中显式设置 `data.source_mode=provider_online_legacy`。
 
 ## 股票池生成命令
 
-`cstree universe hk-*` 现在只是兼容 wrapper；HK universe asset builder 的实现和数据资产归属在 `market-data-platform`。新流程优先使用平台侧命令或模块，cross 侧仅保留短期兼容入口，方便旧脚本过渡。
+`marketdata rqdata hk-assets hk-*` 现在只是已删除的旧入口；HK universe asset builder 的实现和数据资产归属在 `market-data-platform`。新流程优先使用平台侧命令或模块，cross 侧仅保留短期MDP 入口，方便旧脚本过渡。
 
-### cstree universe hk-connect
+### marketdata rqdata hk-assets hk-connect
 
-兼容入口，转发到 `market-data-platform` 的港股通 PIT universe builder。
+MDP 入口，改用 `market-data-platform` 的港股通 PIT universe builder。
 
 ```bash
-cstree universe hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
+marketdata rqdata hk-assets hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
 ```
 
-### cstree universe hk-daily-assets
+### marketdata rqdata hk-assets hk-daily-assets
 
-兼容入口，转发到 `market-data-platform` 的港股全市场 universe builder。
+MDP 入口，改用 `market-data-platform` 的港股全市场 universe builder。
 
 ```bash
-cstree universe hk-daily-assets --config configs/presets/universe/hk_all_assets.yml -- --end-date 20251231
+marketdata rqdata hk-assets hk-daily-assets --config configs/presets/universe/hk_all_assets.yml -- --end-date 20251231
 ```
 
 ## 参阅文档索引

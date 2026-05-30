@@ -71,4 +71,4 @@ paths:
 
 ## 已 sunset 的 cross 入口
 
-本仓库不再提供 HK 数据资产维护入口，包括旧 RQData asset CLI、HK asset workflow wrapper、HK health shell scripts、asset package/release 模块和相关测试。旧文档页会保留简短说明，避免链接断裂，但不再承诺这些命令可用。
+本仓库不再提供 HK 数据资产维护入口，包括旧 RQData asset CLI、HK asset workflow 旧入口、HK health shell scripts、asset package/release 模块和相关测试。旧文档页会保留简短说明，避免链接断裂，但不再承诺这些命令可用。

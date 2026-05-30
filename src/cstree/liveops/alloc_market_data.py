@@ -4,7 +4,7 @@ from typing import Any
 
 import pandas as pd
 
-from ..data_provider_contracts import to_rqdata_symbol
+from market_data_platform.data_provider_contracts import to_rqdata_symbol
 
 
 def to_rq_order_book_id(symbol: str, market: str | None) -> str:

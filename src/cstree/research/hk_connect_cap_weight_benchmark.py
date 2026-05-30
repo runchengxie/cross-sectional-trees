@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from cstree.data_tools.symbols import ensure_symbol_columns
-from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from market_data_platform.symbols import ensure_symbol_columns
+from market_data_platform.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 REPO_ROOT = find_repo_root(__file__)
 DEFAULT_DAILY_ASSET_DIR = "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest"

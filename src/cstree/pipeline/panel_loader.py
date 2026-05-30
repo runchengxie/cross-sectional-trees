@@ -11,7 +11,7 @@ import numpy as np
 
 from ..compat import ensure_numpy_nan_alias
 from ..data_interface import DataInterface
-from ..data_tools.symbols import canonicalize_symbol_columns
+from market_data_platform.symbols import canonicalize_symbol_columns
 from ..rebalance import estimate_rebalance_gap, get_rebalance_dates
 from .panel_enrichment import apply_fundamentals_enrichment, apply_industry_enrichment
 

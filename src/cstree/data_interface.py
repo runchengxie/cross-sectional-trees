@@ -9,8 +9,8 @@ from typing import Callable, Mapping, Optional
 
 import pandas as pd
 
-from .data_provider_contracts import require_supported_market
-from .data_providers import (
+from market_data_platform.data_provider_contracts import require_supported_market
+from market_data_platform.data_providers import (
     fetch_daily,
     fetch_fundamentals,
     has_local_rqdata_assets,
@@ -18,7 +18,7 @@ from .data_providers import (
     normalize_market,
     resolve_provider,
 )
-from .rqdata_runtime import (
+from market_data_platform.rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
 )

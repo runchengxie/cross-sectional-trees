@@ -17,7 +17,7 @@ from typing import Any
 
 import yaml
 
-from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, SWEEPS_DIR as DEFAULT_SWEEPS_DIR_PATH
+from market_data_platform.artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, SWEEPS_DIR as DEFAULT_SWEEPS_DIR_PATH
 from ..config_utils import resolve_pipeline_config
 
 DEFAULT_SWEEPS_DIR = DEFAULT_SWEEPS_DIR_PATH.as_posix()

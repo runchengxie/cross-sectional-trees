@@ -76,8 +76,8 @@
 | Benchmark 阶梯 | `cstree benchmark-ladder` | 把策略收益和多组 benchmark 分层对比 |
 | 持仓与分配 | `cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk` | 查看当前持仓、导出快照、做资金和手数分配 |
 | 执行目标交接 | `cstree export-targets` | 将已经保存并通过质量门禁的 long-only live 持仓显式导出为执行引擎 `targets.json`；不会触发下单 |
-| 数据标准层 | `cstree data catalog/materialize/query` | 管理 metadata、物化 standardized layer、用 DuckDB 查询 |
-| 股票池兼容入口 | `cstree universe ...` | 转发到 `market-data-platform` 的 HK universe asset builder |
+| 数据标准层 | `marketdata data catalog/materialize/query` | 管理 metadata、物化 standardized layer、用 DuckDB 查询 |
+| 股票池MDP 入口 | `marketdata rqdata hk-assets ...` | 改用 `market-data-platform` 的 HK universe asset builder |
 | 运行结果发布打包 | `python -m cstree.release_tools.*` | 跨机器共享运行结果 |
 
 命令参数以 `docs/cli.md` 为准。能力边界和稳定性分层见 `docs/capabilities.md`。

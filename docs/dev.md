@@ -209,7 +209,7 @@ uv run cstree --help > /dev/null
 # duckdb-extra-smoke
 uv sync --locked --extra dev --extra duckdb
 uv run python -c "import duckdb; print(duckdb.__version__)"
-uv run cstree data query --sql "select 1 as value" > /dev/null
+uv run marketdata data query --sql "select 1 as value" > /dev/null
 
 # liveops-hk-extra-smoke
 uv sync --locked --extra dev --extra liveops-hk
@@ -224,9 +224,9 @@ uv run python -c "import pandas as pd; from cstree.metrics import summarize_ic; 
 
 ## HK 数据资产维护边界
 
-HK 数据资产下载、检查、修复、current contract 审计和 release 已从本仓库 sunset。相关能力由 `market-data-platform` 统一承载；本仓库只保留研究侧 provider runtime、本地资产消费，以及 `cstree data ...` / `cstree universe ...` 兼容入口。
+HK 数据资产下载、检查、修复、current contract 审计和 release 已从本仓库 sunset。相关能力由 `market-data-platform` 统一承载；本仓库只保留研究侧 provider runtime、本地资产消费，以及 `marketdata data ...` / `marketdata rqdata hk-assets ...` MDP 入口。
 
-旧 RQData asset CLI、HK current refresh shell wrappers、HK health shell wrappers、HK asset workflow driver、asset package 模块和 asset release 模块不再属于本仓库。需要准备或校验 HK daily、PIT、valuation、industry、intraday、current contract 或 release 资产时，先在 `market-data-platform` 执行数据平台命令，再把生成的文件路径写入本仓库配置。
+旧 RQData asset CLI、HK current refresh shell 旧入口s、HK health shell 旧入口s、HK asset workflow driver、asset package 模块和 asset release 模块不再属于本仓库。需要准备或校验 HK daily、PIT、valuation、industry、intraday、current contract 或 release 资产时，先在 `market-data-platform` 执行数据平台命令，再把生成的文件路径写入本仓库配置。
 
 ## HK + RQData 高频回归
 
@@ -252,12 +252,12 @@ python scripts/dev/test_impact.py --json src/cstree/release_tools/package_runs.p
 
 | 修改范围 | 提交前至少运行 | 建议补充 |
 | --- | --- | --- |
-| CLI 命令行、参数解析、wrapper 转发 | `tests/test_cli_core.py`、`tests/test_cli_research.py`、`tests/test_cli_liveops.py` | `scripts/dev/run_tests.sh fast` |
+| CLI 命令行、参数解析、旧入口 转发 | `tests/test_cli_core.py`、`tests/test_cli_research.py`、`tests/test_cli_liveops.py` | `scripts/dev/run_tests.sh fast` |
 | 文档、README.md、docs/、workflow 说明 | `tests/test_docs_contracts.py`、`tests/test_repo_path_references.py`、`tests/test_run_tests_script.py`、`tests/test_data_ops_boundary.py` | `scripts/dev/run_tests.sh fast` |
 | `scripts/dev/run_tests.sh`、CI 测试入口 | `tests/test_run_tests_script.py`、`tests/test_docs_contracts.py` | `fast` / `slow` / `integration`，或相关 smoke 测试 |
 | release_tools 打包或 Release 预演 | `tests/test_run_release_scripts.py` | 运行结果打包 / 发布脚本的最小 smoke 测试 |
-| `cstree data query`、metadata catalog、standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py`；平台本体看 market-data-platform 的 `tests/test_data_warehouse.py` | `cstree data query --sql "select 1 as value"` |
-| 数据运维边界、platform wrapper、HK universe wrapper | `tests/test_data_ops_boundary.py`、`tests/test_data_warehouse.py`、`tests/test_universe_tools.py`、`tests/test_hk_intraday_download.py` | `scripts/dev/run_tests.sh data-ops-boundary` |
+| `marketdata data query`、metadata catalog、standardized layer | `tests/test_data_warehouse.py`、`tests/test_cli_core.py`；平台本体看 market-data-platform 的 `tests/test_data_warehouse.py` | `marketdata data query --sql "select 1 as value"` |
+| 数据运维边界、platform 旧入口、HK universe 旧入口 | `tests/test_data_ops_boundary.py`、`tests/test_data_warehouse.py`、`tests/test_universe_tools.py`、`tests/test_hk_intraday_download.py` | `scripts/dev/run_tests.sh data-ops-boundary` |
 | alloc-hk、liveops-hk、xlsx 输出 | `tests/test_alloc_hk.py`、`tests/test_cli_liveops.py` | 安装 `uv sync --extra dev --extra liveops-hk` 后跑 xlsx 最小 smoke |
 | HK + RQData provider、PIT fundamentals、universe | `tests/test_pipeline_validation.py`、`tests/test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py` | `tests/test_summarize_runs.py`、`tests/test_linear_sweep.py` |
 | intraday 研究、provider overlay audit、financial details | `tests/test_hk_intraday_download.py`、`tests/test_audit_provider_valuation.py`、`tests/test_hk_financial_details_analysis.py` | 按对应 playbook 跑最小 smoke |

@@ -10,15 +10,15 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from cstree.data_providers import (
+from market_data_platform.data_providers import (
     _cache_tag,
     _fundamentals_cache_file,
     normalize_market,
     resolve_provider,
 )
-from cstree.data_tools.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
+from market_data_platform.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 from cstree.rebalance import get_rebalance_dates
-from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from market_data_platform.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 REPO_ROOT = find_repo_root(__file__)
 DEFAULT_REPORT_DIR = REPO_ROOT / "artifacts" / "reports"

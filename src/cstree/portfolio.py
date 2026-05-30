@@ -5,7 +5,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from .data_tools.symbols import canonicalize_symbol_columns
+from market_data_platform.symbols import canonicalize_symbol_columns
 from .execution import ExecutionModel, SelectionConstraints
 from .execution_calendar import build_execution_date_map
 

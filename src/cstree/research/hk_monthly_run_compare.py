@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from cstree.metrics import summarize_active_returns, summarize_ic
-from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from market_data_platform.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
 REPO_ROOT = find_repo_root(__file__)
 DEFAULT_REPORT_DIR = REPO_ROOT / "artifacts" / "reports"

@@ -9,7 +9,7 @@ import pandas as pd
 import yaml
 
 from ..config_utils import resolve_repo_configs_dir
-from ..data_tools.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
+from market_data_platform.symbols import drop_legacy_symbol_columns, ensure_symbol_columns
 
 
 def _resolve_default_mapping_file() -> Path:

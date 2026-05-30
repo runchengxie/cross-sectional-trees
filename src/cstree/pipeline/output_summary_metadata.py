@@ -6,11 +6,11 @@ from typing import Any
 
 import yaml
 
-from ..artifacts import (
+from market_data_platform.artifacts import (
     configured_data_input_path,
     resolve_hk_data_platform_root,
 )
-from ..current_assets import (
+from market_data_platform.current_assets import (
     default_current_contract_path,
     infer_manifest_path,
     load_current_contract,

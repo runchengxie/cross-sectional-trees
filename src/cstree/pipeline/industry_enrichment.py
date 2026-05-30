@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 
 from ..data_interface import DataInterface
-from ..data_tools.symbols import DEFAULT_SYMBOL_PRIORITY
+from market_data_platform.symbols import DEFAULT_SYMBOL_PRIORITY
 from .panel_join_support import load_panel_join_frames, merge_panel_frame
 from .support import _prepare_panel_join_frame, _select_panel_join_columns
 

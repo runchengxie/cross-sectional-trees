@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from cstree.repo_paths import find_repo_root
+from market_data_platform.repo_paths import find_repo_root
 
 REPO_ROOT = find_repo_root(__file__)
 PACKAGE_MODULE = "cstree.release_tools.package_runs"

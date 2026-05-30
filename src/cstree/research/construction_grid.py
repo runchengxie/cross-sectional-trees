@@ -12,7 +12,7 @@ import pandas as pd
 import yaml
 
 from ..backtest import backtest_topk
-from ..data_tools.symbols import canonicalize_symbol_columns
+from market_data_platform.symbols import canonicalize_symbol_columns
 from ..execution import build_execution_model
 from ..metrics import (
     daily_ic_series,

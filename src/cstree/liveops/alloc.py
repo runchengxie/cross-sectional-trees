@@ -11,7 +11,7 @@ import logging
 
 from dotenv import load_dotenv
 
-from ..rqdata_runtime import (
+from market_data_platform.rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
 )

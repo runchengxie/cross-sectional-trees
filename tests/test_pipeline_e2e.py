@@ -341,7 +341,7 @@ def test_pipeline_run_with_local_rqdata_assets_smoke(tmp_path, monkeypatch):
         raise AssertionError("remote fundamentals should not be called in local asset smoke test")
 
     monkeypatch.setattr("cstree.data_interface._init_rqdatac_runtime", fail_init)
-    monkeypatch.setattr("cstree.data_providers._fetch_daily_rqdata", fail_remote_daily)
+    monkeypatch.setattr("market_data_platform.data_providers._fetch_daily_rqdata", fail_remote_daily)
     monkeypatch.setattr(DataInterface, "fetch_fundamentals", fail_remote_fundamentals)
 
     output_dir = tmp_path / "runs"

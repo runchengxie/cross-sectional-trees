@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import yaml
 
-from cstree.data_providers import _cache_tag, _fundamentals_cache_file
+from market_data_platform.data_providers import _cache_tag, _fundamentals_cache_file
 
 
 def _load_audit_module():

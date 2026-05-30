@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from ..artifacts import RUNS_DIR as DEFAULT_RUNS_DIR
+from market_data_platform.artifacts import RUNS_DIR as DEFAULT_RUNS_DIR
 from ..date_utils import is_relative_date_token
 from ..sharpe_stats import annualized_sharpe_to_periodic, deflated_sharpe_ratio
 

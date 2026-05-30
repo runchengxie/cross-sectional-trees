@@ -150,33 +150,8 @@ def handle_cpcv(args) -> int:
     return cpcv.run(args)
 
 
-def handle_backup_data(args) -> int:
-    from ..data_tools import backup_data
-
-    argv: list[str] = []
-    append_arg(argv, "--preset", getattr(args, "preset", None))
-    append_arg(argv, "--out-root", getattr(args, "out_root", None))
-    append_arg(argv, "--name", getattr(args, "name", None))
-    append_repeat_args(argv, "--config", getattr(args, "config", None))
-    append_repeat_args(argv, "--include-path", getattr(args, "include_path", None))
-    append_bool_switch(argv, getattr(args, "no_cache", None), true_flag="--no-cache")
-    append_bool_switch(
-        argv,
-        getattr(args, "no_universe", None),
-        true_flag="--no-universe",
-    )
-    append_bool_switch(
-        argv,
-        getattr(args, "skip_missing", None),
-        true_flag="--skip-missing",
-    )
-    backup_data.main(argv)
-    return 0
-
-
 def register_research_commands(subparsers) -> None:
     from ..commands import linear_sweep, run_grid, tune
-    from ..data_tools import backup_data as backup_data_tool
     from ..research import (
         benchmark_ladder as benchmark_ladder_tool,
         construction_grid as construction_grid_tool,
@@ -248,10 +223,3 @@ def register_research_commands(subparsers) -> None:
     )
     cpcv_tool.add_cpcv_args(cpcv)
     cpcv.set_defaults(func=handle_cpcv)
-
-    backup_data = subparsers.add_parser(
-        "backup-data",
-        help="Create a private local snapshot of caches, universe files, and configs",
-    )
-    backup_data_tool.add_backup_data_args(backup_data)
-    backup_data.set_defaults(func=handle_backup_data)
