@@ -4,7 +4,7 @@
 本页不解决什么：不提供 broker 级 TCA，不重建真实现金账本。\
 适合谁：正在看 HK selected 回测、想知道结果里哪些是执行近似，哪些是总回报价格代理的读者。\
 读完你会得到什么：当前算法、数据依赖、适用范围和已知限制。\
-相关页面：`docs/config.md`、`docs/outputs.md`、`cstree.execution`、`cstree.data_providers`
+相关页面：`docs/config.md`、`docs/outputs.md`、`cstree.execution`、`market_data_platform.data_providers`
 
 ## 先说结论
 

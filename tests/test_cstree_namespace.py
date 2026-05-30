@@ -14,7 +14,6 @@ DOCUMENTED_RESEARCH_MODULES = (
     "research.hk_benchmark_attribution",
     "research.hk_connect_cap_weight_benchmark",
     "research.hk_financial_details",
-    "research.hk_intraday_download",
     "research.hk_intraday_slippage_report",
     "research.hk_monthly_run_compare",
     "research.hk_selected_provider_valuation_audit",
@@ -23,11 +22,8 @@ DOCUMENTED_MODULES = DOCUMENTED_RELEASE_MODULES + DOCUMENTED_RESEARCH_MODULES
 MAINTENANCE_MODULES = ()
 CSTREE_MODULE_EXECUTION_PATHS = DOCUMENTED_MODULES + MAINTENANCE_MODULES
 PUBLIC_ALIAS_MODULES = (
-    "artifacts",
     "config_utils",
-    "current_assets",
     "data_interface",
-    "data_providers",
     "metrics",
     "execution",
     "modeling",
@@ -35,10 +31,6 @@ PUBLIC_ALIAS_MODULES = (
     "commands.linear_sweep",
     "commands.run_grid",
     "commands.tune",
-    "data_tools.backup_data",
-    "data_tools.build_hk_connect_universe",
-    "data_tools.build_hk_daily_asset_universe",
-    "data_tools.data_warehouse",
     "liveops.alloc",
     "liveops.alloc_hk",
     "liveops.export_targets",

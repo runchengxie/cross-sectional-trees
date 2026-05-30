@@ -80,12 +80,19 @@ def test_docs_config_references_point_to_tracked_configs():
     repo_root = Path(__file__).resolve().parents[1]
     targets = [repo_root / "README.md", *sorted((repo_root / "docs").rglob("*.md"))]
     tracked_configs = _tracked_config_paths(repo_root)
+    removed_config_refs = {
+        "configs/presets/universe/hk_all_assets.yml",
+        "configs/presets/universe/hk_connect.yml",
+    }
     missing: dict[str, list[str]] = {}
 
     for path in targets:
         refs = sorted(set(CONFIG_REF_PATTERN.findall(path.read_text(encoding="utf-8"))))
+        relative_path = path.relative_to(repo_root).as_posix()
+        if relative_path == "docs/internal/data-ops-boundary-inventory.md":
+            refs = [ref for ref in refs if ref not in removed_config_refs]
         bad = [ref for ref in refs if ref not in tracked_configs]
         if bad:
-            missing[path.relative_to(repo_root).as_posix()] = bad
+            missing[relative_path] = bad
 
     assert missing == {}

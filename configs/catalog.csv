@@ -1,8 +1,6 @@
 config_name,category,market,universe,rebalance_frequency,features,model_type,purpose,extends
 presets/default.yml,preset,hk,rqdata,M,price_only,xgb_regressor,HK default starter template,
 presets/hk.yml,preset,hk,rqdata,M,price_only,xgb_regressor,HK default template,
-presets/universe/hk_connect.yml,preset_universe,hk,hk_connect,PIT,N/A,N/A,HK Connect PIT universe definition,
-presets/universe/hk_all_assets.yml,preset_universe,hk,all_assets,PIT,N/A,N/A,All HK assets universe definition,
 presets/universe/pit_selected.yml,preset_universe,hk,selected,PIT,N/A,N/A,Selected PIT universe definition,
 presets/models/xgb_regressor.yml,preset_model,N/A,N/A,N/A,N/A,xgb_regressor,XGBoost regressor model preset,
 presets/models/xgb_ranker.yml,preset_model,N/A,N/A,N/A,N/A,xgb_ranker,XGBoost ranker model preset,

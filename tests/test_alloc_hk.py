@@ -298,7 +298,11 @@ def test_alloc_hk_quality_gate_blocks_before_market_data(monkeypatch):
         "_resolve_settings",
         lambda _args: ({}, alloc_hk.HkAllocSettings(cash=100000.0, method="custom")),
     )
-    monkeypatch.setattr(alloc_hk, "_resolve_scenarios", lambda _args, **_kwargs: ((100000.0,), (1,)))
+    monkeypatch.setattr(
+        alloc_hk,
+        "_resolve_scenarios",
+        lambda _args, **_kwargs: ((100000.0,), (1,)),
+    )
     monkeypatch.setattr(
         alloc_hk,
         "_load_selection",
@@ -320,7 +324,9 @@ def test_alloc_hk_quality_gate_blocks_before_market_data(monkeypatch):
     monkeypatch.setattr(
         alloc_hk.base_alloc,
         "_init_rqdatac",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("_init_rqdatac should not run")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("_init_rqdatac should not run")
+        ),
     )
 
     with pytest.raises(SystemExit, match="alloc-hk blocked by quality gate"):
@@ -498,7 +504,11 @@ def test_prepare_sell_signals_export_df_localizes_headers_and_values() -> None:
 
 
 def test_write_xlsx_report_requires_openpyxl(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(alloc_hk, "_import_openpyxl", lambda: (_ for _ in ()).throw(SystemExit("missing openpyxl")))
+    monkeypatch.setattr(
+        alloc_hk,
+        "_import_openpyxl",
+        lambda: (_ for _ in ()).throw(SystemExit("missing openpyxl")),
+    )
 
     with pytest.raises(SystemExit, match="missing openpyxl"):
         alloc_hk.write_xlsx_report(
@@ -510,7 +520,11 @@ def test_write_xlsx_report_requires_openpyxl(tmp_path, monkeypatch) -> None:
 
 
 def test_write_scenario_grid_report_requires_openpyxl(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(alloc_hk, "_import_openpyxl", lambda: (_ for _ in ()).throw(SystemExit("missing openpyxl")))
+    monkeypatch.setattr(
+        alloc_hk,
+        "_import_openpyxl",
+        lambda: (_ for _ in ()).throw(SystemExit("missing openpyxl")),
+    )
 
     with pytest.raises(SystemExit, match="missing openpyxl"):
         alloc_hk.write_scenario_grid_report(

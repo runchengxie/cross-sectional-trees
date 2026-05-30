@@ -147,7 +147,7 @@ jobs:
       - name: Smoke rqdata extra
         run: |
           uv run python -c "import rqdatac; print(rqdatac.__name__)"
-          uv run python -c "from cstree import rqdata_runtime; print(rqdata_runtime.__name__)"
+          uv run python -c "from market_data_platform import rqdata_runtime; print(rqdata_runtime.__name__)"
           uv run cstree --help > /dev/null
 
   duckdb-extra-smoke:
@@ -176,7 +176,6 @@ jobs:
       - name: Smoke duckdb extra
         run: |
           uv run python -c "import duckdb; print(duckdb.__version__)"
-          cd ../market-data-platform
           uv run marketdata data query --sql "select 1 as value" > /dev/null
 
   liveops-hk-extra-smoke:

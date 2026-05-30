@@ -203,7 +203,7 @@ CI 配置在 `.github/workflows/tests.yml`。默认拆成八个 job：
 # rqdata-extra-smoke
 uv sync --locked --extra dev --extra rqdata
 uv run python -c "import rqdatac; print(rqdatac.__name__)"
-uv run python -c "from cstree import rqdata_runtime; print(rqdata_runtime.__name__)"
+uv run python -c "from market_data_platform import rqdata_runtime; print(rqdata_runtime.__name__)"
 uv run cstree --help > /dev/null
 
 # duckdb-extra-smoke

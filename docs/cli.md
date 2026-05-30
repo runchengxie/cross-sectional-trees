@@ -106,7 +106,7 @@ cstree <subcommand> --help
 在传递底层脚本专属参数时，建议显式添加 `--` 作为分隔符。例如：
 
 ```bash
-marketdata rqdata hk-assets hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
+marketdata rqdata hk-assets hk-connect --config "$MDP_HK_CONNECT_UNIVERSE_CONFIG" -- --mode daily
 ```
 
 ## 主流程命令
@@ -474,7 +474,7 @@ cstree init-config --market hk --out ./custom_hk.yml --force
 MDP 入口，改用 `market-data-platform` 的港股通 PIT universe builder。
 
 ```bash
-marketdata rqdata hk-assets hk-connect --config configs/presets/universe/hk_connect.yml -- --mode daily
+marketdata rqdata hk-assets hk-connect --config "$MDP_HK_CONNECT_UNIVERSE_CONFIG" -- --mode daily
 ```
 
 ### marketdata rqdata hk-assets hk-daily-assets
@@ -482,7 +482,7 @@ marketdata rqdata hk-assets hk-connect --config configs/presets/universe/hk_conn
 MDP 入口，改用 `market-data-platform` 的港股全市场 universe builder。
 
 ```bash
-marketdata rqdata hk-assets hk-daily-assets --config configs/presets/universe/hk_all_assets.yml -- --end-date 20251231
+marketdata rqdata hk-assets hk-daily-assets --config "$MDP_HK_ALL_ASSETS_UNIVERSE_CONFIG" -- --end-date 20251231
 ```
 
 ## 参阅文档索引
