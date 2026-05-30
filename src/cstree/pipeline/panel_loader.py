@@ -301,7 +301,7 @@ def _load_basic_filter_frame(
     if not drop_st and min_listed_days <= 0:
         return None
     try:
-        if market != "cn" and drop_st:
+        if market != "a_share" and drop_st:
             logger.info(
                 "drop_st uses a legacy ST-name heuristic; attempting basic data for market '%s'.",
                 market,

@@ -283,14 +283,14 @@ def test_cli_main_init_config_writes_default_configs_dir(tmp_path, monkeypatch, 
     assert capsys.readouterr().out.strip() == f"Wrote {out_path}"
 
 
-def test_cli_main_init_config_supports_cn_template(tmp_path, monkeypatch, capsys):
+def test_cli_main_init_config_supports_a_share_template(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 
-    assert cli.main(["init-config", "--market", "cn"]) == 0
+    assert cli.main(["init-config", "--market", "a_share"]) == 0
 
-    out_path = tmp_path / "configs" / "cn.yml"
+    out_path = tmp_path / "configs" / "a_share.yml"
     assert out_path.exists()
-    source_path = resolve_repo_preset_path("cn.yml")
+    source_path = resolve_repo_preset_path("a_share.yml")
     assert out_path.read_text(encoding="utf-8") == source_path.read_text(encoding="utf-8")
     assert capsys.readouterr().out.strip() == f"Wrote {out_path}"
 

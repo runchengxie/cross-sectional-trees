@@ -1,4 +1,4 @@
-market: cn
+market: a_share
 
 data:
   provider: "rqdata"
@@ -15,12 +15,12 @@ data:
     backoff_seconds: 0.5
     max_backoff_seconds: 5.0
   rqdata:
-    market: "cn"
+    market: "a_share"
     frequency: "1d"
     skip_suspended: false
     fields: ["close", "volume", "total_turnover"]
-    daily_asset_dir: "artifacts/assets/rqdata/cn/daily/cn_all_daily_clean_latest"
-    instruments_file: "artifacts/assets/rqdata/cn/instruments/cn_all_instruments_latest.parquet"
+    daily_asset_dir: "artifacts/assets/rqdata/a_share/daily/a_share_all_daily_clean_latest"
+    instruments_file: "artifacts/assets/rqdata/a_share/instruments/a_share_all_instruments_latest.parquet"
   column_map:
     trade_date: trade_date
     symbol: symbol

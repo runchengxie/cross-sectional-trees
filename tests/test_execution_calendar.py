@@ -18,7 +18,7 @@ class FakeConnectCalendarRQ:
         dates = pd.date_range(start_date, end_date, freq="D")
         if market == "hk":
             allowed = {"20260504", "20260505", "20260506"}
-        elif market == "cn":
+        elif market == "cn":  # RQData provider calendar alias for A-share sessions.
             allowed = {"20260506"}
         else:
             raise ValueError(f"unsupported market={market}")

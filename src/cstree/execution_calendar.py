@@ -158,12 +158,18 @@ def resolve_execution_open_dates(
     else:
         module = _resolve_rqdatac_module(rqdatac_module)
         hk_dates: list[pd.Timestamp] | None = None
-        cn_dates: list[pd.Timestamp] | None = None
+        a_share_dates: list[pd.Timestamp] | None = None
         if module is not None:
             hk_dates = _fetch_trading_dates(module, start, end, ("hk", market))
-            cn_dates = _fetch_trading_dates(module, start, end, ("cn", "cn_stock", "stock_cn"))
-        if hk_dates is not None and cn_dates is not None:
-            candidates = sorted(set(hk_dates) & set(cn_dates))
+            # Provider-specific RQData calendar aliases for A-share sessions.
+            a_share_dates = _fetch_trading_dates(
+                module,
+                start,
+                end,
+                ("cn", "cn_stock", "stock_cn"),
+            )
+        if hk_dates is not None and a_share_dates is not None:
+            candidates = sorted(set(hk_dates) & set(a_share_dates))
         else:
             candidates = _normalize_dates(base_dates)
             if not candidates:

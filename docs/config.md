@@ -92,7 +92,7 @@ paths:
 ```yaml
 data:
   provider: rqdata       # 当前仅支持 rqdata
-  market: hk             # 当前正式主线为 hk；cn 仅作为保留兼容 preset
+  market: hk             # 当前正式主线为 hk；a_share 仅作为保留兼容 preset
   start_date: "20200101" # 支持具体日期或相对表达，如 "today", "t-1"
   end_date: "20241231"
   cache_tag: "experiment_a"  # 用于隔离不同实验的缓存版本

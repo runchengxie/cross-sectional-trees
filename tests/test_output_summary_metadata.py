@@ -219,7 +219,7 @@ def test_build_inputs_lock_uses_hk_data_platform_root_for_current_contract(
     assert daily_resolution["current_contract"]["contract_path"] == str(current_contract_path)
 
 
-def test_build_inputs_lock_uses_cn_current_contract_for_cn_market(
+def test_build_inputs_lock_uses_a_share_current_contract_for_a_share_market(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -231,9 +231,9 @@ def test_build_inputs_lock_uses_cn_current_contract_for_cn_market(
         data_root
         / "assets"
         / "rqdata"
-        / "cn"
+        / "a_share"
         / "daily"
-        / "cn_all_20260522_daily_clean"
+        / "a_share_all_20260522_daily_clean"
     )
     snapshot_dir.mkdir(parents=True)
     manifest_path = snapshot_dir / "manifest.yml"
@@ -248,18 +248,25 @@ def test_build_inputs_lock_uses_cn_current_contract_for_cn_market(
         ),
         encoding="utf-8",
     )
-    alias_path = data_root / "assets" / "rqdata" / "cn" / "daily" / "cn_all_daily_clean_latest"
+    alias_path = (
+        data_root
+        / "assets"
+        / "rqdata"
+        / "a_share"
+        / "daily"
+        / "a_share_all_daily_clean_latest"
+    )
     os.symlink(
         os.path.relpath(snapshot_dir, start=alias_path.parent),
         alias_path,
         target_is_directory=True,
     )
-    current_contract_path = data_root / "metadata" / "current_assets" / "cn_current.json"
+    current_contract_path = data_root / "metadata" / "current_assets" / "a_share_current.json"
     current_contract_path.parent.mkdir(parents=True)
     current_contract_path.write_text(
         json.dumps(
             {
-                "contract": {"name": "cn_current", "market": "cn", "version": 1},
+                "contract": {"name": "a_share_current", "market": "a_share", "version": 1},
                 "assets": {
                     "daily_clean": {
                         "alias_path": str(alias_path),
@@ -276,12 +283,15 @@ def test_build_inputs_lock_uses_cn_current_contract_for_cn_market(
 
     payload = build_inputs_lock(
         {
-            "market": "cn",
+            "market": "a_share",
             "data_cfg": {
                 "start_date": "20200101",
                 "end_date": "20260522",
                 "rqdata": {
-                    "daily_asset_dir": "artifacts/assets/rqdata/cn/daily/cn_all_daily_clean_latest",
+                    "daily_asset_dir": (
+                        "artifacts/assets/rqdata/a_share/daily/"
+                        "a_share_all_daily_clean_latest"
+                    ),
                 },
             },
             "eval_cfg": {},
@@ -303,7 +313,7 @@ def test_build_inputs_lock_uses_cn_current_contract_for_cn_market(
     )
 
     assert payload["data_platform_root"] == str(data_root.resolve())
-    assert payload["current_contracts"] == {"cn_current": str(current_contract_path)}
+    assert payload["current_contracts"] == {"a_share_current": str(current_contract_path)}
     daily_resolution = payload["input_resolution"]["daily_asset_dir"]
-    assert daily_resolution["current_contract"]["contract_name"] == "cn_current"
+    assert daily_resolution["current_contract"]["contract_name"] == "a_share_current"
     assert daily_resolution["current_contract"]["contract_path"] == str(current_contract_path)

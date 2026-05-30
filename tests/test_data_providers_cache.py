@@ -430,10 +430,10 @@ def test_load_basic_from_local_asset_normalizes_hk_symbol_when_order_book_id_pre
     assert result["list_date"].tolist() == ["19721101"]
 
 
-def test_load_basic_from_local_asset_normalizes_cn_order_book_id(tmp_path):
+def test_load_basic_from_local_asset_normalizes_a_share_order_book_id(tmp_path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    instruments_file = tmp_path / "cn_instruments.parquet"
+    instruments_file = tmp_path / "a_share_instruments.parquet"
 
     pd.DataFrame(
         {
@@ -444,7 +444,7 @@ def test_load_basic_from_local_asset_normalizes_cn_order_book_id(tmp_path):
     ).to_parquet(instruments_file)
 
     result = data_providers.load_basic(
-        "cn",
+        "a_share",
         cache_dir,
         client=None,
         data_cfg={
@@ -645,14 +645,14 @@ def test_fetch_daily_rqdata_returns_empty_when_symbol_lists_after_requested_rang
     assert result.empty
 
 
-def test_fetch_daily_rqdata_maps_cn_symbol_to_provider_id(tmp_path):
+def test_fetch_daily_rqdata_maps_a_share_symbol_to_provider_id(tmp_path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     data_providers._RQDATA_LISTED_DATE_CACHE.clear()
     client = _FakeRQDailyClient("1999-11-10")
 
     result = data_providers.fetch_daily(
-        "cn",
+        "a_share",
         "600000.SH",
         "20200101",
         "20200131",
@@ -661,7 +661,7 @@ def test_fetch_daily_rqdata_maps_cn_symbol_to_provider_id(tmp_path):
         data_cfg={
             "provider": "rqdata",
             "cache_mode": "range",
-            "rqdata": {"market": "cn", "skip_suspended": False},
+            "rqdata": {"market": "a_share", "skip_suspended": False},
         },
     )
 
@@ -674,7 +674,7 @@ def test_fetch_daily_rqdata_maps_cn_symbol_to_provider_id(tmp_path):
             {
                 "fields": ["close", "volume", "total_turnover"],
                 "skip_suspended": False,
-                "market": "cn",
+                "market": "a_share",
             },
         )
     ]

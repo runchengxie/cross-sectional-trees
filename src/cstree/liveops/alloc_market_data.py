@@ -24,10 +24,10 @@ def to_rq_order_book_id(symbol: str, market: str | None) -> str:
             text = text.zfill(5)
         return f"{text}.XHKG"
 
-    if text.endswith((".SH", ".SZ")) or market_text == "cn":
-        return to_rqdata_symbol("cn", text)
+    if text.endswith((".SH", ".SZ")) or market_text == "a_share":
+        return to_rqdata_symbol("a_share", text)
 
-    raise SystemExit(f"Unsupported symbol '{symbol}'. Supported markets: hk, cn.")
+    raise SystemExit(f"Unsupported symbol '{symbol}'. Supported markets: hk, a_share.")
 
 
 def resolve_price_date(rqdatac: Any, as_of: pd.Timestamp, market: str | None) -> pd.Timestamp:
