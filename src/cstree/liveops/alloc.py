@@ -10,11 +10,11 @@ importing `cstree.liveops.alloc`, while the implementation lives in
 import logging
 
 from dotenv import load_dotenv
-
 from market_data_platform.rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
 )
+
 from . import alloc_core as _core
 from .alloc_core import (
     _allocate_equal_weight,

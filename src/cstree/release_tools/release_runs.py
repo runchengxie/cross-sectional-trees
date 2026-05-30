@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 from market_data_platform.repo_paths import find_repo_root
 
 REPO_ROOT = find_repo_root(__file__)

@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 from market_data_platform.artifacts import (
     configured_data_input_path,
     resolve_hk_data_platform_root,
@@ -17,6 +16,7 @@ from market_data_platform.current_assets import (
     load_manifest_summary,
     match_current_contract_entry,
 )
+
 from ..date_utils import is_relative_date_token
 from .support import save_json
 

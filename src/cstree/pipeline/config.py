@@ -8,7 +8,6 @@ from typing import Any
 
 import numpy as np
 from dotenv import load_dotenv
-
 from market_data_platform.artifacts import (
     cache_dir_for,
     resolve_configured_artifacts_root,
@@ -16,8 +15,9 @@ from market_data_platform.artifacts import (
     resolve_repo_path,
     runs_dir_for,
 )
-from ..config_utils import get_research_universe_config, resolve_pipeline_config
 from market_data_platform.data_providers import normalize_market, resolve_provider
+
+from ..config_utils import get_research_universe_config, resolve_pipeline_config
 from ..date_utils import (
     is_relative_date_token as _is_relative_date_token,
     resolve_date_token as _resolve_date_token,

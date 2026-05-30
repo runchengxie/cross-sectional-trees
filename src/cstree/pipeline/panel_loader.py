@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from market_data_platform.symbols import canonicalize_symbol_columns
 
 from ..compat import ensure_numpy_nan_alias
 from ..data_interface import DataInterface
-from market_data_platform.symbols import canonicalize_symbol_columns
 from ..rebalance import estimate_rebalance_gap, get_rebalance_dates
 from .panel_enrichment import apply_fundamentals_enrichment, apply_industry_enrichment
 

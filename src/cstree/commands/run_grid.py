@@ -11,11 +11,11 @@ from typing import Optional
 
 import pandas as pd
 import yaml
-
 from market_data_platform.artifacts import RUNS_DIR as DEFAULT_RUNS_DIR
+from market_data_platform.symbols import canonicalize_symbol_columns
+
 from ..backtest import backtest_topk
 from ..config_utils import resolve_pipeline_config
-from market_data_platform.symbols import canonicalize_symbol_columns
 from ..execution import build_execution_model
 from ..metrics import daily_ic_series, estimate_turnover, quantile_returns, summarize_ic
 from ..rebalance import get_rebalance_dates

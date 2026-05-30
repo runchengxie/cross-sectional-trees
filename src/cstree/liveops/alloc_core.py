@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
-
-from ..config_utils import resolve_pipeline_config
 from market_data_platform.data_providers import normalize_market, resolve_provider
 from market_data_platform.rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
 )
+
+from ..config_utils import resolve_pipeline_config
 from . import holdings
 from .alloc_market_data import (
     extract_price_wide_frame as _extract_price_wide_frame_impl,

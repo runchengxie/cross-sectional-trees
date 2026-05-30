@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
-
 from market_data_platform.data_provider_contracts import to_rqdata_symbol
 
 

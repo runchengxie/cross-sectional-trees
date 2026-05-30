@@ -10,9 +10,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from market_data_platform.symbols import canonicalize_symbol_columns
 
 from ..backtest import backtest_topk
-from market_data_platform.symbols import canonicalize_symbol_columns
 from ..execution import build_execution_model
 from ..metrics import (
     daily_ic_series,

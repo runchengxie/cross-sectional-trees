@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-
 from market_data_platform.artifacts import resolve_data_input_path
-from ..data_interface import DataInterface
 from market_data_platform.data_providers import fundamentals_provider_supported
+
+from ..data_interface import DataInterface
 from .config import (
     normalize_eval_settings,
     normalize_universe_filters,

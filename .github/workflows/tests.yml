@@ -176,7 +176,8 @@ jobs:
       - name: Smoke duckdb extra
         run: |
           uv run python -c "import duckdb; print(duckdb.__version__)"
-          uv run cstree data query --sql "select 1 as value" > /dev/null
+          cd ../market-data-platform
+          uv run marketdata data query --sql "select 1 as value" > /dev/null
 
   liveops-hk-extra-smoke:
     runs-on: ubuntu-latest

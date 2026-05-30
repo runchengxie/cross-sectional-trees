@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Callable, Mapping, Optional
 
 import pandas as pd
-
 from market_data_platform.data_provider_contracts import require_supported_market
 from market_data_platform.data_providers import (
     fetch_daily,

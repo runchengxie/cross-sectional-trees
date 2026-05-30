@@ -8,17 +8,17 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-
-from ..data_interface import DataInterface
+from market_data_platform.pit_feature_stats import (
+    compute_calendar_cagr,
+    compute_trailing_calendar_window_stat,
+)
 from market_data_platform.symbols import (
     DEFAULT_SYMBOL_PRIORITY,
     PROVIDER_SYMBOL_PRIORITY,
     normalize_symbol_standard_name,
 )
-from market_data_platform.pit_feature_stats import (
-    compute_calendar_cagr,
-    compute_trailing_calendar_window_stat,
-)
+
+from ..data_interface import DataInterface
 from .panel_join_support import frame_memory_mb, load_panel_join_frames, merge_panel_frame
 from .support import _prepare_panel_join_frame
 

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from market_data_platform.artifacts import (
     resolve_artifacts_root,
     resolve_configured_artifacts_root,

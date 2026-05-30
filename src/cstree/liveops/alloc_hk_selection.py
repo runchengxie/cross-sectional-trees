@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-
 from market_data_platform.symbols import ensure_symbol_columns
+
 from . import alloc as base_alloc, holdings
 from .alloc_hk_types import SelectedTicker
 

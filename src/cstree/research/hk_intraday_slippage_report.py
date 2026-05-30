@@ -7,10 +7,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
-from market_data_platform.symbols import normalize_symbol_for_market
 from market_data_platform.intraday_paths import resolve_input_parquet_paths
-from market_data_platform.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
+from market_data_platform.repo_paths import (
+    find_repo_root,
+    resolve_repo_path as resolve_repo_relative_path,
+)
+from market_data_platform.symbols import normalize_symbol_for_market
 
 REPO_ROOT = find_repo_root(__file__)
 DEFAULT_REPORT_DIR = REPO_ROOT / "artifacts" / "reports"

@@ -148,7 +148,7 @@ uv sync --extra dev --extra rqdata
 * 文档、脚本说明或测试入口改动，优先跑：`uv run python -m pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q`。
 * 如需在本地提前拦住文档 / 路径 / 快回归问题，可安装仓库内置 git hooks：`./scripts/dev/install_git_hooks.sh`。
 * 代码改动后，运行与改动范围匹配的测试。
-* 中国香港市场 RQData research provider 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py`。
+* 中国香港市场 RQData research provider 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_pipeline_validation.py`、`tests/test_cli_research.py`；provider/cache/universe 平台行为回归在 `market-data-platform` 对应测试中执行。
 
 ## 说明
 

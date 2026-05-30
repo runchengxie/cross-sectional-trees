@@ -3,7 +3,6 @@ import json
 
 import pandas as pd
 import yaml
-
 from market_data_platform.data_providers import _cache_tag, _fundamentals_cache_file
 
 

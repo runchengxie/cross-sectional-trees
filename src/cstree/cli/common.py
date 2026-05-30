@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 
 from dotenv import load_dotenv
-
-from ..config_utils import resolve_pipeline_config
 from market_data_platform.rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,
 )
+
+from ..config_utils import resolve_pipeline_config
 
 
 def format_bytes(value: float) -> str:

@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Literal
 
 import pandas as pd
-
 from market_data_platform.symbols import canonicalize_symbol_columns
+
 from ..execution import (
     BpsCostModel,
     EntryPolicy,

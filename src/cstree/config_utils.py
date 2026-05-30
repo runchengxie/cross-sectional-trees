@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 import yaml
-
 from market_data_platform.repo_paths import find_repo_root
 
 EXTENDS_KEY = "extends"

@@ -25,9 +25,9 @@ EXPECTED_CAPABILITY_TOKENS = [
     "`cstree alloc-hk`",
     "`cstree export-targets`",
     "`cstree init-config`",
-    "`cstree backup-data`",
-    "`cstree data ...`",
-    "`cstree universe ...`",
+    "`marketdata backup-data`",
+    "`marketdata data ...`",
+    "`marketdata rqdata hk-assets ...`",
 ]
 EXPECTED_TEST_WORKFLOW_JOBS = {
     "fast",
@@ -59,9 +59,9 @@ EXPECTED_DEV_TEST_MATRIX_TOKENS = [
 ]
 EXPECTED_DEV_CHANGE_MAP_TOKENS = [
     "## 修改模块与对应测试指南",
-    "`tests/test_data_warehouse.py`",
+    "`tests/test_data_ops_boundary.py`",
     "`tests/test_run_release_scripts.py`",
-    "`tests/test_hk_intraday_download.py`",
+    "market-data-platform 回归",
 ]
 EXPECTED_README_ENTRYPOINT_NAV_TOKENS = [
     "## 入口分层",
@@ -80,9 +80,9 @@ EXPECTED_README_PUBLIC_CLI_TOKENS = [
     "`cstree alloc-hk`",
     "`cstree export-targets`",
     "`cstree init-config`",
-    "`cstree backup-data`",
-    "cstree data",
-    "cstree universe",
+    "`marketdata backup-data`",
+    "marketdata data",
+    "marketdata rqdata hk-assets",
 ]
 EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "## 入口分层与稳定性",
@@ -91,7 +91,7 @@ EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "公开但非 CLI 模块工具",
     "`python -m cstree.release_tools.package_runs`",
     "`python -m cstree.research.hk_financial_details`",
-    "`python -m cstree.research.hk_intraday_download`",
+    "`marketdata rqdata refresh-hk-intraday`",
     "`CSTREE_*`",
     "`src/cstree/`",
     "`scripts/dev/run_tests.sh`",
@@ -123,7 +123,7 @@ EXPECTED_LOCAL_ASSET_LAZY_INIT_TOKENS = [
     "lazy init `rqdatac`",
 ]
 EXPECTED_WORKFLOW_SMOKE_SNIPPETS = [
-    'cstree data query --sql "select 1 as value"',
+    'marketdata data query --sql "select 1 as value"',
     "alloc_hk_smoke.xlsx",
 ]
 

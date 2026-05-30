@@ -8,12 +8,12 @@ from typing import Callable
 
 import numpy as np
 import pandas as pd
-
 from market_data_platform.symbols import (
     canonicalize_symbol_columns,
     ensure_symbol_columns,
     normalize_symbol_for_market,
 )
+
 from . import holdings
 
 

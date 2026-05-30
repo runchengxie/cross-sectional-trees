@@ -10,8 +10,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from market_data_platform.artifacts import (
+    RUNS_DIR as DEFAULT_RUNS_DIR,
+    SWEEPS_DIR as DEFAULT_SWEEPS_DIR_PATH,
+)
 
-from market_data_platform.artifacts import RUNS_DIR as DEFAULT_RUNS_DIR, SWEEPS_DIR as DEFAULT_SWEEPS_DIR_PATH
 from ..config_utils import resolve_pipeline_config
 
 DEFAULT_BASE_CONFIG = "configs/experiments/variants/hk_selected__xgb_regressor.yml"
