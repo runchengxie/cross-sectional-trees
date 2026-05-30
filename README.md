@@ -1,6 +1,6 @@
 # cross-sectional-trees
 
-港股低频截面研究仓库。
+低频截面研究仓库。
 
 它读取 `market-data-platform` 已发布的本地数据资产，完成因子研究、模型训练、评估、回测和持仓快照，并在需要时导出 `quant-execution-engine` 可消费的标准 `targets.json`。本仓库不负责市场数据生产，也不负责真实券商下单。
 
@@ -14,12 +14,14 @@
 
 最常用的能力是：
 
-- 跑港股截面模型研究和 benchmark 对照。
+- 运行低频截面模型研究和 benchmark 对照。
 - 汇总多次实验结果，检查策略候选是否有足够证据进入下一步。
 - 生成当前目标持仓、分配分析和执行引擎标准 `targets.json`。
 - 保存可复现的 `summary.json`、`config.used.yml` 和持仓文件。
 
-中国香港市场数据资产的下载、清洗、健康检查、current contract 和发布已经迁到 `market-data-platform`。这里默认只读平台资产。
+当前最成熟、默认的研究路线是中国香港市场 / RQData / 本地平台资产。项目结构正在向 market-agnostic 的研究框架收敛；新增市场时，应尽量复用 `market`、`data`、`research_universe`、`features`、`model`、`eval`、`backtest` 和 `live` 这些通用配置边界。
+
+中国香港市场数据资产的下载、清洗、健康检查、current contract 和发布已经迁到 `market-data-platform`。本仓库默认只读平台资产。
 
 ## 快速开始
 
@@ -27,7 +29,7 @@
 
 - Python 3.12+
 - `uv`
-- 已由 `market-data-platform` 准备好的本地港股数据资产
+- 若运行默认模板，需要已由 `market-data-platform` 准备好的本地中国香港市场数据资产
 
 ```bash
 uv venv --seed
@@ -36,7 +38,7 @@ export DATA_PLATFORM_ROOT=/path/to/market-data-platform/artifacts
 cstree run --config default
 ```
 
-`default` 当前指向港股入门模板，默认使用 `data.provider=rqdata` 和 `data.source_mode=platform_assets`。也就是说，正常研究路径不需要在线读取 RQData；只有显式切换到 legacy provider 在线模式时，才需要额外安装和配置 RQData 凭证。
+`default` 当前指向中国香港市场入门模板，默认使用 `data.provider=rqdata` 和 `data.source_mode=platform_assets`。也就是说，默认研究路径不需要在线读取 RQData；只有显式切换到 legacy provider 在线模式时，才需要额外安装和配置 RQData 凭证。
 
 运行后先看：
 
@@ -58,7 +60,7 @@ cstree alloc-hk --help
 cstree export-targets --help
 ```
 
-这些命令分别覆盖主研究流程、结果汇总、持仓查看、港股分配分析和执行目标导出。完整 CLI 说明见 [docs/cli.md](docs/cli.md)。
+这些命令分别覆盖主研究流程、结果汇总、持仓查看、市场专项分配分析和执行目标导出。完整 CLI 说明见 [docs/cli.md](docs/cli.md)。
 
 ## 入口分层
 

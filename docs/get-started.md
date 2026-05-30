@@ -10,7 +10,7 @@
 
 * Python 3.12 及以上版本
 * `uv` 包管理器
-* 已由 `market-data-platform` 准备好的本地 HK 数据资产
+* 若运行默认模板，需要已由 `market-data-platform` 准备好的本地中国香港市场数据资产
 
 ## 最短跑通
 
@@ -21,7 +21,7 @@ export DATA_PLATFORM_ROOT=/path/to/market-data-platform/artifacts
 cstree run --config default
 ```
 
-默认入口只读平台资产，不需要 RQData 在线凭证。需要临时在线读取 provider 数据时，显式设置 `data.source_mode=provider_online_legacy` 并安装 `uv sync --extra dev --extra rqdata`；详情参见 `docs/providers.md` 文件。
+默认入口当前指向中国香港市场 / RQData / 本地平台资产路线，只读平台资产，不需要 RQData 在线凭证。需要临时在线读取 provider 数据时，显式设置 `data.source_mode=provider_online_legacy` 并安装 `uv sync --extra dev --extra rqdata`；详情参见 `docs/providers.md` 文件。
 
 `cstree` 是当前 CLI 名称。
 
@@ -46,6 +46,6 @@ uv sync --extra dev
 
 * 想继续按流程做研究：`docs/cookbook.md`
 * 想先建立系统心智模型：`docs/pipeline-overview.md`
-* 想做港股精选研究：`docs/playbooks/README.md`
+* 想做当前成熟的市场专项研究路线：`docs/playbooks/README.md`
 * 想查命令或配置定义：`docs/cli.md`、`docs/config.md`
 * 想理解产物结构：`docs/outputs.md`

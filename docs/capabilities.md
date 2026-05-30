@@ -10,7 +10,9 @@
 
 给定一份配置，`cstree run` 会完成数据读取、股票池处理、标签生成、特征构建、模型训练、评估和回测，并将结果写到 `artifacts/` 目录下。
 
-主流程之外，仓库还提供结果汇总、候选策略晋升检查、固定分数组合层比较、特征证据、benchmark 阶梯、股票池工具、标准层查询和运行结果发布打包工具。HK 数据资产生产、检查和发布已经移交给 `market-data-platform`；完整参数见 `docs/cli.md`，边界说明见 `docs/concepts/shared-hk-data-platform.md`。
+项目的研究流水线按市场、数据源、股票池、特征、模型和组合构造分层，正在向 market-agnostic 的低频截面研究框架收敛。当前最成熟、默认验证最充分的路线是中国香港市场 / RQData / 本地平台资产。
+
+主流程之外，仓库还提供结果汇总、候选策略晋升检查、固定分数组合层比较、特征证据、benchmark 阶梯、股票池工具、标准层查询和运行结果发布打包工具。中国香港市场数据资产生产、检查和发布已经移交给 `market-data-platform`；完整参数见 `docs/cli.md`，边界说明见 `docs/concepts/shared-hk-data-platform.md`。
 
 ## 用户可见入口
 
@@ -20,7 +22,7 @@
 | `cstree summarize` | 聚合历史运行结果，对比各项指标 | `runs_summary.csv` |
 | `cstree grid` | 在已有评分结果上做选股数量、成本、缓冲区的敏感性分析 | `grid_summary.csv` |
 | `cstree tune` | 按 YAML 搜索空间批量生成实验配置、运行流水线、打分并自动汇总 | `artifacts/sweeps/<tag>/` |
-| `cstree sweep-linear` | 批量运行港股精选路线的岭回归（`ridge`）或弹性网络（`elasticnet`）模型并自动汇总 | `artifacts/sweeps/<tag>/` |
+| `cstree sweep-linear` | 批量运行线性模型研究路线的岭回归（`ridge`）或弹性网络（`elasticnet`）模型并自动汇总；现有预设主要服务 HK selected 路线 | `artifacts/sweeps/<tag>/` |
 | `cstree promotion-gate` | 对比 baseline 与 candidate，检查候选策略是否具备升主线证据 | `artifacts/reports/*promotion_gate*` |
 | `cstree cpcv` | 对 shortlisted candidate 做 CPCV 稳健性审计，输出多条样本外路径的指标分布 | `artifacts/reports/cpcv_*` |
 | `cstree construction-grid` | 固定模型分数，比较 Top-K、buffer、权重和执行参数 | `artifacts/reports/*construction_grid*` |
@@ -90,9 +92,9 @@
 
 ### 数据与市场
 
-* 仅支持 `rqdata` 数据源。
-* 仅支持港股（`hk`）市场口径。
-* 当前的核心工作流即为港股加 RQData 的入门路线。
+* 研究配置已经显式保留 `market` 和 `data.provider` 边界，目标是让主流程按市场适配数据、股票池和执行日历。
+* 当前正式验证最充分的主线是 `market=hk` 加 `data.provider=rqdata`。
+* `configs/presets/a_share.yml` 是中国大陆市场 / A 股方向的兼容和实验入口，不应被理解为已达到 HK/RQData 主线同等成熟度。
 * 本地资产直读归在 RQData provider 的离线资产模式下，配置仍使用 `data.provider=rqdata`。
 * 支持数据缓存、失败重试、相对日期与绝对日期标识。
 * 数据资产生产、检查和发布已由 `market-data-platform` 承担。本仓库只读取 provider、本地资产、标准层和 `market-data-platform` 产物，不再提供 `cstree rqdata ...` 维护入口。
@@ -109,7 +111,7 @@
 ### 基本面
 
 * 支持通过服务商在线获取（`fundamentals.source=provider`）以及从本地文件读取（`fundamentals.source=file`）基本面数据。
-* 支持港股加 RQData 组合的服务商基本面抓取。
+* 当前已验证中国香港市场加 RQData 组合的服务商基本面抓取。
 * 支持读取由外部数据平台生成的 PIT 平面基本面文件。
 * 支持数据向前填充（`ffill`）、列名映射、缺失值填补与缺失情况标记。
 

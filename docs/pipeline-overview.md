@@ -10,7 +10,7 @@
 
 `config` 定义研究口径。`cstree run` 按这个口径读取 `data/universe/fundamentals`，构建 `label/features`，训练 `model`，产出 `eval/backtest/live` 结果，最后把关键产物写到 `artifacts/`。
 
-这页讲的是主流程。项目还包含结果汇总、候选晋升检查、构造层网格、特征证据、benchmark 阶梯、股票池工具、数据标准层和运行结果发布打包工具；这些能力见本页后面的“主流程之外”。HK 数据资产生产、检查和发布已经由 `market-data-platform` 承载。
+这页讲的是主流程。项目还包含结果汇总、候选晋升检查、构造层网格、特征证据、benchmark 阶梯、股票池工具、数据标准层和运行结果发布打包工具；这些能力见本页后面的“主流程之外”。当前最成熟的数据路线是中国香港市场 / RQData / 本地平台资产，相关资产生产、检查和发布已经由 `market-data-platform` 承载。
 
 ## 主流程
 
@@ -47,10 +47,10 @@
 
 ### 2. `hk.yml` 和完整 PIT 财务路线
 
-* `configs/presets/hk.yml` 是 HK 月频 starter：`PIT universe` + `provider` 基本面。
-* `configs/presets/hk_quarterly_pit_hybrid.yml` 是 HK 季频 `PIT fundamentals` 入口。
+* `configs/presets/hk.yml` 是当前成熟路线的月频 starter：`PIT universe` + `provider` 基本面。
+* `configs/presets/hk_quarterly_pit_hybrid.yml` 是当前成熟路线的季频 `PIT fundamentals` 入口。
 
-要跑季度 PIT 财务路线时，应从后者或 HK selected playbook 指向的实验配置开始。
+要跑季度 PIT 财务路线时，应从后者或 HK selected playbook 指向的实验配置开始。其他市场路线应复用同样的配置块边界，而不是把 HK 专项假设扩散到通用主流程。
 
 ### 3. run 产物才是历史复现依据
 
@@ -62,7 +62,7 @@
 
 ### 4. 本地资产直读和在线 provider
 
-本地 HK 资产直读可以跳过在线日线和基础信息读取。若同一配置启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，基本面缓存未命中时仍可能 lazy init `rqdatac`。
+本地平台资产直读可以跳过在线日线和基础信息读取。当前已验证的是中国香港市场资产直读；若同一配置启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，基本面缓存未命中时仍可能 lazy init `rqdatac`。
 
 ## 主流程之外
 

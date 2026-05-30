@@ -8,7 +8,7 @@
 
 ## 当前边界
 
-本项目当前只支持：
+本项目当前正式验证最充分的 provider / market 组合是：
 
 * `data.provider=rqdata`
 * 默认 `data.source_mode=platform_assets`，只读 `market-data-platform` 发布的本地资产
@@ -16,8 +16,7 @@
 * 在线 `rqdatac` 访问
 * 本地 HK 资产直读（daily + instruments）
 
-以上是当前正式支持面的完整边界，不代表默认推荐。
-旧的多市场 / 多 provider 归档配置不再作为活跃入口维护。
+以上是当前稳定支持面的完整边界。主流程正在向 market-agnostic 的配置边界收敛，但旧的多市场 / 多 provider 归档配置不再作为活跃入口维护。
 `configs/presets/a_share.yml` 仅作为兼容和实验入口保留，不属于当前正式主线。
 
 ## 鉴权与初始化

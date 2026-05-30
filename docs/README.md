@@ -12,7 +12,7 @@
 | --- | --- |
 | 我第一次进入仓库，想先跑起来 | `docs/get-started.md` |
 | 我想先知道系统从配置到产出物是怎么流转的 | `docs/pipeline-overview.md` |
-| 我想做港股精选正式研究 | `docs/playbooks/README.md` |
+| 我想做当前成熟的市场专项研究路线 | `docs/playbooks/README.md` |
 | 我只想按通用任务顺序推进 | `docs/cookbook.md` |
 | 我想查命令和参数 | `docs/cli.md` |
 | 我想查元数据目录、标准层物化或 DuckDB 查询 | `docs/cli.md` |
