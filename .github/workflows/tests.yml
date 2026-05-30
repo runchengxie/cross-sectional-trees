@@ -10,7 +10,7 @@ concurrency:
 
 env:
   UV_LOCKED: "true"
-  HK_DATA_PLATFORM_REF: "42b5765ed863b3dc097d9f87a76d428495debf98"
+  HK_DATA_PLATFORM_REF: "5b2ea3cf0ee21eba9c8d1dfd53945cb090caf75c"
 
 defaults:
   run:
@@ -40,6 +40,9 @@ jobs:
           cache-suffix: ${{ github.job }}
       - name: Install dependencies
         run: uv sync --locked --extra dev
+      - name: Verify market-data-platform contract
+        run: |
+          uv run python -c "from market_data_platform.data_provider_contracts import SUPPORTED_MARKETS; assert sorted(SUPPORTED_MARKETS) == ['a_share', 'hk'], sorted(SUPPORTED_MARKETS)"
       - name: Run fast offline regression
         run: ./scripts/dev/run_tests.sh fast
 
@@ -66,6 +69,9 @@ jobs:
           cache-suffix: ${{ github.job }}
       - name: Install dependencies
         run: uv sync --locked --extra dev
+      - name: Verify market-data-platform contract
+        run: |
+          uv run python -c "from market_data_platform.data_provider_contracts import SUPPORTED_MARKETS; assert sorted(SUPPORTED_MARKETS) == ['a_share', 'hk'], sorted(SUPPORTED_MARKETS)"
       - name: Run slow offline regression
         run: ./scripts/dev/run_tests.sh slow
 
