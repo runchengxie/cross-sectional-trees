@@ -15,8 +15,8 @@ def test_data_interface_rejects_unsupported_market(tmp_path):
         )
 
 
-def test_data_interface_rejects_non_rqdata_provider(tmp_path):
-    with pytest.raises(SystemExit, match="supports only provider='rqdata'"):
+def test_data_interface_rejects_unsupported_provider(tmp_path):
+    with pytest.raises(SystemExit, match="Supported providers: rqdata, tushare"):
         DataInterface(
             market="hk",
             data_cfg={"provider": "legacy-provider", "retry": {"max_attempts": 1}},

@@ -1,7 +1,8 @@
 market: a_share
 
 data:
-  provider: "rqdata"
+  provider: "tushare"
+  source_mode: "platform_assets"
   start_date: "20150101"
   end_date: "20251231"
   cache_dir: "artifacts/cache"
@@ -14,19 +15,18 @@ data:
     max_attempts: 1
     backoff_seconds: 0.5
     max_backoff_seconds: 5.0
-  rqdata:
-    market: "a_share"
-    frequency: "1d"
-    skip_suspended: false
-    fields: ["close", "volume", "total_turnover"]
-    daily_asset_dir: "artifacts/assets/rqdata/a_share/daily/a_share_all_daily_clean_latest"
-    instruments_file: "artifacts/assets/rqdata/a_share/instruments/a_share_all_instruments_latest.parquet"
+  tushare:
+    daily_asset_dir: "artifacts/assets/tushare/a_share/daily/a_share_all_daily_clean_latest"
+    instruments_file: "artifacts/assets/tushare/a_share/instruments/a_share_all_instruments_latest.parquet"
+    daily_basic_dir: "artifacts/assets/tushare/a_share/daily_basic/a_share_all_daily_basic_latest"
+    adj_factor_dir: "artifacts/assets/tushare/a_share/adj_factor/a_share_all_adj_factor_latest"
+    limit_status_dir: "artifacts/assets/tushare/a_share/limit_status/a_share_limit_status_latest"
   column_map:
     trade_date: trade_date
     symbol: symbol
     close: close
-    vol: volume
-    amount: total_turnover
+    vol: vol
+    amount: amount
 
 fundamentals:
   enabled: false
@@ -162,10 +162,21 @@ backtest:
   trading_days_per_year: 252
   long_only: true
   short_k: null
-  benchmark_symbol: null
+  benchmark_symbol: "000300.SH"
   exit_mode: "rebalance"
   exit_horizon_days: null
   buffer_exit: 2
   buffer_entry: 1
   exit_price_policy: "delay"
   exit_fallback_policy: "ffill"
+
+execution:
+  market: a_share
+  settlement: T+1
+  board_lot: 100
+  price_limit_filter: true
+  st_filter: true
+  suspend_filter: true
+  sell_stamp_duty_bps: 5
+  buy_commission_bps: 1
+  sell_commission_bps: 1

@@ -20,6 +20,11 @@ MARKET_SUFFIXES = {
     ".XHKG": "HK",
     ".US": "US",
     ".CN": "CN",
+    ".SH": "CN",
+    ".SZ": "CN",
+    ".BJ": "CN",
+    ".XSHG": "CN",
+    ".XSHE": "CN",
     ".SG": "SG",
 }
 
@@ -35,6 +40,8 @@ def _market_code(value: object | None) -> str | None:
     text = str(value or "").strip().upper()
     if not text:
         return None
+    aliases = {"A_SHARE": "CN", "ASHARE": "CN", "CN_A": "CN"}
+    text = aliases.get(text, text)
     if text not in KNOWN_MARKETS:
         raise SystemExit(f"Unsupported execution target market: {value!r}.")
     return text
@@ -44,6 +51,14 @@ def _broker_symbol(base_symbol: str, market: str) -> str:
     if market == "HK" and base_symbol.isdigit():
         return base_symbol.lstrip("0") or "0"
     return base_symbol
+
+
+def _execution_suffix(symbol_text: str, suffix: str, market: str) -> str:
+    base = symbol_text[: -len(suffix)]
+    if market == "CN" and suffix in {".SH", ".SZ", ".BJ", ".XSHG", ".XSHE"}:
+        mapped_suffix = {".XSHG": ".SH", ".XSHE": ".SZ"}.get(suffix, suffix)
+        return f"{base.zfill(6)}{mapped_suffix}"
+    return _broker_symbol(base, market)
 
 
 def _execution_symbol(symbol: object, market: object | None) -> tuple[str, str]:
@@ -58,7 +73,7 @@ def _execution_symbol(symbol: object, market: object | None) -> tuple[str, str]:
                 raise SystemExit(
                     f"Execution target symbol {text!r} conflicts with market {requested_market!r}."
                 )
-            return _broker_symbol(base, suffix_market), suffix_market
+            return _execution_suffix(text, suffix, suffix_market), suffix_market
     if requested_market is None:
         raise SystemExit(f"Cannot infer execution target market for symbol {text!r}.")
     return _broker_symbol(text, requested_market), requested_market

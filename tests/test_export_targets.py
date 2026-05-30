@@ -115,3 +115,26 @@ def test_export_targets_rejects_short_holdings(tmp_path, monkeypatch):
 def test_export_targets_requires_explicit_run_or_config(tmp_path):
     with pytest.raises(SystemExit, match="requires --config or --run-dir"):
         export_targets.main(["--out", str(tmp_path / "targets.json")])
+
+
+def test_export_targets_maps_a_share_symbols_to_cn_market():
+    payload = {
+        "market": "a_share",
+        "holdings": [
+            {"symbol": "600519.SH", "weight": 0.4},
+            {"symbol": "000858.SZ", "weight": 0.3},
+            {"symbol": "430047.BJ", "weight": 0.2},
+            {"symbol": "600000.XSHG", "weight": 0.1},
+        ],
+    }
+
+    targets, weight_sum, markets = export_targets._target_entries(payload)
+
+    assert weight_sum == pytest.approx(1.0)
+    assert markets == "CN"
+    assert targets == [
+        {"symbol": "600519.SH", "market": "CN", "target_weight": 0.4},
+        {"symbol": "000858.SZ", "market": "CN", "target_weight": 0.3},
+        {"symbol": "430047.BJ", "market": "CN", "target_weight": 0.2},
+        {"symbol": "600000.SH", "market": "CN", "target_weight": 0.1},
+    ]

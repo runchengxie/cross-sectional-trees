@@ -220,6 +220,24 @@ def test_resolve_pipeline_config_rejects_conflicting_research_universe_keys(tmp_
         resolve_pipeline_config(str(config_path))
 
 
+def test_a_share_preset_uses_tushare_platform_assets_contract():
+    cfg = resolve_pipeline_config("a_share").data
+
+    assert cfg["market"] == "a_share"
+    assert cfg["data"]["provider"] == "tushare"
+    assert cfg["data"]["source_mode"] == "platform_assets"
+    assert cfg["data"]["tushare"]["daily_asset_dir"].endswith(
+        "artifacts/assets/tushare/a_share/daily/a_share_all_daily_clean_latest"
+    )
+    assert cfg["data"]["tushare"]["instruments_file"].endswith(
+        "artifacts/assets/tushare/a_share/instruments/a_share_all_instruments_latest.parquet"
+    )
+    assert cfg["data"]["column_map"]["vol"] == "vol"
+    assert cfg["backtest"]["benchmark_symbol"] == "000300.SH"
+    assert cfg["execution"]["board_lot"] == 100
+    assert cfg["execution"]["settlement"] == "T+1"
+
+
 def test_pipeline_aliases_fail_fast_when_repo_configs_are_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(config_utils, "_iter_repo_root_candidates", lambda: [tmp_path])
 
