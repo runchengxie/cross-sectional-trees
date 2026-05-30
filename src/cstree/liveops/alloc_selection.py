@@ -9,7 +9,11 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
-from ..data_tools.symbols import canonicalize_symbol_columns, ensure_symbol_columns, normalize_symbol_for_market
+from ..data_tools.symbols import (
+    canonicalize_symbol_columns,
+    ensure_symbol_columns,
+    normalize_symbol_for_market,
+)
 from . import holdings
 
 

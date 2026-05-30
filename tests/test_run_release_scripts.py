@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 
+
 def _load_module(module_name: str):
     return importlib.reload(importlib.import_module(module_name))
 

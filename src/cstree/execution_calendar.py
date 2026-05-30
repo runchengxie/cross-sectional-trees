@@ -5,7 +5,6 @@ from typing import Any
 
 import pandas as pd
 
-
 MARKET_CALENDAR = "market"
 HK_CONNECT_CALENDAR = "hk_connect"
 

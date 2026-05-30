@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 
 from cstree.artifacts import (
-    resolve_data_input_path,
     resolve_artifacts_root,
     resolve_configured_artifacts_root,
+    resolve_data_input_path,
     resolve_hk_data_platform_root,
     resolve_metadata_db_path,
     resolve_repo_path,

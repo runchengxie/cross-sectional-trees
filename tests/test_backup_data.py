@@ -1,5 +1,6 @@
-from cstree.data_tools import backup_data
 from market_data_platform import backup_data as platform_backup_data
+
+from cstree.data_tools import backup_data
 
 
 def test_backup_data_uses_market_data_platform_backend():

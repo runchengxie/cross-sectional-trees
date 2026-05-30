@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import yaml
 
-
 PROMOTION_STATUSES = ("promotable", "reviewable", "rejected", "non-comparable")
 
 DEFAULT_COMPARABILITY_KEYS = (

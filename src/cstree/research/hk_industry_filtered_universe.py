@@ -9,7 +9,6 @@ import pandas as pd
 
 from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
-
 REPO_ROOT = find_repo_root(__file__)
 DEFAULT_FINANCIAL_BUCKETS = ("银行", "非银行金融", "综合金融")
 

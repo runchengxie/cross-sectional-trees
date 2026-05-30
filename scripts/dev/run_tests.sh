@@ -190,7 +190,7 @@ case "$mode" in
     check_data_ops_boundary
     ;;
   maintainability)
-    python scripts/dev/maintainability_metrics.py "$@"
+    python scripts/dev/maintainability_metrics.py --ratchet "$@"
     ;;
   -h | --help | help)
     usage

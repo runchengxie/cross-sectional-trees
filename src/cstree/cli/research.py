@@ -177,12 +177,14 @@ def handle_backup_data(args) -> int:
 def register_research_commands(subparsers) -> None:
     from ..commands import linear_sweep, run_grid, tune
     from ..data_tools import backup_data as backup_data_tool
-    from ..research import benchmark_ladder as benchmark_ladder_tool
-    from ..research import construction_grid as construction_grid_tool
-    from ..research import cpcv as cpcv_tool
-    from ..research import feature_evidence as feature_evidence_tool
-    from ..research import promotion_gate as promotion_gate_tool
-    from ..research import summarize_runs
+    from ..research import (
+        benchmark_ladder as benchmark_ladder_tool,
+        construction_grid as construction_grid_tool,
+        cpcv as cpcv_tool,
+        feature_evidence as feature_evidence_tool,
+        promotion_gate as promotion_gate_tool,
+        summarize_runs,
+    )
 
     grid = subparsers.add_parser(
         "grid",

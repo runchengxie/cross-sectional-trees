@@ -7,9 +7,9 @@ import pytest
 import yaml
 
 from cstree import pipeline
-from cstree.pipeline import runner as pipeline_runner
 from cstree.config_utils import resolve_pipeline_config
 from cstree.data_interface import DataInterface
+from cstree.pipeline import runner as pipeline_runner
 from cstree.pipeline.config import normalize_eval_settings
 from cstree.pipeline.runner import _load_benchmark_return_series
 from cstree.pipeline.stats import _ensure_execution_daily_fields

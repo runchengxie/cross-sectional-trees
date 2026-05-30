@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 DOCUMENTED_RELEASE_MODULES = (
     "release_tools.package_runs",
     "release_tools.release_runs",

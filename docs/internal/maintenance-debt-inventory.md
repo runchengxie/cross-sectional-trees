@@ -7,6 +7,7 @@
 * `cross-sectional-trees` 聚焦研究、回测、live/export 和运行结果发布。
 * HK 数据下载、检查、清洗、PIT、current contract 和 asset release 由 `market-data-platform` 承担。
 * 新增 C901 豁免时，需要在本页登记原因和退出条件。
+* `scripts/dev/run_tests.sh maintainability` 执行当前 ratchet budget：长行、大函数和 C901 豁免不得超过现有基线。清债后只下调预算，不上调。
 
 ## C901 Registry
 

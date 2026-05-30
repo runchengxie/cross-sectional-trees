@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 from typing import Any, Sequence
 
+from ..execution_calendar import normalize_execution_calendar
 from . import alloc as base_alloc
 from .alloc_hk_types import HkAllocSettings
-from ..execution_calendar import normalize_execution_calendar
 
 
 def parse_bool(value: Any, default: bool) -> bool:

@@ -9,7 +9,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-
 _MONTH_LABELS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 
 

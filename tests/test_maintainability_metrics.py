@@ -70,6 +70,10 @@ def test_repo_metrics_include_c901_and_public_api_counts():
     assert metrics.c901_file_ignores == 9
     assert metrics.python_files >= 200
     assert metrics.functions_over_500 == 0
+    assert module.check_ratchet_budgets(metrics) == {}
+    assert module.check_ratchet_budgets(metrics, {"functions_over_250": 0}) == {
+        "functions_over_250": {"actual": metrics.functions_over_250, "budget": 0}
+    }
 
 
 def test_maintainability_metrics_cli_outputs_json():

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 
-from ..config_utils import resolve_pipeline_config
 from .. import pipeline
+from ..config_utils import resolve_pipeline_config
 from ..pipeline.quality import enforce_liveops_quality_gate
 from . import holdings
 

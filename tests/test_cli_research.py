@@ -1,14 +1,14 @@
 from cstree import cli
-from cstree.commands import linear_sweep as sweep_tool
-from cstree.commands import run_grid as grid_tool
-from cstree.commands import tune as tune_tool
+from cstree.commands import linear_sweep as sweep_tool, run_grid as grid_tool, tune as tune_tool
 from cstree.data_tools import backup_data as backup_data_tool
-from cstree.research import benchmark_ladder as benchmark_ladder_tool
-from cstree.research import construction_grid as construction_grid_tool
-from cstree.research import cpcv as cpcv_tool
-from cstree.research import feature_evidence as feature_evidence_tool
-from cstree.research import promotion_gate as promotion_gate_tool
-from cstree.research import summarize_runs as summarize_tool
+from cstree.research import (
+    benchmark_ladder as benchmark_ladder_tool,
+    construction_grid as construction_grid_tool,
+    cpcv as cpcv_tool,
+    feature_evidence as feature_evidence_tool,
+    promotion_gate as promotion_gate_tool,
+    summarize_runs as summarize_tool,
+)
 
 
 def test_cli_parses_research_commands():

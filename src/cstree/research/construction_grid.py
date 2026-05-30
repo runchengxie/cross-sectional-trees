@@ -24,7 +24,6 @@ from ..metrics import (
 from ..rebalance import get_rebalance_dates
 from ..transform import apply_score_postprocess
 
-
 FIELDNAMES = [
     "variant",
     "scored_file",

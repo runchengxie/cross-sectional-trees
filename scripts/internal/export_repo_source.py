@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from typing import List, Optional, Set
 
+
 # --- CONFIGURATION ---
 def _find_project_root(start: Path) -> Path:
     current = start if start.is_dir() else start.parent

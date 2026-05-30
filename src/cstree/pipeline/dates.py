@@ -8,7 +8,6 @@ import pandas as pd
 
 from ..split import select_train_window_dates
 
-
 logger = logging.getLogger("cstree")
 
 

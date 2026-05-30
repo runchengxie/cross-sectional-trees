@@ -104,7 +104,7 @@ scripts/dev/run_tests.sh c901-debt
 # 校验共享数据运维能力没有回流到研究仓库
 scripts/dev/run_tests.sh data-ops-boundary
 
-# 输出维护债静态指标；可加 --json 或 --markdown
+# 输出维护债静态指标并执行当前 ratchet budget；可加 --json 或 --markdown
 scripts/dev/run_tests.sh maintainability
 
 # 全仓库 import 排序检查；历史文件可能仍有遗留问题
@@ -120,8 +120,11 @@ scripts/dev/run_tests.sh format-all
 CSTREE_RUN_PROVIDER_INTEGRATION=1 uv run python -m pytest tests/test_provider_integration.py -m integration
 ```
 
-维护债指标需要看趋势时，用下面的只读入口生成快照；它只扫描 `src/`、`scripts/`
-和 `tests/` 下的 Python 文件，不访问 `artifacts/`：
+维护债指标需要看趋势时，用下面的入口生成快照；它只扫描 `src/`、`scripts/`
+和 `tests/` 下的 Python 文件，不访问 `artifacts/`。`maintainability` 默认同时执行
+当前预算：超过 100 字符的行不超过 455 行，超过 100 行的函数不超过 96 个，
+超过 250 行的函数不超过 9 个，C901 文件级豁免不超过 9 个。后续清债时应只下调
+这些预算，不应上调：
 
 ```bash
 scripts/dev/run_tests.sh maintainability --markdown

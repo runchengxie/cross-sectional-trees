@@ -10,7 +10,6 @@ import pandas as pd
 from cstree.data_tools.symbols import ensure_symbol_columns
 from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
-
 REPO_ROOT = find_repo_root(__file__)
 DEFAULT_DAILY_ASSET_DIR = "artifacts/assets/rqdata/hk/daily/hk_all_daily_clean_latest"
 DEFAULT_VALUATION_ASSET_DIR = "artifacts/assets/rqdata/hk/valuation/hk_all_valuation_latest"

@@ -6,8 +6,7 @@ from ..backtest import backtest_topk
 from ..metrics import bucket_ic_summary
 from .dates import build_walk_forward_windows
 from .eval import build_benchmark_series
-from .runner import main as _main
-from .runner import run as _run
+from .runner import main as _main, run as _run
 from .support import load_universe_by_date
 
 

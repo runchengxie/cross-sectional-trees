@@ -1,5 +1,6 @@
-from cstree.research import hk_intraday_download
 from market_data_platform.hk_assets import intraday_download as platform_intraday_download
+
+from cstree.research import hk_intraday_download
 
 
 def test_hk_intraday_download_uses_market_data_platform_backend():

@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 
 from ..artifacts import (
     cache_dir_for,
-    resolve_data_input_path,
     resolve_configured_artifacts_root,
+    resolve_data_input_path,
     resolve_repo_path,
     runs_dir_for,
 )

@@ -17,6 +17,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ROOTS = ("src", "scripts", "tests")
 DEFAULT_LIMIT = 10
 PYPROJECT_PATH = Path("pyproject.toml")
+DEFAULT_RATCHET_BUDGETS = {
+    "long_lines_over_100": 455,
+    "functions_over_100": 96,
+    "functions_over_250": 9,
+    "functions_over_500": 0,
+    "c901_file_ignores": 9,
+}
 
 
 @dataclass(frozen=True)
@@ -57,6 +64,18 @@ class Metrics:
             "huge_function_lines": 500,
         }
         return payload
+
+
+def check_ratchet_budgets(
+    metrics: Metrics,
+    budgets: dict[str, int] = DEFAULT_RATCHET_BUDGETS,
+) -> dict[str, dict[str, int]]:
+    failures: dict[str, dict[str, int]] = {}
+    for name, budget in budgets.items():
+        value = getattr(metrics, name)
+        if value > budget:
+            failures[name] = {"actual": value, "budget": budget}
+    return failures
 
 
 def _run_git_ls_files(repo_root: Path) -> set[str] | None:
@@ -297,6 +316,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=DEFAULT_ROOTS,
         help="Root to include. May be repeated. Defaults to src, scripts, tests.",
     )
+    parser.add_argument(
+        "--ratchet",
+        action="store_true",
+        help="Fail if maintainability debt exceeds the current ratchet budget.",
+    )
     return parser.parse_args(argv)
 
 
@@ -311,6 +335,17 @@ def main(argv: list[str] | None = None) -> int:
         print(format_markdown(metrics))
     else:
         print(format_text(metrics))
+
+    if args.ratchet:
+        failures = check_ratchet_budgets(metrics)
+        if failures:
+            print("\nMaintainability ratchet exceeded:", file=sys.stderr)
+            for name, values in sorted(failures.items()):
+                print(
+                    f"- {name}: {values['actual']} > {values['budget']}",
+                    file=sys.stderr,
+                )
+            return 1
     return 0
 
 

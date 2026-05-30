@@ -17,7 +17,6 @@ import yaml
 from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 from cstree.research import summarize_runs
 
-
 REPO_ROOT = find_repo_root(__file__)
 RUNS_ROOT = REPO_ROOT / "artifacts" / "runs"
 ASSETS_ROOT = REPO_ROOT / "artifacts" / "assets"

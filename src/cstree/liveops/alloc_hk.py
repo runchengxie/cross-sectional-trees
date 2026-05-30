@@ -9,10 +9,15 @@ from typing import Any, Sequence
 
 import pandas as pd
 
-from ..pipeline.quality import enforce_liveops_quality_gate
 from ..execution_calendar import HK_CONNECT_CALENDAR, is_execution_open
-from . import alloc as base_alloc
-from . import alloc_hk_reporting as reporting
+from ..pipeline.quality import enforce_liveops_quality_gate
+from . import alloc as base_alloc, alloc_hk_reporting as reporting
+from .alloc_hk_allocation import (
+    apply_secondary_fill as _apply_secondary_fill,
+    build_allocation_table as _build_allocation_table,
+    build_target_values as _build_target_values,
+    calc_lots as _calc_lots,
+)
 from .alloc_hk_common import (
     is_missing_value as _is_missing_value,
     pick_round_lot as _pick_round_lot_impl,
@@ -20,12 +25,6 @@ from .alloc_hk_common import (
 from .alloc_hk_market_data import (
     is_stock_connect_tradable as _is_stock_connect_tradable,
     prefetch_market_data,
-)
-from .alloc_hk_allocation import (
-    apply_secondary_fill as _apply_secondary_fill,
-    build_allocation_table as _build_allocation_table,
-    build_target_values as _build_target_values,
-    calc_lots as _calc_lots,
 )
 from .alloc_hk_selection import (
     load_selection as _load_selection,

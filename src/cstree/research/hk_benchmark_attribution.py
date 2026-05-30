@@ -26,7 +26,6 @@ from cstree.research.hk_connect_cap_weight_benchmark import (
     resolve_repo_path,
 )
 
-
 DEFAULT_INDUSTRY_FILE = (
     "artifacts/assets/rqdata/hk/industry_changes/hk_all_industry_changes_latest/industry_labels_m.parquet"
 )

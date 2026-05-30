@@ -1,9 +1,13 @@
 import pandas as pd
+from market_data_platform.hk_assets import (
+    build_hk_connect_universe as platform_hk_universe,
+    build_hk_daily_asset_universe as platform_hk_daily_assets,
+)
 
-from cstree.data_tools import build_hk_connect_universe as hk_universe
-from cstree.data_tools import build_hk_daily_asset_universe as hk_daily_assets
-from market_data_platform.hk_assets import build_hk_connect_universe as platform_hk_universe
-from market_data_platform.hk_assets import build_hk_daily_asset_universe as platform_hk_daily_assets
+from cstree.data_tools import (
+    build_hk_connect_universe as hk_universe,
+    build_hk_daily_asset_universe as hk_daily_assets,
+)
 
 
 def test_hk_connect_universe_uses_market_data_platform_backend():

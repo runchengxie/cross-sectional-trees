@@ -13,12 +13,11 @@ from ..execution_calendar import (
     resolve_execution_date,
 )
 from ..modeling import build_model, fit_model
-from ..transform import apply_score_postprocess
-from .dates import _build_trade_date_slices, _slice_with_train_window
 from ..portfolio import build_positions_by_rebalance
 from ..rebalance import get_rebalance_dates
 from ..split import build_sample_weight
-
+from ..transform import apply_score_postprocess
+from .dates import _build_trade_date_slices, _slice_with_train_window
 
 logger = logging.getLogger("cstree")
 

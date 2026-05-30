@@ -13,7 +13,6 @@ from ..pipeline.quality import enforce_liveops_quality_gate
 from . import holdings
 from .alloc_selection import load_holdings_payload
 
-
 TARGET_CONTRACT = "quant-execution-engine.targets/v2"
 KNOWN_MARKETS = {"HK", "US", "CN", "SG"}
 MARKET_SUFFIXES = {

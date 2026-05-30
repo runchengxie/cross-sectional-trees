@@ -5,7 +5,11 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from cstree.research.hk_financial_details import DEFAULT_MAPPING_FILE, analyze_probe, write_analysis_bundle
+from cstree.research.hk_financial_details import (
+    DEFAULT_MAPPING_FILE,
+    analyze_probe,
+    write_analysis_bundle,
+)
 
 
 def _write_probe_asset(

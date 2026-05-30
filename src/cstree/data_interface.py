@@ -1,14 +1,15 @@
 """Data interface to decouple provider wiring from research logic."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
 import logging
 import time
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Mapping, Optional
 
 import pandas as pd
 
+from .data_provider_contracts import require_supported_market
 from .data_providers import (
     fetch_daily,
     fetch_fundamentals,
@@ -17,7 +18,6 @@ from .data_providers import (
     normalize_market,
     resolve_provider,
 )
-from .data_provider_contracts import require_supported_market
 from .rqdata_runtime import (
     init_rqdatac as _init_rqdatac_runtime,
     patch_rqdatac_adjust_price_readonly as _patch_rqdatac_adjust_price_readonly,

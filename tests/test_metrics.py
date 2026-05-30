@@ -4,9 +4,9 @@ import pytest
 
 import cstree.metrics as metrics_mod
 from cstree.metrics import (
-    daily_ic_series,
     assign_daily_quantile_bucket,
     bucket_ic_summary,
+    daily_ic_series,
     estimate_turnover,
     hit_rate,
     quantile_returns,

@@ -9,7 +9,6 @@ import yaml
 
 from .repo_paths import find_repo_root
 
-
 EXTENDS_KEY = "extends"
 LEGACY_UNIVERSE_KEY = "universe"
 RESEARCH_UNIVERSE_KEY = "research_universe"

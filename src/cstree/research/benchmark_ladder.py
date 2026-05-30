@@ -13,7 +13,6 @@ import yaml
 
 from ..metrics import summarize_active_returns
 
-
 FIELDNAMES = [
     "benchmark_name",
     "role",

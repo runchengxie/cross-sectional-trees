@@ -3,10 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from cstree import cli
-from cstree import pipeline as pipeline_module
-from cstree.cli import common as cli_common
-from cstree.cli import universe as universe_cli
+from cstree import cli, pipeline as pipeline_module
+from cstree.cli import common as cli_common, universe as universe_cli
 from cstree.config_utils import resolve_pipeline_config, resolve_repo_preset_path
 
 

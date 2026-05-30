@@ -8,7 +8,6 @@ import pandas as pd
 
 from .data_tools.symbols import canonicalize_symbol_columns
 
-
 _DEFAULT_INDUSTRY_COLUMNS = (
     "industry_name",
     "first_industry_name",

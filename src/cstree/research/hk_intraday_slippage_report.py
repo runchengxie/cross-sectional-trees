@@ -12,7 +12,6 @@ from cstree.data_tools.symbols import normalize_symbol_for_market
 from cstree.intraday_paths import resolve_input_parquet_paths
 from cstree.repo_paths import find_repo_root, resolve_repo_path as resolve_repo_relative_path
 
-
 REPO_ROOT = find_repo_root(__file__)
 DEFAULT_REPORT_DIR = REPO_ROOT / "artifacts" / "reports"
 

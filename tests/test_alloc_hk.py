@@ -1,8 +1,8 @@
 import io
 import json
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 import pandas as pd
 import pytest

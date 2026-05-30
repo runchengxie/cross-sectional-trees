@@ -1,11 +1,9 @@
 import argparse
+import ast
 import fnmatch
 import re
 import subprocess
 from pathlib import Path
-
-from cstree import cli
-
 
 MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 INLINE_CODE_PATTERN = re.compile(r"`([^`\n]+)`")
@@ -268,6 +266,31 @@ def _extract_run_tests_modes(text: str) -> set[str]:
     return set(re.findall(r"\./scripts/dev/run_tests\.sh ([a-zA-Z0-9_-]+)", text))
 
 
+def test_docs_contract_module_imports_without_loading_cli_or_mdp():
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    module_imports = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Import | ast.ImportFrom)
+    ]
+
+    assert all(
+        not (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "cstree"
+            and any(alias.name == "cli" for alias in node.names)
+        )
+        for node in module_imports
+    )
+    assert all(
+        not (
+            isinstance(node, ast.Import)
+            and any(alias.name == "cstree.cli" for alias in node.names)
+        )
+        for node in module_imports
+    )
+
+
 def test_markdown_relative_links_exist():
     repo_root = _repo_root()
     tracked_paths = _tracked_repo_paths(repo_root)
@@ -357,6 +380,8 @@ def test_research_notes_have_minimal_metadata():
 
 
 def test_docs_cli_covers_public_cli_leaf_commands():
+    from cstree import cli
+
     docs_cli = (_repo_root() / "docs" / "cli.md").read_text(encoding="utf-8")
     expected_headings = {
         f"### cstree {' '.join(command_path)}"
