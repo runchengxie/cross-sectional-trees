@@ -89,7 +89,7 @@ uv sync --extra dev --extra rqdata
   * `configs/experiments/sweeps/` - 批量实验配置
 * `configs/local/` - 本地覆盖配置目录；约定上用于个人文件，默认不纳入版本控制
 * 支持 `extends` 机制减少配置复制，参考 `configs/catalog.csv` 索引表。
-* 研究对比时，优先保持 `universe`、`label`、`features`、`eval`、`backtest` 不变，只替换模型相关参数。
+* 研究对比时，优先保持 `research_universe`、`label`、`features`、`eval`、`backtest` 不变，只替换模型相关参数。
 * HK 线性模型批跑优先使用 `configs/experiments/baseline/hk_selected.yml` 作为基线配置。
 * HK 默认研究模板使用港股通 PIT universe；这只是仓库内置研究口径，不等于 provider 的港股覆盖边界。
 * 输出目录默认是 `artifacts/runs/<run_name>_<timestamp>_<hash>/`。

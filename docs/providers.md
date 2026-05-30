@@ -18,6 +18,7 @@
 
 以上是当前正式支持面的完整边界，不代表默认推荐。
 旧的多市场 / 多 provider 归档配置不再作为活跃入口维护。
+`configs/presets/cn.yml` 仅作为兼容和实验入口保留，不属于当前正式主线。
 
 ## 鉴权与初始化
 
@@ -74,7 +75,7 @@ fundamentals:
 * `pe_ratio_ttm`
 * `pb_ratio_ttm`
 
-如果 provider 原始返回列还是 `ts_code`，配置里应写 `column_map.symbol: ts_code`；不要再把 `ts_code` 当成主研究链路的 canonical 列名。
+如果 provider 原始返回列还是 `ts_code`，配置里应写 `column_map.symbol: ts_code`；主研究链路的标准列名统一为 `symbol`。
 
 ## `fundamentals.provider_overlay`
 
@@ -100,8 +101,8 @@ fundamentals:
 * Canonical 格式：`00001.HK`
 * RQData 调接口时会转换成：`00001.XHKG`
 
-仓库内部的 canonical 列名是 `symbol`。旧输入里的 `ts_code` / `stock_ticker` / `order_book_id` 仍然只作为历史资产读取兼容；新的配置、产物和研究代码应继续以 `symbol` 为主。`order_book_id` 可以保留在 RQData 边界层或 provider 元数据里，不应作为主研究链路列名。
-新增读取路径如果需要接受旧别名，应把兼容逻辑限制在输入边界，并继续输出 canonical `symbol`。
+仓库内部的标准列名是 `symbol`。旧输入里的 `ts_code` / `stock_ticker` / `order_book_id` 仍然只作为历史资产读取兼容；新的配置、产物和研究代码应继续以 `symbol` 为主。`order_book_id` 可以保留在 RQData 边界层或 provider 元数据里，不应作为主研究链路列名。
+新增读取路径如果需要接受旧别名，应把兼容逻辑限制在输入边界，并继续输出标准 `symbol`。
 
 ## 本地 HK 资产直读
 

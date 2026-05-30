@@ -29,7 +29,7 @@
 | 我想查港股或 RQData 专题资料 | `docs/rqdata/README.md` |
 | 我想看研究笔记和当前结论状态 | `docs/research/README.md` |
 
-## 五条阅读路径
+## 六条阅读路径
 
 1. 我想先跑起来：`docs/get-started.md`
 2. 我想先建立系统心智模型：`docs/pipeline-overview.md` → `docs/capabilities.md` → `docs/config.md` → `docs/outputs.md`

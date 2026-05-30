@@ -10,7 +10,7 @@
 | 使用场景 | 推荐模板 | 关键改动说明 |
 |------|---------|---------|
 | 首次跑通主流程 | `default` | 无特殊改动 |
-| 港股月频 Starter 模板（结合 PIT 股票池与 provider 基本面） | `hk` | 默认读取港股通研究股票池，不强制要求提供本地 PIT 基本面文件 |
+| 港股月频 Starter 模板（PIT 股票池 + 本地平台资产） | `hk` | 默认使用 `data.source_mode=platform_assets`，读取 `market-data-platform` 发布的本地 HK 资产和 PIT 基本面文件 |
 | HK selected 月频本地研究推荐入口 | `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml` | 依赖本地 HK 资产数据。一次性贯通 `tr_close`、balanced execution 以及本地 RQData 资产链路 |
 | HK selected 月频历史 benchmark 锚点 | `configs/experiments/baseline/hk_selected.yml` | 保留 `close` 结合固定 `25bps` 成本的旧口径，以便与历史结果进行横向对照 |
 | 港股季频 PIT 正式研究 | `configs/presets/hk_quarterly_pit_hybrid.yml` | 依赖本地 `pipeline_fundamentals.parquet` 文件 |
@@ -92,7 +92,7 @@ paths:
 ```yaml
 data:
   provider: rqdata       # 当前仅支持 rqdata
-  market: hk             # 当前仅支持 hk
+  market: hk             # 当前正式主线为 hk；cn 仅作为保留兼容 preset
   start_date: "20200101" # 支持具体日期或相对表达，如 "today", "t-1"
   end_date: "20241231"
   cache_tag: "experiment_a"  # 用于隔离不同实验的缓存版本
@@ -133,6 +133,7 @@ research_universe:
 
 * 历史配置键 `universe` 仍获向下兼容，但在新的内置模板与生成的 `config.used.yml` 中，将统一规范输出为 `research_universe`。
 * 兼容入口只用于读取历史配置；新增模板和文档示例应继续使用 `research_universe`。
+* 旧文档或历史配置里的 `universe.by_date_file` 对应当前规范键 `research_universe.by_date_file`。
 
 ### 模型配置 (`model`)
 

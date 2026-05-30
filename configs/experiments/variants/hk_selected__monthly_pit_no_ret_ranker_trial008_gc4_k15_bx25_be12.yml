@@ -70,7 +70,7 @@ fundamentals:
   market_cap_col: market_cap
   log_market_cap_col: log_mcap
 
-universe:
+research_universe:
   mode: pit
   require_by_date: true
   symbols: []

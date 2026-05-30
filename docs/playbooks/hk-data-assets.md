@@ -24,7 +24,7 @@ HK daily、PIT、valuation、industry、intraday、current contract、health、a
 * `data.source_mode=platform_assets`
 * `fundamentals.source=file`
 * `fundamentals.file`
-* `universe.by_date_file`
+* `research_universe.by_date_file`
 
 当 `fundamentals.source=provider` 或 `fundamentals.provider_overlay` 启用时，基本面缓存未命中仍会 lazy init `rqdatac` 读取服务商数据。这是研究 provider runtime，不是数据资产维护入口。
 

@@ -156,7 +156,7 @@ artifacts/assets/rqdata/hk/exchange_rate/<snapshot>/
 * `manifest.yml` 的 `status` 会记录本次镜像是否完整完成。
 * 这类镜像目录供下游项目复用，不属于 `artifacts/cache/` 的 query cache。
 * `intraday` 的 `manifest.yml` 还会记录每个 block 的来源 cache 路径、是否存在 `.parts/`、原始 `adjust_type`、quota 字段和聚合后的日期范围。
-* 对 RQData 来说，原生标识是 `order_book_id`；raw asset 新输出默认也统一写 canonical `symbol`。旧快照里的 `ts_code` 仍会在读取时自动兼容到 `symbol`。
+* 对 RQData 来说，原生标识是 `order_book_id`；raw asset 新输出默认也统一写标准 `symbol`。旧快照里的 `ts_code` 仍会在读取时自动兼容到 `symbol`。
 * 本地 merge / patch 生成的新快照也遵循同一口径：输出 parquet 和 `manifest.yml -> columns` 会归一成 `symbol`，不再把 `ts_code` 继续写回新产物。
 
 ## Metadata Catalog
@@ -582,7 +582,7 @@ artifacts/standardized/<market>/<dataset>/<name>/
 稳定 contract（版本演进时尽量保持不变）：
 
 1. `summary.json` 顶层固定键集合（`run/data/dataset/universe/label/split/eval/backtest/final_oos/positions/live/quality/fundamentals/industry/walk_forward`）。
-1. 研究主链路内部 canonical 标的列是 `symbol`；新生成的 run artifacts / CLI 输出默认只写 `symbol`。
+1. 研究主链路内部标准标的列是 `symbol`；新生成的 run artifacts / CLI 输出默认只写 `symbol`。
 1. `cstree universe hk-connect` 和 `cstree universe hk-daily-assets` 新生成的 universe CSV 也默认只写 `symbol`，不再主动补 `ts_code` / `stock_ticker`。
 1. 旧输入文件里的 `ts_code`、`stock_ticker`、`order_book_id` 仍会在读取时自动映射到 `symbol`。
 1. 新增输出路径不应把 legacy alias 重新写回主研究链路；需要保留 provider 原生标识时，优先放在边界层元数据列。
@@ -658,7 +658,7 @@ best-effort（可能为空、缺失或未产出文件）：
 | `entry_date` | 实际入场日（考虑 `shift_days`） |
 | `next_entry_date` | 下一次入场日（最后一期为空） |
 | `holding_window` | `entry_date -> next_entry_date`（最后一期为 `entry_date`） |
-| `symbol` | 标的代码（内部 canonical 列名） |
+| `symbol` | 标的代码（内部标准列名） |
 | `weight` | 目标权重；`backtest.weighting=equal` 时等权，`signal` 时为信号 softmax 权重 |
 | `signal` | 该标的预测信号值 |
 | `rank` | 当期截面排序名次 |
@@ -680,7 +680,7 @@ best-effort（可能为空、缺失或未产出文件）：
 
 1. 项目研究主链路内部已经改为以 `symbol` 作为主字段。
 1. 旧持仓文件如果仍是 `ts_code` / `stock_ticker` / `order_book_id`，CLI 读取时会自动兼容并规范到 `symbol`。
-1. `cstree holdings` / `cstree alloc` 的导出 payload 也只保留 canonical `symbol`，不会把这些 legacy alias 列原样透传回输出。
+1. `cstree holdings` / `cstree alloc` 的导出 payload 也只保留标准 `symbol`，不会把这些 legacy alias 列原样透传回输出。
 
 ### `positions_by_rebalance_oos.csv` / `positions_current_oos.csv`
 
@@ -1120,7 +1120,7 @@ artifacts/sweeps/<tag>/
 
 ### `cstree export-targets`
 
-该命令将已保存的 long-only live 持仓导出成交易执行引擎可消费的 canonical `targets.json`，且默认同步写出 lineage sidecar。命令本身不触发券商连接或下单。
+该命令将已保存的 long-only live 持仓导出成交易执行引擎可消费的标准 `targets.json`，且默认同步写出来源记录伴随文件。命令本身不触发券商连接或下单。
 
 执行输入文件 `<out>` 的固定顶层字段：
 

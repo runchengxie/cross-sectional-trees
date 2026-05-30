@@ -22,7 +22,7 @@
 | 标签与特征 | `label`、`features` | 生成未来收益标签，构造量价和财务特征 | 训练 / 评估用特征矩阵 |
 | 模型训练 | `model` | 拟合 `xgb_regressor` / `xgb_ranker` / `ridge` / `elasticnet` | 预测分数、特征重要度 |
 | 评估与回测 | `eval`、`backtest` | 计算 IC、分位收益、Top-K、walk-forward、回测和 benchmark 对比 | `summary.json`、评估 CSV、持仓文件 |
-| live 导出 | `live` | 从最新 run 读取目标持仓、快照、分配结果和显式执行目标交接文件 | `positions_current*.csv`、snapshot / alloc 输出、canonical `targets.json` |
+| live 导出 | `live` | 从最新 run 读取目标持仓、快照、分配结果和显式执行目标交接文件 | `positions_current*.csv`、snapshot / alloc 输出、标准 `targets.json` |
 
 ## 配置块分工
 

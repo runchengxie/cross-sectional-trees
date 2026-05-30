@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "${CSML_SKIP_GIT_HOOKS:-0}" == "1" ]]; then
+if [[ "${CSTREE_SKIP_GIT_HOOKS:-0}" == "1" || "${CSML_SKIP_GIT_HOOKS:-0}" == "1" ]]; then
   exit 0
 fi
 

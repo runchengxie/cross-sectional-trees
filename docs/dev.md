@@ -56,7 +56,7 @@ cstree run --config default
 
 * `default` 目前指向 HK starter 模板。
 * 运行 `default` 或 `hk` 前，需要先安装 `--extra rqdata`。
-* `configs/presets/hk.yml` 是 HK 月频 starter 路线，包含 PIT 股票池和远端 provider 基本面。
+* `configs/presets/hk.yml` 是 HK 月频 starter 路线，默认通过 `data.source_mode=platform_assets` 读取本地平台资产和 PIT 基本面文件。
 * `configs/presets/hk_quarterly_pit_hybrid.yml` 是 HK 季频 PIT 基本面入口。
 * `configs/experiments/baseline/` 和 `configs/experiments/variants/` 下的 HK selected 官方模板，主要基于季度 PIT 路线。
 * 日常开发优先验证 `default`、`hk` 和 HK selected 这些核心路线。
@@ -146,7 +146,7 @@ scripts/dev/run_tests.sh maintainability --json --limit 20
 说明：
 
 * 本地 hook 用来提前发现问题，不能替代远端 CI。
-* 特殊情况下可以用 `git commit --no-verify` 或 `git push --no-verify` 跳过。
+* `CSTREE_SKIP_GIT_HOOKS=1` 可跳过本仓库安装的 hooks。`CSML_SKIP_GIT_HOOKS=1` 仍被短期兼容，但不再推荐。
 * Ruff 已启用 formatter、import 排序和基础复杂度检查。`lint` 会拦截高风险语法错误、新增高复杂函数，并检查本次改动的 Python import 排序、未使用 import、未使用变量、lambda / closure late-binding 风险和新增 Python 长行。
 * Pyright 已接入 `typecheck` 和 CI。当前只检查 `pyproject.toml` 中 `[tool.pyright].include` 列出的稳定模块子集；扩大覆盖范围时，应先修复对应模块的类型问题，再把路径加入 include。
 * 历史 import 和 format 遗留问题可用 `imports`、`format-all` 单独盘点。

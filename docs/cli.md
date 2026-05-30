@@ -352,7 +352,7 @@ cstree alloc-hk --config path/to/live.yml --source live --execution-calendar hk_
 
 ### cstree export-targets
 
-将已有 live run 中的 long-only 目标持仓导出为 `quant-execution-engine` 的 canonical `targets.json`。该命令只生成执行交接文件，不连接券商、不预演订单、更不会提交订单。
+将已有 live run 中的 long-only 目标持仓导出为 `quant-execution-engine` 的标准 `targets.json`。该命令只生成执行交接文件，不连接券商、不预演订单、更不会提交订单。
 
 ```bash
 cstree export-targets \

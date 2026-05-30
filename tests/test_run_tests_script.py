@@ -98,7 +98,7 @@ def test_run_tests_script_lint_ratchet_mentions_high_signal_rules():
         ("slow", ["run", "python", "-m", "pytest", "--no-cov", "-m", "slow and not integration"]),
         ("integration", ["run", "python", "-m", "pytest", "--no-cov", "-m", "integration"]),
         ("coverage", ["run", "python", "-m", "pytest", "--cov=cstree", "--cov-report=term-missing"]),
-        ("typecheck", ["run", "--extra", "dev", "pyright"]),
+        ("typecheck", ["tool", "run", "--from", "pyright", "pyright"]),
     ],
 )
 def test_run_tests_script_mode_maps_to_expected_pytest_argv(tmp_path, mode, expected_argv):

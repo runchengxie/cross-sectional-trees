@@ -13,7 +13,7 @@
 | 实施阶段 | 核心目标 | 关键产出物 |
 |------|------|---------|
 | 跑通最小流程 | 验证本地环境并理解主流程输出 | `summary.json`、`positions_current.csv` |
-| 定义研究单元 | 锁定 market、universe、fundamentals 与 label | 稳定的基线配置（Baseline） |
+| 定义研究单元 | 锁定 market、research_universe、fundamentals 与 label | 稳定的基线配置（Baseline） |
 | 开展正式研究 | 确立基线、执行模型对比与开展调参 | 多组 run 的详细对比结果 |
 | 产出与归档 | 提取快照、计算分配及执行数据归档 | 最终持仓文件、实时快照与备份快照 |
 
@@ -30,7 +30,7 @@ cstree run --config hk
 在此处的 `hk` 别名指代了以下特性组合：
 
 * 港股通的 `PIT universe` 设定
-* 来源于 `provider` 的基本面数据
+* 默认读取 `market-data-platform` 发布的本地 HK 日线、复权因子、instrument 与 PIT 基本面文件
 * 月频 Starter 基础路线
 
 该模板极其适合用于环境验证与启动参考。请勿将其等同于当前 HK selected 月频本地研究的正式推荐入口。
@@ -46,7 +46,7 @@ cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml
 研究单元直接决定了整体研究口径，必须优先锁定以下几类核心配置：
 
 * `market`
-* `universe`
+* `research_universe`
 * `fundamentals`
 * `label`
 * `backtest`
@@ -127,8 +127,8 @@ cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000
 
 ### 4.3 导出执行目标文件
 
-将已经保存的 long-only live 持仓显式导出为交易执行引擎可消费的 canonical
-`targets.json`。该命令只生成目标文件及 lineage sidecar，不触发下单：
+将已经保存的 long-only live 持仓显式导出为交易执行引擎可消费的标准
+`targets.json`。该命令只生成目标文件及来源记录伴随文件，不触发下单：
 
 ```bash
 cstree export-targets \

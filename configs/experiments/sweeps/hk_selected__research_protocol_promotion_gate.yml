@@ -4,8 +4,8 @@ promotion_gate:
   comparability_keys:
     - market
     - data.provider
-    - universe.mode
-    - universe.by_date_file
+    - research_universe.mode
+    - research_universe.by_date_file
     - label.target_col
     - label.horizon_days
     - label.shift_days

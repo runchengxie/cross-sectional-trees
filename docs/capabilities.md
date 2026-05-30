@@ -30,7 +30,7 @@
 | `cstree snapshot` | 运行实盘快照，或从现有的运行结果中导出快照 | 文本 / csv / json |
 | `cstree alloc` | 基于持仓做等权手数分配 | 文本 / csv / json |
 | `cstree alloc-hk` | 基于持仓做港股执行前分配分析（自定义权重、估值分层、二次补仓、资金 × 选股数量场景矩阵） | 文本 / csv / json / xlsx |
-| `cstree export-targets` | 将已保存的 long-only live 持仓显式导出为交易执行引擎 canonical `targets.json` 并记录 lineage | `targets.json`、`targets.json.lineage.json` |
+| `cstree export-targets` | 将已保存的 long-only live 持仓显式导出为交易执行引擎标准 `targets.json` 并记录来源 | `targets.json`、`targets.json.lineage.json` |
 | `cstree init-config` | 导出仓库预设配置模板 | 本地 YAML 文件 |
 | `cstree backup-data` | 归档本地缓存、股票池、配置以及可选的当前冻结资产集 | `artifacts/snapshots/<name>/` |
 | `cstree data ...` | 兼容入口，实际实现由 `market-data-platform` 的 `marketdata data ...` 承载 | `artifacts/metadata/*` 或 `artifacts/standardized/*` |
@@ -129,7 +129,7 @@
 * 支持配置交易成本、换手缓冲区、持仓权重分配、业绩基准对比以及头寸退出规则。
 * 支持生成历史调仓记录文件、当前最新持仓文件以及当期与上期的调仓差异文件。
 * 支持生成实盘环境下的目标持仓快照。
-* 支持将已确认的 long-only live 持仓导出为 `quant-execution-engine` 可消费的 canonical `targets.json`，同时保留独立 lineage sidecar；此导出不触发下单。
+* 支持将已确认的 long-only live 持仓导出为 `quant-execution-engine` 可消费的标准 `targets.json`，同时保留独立来源记录伴随文件；此导出不触发下单。
 
 输出的详细字段约定请参阅 `docs/outputs.md`。
 

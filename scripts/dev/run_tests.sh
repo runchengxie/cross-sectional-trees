@@ -167,7 +167,7 @@ case "$mode" in
     check_data_ops_boundary
     ;;
   typecheck)
-    exec uv run --extra dev pyright "$@"
+    exec uv tool run --from pyright pyright "$@"
     ;;
   imports)
     run_ruff check --select I src tests scripts "$@"
