@@ -1,12 +1,9 @@
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-import yaml
 
-from cstree import pipeline
 from cstree.data_interface import DataInterface
 from tests._pipeline_test_utils import _build_frames, _run_pipeline
 

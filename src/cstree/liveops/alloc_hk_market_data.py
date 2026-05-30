@@ -12,7 +12,6 @@ import pandas as pd
 
 from . import alloc as base_alloc
 from .alloc_hk_common import (
-    coerce_scalar,
     get_attr_or_key,
     is_missing_value,
     pick_last_non_missing,
@@ -63,7 +62,7 @@ def build_order_book_mapping(
 ) -> tuple[list[str], list[str], dict[str, str]]:
     symbols = [item.symbol for item in tickers]
     order_book_ids = [base_alloc._to_rq_order_book_id(symbol, "hk") for symbol in symbols]
-    symbol_to_oid = dict(zip(symbols, order_book_ids))
+    symbol_to_oid = dict(zip(symbols, order_book_ids, strict=False))
     return symbols, order_book_ids, symbol_to_oid
 
 

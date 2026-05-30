@@ -4,8 +4,6 @@ import logging
 import sys
 from typing import Any
 
-import numpy as np
-
 from ..compat import ensure_numpy_nan_alias
 from .dataset_sampling import (
     apply_feature_missing_fill,
@@ -180,7 +178,6 @@ def _prepare_feature_dataset(
         else:
             sys.exit(f"Missing features after engineering: {missing_features}")
 
-    meta_cols = ["is_tradable"] if "is_tradable" in df.columns else []
     eval_extra_df = None
     bucket_cols = []
     if bucket_ic_enabled and bucket_ic_schemes:

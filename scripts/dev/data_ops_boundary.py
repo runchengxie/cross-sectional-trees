@@ -7,8 +7,7 @@ import argparse
 import json
 import re
 import subprocess
-import sys
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 

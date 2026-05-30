@@ -60,6 +60,15 @@ uv sync --extra dev --extra rqdata
 
 保持入口清晰，不要把同一段说明复制到多个文件。
 
+### 市场称谓与表述口径
+
+文档、注释、报错信息和面向用户的说明文字应使用清晰、稳妥的市场称谓：
+
+* 优先写“中国香港市场”“港股”“港股通”“中国大陆市场”“A 股”等表述。
+* 避免把中国大陆市场与中国香港市场写成政治或地域对立关系。
+* 面向用户的正文先写业务含义；命令、路径、配置键、资产键和 provider API 示例只用于说明现有接口。
+* 文档润色不要顺手重命名公开接口、路径或历史产物；命名变更应单独评估兼容影响。
+
 * `README.md` 只放项目定位、快速开始、最常用入口和文档导航。
 * `docs/README.md` 是 `docs/` 的首页。
 * `docs/cli.md` 维护命令和参数，不在 `README.md` 里重复展开。
@@ -90,8 +99,8 @@ uv sync --extra dev --extra rqdata
 * `configs/local/` - 本地覆盖配置目录；约定上用于个人文件，默认不纳入版本控制
 * 支持 `extends` 机制减少配置复制，参考 `configs/catalog.csv` 索引表。
 * 研究对比时，优先保持 `research_universe`、`label`、`features`、`eval`、`backtest` 不变，只替换模型相关参数。
-* HK 线性模型批跑优先使用 `configs/experiments/baseline/hk_selected.yml` 作为基线配置。
-* HK 默认研究模板使用港股通 PIT universe；这只是仓库内置研究口径，不等于 provider 的港股覆盖边界。
+* 港股线性模型批跑优先使用 `configs/experiments/baseline/hk_selected.yml` 作为基线配置。
+* 港股默认研究模板使用港股通 PIT universe；这只是仓库内置研究口径，不等于 provider 的港股覆盖边界。
 * 输出目录默认是 `artifacts/runs/<run_name>_<timestamp>_<hash>/`。
 * 看结果时，先读 `summary.json`、`config.used.yml` 和持仓文件。
 * 线性模型汇总时，优先排除或单独标记 `flag_constant_prediction=true`、`flag_zero_feature_importance=true` 的退化 run。
@@ -113,14 +122,14 @@ uv sync --extra dev --extra rqdata
 ## 大数据检查约定
 
 * 对 `artifacts/assets/`、`artifacts/cache/` 下的大型 parquet / `.parts/` 目录，默认不要让代理直接做整块读取后再在会话里展开结果。
-* HK 数据资产健康检查、PIT coverage、current contract 审计和 asset release 已迁到 `market-data-platform`；本仓库只读取其产出的报告或数据文件。
+* 中国香港市场数据资产健康检查、PIT coverage、current contract 审计和 asset release 已迁到 `market-data-platform`；本仓库只读取其产出的报告或数据文件。
 * 对 intraday 数据，优先把正式资产目录或同名 `.parts/` 目录传给检查命令，不要默认直扫合并后的超大 parquet。
 * 需要保留检查痕迹时，优先使用 `--format json --out artifacts/reports/<name>.json`，并额外把 stdout / stderr 重定向到日志文件，避免只在交互上下文里看结果。
 * 如果检查预计会扫描大量数据或运行很久，优先由用户本地执行命令并把 `artifacts/reports/*.json` 与对应 log 提供给代理复核；不要默认在代理会话里直接重跑整套重 I/O 检查。
 
 ## 资源与长任务约定
 
-* HK PIT、full-market assets、monthly live snapshot、sweep / tune、XGBoost ranker 训练都按重任务处理；开始前先确认输入规模、输出目录、是否已有可复用 run，以及机器内存是否足够。
+* 中国香港市场 PIT、full-market assets、monthly live snapshot、sweep / tune、XGBoost ranker 训练都按重任务处理；开始前先确认输入规模、输出目录、是否已有可复用 run，以及机器内存是否足够。
 * 在 8GiB 级别内存环境里，不要默认在代理会话中直接跑全量 PIT 宽表 + 完整 research pipeline。优先先做窄列投影、样本 / 日期 smoke、或让用户在本地 shell 中运行完整命令。
 * 重任务输出必须落到 `run.log`、`summary.json`、`artifacts/reports/*.json` 这类文件；不要依赖交互上下文保存唯一日志。
 * 如果 Codex / shell 会话中断、WSL 重启或命令无 traceback 消失，先取证再决定是否重跑：
@@ -139,7 +148,7 @@ uv sync --extra dev --extra rqdata
 * 文档、脚本说明或测试入口改动，优先跑：`uv run python -m pytest tests/test_docs_contracts.py tests/test_repo_path_references.py tests/test_run_tests_script.py -q`。
 * 如需在本地提前拦住文档 / 路径 / 快回归问题，可安装仓库内置 git hooks：`./scripts/dev/install_git_hooks.sh`。
 * 代码改动后，运行与改动范围匹配的测试。
-* HK + RQData research provider 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py`。
+* 中国香港市场 RQData research provider 相关改动，至少考虑回归：`tests/test_summarize_runs.py`、`tests/` 下的 `test_pipeline_filters_*.py`、`tests/test_fundamentals_providers.py`、`tests/test_universe_tools.py`、`tests/test_data_providers_cache.py`。
 
 ## 说明
 

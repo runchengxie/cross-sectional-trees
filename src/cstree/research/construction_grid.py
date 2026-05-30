@@ -481,7 +481,6 @@ def _evaluate_variant(context: dict[str, Any], variant: dict[str, Any]) -> dict[
             row["eval_turnover_mean"] = float(turnover.mean()) if not turnover.empty else None
 
         summary = context["summary"]
-        backtest_cfg = cfg.get("backtest") if isinstance(cfg.get("backtest"), dict) else {}
         execution_cfg = _first_non_empty(variant.get("execution"), cfg.get("execution"))
         exit_price_policy = str(
             _first_non_empty(

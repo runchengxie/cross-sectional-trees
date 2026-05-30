@@ -401,7 +401,7 @@ def _resolve_label_horizon_state(
         next_dates = [
             rebalance_array[i] if i < len(rebalance_array) else pd.NaT for i in idx
         ]
-        label_next_rebalance_map = dict(zip(label_trade_dates, next_dates))
+        label_next_rebalance_map = dict(zip(label_trade_dates, next_dates, strict=False))
         label_horizon_gap = estimate_rebalance_gap(label_trade_dates, label_rebalance_dates)
         if np.isfinite(label_horizon_gap):
             logger.info(
