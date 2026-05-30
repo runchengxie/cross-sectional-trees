@@ -6,7 +6,7 @@
 阅读收益：掌握四阶段的标准工作流以及每个阶段的下一步行动指引。\
 相关页面：`docs/get-started.md`、`docs/pipeline-overview.md`、`docs/playbooks/README.md`、`docs/cli.md`、`docs/config.md`、`docs/outputs.md`
 
-在开展 HK selected 正式研究之前，请先从 `docs/playbooks/README.md` 进入专项指引。本页更适合作为一套通用的工作流速查方案。
+如果目标是 A 股主线迁移验证，请先看 `docs/playbooks/a-share-baseline.md`，再按本页工作流推进；如果目标是港股复现、对照或明确跟踪需求，请从 `docs/playbooks/README.md` 进入 HK selected legacy research 指引。本页更适合作为一套通用的工作流速查方案。
 
 ## 研究流程概览
 
@@ -21,21 +21,30 @@
 
 请遵循 `docs/get-started.md` 中的指引跑通一次最小化流程。
 
-若准备着手 HK 月频 Starter 路线，可执行以下命令再次运行：
+若准备验证 A 股迁移候选，优先运行：
+
+```bash
+cstree run --config default_next
+```
+
+在此处的 `default_next` 别名指代了以下特性组合：
+
+* A 股 / TuShare / platform assets
+* `daily_clean` price-only baseline 加估值 overlay
+* 静态股票池和基础交易规则过滤
+* default 切换前的候选入口
+
+它不代表 A 股已经具备完整 PIT universe、PIT fundamentals、行业历史或券商执行等价能力。
+
+若准备复现或对照 HK 月频 Starter 路线，可执行：
 
 ```bash
 cstree run --config hk
 ```
 
-在此处的 `hk` 别名指代了以下特性组合：
+在此处的 `hk` 别名指代港股 legacy reference：港股通 `PIT universe`、本地 HK 日线/复权因子/instrument/PIT 基本面文件和月频 Starter 基础路线。该模板适合历史兼容、复现和对照；请勿将其等同于新增研究默认入口。
 
-* 港股通的 `PIT universe` 设定
-* 默认读取 `market-data-platform` 发布的本地 HK 日线、复权因子、instrument 与 PIT 基本面文件
-* 月频 Starter 基础路线
-
-该模板极其适合用于环境验证与启动参考。请勿将其等同于当前 HK selected 月频本地研究的正式推荐入口。
-
-若计划执行季频 `PIT fundamentals` 路线，请先查阅 `docs/playbooks/hk-data-assets.md` 以准备本地 `pipeline_fundamentals.parquet`，随后再运行：
+若计划执行港股季频 `PIT fundamentals` 路线，请先查阅 `docs/playbooks/hk-data-assets.md` 以准备本地 `pipeline_fundamentals.parquet`，随后再运行：
 
 ```bash
 cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml
@@ -59,7 +68,7 @@ cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml
 
 ### 3.1 建立 benchmark 阶梯
 
-首先应当把各级 benchmark 顺序跑通，确立比较基准之后再进行模型对照或参数调优：
+首先应当把各级 benchmark 顺序跑通，确立比较基准之后再进行模型对照或参数调优。A 股迁移时需要建立 A 股自己的 benchmark ladder，不要直接沿用下面的港股 legacy benchmark。港股 legacy research 可参考：
 
 ```bash
 cstree run --config configs/experiments/baseline/hk_selected__quarterly_price_only.yml
@@ -70,7 +79,7 @@ cstree summarize --runs-dir artifacts/runs --sort-by score
 cstree summarize --runs-dir artifacts/runs --comparability-class direct --sort-by dsr
 ```
 
-这三条配置固定了同一个季度的研究单元。它们用于解答“alpha 收益究竟来自 price-only、core PIT 还是 hybrid 增量”这一核心问题。完整的基准分层结构请见 `docs/concepts/benchmark-protocol.md`。
+这三条配置固定了港股 legacy 季度研究单元。它们用于解答“alpha 收益究竟来自 price-only、core PIT 还是 hybrid 增量”这一核心问题。完整的基准分层结构请见 `docs/concepts/benchmark-protocol.md`。
 
 ### 3.2 开展模型对比
 
@@ -82,26 +91,31 @@ cstree summarize --runs-dir artifacts/runs --comparability-class direct --sort-b
 
 关于模型选择的建议请见 `docs/concepts/model-selection.md`，完整的 benchmark 协议请见 `docs/concepts/benchmark-protocol.md`。
 
-### 3.3 深入 HK selected 研究
+### 3.3 深入具体市场路线
 
-关于 HK selected 的路线选择、PIT 资产准备工作以及模板沉淀规则，均收录于 `docs/playbooks/` 目录下：
+A 股迁移候选先看：
+
+* A 股 baseline：`docs/playbooks/a-share-baseline.md`
+* 生命周期和 default 切换条件：`docs/market-lifecycle.md`
+
+关于 HK selected legacy research 的路线选择、PIT 资产准备工作以及模板沉淀规则，均收录于 `docs/playbooks/` 目录下：
 
 * 路线选择指引：`docs/playbooks/hk-selected.md`
 * 资产准备指南：`docs/playbooks/hk-data-assets.md`
 * 模板维护规范：`docs/playbooks/research-template-design.md`
 
-倘若本地的 HK assets 已经就绪，当前首推的月频研究入口为：
+倘若本地的 HK assets 已经就绪，且有复现、对照或明确跟踪需求，港股 legacy 月频参考入口为：
 
 ```bash
 cstree run --config configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml
 ```
 
-该路线一次性打通了 `tr_close`、balanced execution 以及本地资产读取链路。  
+该路线一次性打通了 `tr_close`、balanced execution 以及本地资产读取链路，但不再代表新增研究默认入口。
 `configs/experiments/baseline/hk_selected.yml` 依然作为历史 benchmark 锚点与低依赖对照项保留。请避免直接拿它充当当下的默认研究入口。
 
 ### 3.4 线性模型搜索
 
-利用以下命令执行批量线性搜索：
+以下命令是港股 legacy 批量线性搜索示例；新增 A 股研究应先固定 A 股 baseline 和 benchmark ladder：
 
 ```bash
 cstree sweep-linear --sweep-config configs/experiments/sweeps/hk_selected__linear_a.yml

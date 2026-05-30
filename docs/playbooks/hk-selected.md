@@ -2,19 +2,21 @@
 
 用途：帮助选择 HK selected 路线的频率、数据路线和比较顺序。\
 范围：只给路线判断，不展开参数定义、资产整备细节或专题研究流水账。\
-适合读者：准备开始 HK selected 研究，或准备把现有实验收口成稳定路线的人。\
-阅读后应得到一条按当前仓库模板和最新研究结论整理过的可执行路线图。\
+适合读者：需要复现、对照或少量继续跟踪 HK selected legacy research 的人。\
+阅读后应得到一条按当前仓库模板和历史研究结论整理过的 legacy research 路线图。\
 相关页面：`docs/playbooks/README.md`、`docs/playbooks/hk-data-assets.md`、`docs/playbooks/research-template-design.md`、`docs/concepts/pit-coverage.md`、`docs/concepts/benchmark-protocol.md`、`docs/research/notes/hk-monthly-current-state-20260330.md`、`docs/research/notes/hk-monthly-time-window-design-20260330.md`、`docs/research/notes/hk-monthly-industry-treatment-20260404.md`、`docs/research/notes/hk-quarterly-current-state-20260329.md`、`docs/cli.md`、`docs/config.md`
 
-页面性质：`current-state` \
+页面性质：`legacy-research` \
 最后核对时间：`2026-03-31` \
 权威来源：当前 `configs/` 模板、相关研究笔记和 benchmark protocol \
 冲突优先级：如果与具体 run 的 `config.used.yml` 冲突，以 run 产物为准；如果与当前 benchmark protocol 冲突，以协议页为准
 
+> 生命周期提示：HK selected 已从默认主线降级为 legacy research lane。它仍用于历史复现、跨市场对照、方法论参考和明确资金/模拟盘/人工跟踪需求；新增主线迁移优先看 `docs/playbooks/a-share-baseline.md` 和 `docs/market-lifecycle.md`。
+
 本页按当前 `configs/` 模板、`docs/` 文档分工和截至 `2026-03-31` 的仓库内研究结论整理。\
 历史 run 里仍然保留了旧口径；复现旧结果时，请先看 `config.used.yml`。
 
-任务摘要：先选频率，再选数据路线；`fundamentals.source=file` 的 PIT 路线先做覆盖率体检；季度正式 benchmark 按 `price-only -> pit-core -> pit-core-hybrid` 递进；模型比较只在同一个研究单元里进行。
+任务摘要：先确认确实需要港股 legacy research，再选频率和数据路线；`fundamentals.source=file` 的 PIT 路线先做覆盖率体检；季度 legacy benchmark 按 `price-only -> pit-core -> pit-core-hybrid` 递进；模型比较只在同一个研究单元里进行。
 
 ## 1. 先看结论
 
@@ -36,15 +38,15 @@
 阅读导航：
 
 * 路线总览看 [README.md](./README.md)
-* PIT 资产准备看 [hk-data-assets.md](./hk-data-assets.md)
-* 配置派生和模板边界看 [research-template-design.md](./research-template-design.md)
+* PIT 资产准备看 `docs/playbooks/hk-data-assets.md`
+* 配置派生和模板边界看 `docs/playbooks/research-template-design.md`
 * PIT 体检怎么解读看 `docs/concepts/pit-coverage.md`
 * benchmark 阶梯定义看 `docs/concepts/benchmark-protocol.md`
 * overlay 路线现行口径先看 `docs/research/notes/hk-quarterly-current-state-20260329.md`
 
-## 2. 主线流程
+## 2. Legacy research 流程
 
-HK selected 主线研究，按下面 8 步推进最稳妥：
+HK selected legacy research，按下面 8 步推进最稳妥：
 
 1. 先选频率：`M` / `Q` / `Y`
 2. 再选数据路线：`纯量价` / `量价 + provider 基本面` / `量价 + PIT 财务`
@@ -52,7 +54,7 @@ HK selected 主线研究，按下面 8 步推进最稳妥：
 4. 如果走季度 PIT 路线，先跑 `inspect-hk-pit-coverage`
 5. 固定同一研究单元后，先跑特征 benchmark，再做模型比较
 6. 对候选模型先跑固定分数组合层比较，不要把模型输出和仓位构建混在一起解释
-7. 候选要替换主线前，先过 promotion gate：可比性、walk-forward、final OOS、成本换手和 benchmark evidence 都要齐
+7. 候选要替换 legacy reference 前，先过 promotion gate：可比性、walk-forward、final OOS、成本换手和 benchmark evidence 都要齐
 8. `provider_overlay`、抗漂移和更细的验证，放到主线稳定之后再展开
 
 这里的“研究单元”至少包含这几件事：
@@ -62,12 +64,12 @@ HK selected 主线研究，按下面 8 步推进最稳妥：
 * 股票池口径
 * 是否依赖本地 PIT 文件
 
-只要这些边界没变，你大多还在同一个研究单元里。  
+只要这些边界没变，你大多还在同一个研究单元里。
 同一研究单元里可以换模型、调参数、删少量字段；跨出这个单元，就已经是在比较整条研究路线。
 
 ## 3. 研究矩阵
 
-这张表只回答“当前仓库里，你应该从哪一格开始”。  
+这张表只回答“当前仓库里，你应该从哪一格开始”。
 表里写“需要本地派生”的格子，表示代码支持，但没有单独维护成官方 benchmark 模板。
 
 | 频率 | 纯量价 | 量价 + provider 基本面 | 量价 + PIT 财务 |
@@ -113,7 +115,7 @@ HK selected 主线研究，按下面 8 步推进最稳妥：
 
 ### 4.1 Monthly Time-Split Policy
 
-这节只定义当前 monthly 主线的正式时间口径。  
+这节只定义当前 monthly 主线的正式时间口径。
 完整推导、资产边界核对和 probe 历史，继续看 `docs/research/notes/hk-monthly-time-window-design-20260330.md` 与 `docs/research/notes/hk-monthly-current-state-20260330.md`。
 
 先分清楚三件事：
@@ -134,7 +136,7 @@ HK selected 主线研究，按下面 8 步推进最稳妥：
 * `52` 个 `main test` dates
 * `24` 个 `final OOS` dates
 
-它对应的是当前 latest fixed-window monthly 研究入口，而不是所有历史 run 的统一事实。  
+它对应的是当前 latest fixed-window monthly legacy research 入口，而不是所有历史 run 的统一事实。
 如果某次具体 run 的 `summary.json` / `config.used.yml` 与这里冲突，以 run 产物为准。
 
 这三段各自回答的问题不同：
@@ -146,12 +148,12 @@ HK selected 主线研究，按下面 8 步推进最稳妥：
 
 当前默认判断也一并固定下来：
 
-* `2015` 起的完整 monthly 样本池仍是默认主线。
+* `2015` 起的完整 monthly 样本池仍是港股 legacy reference。
 * `30m final OOS` 更适合当 stress sidecar。
 * `2016-12-05` / `2017+` modern-only 窗口更适合当 robustness sidecar，不适合直接替换默认主线。
 * 对月频来说，约 `2` 年 `final_oos` 够做候选筛选，不够当“长期稳健性已充分验证”的最终证据。
 
-如果你要把某个 monthly challenger 升成新主线，建议额外跑：
+如果你要把某个 monthly challenger 升成新的港股 legacy reference，建议额外跑：
 
 ```bash
 cstree construction-grid \
@@ -208,7 +210,7 @@ cstree run --config configs/experiments/baseline/hk_selected.yml
 这里先固定两个判断：
 
 * 季度路线仍然读取日线行情；变化的是 `label`、`eval` 和 `backtest` 的 rebalance 频率。
-* 当前官方 HK selected benchmark protocol 的主线，是季度 `price-only -> pit-core -> pit-core-hybrid`。
+* 当前 HK selected legacy benchmark protocol 的主线，是季度 `price-only -> pit-core -> pit-core-hybrid`。
 
 | 数据路线 | 起点配置 | 是否需要本地 PIT 文件 | 更适合回答的问题 |
 | --- | --- | --- | --- |
@@ -233,7 +235,7 @@ cstree run --config configs/experiments/baseline/hk_selected.yml
 * 再确认 PIT 特征有没有增量
 * 最后才回答“哪种模型更合适”
 
-这里的 `core PIT`，指的是覆盖率较高的财务主项和少量稳健派生项。  
+这里的 `core PIT`，指的是覆盖率较高的财务主项和少量稳健派生项。
 低覆盖字段、更宽的字段池和专题路线，放到主线稳定之后再加。
 
 ### 5.2 季度 PIT 的当前模板状态
@@ -269,7 +271,7 @@ cstree run --config configs/experiments/baseline/hk_selected.yml
 
 ### 5.4 季度 PIT 的官方 benchmark 与 challenger
 
-当前官方季度 benchmark protocol 的入口已经收口到下面这些配置：
+当前港股 legacy 季度 benchmark protocol 的入口已经收口到下面这些配置：
 
 * `configs/experiments/baseline/hk_selected__quarterly_price_only.yml`
 * `configs/experiments/baseline/hk_selected__quarterly_pit_core.yml`
@@ -285,7 +287,7 @@ cstree run --config configs/experiments/baseline/hk_selected.yml
 * `ridge`：线性 sanity benchmark
 * `elasticnet`：稀疏线性 challenger
 
-这套分工和“某次局部实验里哪种模型分数更高”是两回事。  
+这套分工和“某次局部实验里哪种模型分数更高”是两回事。
 如果你在旧笔记或历史 run 里看到 `xgb_ranker` 某次赢了 `xgb_regressor`，请把它理解成特定研究单元下的一次结果，不要自动外推成全局默认。
 
 ## 6. 年度 `Y` 路线
@@ -344,7 +346,7 @@ cstree summarize \
 * `eval`
 * `backtest`
 
-如果这些块一起变了，你比较的就不再是模型，而是整条研究路线。  
+如果这些块一起变了，你比较的就不再是模型，而是整条研究路线。
 如果你还要继续细化线性模型，再单独用 `cstree sweep-linear` 做后续搜索。
 
 ## 8. 什么时候必须准备 PIT 财务文件
@@ -355,7 +357,7 @@ cstree summarize \
 * `fundamentals.enabled=false`：不需要本地 PIT 文件
 * `fundamentals.source=file`：需要本地 PIT 文件
 
-最短准备流程：在 `market-data-platform` 生成 PIT flat file 和 by-date universe，完成 coverage / health 检查，然后把生成路径写入本仓库配置。研究侧消费边界看 [hk-data-assets.md](./hk-data-assets.md)。
+最短准备流程：在 `market-data-platform` 生成 PIT flat file 和 by-date universe，完成 coverage / health 检查，然后把生成路径写入本仓库配置。研究侧消费边界看 `docs/playbooks/hk-data-assets.md`。
 
 ## 9. 进阶路线：`provider valuation overlay`
 
@@ -372,7 +374,7 @@ cstree summarize \
 
 当前使用方式有 3 条原则：
 
-* 先把官方 `quarterly_pit_core_hybrid` 主线跑稳，再进入 overlay
+* 先把港股 legacy `quarterly_pit_core_hybrid` reference 跑稳，再进入 overlay
 * 日频估值直接走 `provider_overlay`；不要把它写回稀疏 PIT 文件后再解释结果
 * 现行专题结论和研究边界先看 `docs/research/notes/hk-quarterly-current-state-20260329.md`
 
@@ -380,7 +382,7 @@ cstree summarize \
 
 * 旧 overlay 基线已经在 `final_oos` 暴露出 regime shift
 * 当前仓库里有单独维护的抗漂移验证配置
-* 这条线适合当专题研究和 canary 准备路线，不适合重新写回 HK selected 主线 benchmark
+* 这条线适合当专题研究和 canary 准备路线，不适合重新写回 HK selected default 或 active mainline benchmark
 
 如果你要审计 overlay 合并链路，可以在 run 完成后执行：
 
@@ -423,5 +425,5 @@ uv run python -m cstree.research.hk_selected_provider_valuation_audit \
 * `positions_current.csv` 是否过度集中到低流动性个股
 * `inspect-hk-pit-coverage` 里的 `Complete Case`、`Fill Dependence` 和 `Recent Quarters` 是否还支持当前字段组合
 
-如果最终结论和你的预期差很多，先不要急着换模型。  
+如果最终结论和你的预期差很多，先不要急着换模型。
 先回到 `config.used.yml`、覆盖率体检和研究单元边界，确认你比较的到底是不是同一件事。

@@ -23,9 +23,9 @@
 | 查看持仓记录 | `cstree holdings --config <> --as-of t-1` |
 | 生成实盘快照 | `cstree snapshot --config <live.yml>` |
 | 手数分配计算 | `cstree alloc --config <> --source live --top-n 20` |
-| 港股增强手数分配 | `cstree alloc-hk --config <> --source live --top-n 20 --method custom` |
+| 港股 frozen-active 增强手数分配 | `cstree alloc-hk --config <> --source live --top-n 20 --method custom` |
 | 导出交易执行目标 | `cstree export-targets --run-dir <live_run> --out artifacts/exports/targets.json` |
-| 导出配置模板 | `cstree init-config --market default` |
+| 导出配置模板 | `cstree init-config --market default_next` |
 | HK universe MDP 入口 | `marketdata rqdata hk-assets hk-daily-assets --config <> -- <args>` |
 | 刷新数据目录（catalog） | `marketdata data catalog` |
 | 物化标准数据层 | `marketdata data materialize --name <> ...` |
@@ -48,10 +48,10 @@ cstree <subcommand> --help
 
 `--config` 参数支持以下输入：
 
-- 内置别名：`default` 或 `hk`
+- 内置别名：`default`、`default_next`、`hk` 或 `a_share`
 - 本地 YAML 文件路径：例如 `configs/presets/hk.yml`
 
-> 在命令 `cstree run --config default` 中，`default` 为内置别名，当前指向 HK starter 模板，且默认配置为 `data.provider=rqdata`。首次运行 `default` 或 `hk` 之前，请先执行 `uv sync --extra dev --extra rqdata` 安装相关依赖。
+> 在命令 `cstree run --config default` 中，`default` 为内置别名，当前仍指向 HK starter 兼容模板，用于保护历史流程；A 股迁移候选请使用 `cstree run --config default_next`。首次运行 `default` 或 `hk` 之前，请先执行 `uv sync --extra dev --extra rqdata` 安装相关依赖；`default_next` 使用 A 股 / TuShare platform assets baseline。
 >
 > 所有的内置别名以及 `cstree init-config` 命令均会读取仓库根目录下的 `configs/` 文件夹。其默认的适用场景为源码检出（checkout）环境，或包含了 `configs/` 文件夹的导出源码目录。
 
@@ -117,6 +117,7 @@ marketdata rqdata hk-assets hk-connect --config "$MDP_HK_CONNECT_UNIVERSE_CONFIG
 
 ```bash
 cstree run --config default
+cstree run --config default_next
 cstree run --config hk
 cstree run --config configs/presets/hk_quarterly_pit_hybrid.yml --fail-on-quality warning
 cstree run --config configs/presets/hk.yml --artifacts-root /data/cstree-artifacts
@@ -331,7 +332,7 @@ cstree alloc --config path/to/live.yml --source live --top-n 20 --cash 1000000 -
 
 ### cstree alloc-hk
 
-港股专用的增强型手数分配工具，适合将 `positions_current_live.csv` 或 `cstree holdings --format json` 输出的结果导入执行前分析层。
+港股专用的增强型手数分配工具，生命周期状态为 `frozen-active`。它适合将港股 `positions_current_live.csv` 或 `cstree holdings --format json` 输出的结果导入执行前分析层，仅用于港股复现、明确资金/模拟盘/人工跟踪需求或报告输出；新增市场默认使用 `cstree alloc`、`cstree export-targets` 和执行引擎 dry-run，不应把 `alloc-hk` 当作 A 股主线能力。
 
 ```bash
 cstree alloc-hk --config path/to/live.yml --source live --top-n 20 --cash 1000000 --method custom
@@ -345,6 +346,7 @@ cstree alloc-hk --config path/to/live.yml --source live --execution-calendar hk_
 
 说明：
 
+- 生命周期状态：`frozen-active`；除非存在明确港股跟踪或复现需求，不再为其扩展默认主线能力。
 - 在单场景分析中，`csv` 格式将继续输出逐笔标的的分配明细表。
 - 在多场景分析中，`csv` 会退化为场景总览表；如需查看完整明细，请改用 `json` 或 `xlsx` 格式。
 - `--fail-on-quality` 参数的优先级高于配置文件中的 `quality.fail_on_severity`。若 run summary 已经记录了 preflight 检查结论，`alloc-hk` 会直接读取复用，免去重复运行的开销。

@@ -10,7 +10,7 @@
 
 `config` 定义研究口径。`cstree run` 按这个口径读取 `data/universe/fundamentals`，构建 `label/features`，训练 `model`，产出 `eval/backtest/live` 结果，最后把关键产物写到 `artifacts/`。
 
-这页讲的是主流程。项目还包含结果汇总、候选晋升检查、构造层网格、特征证据、benchmark 阶梯、股票池工具、数据标准层和运行结果发布打包工具；这些能力见本页后面的“主流程之外”。当前最成熟的数据路线是中国香港市场 / RQData / 本地平台资产，相关资产生产、检查和发布已经由 `market-data-platform` 承载。
+这页讲的是主流程。项目还包含结果汇总、候选晋升检查、构造层网格、特征证据、benchmark 阶梯、股票池工具、数据标准层和运行结果发布打包工具；这些能力见本页后面的“主流程之外”。中国香港市场 / RQData / 本地平台资产是历史验证最充分的 legacy reference，相关资产生产、检查和发布已经由 `market-data-platform` 承载；A 股是当前主线迁移方向，候选入口是 `configs/presets/default_next.yml`。
 
 ## 主流程
 
@@ -45,12 +45,13 @@
 
 股票池控制“谁能进样本”，基本面文件控制“有哪些财务字段可用”。两者需要对齐，但不是同一个开关。
 
-### 2. `hk.yml` 和完整 PIT 财务路线
+### 2. `default_next`、`hk.yml` 和完整 PIT 财务路线
 
-* `configs/presets/hk.yml` 是当前成熟路线的月频 starter：`PIT universe` + `provider` 基本面。
-* `configs/presets/hk_quarterly_pit_hybrid.yml` 是当前成熟路线的季频 `PIT fundamentals` 入口。
+* `configs/presets/default_next.yml` 是 A 股 default 迁移候选，继承 `configs/presets/a_share.yml`，当前定位是 price-only / daily_clean baseline。
+* `configs/presets/hk.yml` 是港股 legacy reference 的月频 starter：`PIT universe` + `provider` 基本面。
+* `configs/presets/hk_quarterly_pit_hybrid.yml` 是港股 legacy research lane 的季频 `PIT fundamentals` 入口。
 
-要跑季度 PIT 财务路线时，应从后者或 HK selected playbook 指向的实验配置开始。其他市场路线应复用同样的配置块边界，而不是把 HK 专项假设扩散到通用主流程。
+要跑港股季度 PIT 财务路线时，应从后者或 HK selected playbook 指向的实验配置开始；它们用于复现、对照或明确跟踪需求，不再代表新增研究的默认入口。其他市场路线应复用同样的配置块边界，而不是把 HK 专项假设扩散到通用主流程。
 
 ### 3. run 产物才是历史复现依据
 
@@ -62,7 +63,7 @@
 
 ### 4. 本地资产直读和在线 provider
 
-本地平台资产直读可以跳过在线日线和基础信息读取。当前已验证的是中国香港市场资产直读；若同一配置启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，基本面缓存未命中时仍可能 lazy init `rqdatac`。
+本地平台资产直读可以跳过在线日线和基础信息读取。中国香港市场资产直读是历史验证最充分的 legacy reference；A 股迁移候选通过 `default_next` 读取 TuShare 平台资产。若港股配置启用了 `fundamentals.source=provider` 或 `fundamentals.provider_overlay`，基本面缓存未命中时仍可能 lazy init `rqdatac`。
 
 ## 主流程之外
 
@@ -74,7 +75,7 @@
 | 固定分数组合层比较 | `cstree construction-grid` | 固定模型分数，只比较组合构造参数 |
 | 特征证据 | `cstree feature-evidence ...` | 生成消融配置、汇总消融结果、计算特征置换重要度和单因子 IC |
 | Benchmark 阶梯 | `cstree benchmark-ladder` | 把策略收益和多组 benchmark 分层对比 |
-| 持仓与分配 | `cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk` | 查看当前持仓、导出快照、做资金和手数分配 |
+| 持仓与分配 | `cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk` | 查看当前持仓、导出快照、做资金和手数分配；`alloc-hk` 是港股 frozen-active 专项工具 |
 | 执行目标交接 | `cstree export-targets` | 将已经保存并通过质量门禁的 long-only live 持仓显式导出为执行引擎 `targets.json`；不会触发下单 |
 | 数据标准层 | `marketdata data catalog/materialize/query` | 管理 metadata、物化 standardized layer、用 DuckDB 查询 |
 | 股票池MDP 入口 | `marketdata rqdata hk-assets ...` | 改用 `market-data-platform` 的 HK universe asset builder |
@@ -89,7 +90,7 @@
 * `docs/config.md`：配置键、模板入口和默认行为。
 * `docs/providers.md`：provider 差异、凭证和日期 token。
 * `docs/outputs.md`：`artifacts/` 里的目录、文件和字段。
-* `docs/playbooks/README.md`：正式研究路线。
+* `docs/playbooks/README.md`：研究路线；A 股迁移先看 `docs/playbooks/a-share-baseline.md`，港股路线为 legacy research lane。
 * `docs/cookbook.md`：通用工作流速查。
 * `docs/research/README.md`：研究笔记入口和状态说明。
 
@@ -98,5 +99,6 @@
 * 想先跑通一次：`docs/get-started.md`
 * 想确认项目能力边界：`docs/capabilities.md`
 * 想查命令参数：`docs/cli.md`
-* 想做正式研究：`docs/playbooks/README.md`
+* 想做 A 股主线迁移验证：`docs/playbooks/a-share-baseline.md`
+* 想复现或对照港股 legacy research：`docs/playbooks/README.md`
 * 想按对象查细节：`docs/config.md`、`docs/outputs.md`、`docs/providers.md`

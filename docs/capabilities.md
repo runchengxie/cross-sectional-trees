@@ -31,7 +31,7 @@
 | `cstree holdings` | 读取当前持仓 | 文本 / csv / json |
 | `cstree snapshot` | 运行实盘快照，或从现有的运行结果中导出快照 | 文本 / csv / json |
 | `cstree alloc` | 基于持仓做等权手数分配 | 文本 / csv / json |
-| `cstree alloc-hk` | 基于持仓做港股执行前分配分析（自定义权重、估值分层、二次补仓、资金 × 选股数量场景矩阵） | 文本 / csv / json / xlsx |
+| `cstree alloc-hk` | 港股 frozen-active 执行前分配分析（自定义权重、估值分层、二次补仓、资金 × 选股数量场景矩阵）；不作为 A 股主线能力 | 文本 / csv / json / xlsx |
 | `cstree export-targets` | 将已保存的 long-only live 持仓显式导出为交易执行引擎标准 `targets.json` 并记录来源 | `targets.json`、`targets.json.lineage.json` |
 | `cstree init-config` | 导出仓库预设配置模板 | 本地 YAML 文件 |
 | `marketdata backup-data` | 归档本地缓存、股票池、配置以及可选的当前冻结资产集 | `artifacts/snapshots/<name>/` |
@@ -70,7 +70,8 @@
 
 | 层级 | 典型入口 | 当前承诺 |
 | --- | --- | --- |
-| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree alloc-hk`、`cstree export-targets`、`cstree init-config`、`marketdata backup-data` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 公开主线 CLI | `cstree run`、`cstree summarize`、`cstree grid`、`cstree tune`、`cstree sweep-linear`、`cstree promotion-gate`、`cstree cpcv`、`cstree construction-grid`、`cstree feature-evidence ...`、`cstree benchmark-ladder`、`cstree holdings`、`cstree snapshot`、`cstree alloc`、`cstree export-targets`、`cstree init-config`、`marketdata backup-data` | 当前正式用户入口；文档、测试和说明文件会持续跟随更新 |
+| 市场专项 frozen-active CLI | `cstree alloc-hk` | 港股执行前分配分析保留给复现、明确跟踪或报告需求；不作为 A 股主线能力扩展 |
 | 兼容迁移 CLI | `marketdata data ...`、`marketdata rqdata hk-assets ...` | 标准层查询和 HK universe asset builder 的过渡入口，改用 `market-data-platform` |
 | 公开但非 CLI 模块工具 | `python -m cstree.release_tools.package_runs`、`python -m cstree.release_tools.release_runs` | 已提供文档并具备复用性，但不是 `cstree` CLI 子命令 |
 | 研究 / 专题模块工具 | `python -m cstree.research.hk_financial_details`、`python -m cstree.research.hk_selected_provider_valuation_audit`、`marketdata rqdata refresh-hk-intraday` | 仅在专题页面或操作手册中按场景引用；功能可用，但不作为新手的默认入口 |

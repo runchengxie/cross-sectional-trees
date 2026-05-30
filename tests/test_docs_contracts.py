@@ -30,6 +30,7 @@ EXPECTED_CAPABILITY_TOKENS = [
     "`marketdata data ...`",
     "`marketdata rqdata hk-assets ...`",
     "docs/market-lifecycle.md",
+    "frozen-active",
 ]
 EXPECTED_TEST_WORKFLOW_JOBS = {
     "fast",
@@ -93,6 +94,7 @@ EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "公开主线 CLI",
     "公开但非 CLI 模块工具",
     "`python -m cstree.release_tools.package_runs`",
+    "市场专项 frozen-active CLI",
     "`python -m cstree.research.hk_financial_details`",
     "`marketdata rqdata refresh-hk-intraday`",
     "`CSTREE_*`",
@@ -133,6 +135,7 @@ EXPECTED_MARKET_LIFECYCLE_TOKENS = [
     "archived_provenance",
     "A 股 default 晋升条件",
     "港股 sunset 条件",
+    "frozen-active",
 ]
 EXPECTED_CATALOG_LIFECYCLES = {
     "active_migration",
@@ -142,6 +145,24 @@ EXPECTED_CATALOG_LIFECYCLES = {
     "shared_active",
     "shared_reference",
 }
+EXPECTED_PLAYBOOK_LIFECYCLE_TOKENS = {
+    "docs/playbooks/README.md": [
+        "a-share-baseline.md",
+        "default_next",
+        "港股 legacy research",
+    ],
+    "docs/playbooks/a-share-baseline.md": [
+        "cstree run --config default_next",
+        "metadata/current_assets/a_share_current.json",
+        "default 晋升前 checklist",
+    ],
+    "docs/playbooks/hk-selected.md": [
+        "页面性质：`legacy-research`",
+        "legacy research lane",
+        "docs/playbooks/a-share-baseline.md",
+    ],
+}
+
 EXPECTED_WORKFLOW_SMOKE_SNIPPETS = [
     'marketdata data query --sql "select 1 as value"',
     "alloc_hk_smoke.xlsx",
@@ -479,6 +500,44 @@ def test_market_lifecycle_policy_and_catalog_are_in_sync():
     assert by_name["presets/hk.yml"]["lifecycle"] == "legacy_reference"
     assert by_name["presets/a_share.yml"]["lifecycle"] == "active_migration"
     assert by_name["presets/default_next.yml"]["lifecycle"] == "active_migration"
+
+    hk_sweeps = [
+        row for row in rows if row["market"] == "hk" and row["category"] == "sweep"
+    ]
+    assert hk_sweeps
+    assert {row["lifecycle"] for row in hk_sweeps} == {"archived_provenance"}
+
+    hk_research_rows = [
+        row
+        for row in rows
+        if row["market"] == "hk"
+        and row["category"] in {"experiment", "template"}
+    ]
+    assert hk_research_rows
+    assert {row["lifecycle"] for row in hk_research_rows} == {"legacy_research"}
+
+    active_migration = {
+        row["config_name"] for row in rows if row["lifecycle"] == "active_migration"
+    }
+    assert {"presets/a_share.yml", "presets/default_next.yml"} <= active_migration
+
+    default_next = (repo_root / "configs" / "presets" / "default_next.yml").read_text(
+        encoding="utf-8"
+    )
+    assert 'extends: "configs/presets/a_share.yml"' in default_next
+
+
+def test_playbooks_reflect_a_share_migration_and_hk_legacy_lifecycle():
+    repo_root = _repo_root()
+
+    missing: dict[str, list[str]] = {}
+    for relative_path, tokens in EXPECTED_PLAYBOOK_LIFECYCLE_TOKENS.items():
+        text = (repo_root / relative_path).read_text(encoding="utf-8")
+        missing_tokens = sorted(token for token in tokens if token not in text)
+        if missing_tokens:
+            missing[relative_path] = missing_tokens
+
+    assert missing == {}
 
 
 def test_local_asset_docs_describe_lazy_rqdatac_init_boundary():

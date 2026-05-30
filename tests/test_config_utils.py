@@ -250,6 +250,22 @@ def test_a_share_preset_uses_tushare_platform_assets_contract():
     assert cfg["execution"]["settlement"] == "T+1"
 
 
+
+def test_default_next_alias_resolves_to_a_share_migration_candidate():
+    for alias in ("default_next", "default-next", "default_next.yml"):
+        assert resolve_pipeline_filename(alias) == "default_next.yml"
+
+    resolved = resolve_pipeline_config("default_next")
+    cfg = resolved.data
+
+    assert resolved.source.endswith("default_next.yml")
+    assert cfg["market"] == "a_share"
+    assert cfg["data"]["provider"] == "tushare"
+    assert cfg["data"]["source_mode"] == "platform_assets"
+    assert cfg["research_universe"]["mode"] == "static"
+    assert cfg["execution"]["market"] == "a_share"
+
+
 def test_pipeline_aliases_fail_fast_when_repo_configs_are_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(config_utils, "_iter_repo_root_candidates", lambda: [tmp_path])
 
