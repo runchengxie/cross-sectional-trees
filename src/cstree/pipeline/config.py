@@ -260,6 +260,8 @@ def normalize_universe_filters(
         "MIN_TURNOVER": float(universe_cfg.get("min_turnover", 0)),
         "DROP_ST": bool(universe_cfg.get("drop_st", False)),
         "DROP_SUSPENDED": bool(universe_cfg.get("drop_suspended", True)),
+        "DROP_LIMIT_UP": bool(universe_cfg.get("drop_limit_up", False)),
+        "DROP_LIMIT_DOWN": bool(universe_cfg.get("drop_limit_down", False)),
         "SUSPENDED_POLICY": suspended_policy,
     }
 

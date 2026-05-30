@@ -5,7 +5,7 @@ import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from market_data_platform.symbols import canonicalize_symbol_columns
@@ -360,20 +360,23 @@ def _apply_tradeability_filters(
     *,
     df: pd.DataFrame,
     drop_suspended: bool,
+    drop_limit_up: bool,
+    drop_limit_down: bool,
     suspended_policy: str,
     min_turnover: float,
 ) -> pd.DataFrame:
     df["is_tradable"] = True
     if drop_suspended:
         if "is_suspended" in df.columns:
-            tradable_mask = ~_is_truthy_series(df["is_suspended"])
+            tradable_mask = ~_is_truthy_series(cast(pd.Series, df["is_suspended"]))
         elif "amount" in df.columns:
             tradable_mask = (df["vol"] > 0) & (df["amount"] > 0)
         else:
             tradable_mask = df["vol"] > 0
-        for flag_col in ("is_limit_up", "is_limit_down"):
-            if flag_col in df.columns:
-                tradable_mask &= ~_is_truthy_series(df[flag_col])
+        if drop_limit_up and "is_limit_up" in df.columns:
+            tradable_mask &= ~_is_truthy_series(cast(pd.Series, df["is_limit_up"]))
+        if drop_limit_down and "is_limit_down" in df.columns:
+            tradable_mask &= ~_is_truthy_series(cast(pd.Series, df["is_limit_down"]))
         tradable_mask = tradable_mask.fillna(False)
         df["is_tradable"] = tradable_mask
         if suspended_policy == "filter":
@@ -443,6 +446,8 @@ def _load_research_panel(
     drop_st: bool,
     min_listed_days: int,
     drop_suspended: bool,
+    drop_limit_up: bool,
+    drop_limit_down: bool,
     suspended_policy: str,
     min_turnover: float,
     fundamentals_enabled: bool,
@@ -527,6 +532,8 @@ def _load_research_panel(
     df = _apply_tradeability_filters(
         df=df,
         drop_suspended=drop_suspended,
+        drop_limit_up=drop_limit_up,
+        drop_limit_down=drop_limit_down,
         suspended_policy=suspended_policy,
         min_turnover=min_turnover,
     )

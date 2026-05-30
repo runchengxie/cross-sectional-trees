@@ -10,7 +10,7 @@ data:
   cache_mode: "symbol"
   cache_refresh_days: 10
   cache_refresh_on_hit: false
-  price_col: "close"
+  price_col: "tr_close"
   retry:
     max_attempts: 1
     backoff_seconds: 0.5
@@ -29,10 +29,23 @@ data:
     amount: amount
 
 fundamentals:
-  enabled: false
-  source: "file"
+  enabled: true
+  source: "provider"
   file: null
   features: []
+  market_cap_col: "total_mv"
+  log_market_cap: true
+  provider_overlay:
+    enabled: true
+    source: "daily_clean"
+    features:
+      - pe_ttm
+      - pb
+      - ps_ttm
+      - turnover_rate
+      - total_mv
+    auto_add_features: true
+    required: false
 
 research_universe:
   mode: "static"
@@ -55,6 +68,8 @@ research_universe:
   min_turnover: 0
   drop_st: true
   drop_suspended: true
+  drop_limit_up: true
+  drop_limit_down: true
   suspended_policy: "mark"
 
 label:

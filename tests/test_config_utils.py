@@ -233,6 +233,18 @@ def test_a_share_preset_uses_tushare_platform_assets_contract():
         "artifacts/assets/tushare/a_share/instruments/a_share_all_instruments_latest.parquet"
     )
     assert cfg["data"]["column_map"]["vol"] == "vol"
+    assert cfg["data"]["price_col"] == "tr_close"
+    assert cfg["fundamentals"]["enabled"] is True
+    assert cfg["fundamentals"]["provider_overlay"]["source"] == "daily_clean"
+    assert cfg["fundamentals"]["provider_overlay"]["features"] == [
+        "pe_ttm",
+        "pb",
+        "ps_ttm",
+        "turnover_rate",
+        "total_mv",
+    ]
+    assert cfg["research_universe"]["drop_limit_up"] is True
+    assert cfg["research_universe"]["drop_limit_down"] is True
     assert cfg["backtest"]["benchmark_symbol"] == "000300.SH"
     assert cfg["execution"]["board_lot"] == 100
     assert cfg["execution"]["settlement"] == "T+1"

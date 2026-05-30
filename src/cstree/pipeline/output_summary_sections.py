@@ -131,6 +131,8 @@ def _build_universe_section(ctx: Mapping[str, Any]) -> dict[str, Any]:
         "by_date_file": _path_text(ctx["by_date_file"]),
         "require_by_date": ctx["REQUIRE_BY_DATE"],
         "drop_suspended": ctx["DROP_SUSPENDED"],
+        "drop_limit_up": ctx["DROP_LIMIT_UP"],
+        "drop_limit_down": ctx["DROP_LIMIT_DOWN"],
         "suspended_policy": ctx["SUSPENDED_POLICY"],
     }
 

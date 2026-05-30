@@ -207,6 +207,8 @@ def prepare_research_context(
         drop_st=universe_filters["DROP_ST"],
         min_listed_days=universe_filters["MIN_LISTED_DAYS"],
         drop_suspended=universe_filters["DROP_SUSPENDED"],
+        drop_limit_up=universe_filters["DROP_LIMIT_UP"],
+        drop_limit_down=universe_filters["DROP_LIMIT_DOWN"],
         suspended_policy=universe_filters["SUSPENDED_POLICY"],
         min_turnover=universe_filters["MIN_TURNOVER"],
         fundamentals_enabled=runtime_settings["FUNDAMENTALS_ENABLED"],
