@@ -1,5 +1,6 @@
 import argparse
 import ast
+import csv
 import fnmatch
 import re
 import subprocess
@@ -28,6 +29,7 @@ EXPECTED_CAPABILITY_TOKENS = [
     "`marketdata backup-data`",
     "`marketdata data ...`",
     "`marketdata rqdata hk-assets ...`",
+    "docs/market-lifecycle.md",
 ]
 EXPECTED_TEST_WORKFLOW_JOBS = {
     "fast",
@@ -83,6 +85,7 @@ EXPECTED_README_PUBLIC_CLI_TOKENS = [
     "`marketdata backup-data`",
     "marketdata data",
     "marketdata rqdata hk-assets",
+    "configs/presets/default_next.yml",
 ]
 EXPECTED_CAPABILITIES_ENTRYPOINT_LAYER_TOKENS = [
     "## 入口分层与稳定性",
@@ -122,6 +125,23 @@ EXPECTED_LOCAL_ASSET_LAZY_INIT_TOKENS = [
     "`fundamentals.provider_overlay`",
     "lazy init `rqdatac`",
 ]
+EXPECTED_MARKET_LIFECYCLE_TOKENS = [
+    "configs/presets/default_next.yml",
+    "active_migration",
+    "legacy_reference",
+    "legacy_research",
+    "archived_provenance",
+    "A 股 default 晋升条件",
+    "港股 sunset 条件",
+]
+EXPECTED_CATALOG_LIFECYCLES = {
+    "active_migration",
+    "legacy_reference",
+    "legacy_research",
+    "archived_provenance",
+    "shared_active",
+    "shared_reference",
+}
 EXPECTED_WORKFLOW_SMOKE_SNIPPETS = [
     'marketdata data query --sql "select 1 as value"',
     "alloc_hk_smoke.xlsx",
@@ -435,6 +455,30 @@ def test_get_started_doc_describes_default_alias_correctly():
 
     assert "不等于 `configs/presets/default.yml`" not in get_started
     assert "会解析到仓库 `configs/` 下的 `configs/presets/default.yml`" in get_started
+
+
+def test_market_lifecycle_policy_and_catalog_are_in_sync():
+    repo_root = _repo_root()
+    market_lifecycle = (repo_root / "docs" / "market-lifecycle.md").read_text(encoding="utf-8")
+    catalog_path = repo_root / "configs" / "catalog.csv"
+
+    missing_policy_tokens = sorted(
+        token for token in EXPECTED_MARKET_LIFECYCLE_TOKENS if token not in market_lifecycle
+    )
+    assert missing_policy_tokens == []
+
+    with catalog_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert "lifecycle" in (rows[0].keys() if rows else [])
+    lifecycles = {str(row.get("lifecycle") or "").strip() for row in rows}
+    assert lifecycles <= EXPECTED_CATALOG_LIFECYCLES
+
+    by_name = {row["config_name"]: row for row in rows}
+    assert by_name["presets/default.yml"]["lifecycle"] == "legacy_reference"
+    assert by_name["presets/hk.yml"]["lifecycle"] == "legacy_reference"
+    assert by_name["presets/a_share.yml"]["lifecycle"] == "active_migration"
+    assert by_name["presets/default_next.yml"]["lifecycle"] == "active_migration"
 
 
 def test_local_asset_docs_describe_lazy_rqdatac_init_boundary():

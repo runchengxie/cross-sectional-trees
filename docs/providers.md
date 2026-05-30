@@ -8,7 +8,7 @@
 
 ## 当前边界
 
-本项目当前正式验证最充分的 provider / market 组合是：
+本项目当前历史验证最充分的 provider / market 组合是：
 
 * `data.provider=rqdata`
 * 默认 `data.source_mode=platform_assets`，只读 `market-data-platform` 发布的本地资产
@@ -16,8 +16,8 @@
 * 在线 `rqdatac` 访问
 * 本地 HK 资产直读（daily + instruments）
 
-以上是当前稳定支持面的完整边界。主流程正在向 market-agnostic 的配置边界收敛，但旧的多市场 / 多 provider 归档配置不再作为活跃入口维护。
-`configs/presets/a_share.yml` 仅作为兼容和实验入口保留，不属于当前正式主线。
+以上是当前稳定支持面的完整边界，但生命周期定位已经从未来默认主线降级为 legacy reference。主流程正在向 market-agnostic 的配置边界收敛；A 股是当前主线迁移方向，`configs/presets/default_next.yml` 作为 default 切换前的候选入口保留。
+`configs/presets/a_share.yml` 是中国大陆市场 / A 股基础 baseline；当前偏 price-only / daily_clean / 静态股票池，不能视为已具备与 HK/RQData 历史路线等价的 PIT universe、PIT fundamentals、行业历史或执行联调证据。
 
 ## 鉴权与初始化
 

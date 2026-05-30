@@ -1,0 +1,10 @@
+extends: "configs/presets/a_share.yml"
+
+# A 股主线迁移候选入口。
+#
+# 用途：给 `default` 切换前的验证、脚本和人工评审提供稳定名字。
+# 边界：当前仍是 price-only / daily_clean 优先的迁移 baseline；不能把它理解为
+# 已具备与历史 HK/RQData 路线等价的 PIT universe、PIT fundamentals、行业历史、
+# 执行联调和券商能力证据。
+#
+# 晋升条件见 docs/market-lifecycle.md。

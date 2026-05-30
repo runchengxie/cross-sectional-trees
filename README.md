@@ -19,7 +19,7 @@
 - 生成当前目标持仓、分配分析和执行引擎标准 `targets.json`。
 - 保存可复现的 `summary.json`、`config.used.yml` 和持仓文件。
 
-当前最成熟、默认的研究路线是中国香港市场 / RQData / 本地平台资产。项目结构正在向 market-agnostic 的研究框架收敛；新增市场时，应尽量复用 `market`、`data`、`research_universe`、`features`、`model`、`eval`、`backtest` 和 `live` 这些通用配置边界。
+中国香港市场 / RQData / 本地平台资产路线是历史验证最充分的 legacy reference；A 股是当前主线迁移方向。项目结构正在向 market-agnostic 的研究框架收敛；新增市场时，应尽量复用 `market`、`data`、`research_universe`、`features`、`model`、`eval`、`backtest` 和 `live` 这些通用配置边界。生命周期口径见 [docs/market-lifecycle.md](docs/market-lifecycle.md)。
 
 中国香港市场数据资产的下载、清洗、健康检查、current contract 和发布已经迁到 `market-data-platform`。本仓库默认只读平台资产。
 
@@ -29,7 +29,7 @@
 
 - Python 3.12+
 - `uv`
-- 若运行默认模板，需要已由 `market-data-platform` 准备好的本地中国香港市场数据资产
+- 若运行兼容默认模板，需要已由 `market-data-platform` 准备好的本地中国香港市场数据资产；若验证 A 股迁移候选入口，需要准备 `metadata/current_assets/a_share_current.json` 指向的 A 股数据资产
 
 ```bash
 uv venv --seed
@@ -38,7 +38,7 @@ export DATA_PLATFORM_ROOT=/path/to/market-data-platform/artifacts
 cstree run --config default
 ```
 
-`default` 当前指向中国香港市场入门模板，默认使用 `data.provider=rqdata` 和 `data.source_mode=platform_assets`。也就是说，默认研究路径不需要在线读取 RQData；只有显式切换到 legacy provider 在线模式时，才需要额外安装和配置 RQData 凭证。
+`default` 当前仍指向中国香港市场兼容 starter，默认使用 `data.provider=rqdata` 和 `data.source_mode=platform_assets`，用于保护历史流程不被突然破坏。A 股主线迁移候选入口是 `configs/presets/default_next.yml`；它继承 `configs/presets/a_share.yml`，在 PIT universe、PIT fundamentals、交易规则和执行 dry-run 证据通过验收后，才应考虑切换 `default`。
 
 运行后先看：
 
@@ -82,6 +82,7 @@ cstree export-targets --help
 ## 文档导航
 
 - 第一次跑起来：[docs/get-started.md](docs/get-started.md)
+- 市场生命周期与 default 切换政策：[docs/market-lifecycle.md](docs/market-lifecycle.md)
 - 建立整体认知：[docs/pipeline-overview.md](docs/pipeline-overview.md)
 - 查看能力边界：[docs/capabilities.md](docs/capabilities.md)
 - 按任务找做法：[docs/cookbook.md](docs/cookbook.md)

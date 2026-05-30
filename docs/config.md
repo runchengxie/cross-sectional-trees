@@ -9,8 +9,10 @@
 
 | 使用场景 | 推荐模板 | 关键改动说明 |
 |------|---------|---------|
-| 首次跑通主流程 | `default` | 无特殊改动 |
-| 当前成熟路线月频 Starter 模板（PIT 股票池 + 本地平台资产） | `hk` | 默认使用 `data.source_mode=platform_assets`，读取 `market-data-platform` 发布的本地中国香港市场资产和 PIT 基本面文件 |
+| 首次跑通老流程 / 历史兼容 | `default` | 当前仍指向中国香港市场兼容 starter，用于保护老流程，不代表未来默认研发预算方向 |
+| A 股 default 迁移候选 | `configs/presets/default_next.yml` | 继承 `configs/presets/a_share.yml`；用于 default 切换前验证 |
+| A 股基础 baseline | `configs/presets/a_share.yml` | 使用中国大陆市场 / A 股 daily_clean 资产、静态股票池和交易规则过滤；尚不具备完整 PIT universe / PIT fundamentals 等价能力 |
+| 港股 legacy reference | `hk` | 默认使用 `data.source_mode=platform_assets`，读取 `market-data-platform` 发布的本地中国香港市场资产和 PIT 基本面文件 |
 | HK selected 月频本地研究推荐入口 | `configs/experiments/variants/hk_selected__tr_close_execution_balanced_local.yml` | 依赖本地 HK 资产数据。一次性贯通 `tr_close`、balanced execution 以及本地 RQData 资产链路 |
 | HK selected 月频历史 benchmark 锚点 | `configs/experiments/baseline/hk_selected.yml` | 保留 `close` 结合固定 `25bps` 成本的旧口径，以便与历史结果进行横向对照 |
 | 港股季频 PIT 正式研究 | `configs/presets/hk_quarterly_pit_hybrid.yml` | 依赖本地 `pipeline_fundamentals.parquet` 文件 |
@@ -36,8 +38,10 @@
 
 ```text
 configs/
-├── presets/           # 内置预设（各市场默认配置模板）
-│   ├── default.yml
+├── presets/           # 内置预设（兼容默认、A 股迁移候选、各市场参考模板）
+│   ├── default.yml     # 当前仍为港股兼容 starter
+│   ├── default_next.yml # A 股 default 迁移候选
+│   ├── a_share.yml
 │   ├── hk.yml
 │   └── universe/      # 股票池专用配置
 ├── experiments/       # 研究实验配置集合
@@ -91,8 +95,8 @@ paths:
 
 ```yaml
 data:
-  provider: rqdata       # 当前正式验证最充分的 provider 为 rqdata
-  market: hk             # 当前正式验证最充分的市场为 hk；a_share 仅作为保留兼容和实验 preset
+  provider: rqdata       # 历史验证最充分的 legacy reference provider 为 rqdata；A 股迁移候选使用 tushare
+  market: hk             # 当前 default 兼容入口仍为 hk；A 股迁移候选见 configs/presets/default_next.yml
   start_date: "20200101" # 支持具体日期或相对表达，如 "today", "t-1"
   end_date: "20241231"
   cache_tag: "experiment_a"  # 用于隔离不同实验的缓存版本
@@ -201,6 +205,8 @@ backtest:
 ```
 
 ### 港股增强分配配置 (`live.alloc_hk`)
+
+生命周期状态：`frozen-active`。`cstree alloc-hk` 保留给仍有资金、模拟盘、人工跟踪或历史复现需求的港股执行前分析；除非先说明这些需求，否则不应继续扩展为默认主线能力。
 
 `cstree alloc-hk` 工具将优先读取当前持仓快照，随后在港股执行前分析层（liveops）开展资金与手数分配运算。命令行传入的参数优先级始终高于此处的 YAML 配置。
 
