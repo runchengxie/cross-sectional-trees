@@ -440,6 +440,18 @@ def _select_fundamentals_merge_columns(
     return fund_df.loc[:, list(dict.fromkeys(keep_columns))].copy()
 
 
+def _daily_clean_overlay_frame(
+    panel_df: pd.DataFrame,
+    provider_overlay_cfg: Mapping[str, Any],
+    fundamentals_mcap_col: str,
+) -> pd.DataFrame:
+    configured_features = _string_set(provider_overlay_cfg.get("features"))
+    configured_fields = _string_set(provider_overlay_cfg.get("fields"))
+    keep = configured_features | configured_fields | {"market_cap", "pe_ttm", "pb", fundamentals_mcap_col}
+    keep_columns = ["trade_date", "symbol"] + sorted(column for column in keep if column in panel_df.columns)
+    return panel_df.loc[:, list(dict.fromkeys(keep_columns))].copy()
+
+
 def apply_fundamentals_enrichment(
     *,
     panel_df: pd.DataFrame,
@@ -550,20 +562,26 @@ def apply_fundamentals_enrichment(
         logger.warning(message)
 
     if provider_overlay_enabled:
-        overlay_frames, provider_overlay_cache_dir = load_panel_join_frames(
-            source="provider",
-            file_path=None,
-            data_interface=data_interface,
-            symbols=symbols,
-            start_date=start_date,
-            end_date=end_date,
-            data_cfg=data_cfg,
-            join_cfg=provider_overlay_cfg,
-            market=market,
-            item_label="provider valuation overlay",
-            log_retry_failures=False,
-            log_retry_traceback=False,
-        )
+        overlay_source = str(provider_overlay_cfg.get("source") or "provider").strip().lower()
+        if overlay_source == "daily_clean":
+            overlay_df = _daily_clean_overlay_frame(df, provider_overlay_cfg, fundamentals_mcap_col)
+            overlay_frames = [overlay_df] if not overlay_df.empty else []
+            provider_overlay_cache_dir = None
+        else:
+            overlay_frames, provider_overlay_cache_dir = load_panel_join_frames(
+                source="provider",
+                file_path=None,
+                data_interface=data_interface,
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                data_cfg=data_cfg,
+                join_cfg=provider_overlay_cfg,
+                market=market,
+                item_label="provider valuation overlay",
+                log_retry_failures=False,
+                log_retry_traceback=False,
+            )
         if overlay_frames:
             overlay_df = pd.concat(overlay_frames, ignore_index=True)
             overlay_df = _prepare_panel_join_frame(
@@ -583,6 +601,13 @@ def apply_fundamentals_enrichment(
             ]
             if overlay_value_cols and "valuation_trade_date" not in overlay_df.columns:
                 overlay_df["valuation_trade_date"] = overlay_df["trade_date"]
+            existing_overlay_cols = [
+                col
+                for col in overlay_df.columns
+                if col not in {"trade_date", "symbol"} and col in df.columns
+            ]
+            if existing_overlay_cols:
+                df = df.drop(columns=existing_overlay_cols)
             df, overlay_cols = merge_panel_frame(
                 df,
                 overlay_df,

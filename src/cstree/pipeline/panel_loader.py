@@ -347,6 +347,15 @@ def _apply_basic_filters(
     return df[df["trade_date"] >= df["list_date"] + pd.Timedelta(days=min_listed_days)].copy()
 
 
+def _is_truthy_series(series: pd.Series) -> pd.Series:
+    if series.dtype == bool:
+        return series.fillna(False)
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_numeric(series, errors="coerce").fillna(0) != 0
+    normalized = series.astype(str).str.strip().str.lower()
+    return normalized.isin({"1", "true", "t", "yes", "y", "是"})
+
+
 def _apply_tradeability_filters(
     *,
     df: pd.DataFrame,
@@ -356,17 +365,22 @@ def _apply_tradeability_filters(
 ) -> pd.DataFrame:
     df["is_tradable"] = True
     if drop_suspended:
-        if "amount" in df.columns:
+        if "is_suspended" in df.columns:
+            tradable_mask = ~_is_truthy_series(df["is_suspended"])
+        elif "amount" in df.columns:
             tradable_mask = (df["vol"] > 0) & (df["amount"] > 0)
         else:
             tradable_mask = df["vol"] > 0
+        for flag_col in ("is_limit_up", "is_limit_down"):
+            if flag_col in df.columns:
+                tradable_mask &= ~_is_truthy_series(df[flag_col])
         tradable_mask = tradable_mask.fillna(False)
         df["is_tradable"] = tradable_mask
         if suspended_policy == "filter":
-            df = df[df["is_tradable"]].copy()
+            df = df.loc[df["is_tradable"]].copy()
 
     if min_turnover > 0 and "amount" in df.columns:
-        df = df[df["amount"] >= min_turnover].copy()
+        df = df.loc[df["amount"] >= min_turnover].copy()
     return df
 
 

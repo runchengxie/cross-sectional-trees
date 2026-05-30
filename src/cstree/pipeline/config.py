@@ -312,8 +312,8 @@ def _resolve_fundamentals_settings(
     if not isinstance(provider_overlay_cfg, Mapping):
         raise SystemExit("fundamentals.provider_overlay must be a mapping when provided.")
     overlay_source = str(provider_overlay_cfg.get("source", "provider")).strip().lower()
-    if overlay_source not in {"provider"}:
-        raise SystemExit("fundamentals.provider_overlay.source must be 'provider'.")
+    if overlay_source not in {"provider", "daily_clean"}:
+        raise SystemExit("fundamentals.provider_overlay.source must be one of: provider, daily_clean.")
 
     return {
         "fundamentals_cfg": fundamentals_cfg,

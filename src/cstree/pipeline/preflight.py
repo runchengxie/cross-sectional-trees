@@ -233,17 +233,23 @@ def resolve_effective_data_inputs(
                 logger.warning("%s Industry join disabled.", message)
                 industry_enabled = False
 
+    overlay_source = str(
+        runtime_settings.get("FUNDAMENTALS_PROVIDER_OVERLAY_SOURCE") or "provider"
+    ).strip().lower()
     if overlay_enabled:
-        if not fundamentals_enabled or fundamentals_source != "file":
+        if overlay_source == "daily_clean":
+            if not fundamentals_enabled:
+                fundamentals_enabled = True
+        elif not fundamentals_enabled or fundamentals_source != "file":
             message = (
                 "fundamentals.provider_overlay requires fundamentals.enabled=true "
-                "and fundamentals.source=file."
+                "and fundamentals.source=file unless source=daily_clean."
             )
             if overlay_required:
                 sys.exit(message)
             logger.warning("%s Provider overlay disabled.", message)
             overlay_enabled = False
-        elif not fundamentals_provider_supported(overlay_provider, market):
+        elif overlay_source == "provider" and not fundamentals_provider_supported(overlay_provider, market):
             message = (
                 "fundamentals.provider_overlay currently supports only RQData market=hk."
             )
